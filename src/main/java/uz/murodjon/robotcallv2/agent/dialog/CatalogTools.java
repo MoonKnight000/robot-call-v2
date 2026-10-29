@@ -6,8 +6,10 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.CatalogMatch;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The company's product catalog, reachable during a call (UNIVERSAL-OPERATOR-PLAN B.4).
@@ -31,6 +33,8 @@ public class CatalogTools {
             + "price. Ask the client to be more specific (name, colour, size) or tell them there is no such product.";
 
     private static final int MAX_MATCHES = 5;
+    static final String PRODUCT_INTEREST_FACT = "productInterest";
+    static final String PRODUCT_SKUS_FACT = "productSkus";
     private static final int MAX_SKU_CHARS = 100;
     private static final int MAX_ROW_CHARS = 300;
 
@@ -38,12 +42,20 @@ public class CatalogTools {
     private final long companyId;
     private final Long agentId;
     private final CatalogSearchUseCase catalogSearch;
+    /** Where what the client asked for is kept for the next conversation; null = not kept. */
+    private final ClientMemoryUseCase memory;
 
-    public CatalogTools(DialogOutcomeSink session, long companyId, Long agentId, CatalogSearchUseCase catalogSearch) {
+    public CatalogTools(DialogOutcomeSink session, long companyId, Long agentId, CatalogSearchUseCase catalogSearch,
+                        ClientMemoryUseCase memory) {
         this.session = session;
         this.companyId = companyId;
         this.agentId = agentId;
         this.catalogSearch = catalogSearch;
+        this.memory = memory;
+    }
+
+    public CatalogTools(DialogOutcomeSink session, long companyId, Long agentId, CatalogSearchUseCase catalogSearch) {
+        this(session, companyId, agentId, catalogSearch, null);
     }
 
     @Tool(description = "Searches the company catalogue for a product or service (name, colour, size, price, "
@@ -65,12 +77,29 @@ public class CatalogTools {
             String result = answer.toString();
             session.recordToolFigures(FactGuard.figuresIn(result));
             session.rememberCatalogResult(result);
+            rememberInterest(query, matches);
             log.debug("[{}] catalog search for '{}' returned {} rows", session.channelId(), query, matches.size());
             return result;
         } catch (Exception e) {
             // A failed search must read as "nothing found", never as an error the model relays.
             log.warn("[{}] catalog search failed: {}", session.channelId(), e.getMessage());
             return NOTHING_FOUND;
+        }
+    }
+
+    /** The products the client asked about, kept in their memory for the next conversation. */
+    private void rememberInterest(String query, List<CatalogMatch> matches) {
+        String phone = session.context() != null ? session.context().phone() : null;
+        if (memory == null || phone == null || query == null || query.isBlank()) {
+            return;
+        }
+        try {
+            memory.rememberFacts(companyId, phone, Map.of(
+                    PRODUCT_INTEREST_FACT, PromptSafeText.sanitize(query.trim(), MAX_ROW_CHARS),
+                    PRODUCT_SKUS_FACT, String.join(", ", matches.stream()
+                            .map(match -> PromptSafeText.sanitize(match.sku(), MAX_SKU_CHARS)).toList())));
+        } catch (Exception e) {
+            log.warn("[{}] could not remember product interest: {}", session.channelId(), e.getMessage());
         }
     }
 }

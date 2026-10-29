@@ -32,7 +32,9 @@
         {"name": "paymentMethod", "type": "string", "description": "To'lov turi: NAQD, BO'LIB_TO'LASH, IPOTEKA"},
         {"name": "budgetRange", "type": "string", "description": "Mijoz rejalashtirgan byudjet"},
         {"name": "meetingBooked", "type": "boolean", "description": "Sotuv ofisiga uchrashuv belgilandimi", "goal": true},
-        {"name": "meetingTime", "type": "string", "description": "Kelishilgan uchrashuv vaqti"}
+        {"name": "meetingTime", "type": "string", "description": "Kelishilgan uchrashuv vaqti"},
+        {"name": "managerCallbackRequested", "type": "boolean", "description": "Mijoz menejer o'zi qayta qo'ng'iroq qilishini so'radimi"},
+        {"name": "managerCallbackReason", "type": "string", "description": "Mijoz menejer bilan nima haqida gaplashmoqchi"}
       ],
       "rolePrompt": "Siz turar-joy majmuasi savdo ofisining professional ovozli konsultantisiz. Vazifangiz: mijozning ehtiyojlarini (xonalar soni, qavat, byudjet, to'lov turi) aniqlash va ularni sotuv ofisiga / shourumga jonli uchrashuvga taklif qilish. Narxlar va chegirmalar bo'yicha faqat tasdiqlangan ma'lumotlarni berasiz, taxminiy raqamlarni to'qimaysiz.",
       "guardrails": [

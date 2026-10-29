@@ -1,0 +1,45 @@
+### Get the company's CRM settings
+GET http://localhost:8080/api/settings/crm
+Authorization: Bearer {{auth_token}}
+
+### Save the company's CRM settings (outcome → pipeline stage, AI employee)
+PUT http://localhost:8080/api/settings/crm
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "aiEmployeeId": 252,
+  "meetingBookedStatusId": 15,
+  "promiseToPayStatusId": 22,
+  "notInterestedStatusId": 19,
+  "callbackStatusId": 12,
+  "newLeadStatusId": 11,
+  "taskTypeId": 7
+}
+
+### Uysot pipelines and their statuses (for the outcome → stage mapping)
+GET http://localhost:8080/api/crm/uysot/pipes
+Authorization: Bearer {{auth_token}}
+
+### Uysot employees (for aiEmployeeId and manager transfers)
+GET http://localhost:8080/api/crm/uysot/employees
+Authorization: Bearer {{auth_token}}
+
+### Uysot residential complexes
+GET http://localhost:8080/api/crm/uysot/houses
+Authorization: Bearer {{auth_token}}
+
+### Flats on sale — what the agent's searchFlats tool sees
+POST http://localhost:8080/api/crm/uysot/flats/search
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "rooms": 3,
+  "priceTo": 60000,
+  "limit": 5
+}
+
+### Client 360 — the Uysot lead and active contracts behind a phone
+GET http://localhost:8080/api/crm/uysot/clients/998901234567
+Authorization: Bearer {{auth_token}}

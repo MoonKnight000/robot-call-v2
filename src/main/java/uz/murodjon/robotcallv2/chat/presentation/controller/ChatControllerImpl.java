@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.chat.presentation.controller;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.chat.application.dto.ChatReplyResponse;
+import uz.murodjon.robotcallv2.chat.application.dto.ChatUpdatesResponse;
 import uz.murodjon.robotcallv2.chat.application.dto.SendChatMessageRequest;
 import uz.murodjon.robotcallv2.chat.application.dto.StartChatResponse;
 import uz.murodjon.robotcallv2.chat.application.port.input.ChatUseCase;
@@ -28,5 +29,11 @@ public class ChatControllerImpl implements ChatController {
                                                                       String origin,
                                                                       SendChatMessageRequest request) {
         return ResponseEntity.ok(ResponseData.ok(chatUseCase.sendMessage(widgetKey, origin, sessionKey, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ChatUpdatesResponse>> messages(String widgetKey, String sessionKey, long afterId,
+                                                                      String origin) {
+        return ResponseEntity.ok(ResponseData.ok(chatUseCase.findNewMessages(widgetKey, origin, sessionKey, afterId)));
     }
 }

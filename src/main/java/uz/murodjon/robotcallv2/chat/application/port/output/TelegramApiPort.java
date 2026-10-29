@@ -13,6 +13,12 @@ public interface TelegramApiPort {
     void sendMessage(String botToken, String chatId, String text);
 
     /**
+     * {@link #sendMessage} with a one-tap "share my number" button under it — how a bot learns
+     * who it is talking to without asking anyone to type a phone number.
+     */
+    void sendMessageAskingContact(String botToken, String chatId, String text, String buttonLabel);
+
+    /**
      * Points the bot at {@code url} and tells Telegram to send {@code secret} back in the
      * {@code X-Telegram-Bot-Api-Secret-Token} header of every update.
      */

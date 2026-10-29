@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.crm.application.port.output;
 
 import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
 import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
+import uz.murodjon.robotcallv2.crm.domain.entity.CreateCrmLeadRequest;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
@@ -48,4 +49,13 @@ public interface CrmConnectorPort {
      * @return whether the status update was accepted
      */
     boolean updateLeadStage(CrmConnection connection, UpdateLeadStageRequest request);
+
+    /**
+     * Opens a lead. Only Uysot does this for now; the others answer {@code null}.
+     *
+     * @return what the CRM accepted the write under, or {@code null} when it did not
+     */
+    default String createLead(CrmConnection connection, CreateCrmLeadRequest request) {
+        return null;
+    }
 }

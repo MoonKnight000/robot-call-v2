@@ -6,7 +6,10 @@ public enum CrmPermission {
     LEAD_TASK,
     CONTRACT,
     CONTRACT_PAYMENT,
-    CALL;
+    BOOKING,
+    CLIENT,
+    CALL,
+    MCP;
 
     public String wireName() {
         return "PERMISSION_OPEN_API_" + name();

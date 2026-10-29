@@ -56,6 +56,15 @@ public interface CrmUseCase {
     boolean updateLeadStage(long companyId, UpdateLeadStageRequest request);
 
     /**
+     * Opens a lead for {@code phone} in the company's new-lead stage ({@code crm_settings.new_lead_status_id}),
+     * assigned to its AI employee. Asynchronous at the CRM: the lead is found by phone afterwards.
+     *
+     * @param source where the person came from — {@code TELEGRAM}, {@code WEBSITE}, {@code SIMPLE}
+     * @return whether the CRM accepted the write; {@code false} when no new-lead stage is configured
+     */
+    boolean createLead(long companyId, String name, String phone, String source);
+
+    /**
      * Automatically updates the CRM pipeline stage of the lead based on the call
      * outcome (e.g. showroom booked, payment promise, refused, or callback needed).
      *

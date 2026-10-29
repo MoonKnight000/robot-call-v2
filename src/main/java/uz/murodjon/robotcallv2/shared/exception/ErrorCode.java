@@ -18,6 +18,7 @@ public enum ErrorCode {
     CONTACT_NOT_FOUND("Contact %s not found"),
     CLIENT_MEMORY_NOT_FOUND("No memory for client %s yet"),
     CRM_INTEGRATION_NOT_FOUND("CRM integration %s not found"),
+    CRM_CONTRACT_NOT_FOUND("Contract %s not found in the CRM"),
     INBOUND_ROUTE_NOT_FOUND("Inbound route %s not found"),
     INSTANT_CALL_CAMPAIGN_NOT_FOUND("No active campaign found for instant trigger"),
     REPORT_SCHEDULE_NOT_FOUND("Report schedule %s not found"),
@@ -74,6 +75,8 @@ public enum ErrorCode {
     CHAT_SESSION_NOT_FOUND("Chat %s not found"),
     PHONE_NUMBER_NOT_FOUND("Phone number %s not found"),
     CHAT_SESSION_ENDED("Chat %s is over — start a new one"),
+    CHAT_NOT_TAKEN_OVER("Chat %s is answered by the agent — take it over first"),
+    CHAT_OPERATOR_USER_REQUIRED("only a signed-in user can answer a chat in person"),
     CHAT_SESSION_FULL("A chat holds at most %s messages — start a new one"),
     CHAT_SESSION_EXPIRED("The chat was quiet for more than %s minute(s) — start a new one"),
     CHAT_NO_REPLY("The model did not answer"),
@@ -357,6 +360,7 @@ public enum ErrorCode {
     SCORECARD_ANSWER_UNKNOWN("Answer %s is not on call %s's scorecard"),
 
     // conflict
+    CRM_NOT_CONNECTED("the company has no Uysot CRM connection"),
     LIVEKIT_DISABLED("the company uses the LiveKit telephony engine, but LiveKit is not enabled on this server"),
     CONTACT_PHONE_EXISTS("Contact with phone %s already exists"),
     SUBJECT_ERASURE_NOT_CONFIRMED("Erasing a person's data cannot be undone — repeat the request with confirm=true"),
@@ -458,6 +462,8 @@ public enum ErrorCode {
     CALL_REVIEW_NO_AGENT("Call %s has no AI agent behind it any more — there is nothing to add this to"),
 
     // external service
+    UYSOT_REQUEST_FAILED("Uysot %s answered %s"),
+    UYSOT_ENDPOINT_NOT_CONFIGURED("Uysot endpoint voice-agent.crm.catalog.%s is not configured"),
     TOOL_EXECUTION_FAILED("Tool %s execution failed: %s"),
     TOOL_AUTH_TOKEN_FAILED("could not get an access token from %s: %s"),
     OPENAPI_FETCH_FAILED("could not fetch the OpenAPI document from %s: %s"),

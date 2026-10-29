@@ -11,6 +11,8 @@ import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
+import uz.murodjon.robotcallv2.crm.domain.entity.Debtor;
+
 import java.util.List;
 import java.util.Map;
 
@@ -34,6 +36,12 @@ public interface CampaignTargetUseCase {
 
     /** Fetches the list now, as the recurrence sweep does on its own. */
     TargetSyncResult syncTargetsFromSource(long companyId, long campaignId);
+
+    /**
+     * The first {@code limit} (1–50) overdue Uysot debtors a {@code UYSOT_DEBTORS} campaign would
+     * call today, read live — nothing is imported.
+     */
+    List<Debtor> previewUysotDebtors(long companyId, int limit);
 
     PageableData<CampaignTarget> listTargets(long companyId, long campaignId, TargetFilter filter);
 

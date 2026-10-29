@@ -190,6 +190,8 @@ public class DialogSession implements DialogOutcomeSink {
     private volatile Boolean catalogAvailable;
     /** The last catalog search's answer ({@link CatalogTools}), shown again in every turn's annex until the next one. */
     private volatile String catalogResult;
+    /** Whether the company is connected to Uysot, so {@link RealEstateTools} are offered; resolved on the first turn. */
+    private volatile Boolean realEstateAvailable;
 
     private final Map<String, Integer> stageAttempts = new ConcurrentHashMap<>();
     /** {@link #markBargeInPending}'s token, 0 when no barge-in is waiting to be confirmed. */
@@ -325,6 +327,15 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setCatalogAvailable(boolean catalogAvailable) {
         this.catalogAvailable = catalogAvailable;
+    }
+
+    /** Null until the first turn has asked. */
+    public Boolean realEstateAvailable() {
+        return realEstateAvailable;
+    }
+
+    public void setRealEstateAvailable(boolean realEstateAvailable) {
+        this.realEstateAvailable = realEstateAvailable;
     }
 
     @Override

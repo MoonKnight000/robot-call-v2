@@ -58,6 +58,9 @@ public class TelegramService implements TelegramUseCase {
     private static final String UNAVAILABLE_RU =
             "Извините, сейчас не могу ответить. Напишите, пожалуйста, чуть позже.";
 
+    private static final String SHARE_CONTACT_UZ = "📱 Raqamimni yuborish";
+    private static final String SHARE_CONTACT_RU = "📱 Отправить мой номер";
+
     private final ChatConversations conversations;
     private final ChatSessionRepository chatRepository;
     private final TelegramBotRepository botRepository;
@@ -175,11 +178,33 @@ public class TelegramService implements TelegramUseCase {
             StartedChat started = conversations.start(ChatSession.startingOnTelegram(conversations.newSessionKey(),
                     bot.companyId(), bot.aiAgentId(), bot.id(), message.chatId(), bot.language(),
                     conversations.firstStageOf(bot.companyId(), bot.aiAgentId())));
-            telegramApi.sendMessage(token(bot), message.chatId(), started.greeting());
             open = started.session();
+            if (message.contactPhone() == null && !conversations.hasPhone(open)) {
+                // One tap shares the person's number: the agent then knows their contracts and
+                // what they said on the phone, and the chat is written onto their CRM lead.
+                telegramApi.sendMessageAskingContact(token(bot), message.chatId(), started.greeting(),
+                        shareContactLabel(bot));
+            } else {
+                telegramApi.sendMessage(token(bot), message.chatId(), started.greeting());
+            }
+        }
+        if (message.contactPhone() != null) {
+            open = conversations.attachPhone(open, message.contactPhone());
         }
         ChatTurn turn = conversations.answer(open, message.text());
-        telegramApi.sendMessage(token(bot), message.chatId(), turn.reply());
+        // Null while a person from the company answers instead: their line goes out when they write it.
+        if (turn.reply() != null) {
+            telegramApi.sendMessage(token(bot), message.chatId(), turn.reply());
+        }
+    }
+
+    /** Delivers a line an operator wrote into a Telegram conversation they took over. */
+    void deliverOperatorMessage(ChatSession session, String text) {
+        TelegramBot bot = botRepository.findById(session.telegramBotId());
+        if (bot == null) {
+            throw new NotFoundException(ErrorCode.TELEGRAM_BOT_NOT_FOUND, session.telegramBotId());
+        }
+        telegramApi.sendMessage(token(bot), session.telegramChatId(), text);
     }
 
     private void trySend(TelegramBot bot, String chatId, String text) {
@@ -188,6 +213,11 @@ public class TelegramService implements TelegramUseCase {
         } catch (RuntimeException e) {
             log.warn("[telegram bot {}] could not even apologise to chat {}: {}", bot.id(), chatId, e.getMessage());
         }
+    }
+
+    private static String shareContactLabel(TelegramBot bot) {
+        return bot.language() != null && bot.language().toLowerCase().startsWith("ru")
+                ? SHARE_CONTACT_RU : SHARE_CONTACT_UZ;
     }
 
     private static String unavailableLine(TelegramBot bot) {

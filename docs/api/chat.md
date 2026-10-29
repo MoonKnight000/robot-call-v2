@@ -56,7 +56,7 @@ Origin: https://shop.example.uz
 {
   "accept": true,
   "data": { "reply": "Ikkita lavash yozdim. Manzilingizni to'liq ayting: uy, xonadon, podezd?",
-            "ended": false, "messagesLeft": 36 },
+            "ended": false, "messagesLeft": 36, "operatorActive": false },
   "message": null, "messageCode": null, "errors": null
 }
 ```
@@ -111,21 +111,64 @@ u ham `voice-agent.retention.conversation-days` bo'yicha o'chiriladi (`Retention
 
 ## Hozircha yo'q (keyingi bosqich)
 
-- Chat uchun post-call xulosa, CRM note, mijoz xotirasi va billing — qo'ng'iroqdagi `CallFinalizer`
-  yo'li chat'ga ulanmagan. Suhbat natijasi (`outcome`, `disposition`) `chat_session` da turadi.
+- Chat uchun post-call xulosa va billing — qo'ng'iroqdagi `CallFinalizer` yo'li chat'ga ulanmagan.
+  Suhbat natijasi (`outcome`, `disposition`) `chat_session` da turadi. Mijoz xotirasi va CRM izohi
+  telefon ma'lum bo'lsa yoziladi (Telegram raqam ulashish).
 
 ---
 
 # Panel: suhbatlar ekrani — `/api/chats`
 
-Vidjet va Telegram suhbatlarini supervayzer o'qiydi. **Faqat o'qish** — panel suhbatga yozmaydi va
-uni ochmaydi. Huquq — qo'ng'iroqlar ro'yxati va transkriptlari bilan bir xil (`CHAT_AGENT_READ`): chat
-transkripti ham xuddi shunday ma'lumot.
+Vidjet va Telegram suhbatlarini supervayzer o'qiydi va kerak bo'lsa **o'z qo'liga oladi** (operator
+takeover). O'qish huquqi qo'ng'iroqlar ro'yxati bilan bir xil (`CHAT_AGENT_READ`); suhbatga yozish —
+`CHAT_AGENT_EDIT`.
 
 | Metod | URL | Permission | Tavsif |
 |---|---|---|---|
 | `POST` | `/api/chats/list` | `CHAT_AGENT_READ` | Kompaniya suhbatlari, sahifalab |
 | `GET` | `/api/chats/{id}` | `CHAT_AGENT_READ` | Bitta suhbat: natija va to'liq transkript |
+| `POST` | `/api/chats/{id}/takeover` | `CHAT_AGENT_EDIT` | Agent to'xtaydi, joriy foydalanuvchi javob beradi |
+| `POST` | `/api/chats/{id}/messages` | `CHAT_AGENT_EDIT` | Operator xabari `{ "text": "..." }` (1–4000 belgi) |
+| `POST` | `/api/chats/{id}/release` | `CHAT_AGENT_EDIT` | Suhbat agentga qaytadi |
+
+Uchalasi ham `GET /api/chats/{id}` bilan bir xil `ChatDetail` qaytaradi.
+
+## Operator takeover
+
+- **Olish.** `takeover` dan keyin agent javob bermaydi: mijozning xabarlari transkriptga `CLIENT` bo'lib
+  tushadi va operatorni kutadi. Boshqa foydalanuvchi ham olib qo'yishi mumkin (supervayzer aralashuvi);
+  kim olgani — `chat.operatorUserId` va audit (`CHAT_TAKEOVER`). Tugagan suhbat → `409 CHAT_SESSION_ENDED`.
+  Token o'rniga API kalit bilan → `403 CHAT_OPERATOR_USER_REQUIRED`.
+- **Yozish.** Xabar `OPERATOR` roli bilan saqlanadi. Telegram suhbatida darhol botdan yuboriladi (Telegram
+  rad etsa — `502`, xabar saqlanmaydi). Vidjet uni keyingi so'rovda oladi (pastda). Agent javob berayotgan
+  suhbatga → `409 CHAT_NOT_TAKEN_OVER`.
+- **Qaytarish.** `release` dan keyin agent yana javob beradi va operator yozganlarini o'zinikidek ko'radi —
+  suhbat uzilmaydi.
+
+Panel ochiq suhbatni har 3 soniyada `GET /api/chats/{id}` bilan yangilab turadi.
+
+### Vidjet tomoni
+
+`POST …/chat/{sessionKey}` javobiga `operatorActive` qo'shildi; `true` bo'lsa `reply` = `null` va vidjet
+operator xabarlarini so'rab turadi:
+
+```
+GET /api/public/widgets/{widgetKey}/chat/{sessionKey}/messages?afterId=0
+```
+
+```json
+{
+  "accept": true,
+  "data": {
+    "messages": [ { "id": 812, "role": "OPERATOR", "text": "Salom, men Dilshod, menejerman.", "createdAt": "2026-10-29T12:01:00Z" } ],
+    "operatorActive": true,
+    "ended": false
+  }
+}
+```
+
+Faqat kompaniya tomoni (`AGENT`, `OPERATOR`) qaytadi; keyingi so'rovda oxirgi `id` ni `afterId` ga bering.
+Tokensiz, `Origin` tekshiruvi `POST` bilan bir xil.
 
 ## Ro'yxat
 
@@ -272,6 +315,22 @@ suhbat davom etadi; suhbat yakunlangan, xabarlar chegarasi tugagan yoki juda uzo
 **yangisi ochiladi va agent salomlashadi**. Botga yozgan odamga "yangi sessiya boshlang" deb aytish
 mumkin emas: u hozirgina yozdi.
 
+## Telefon raqamini ulashish (mijozni tanish)
+
+Yangi suhbatning salomlashuvi ostida bir martalik **"📱 Raqamimni yuborish"** tugmasi chiqadi
+(rus tilidagi botda — "📱 Отправить мой номер"). Odam bossa, Telegram uning **o'z** kontaktini yuboradi:
+
+- raqam suhbatga biriktiriladi (`outcome.phone`) — shundan keyin agent mijozning **xotirasini**
+  (avvalgi qo'ng'iroq va chatlar) ko'radi va Uysot tool'lari (`getContractBalance`,
+  `getPaymentSchedule`) shu raqam bo'yicha ishlaydi;
+- CRM'da raqam bo'yicha lid qidiriladi: ismi (`clientName`), shartnoma raqami (`contractNumber`)
+  faktga, lid ID'si (`crmLeadId`) suhbatga yoziladi;
+- suhbat tugaganda xotiraga yoziladi va lid kartochkasiga izoh tushadi
+  ("AI agent bilan Telegram orqali yozishma bo'ldi.").
+
+Boshqa odamning kontakt kartasi (`contact.user_id` ≠ yozuvchi) e'tiborga olinmaydi. Agent kontaktni
+"Mening telefon raqamim: +998…" matni sifatida ko'radi.
+
 ## Xatolar Telegram tomonida qanday ko'rinadi
 
 Update qabul qilinganini bildirish uchun endpoint deyarli har doim `200` qaytaradi. Sabab: Telegram
@@ -283,5 +342,5 @@ mos kelmadi (`403`).
 **Cheklovlar** chat bilan umumiy: `CHAT_MAX_MESSAGES`, `CHAT_DAILY_SESSIONS` (Redis'da, agent
 bo'yicha), `CHAT_SESSION_TTL_MINUTES`. Saqlash muddati ham bir xil — `RetentionService`.
 
-**Hozircha yo'q:** guruh chatlari maxsus ishlov (bot guruhda har xabarga javob beradi), inline tugmalar,
+**Hozircha yo'q:** guruh chatlari maxsus ishlov (bot guruhda har xabarga javob beradi), inline tugmalar (raqam ulashishdan boshqa),
 fayl/rasm qabul qilish, bot menyusi (`/start` maxsus emas — oddiy matn sifatida boradi).

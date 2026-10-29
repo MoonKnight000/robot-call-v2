@@ -162,7 +162,7 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
 
     /**
      * Queues a task or meeting when a call achieves an actionable milestone: booking a showroom
-     * visit or securing a payment promise.
+     * visit, securing a payment promise, or the client asking their manager to call back.
      */
     public OutboxMessage prepareCrmTask(long companyId, long callAttemptId, long leadId,
                                         CallSummary summary, Disposition disposition) {
@@ -204,10 +204,22 @@ public class OutboxDeliveryService implements OutboxMessageUseCase {
                     + "Va'da qilingan sana: " + date + "\n"
                     + "Summa: " + amount + "\n"
                     + "Qo'ng'iroq ID: " + callAttemptId;
+        } else if (Boolean.TRUE.equals(summary.outcome().get("managerCallbackRequested"))) {
+            String reason = String.valueOf(summary.outcome().getOrDefault("managerCallbackReason", "Ko'rsatilmagan"));
+            String time = String.valueOf(summary.outcome().getOrDefault("managerCallbackTime", "Imkon qadar tez"));
+            title = "Mijozga qayta qo'ng'iroq qiling (AI bot)";
+            description = "Mijoz menejer bilan gaplashishni so'radi.\n"
+                    + "Mavzu: " + reason + "\n"
+                    + "Qulay vaqt: " + time + "\n"
+                    + "Qo'ng'iroq ID: " + callAttemptId;
         } else {
             return null;
         }
-        return new CreateCrmTaskRequest(leadId, title, description, clock.instant().plus(Duration.ofDays(1)), null);
+        // The manager the agent found responsible for the client's contract, when it looked one up;
+        // otherwise the CRM's own default (the company's AI employee).
+        Long responsibleId = summary.outcome().get("responsibleEmployeeId") instanceof Number n ? n.longValue() : null;
+        return new CreateCrmTaskRequest(leadId, title, description, clock.instant().plus(Duration.ofDays(1)),
+                responsibleId);
     }
 
     /**

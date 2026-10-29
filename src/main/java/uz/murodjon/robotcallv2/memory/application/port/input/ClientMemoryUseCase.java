@@ -25,6 +25,13 @@ public interface ClientMemoryUseCase {
     void rememberCall(long companyId, String phone, RememberedCall call, Map<String, Object> facts);
 
     /**
+     * Written mid-conversation by the agent's tools: overlays {@code facts} — the flats and
+     * products a client asked about or liked — without adding a remembered call. A blank value
+     * is ignored; phones that are not real numbers are ignored.
+     */
+    void rememberFacts(long companyId, String phone, Map<String, Object> facts);
+
+    /**
      * The retention sweep: deletes up to {@code batchSize} memories, across every company,
      * that no call or operator has written since {@code cutoff}; returns how many went.
      */

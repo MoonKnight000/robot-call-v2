@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.campaign.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import uz.murodjon.robotcallv2.crm.domain.entity.Debtor;
 import uz.murodjon.robotcallv2.campaign.application.dto.*;
 import uz.murodjon.robotcallv2.campaign.application.port.input.BatchCallUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
@@ -83,6 +84,11 @@ public class CampaignControllerImpl implements CampaignController {
     @Override
     public ResponseEntity<ResponseData<TargetSyncResult>> syncTargets(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.syncTargetsFromSource(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<Debtor>>> previewUysotDebtors(long companyId, int limit) {
+        return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.previewUysotDebtors(companyId, limit)));
     }
 
     @Override

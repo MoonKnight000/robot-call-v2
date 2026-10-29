@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.chat.application.dto.ChatReplyResponse;
+import uz.murodjon.robotcallv2.chat.application.dto.ChatUpdatesResponse;
 import uz.murodjon.robotcallv2.chat.application.dto.SendChatMessageRequest;
 import uz.murodjon.robotcallv2.chat.application.dto.StartChatResponse;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
@@ -41,4 +42,15 @@ public interface ChatController {
             @PathVariable String sessionKey,
             @RequestHeader(value = "Origin", required = false) String origin,
             @Valid @RequestBody SendChatMessageRequest request);
+
+    /**
+     * The company's lines written after {@code afterId}. The widget polls this while a person
+     * from the company answers in place of the agent ({@code operatorActive}).
+     */
+    @GetMapping("/{widgetKey}/chat/{sessionKey}/messages")
+    ResponseEntity<ResponseData<ChatUpdatesResponse>> messages(
+            @PathVariable String widgetKey,
+            @PathVariable String sessionKey,
+            @RequestParam(defaultValue = "0") long afterId,
+            @RequestHeader(value = "Origin", required = false) String origin);
 }

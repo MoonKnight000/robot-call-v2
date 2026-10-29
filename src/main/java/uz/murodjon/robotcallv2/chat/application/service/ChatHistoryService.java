@@ -57,6 +57,7 @@ public class ChatHistoryService implements ChatHistoryUseCase {
         ChatChannel channel = session.telegramBotId() != null ? ChatChannel.TELEGRAM : ChatChannel.WIDGET;
         return new ChatRow(session.id(), session.aiAgentId(), agentName, channel, session.widgetId(),
                 session.telegramBotId(), session.language(), session.stage(), session.disposition(),
-                session.ended(), session.messageCount(), session.createdAt(), session.lastMessageAt());
+                session.ended(), session.messageCount(), session.createdAt(), session.lastMessageAt(),
+                session.operatorUserId());
     }
 }

@@ -100,15 +100,20 @@ ChatReplyResponse:
       type: integer
       format: int32
       description: how many messages this conversation may still hold
+    operatorActive:
+      type: boolean
+      description: a person from the company has taken the conversation over; reply is null and their lines arrive through GET …/messages
   required:
   - ended
   - messagesLeft
+  - operatorActive
 ChatRole:
   type: string
   enum:
   - CLIENT
   - AGENT
-  description: Who wrote a chat message. The two sides a transcript has, named the way a call names them.
+  - OPERATOR
+  description: Who wrote a chat message — the client, the agent, or a person from the company who took the conversation over.
 ChatRow:
   type: object
   description: 'A conversation as the panel lists it. The `sessionKey` is not here: it is the visitor''s handle for writing into the conversation, and the panel only reads.'

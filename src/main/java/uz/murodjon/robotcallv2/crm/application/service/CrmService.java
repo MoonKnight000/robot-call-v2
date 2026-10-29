@@ -9,19 +9,19 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
 import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmSettingsUseCase;
+import uz.murodjon.robotcallv2.crm.domain.entity.CrmSettings;
+import uz.murodjon.robotcallv2.crm.domain.entity.CreateCrmLeadRequest;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.CrmProperties;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
-import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
-import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * The call pipeline's CRM: reads the lead a call is about and writes back what the call
@@ -46,16 +46,16 @@ public class CrmService implements CrmUseCase {
     private static final int MAX_NOTE_CHARS = 4000;
 
     private final CrmProperties crmProperties;
-    private final CrmIntegrationUseCase crmIntegrationUseCase;
     private final List<CrmConnectorPort> connectors;
-    private final CompanyUseCase companyUseCase;
+    private final CrmSettingsUseCase crmSettingsUseCase;
+    private final CrmConnectionResolver connectionResolver;
 
     public CrmService(CrmProperties crmProperties, CrmIntegrationUseCase crmIntegrationUseCase, List<CrmConnectorPort> connectors,
-                      CompanyUseCase companyUseCase) {
+                      CompanyUseCase companyUseCase, CrmSettingsUseCase crmSettingsUseCase) {
         this.crmProperties = crmProperties;
-        this.crmIntegrationUseCase = crmIntegrationUseCase;
         this.connectors = connectors;
-        this.companyUseCase = companyUseCase;
+        this.crmSettingsUseCase = crmSettingsUseCase;
+        this.connectionResolver = new CrmConnectionResolver(crmProperties, crmIntegrationUseCase, companyUseCase);
     }
 
     @Override
@@ -72,6 +72,7 @@ public class CrmService implements CrmUseCase {
         }
         Integer targetStatusId = null;
         String reason = null;
+        CrmSettings settings = crmSettingsUseCase.findByCompanyId(companyId);
 
         if (summary != null && summary.outcome() != null) {
             Object explicitStatus = summary.outcome().get("targetStatusId");
@@ -82,16 +83,16 @@ public class CrmService implements CrmUseCase {
         }
 
         if (targetStatusId == null && summary != null && Boolean.TRUE.equals(summary.outcome().get("meetingBooked"))) {
-            targetStatusId = crmProperties.meetingBookedStatusId();
+            targetStatusId = firstSet(settings.meetingBookedStatusId(), crmProperties.meetingBookedStatusId());
             reason = "Sotuv ofisiga uchrashuv belgilandi";
         } else if (targetStatusId == null && (disposition == Disposition.PROMISE_TO_PAY || (summary != null && summary.outcome().containsKey("promisedDate")))) {
-            targetStatusId = crmProperties.promiseToPayStatusId();
+            targetStatusId = firstSet(settings.promiseToPayStatusId(), crmProperties.promiseToPayStatusId());
             reason = "To'lov va'dasi olindi";
         } else if (targetStatusId == null && (disposition == Disposition.REFUSED || disposition == Disposition.DO_NOT_CALL)) {
-            targetStatusId = crmProperties.notInterestedStatusId();
+            targetStatusId = firstSet(settings.notInterestedStatusId(), crmProperties.notInterestedStatusId());
             reason = "Mijoz rad etdi (" + disposition + ")";
         } else if (targetStatusId == null && (disposition == Disposition.NO_ANSWER || disposition == Disposition.CALLBACK_REQUESTED || disposition == Disposition.CARRIER_REJECTED)) {
-            targetStatusId = crmProperties.callbackStatusId();
+            targetStatusId = firstSet(settings.callbackStatusId(), crmProperties.callbackStatusId());
             reason = "Bog'lanib bo'lmadi (" + disposition + ")";
         }
 
@@ -101,12 +102,9 @@ public class CrmService implements CrmUseCase {
         return null;
     }
 
-    /**
-     * Whether the platform's Uysot connection is configured. A company's own amoCRM, Kommo
-     * or Bitrix24 connection does not depend on it.
-     */
-    private boolean isPlatformUysotConfigured() {
-        return crmProperties.enabled() && crmProperties.baseUrl() != null && !crmProperties.baseUrl().isBlank();
+    /** The company's own value when it saved one, the platform's otherwise. */
+    private static Integer firstSet(Integer own, Integer platform) {
+        return own != null ? own : platform;
     }
 
     @Override
@@ -200,7 +198,8 @@ public class CrmService implements CrmUseCase {
         }
         Route route = routeFor(companyId);
         return route != null && route.connector().postCallHistory(route.connection(), new CrmCallHistoryEntry(
-                leadId, callUuid, startedAt, durationSeconds, inbound, answered, clientPhone, recordingUrl));
+                leadId, callUuid, startedAt, durationSeconds, inbound, answered, clientPhone, recordingUrl,
+                crmSettingsUseCase.findByCompanyId(companyId).aiEmployeeId()));
     }
 
     @Override
@@ -212,7 +211,35 @@ public class CrmService implements CrmUseCase {
         if (route == null) {
             return null;
         }
+        // The company's own AI employee and task type, unless the request already names them.
+        CrmSettings settings = crmSettingsUseCase.findByCompanyId(companyId);
+        Long responsibleId = request.responsibleId() != null ? request.responsibleId()
+                : settings.aiEmployeeId() != null ? Long.valueOf(settings.aiEmployeeId()) : null;
+        Long taskTypeId = request.taskTypeId() != null ? request.taskTypeId()
+                : settings.taskTypeId() != null ? Long.valueOf(settings.taskTypeId()) : null;
+        request = new CreateCrmTaskRequest(request.leadId(), request.title(), request.description(), request.dueAt(),
+                responsibleId, taskTypeId);
         return route.connector().createTask(route.connection(), request);
+    }
+
+    @Override
+    public boolean createLead(long companyId, String name, String phone, String source) {
+        CrmSettings settings = crmSettingsUseCase.findByCompanyId(companyId);
+        if (settings.newLeadStatusId() == null || phone == null || phone.isBlank()) {
+            return false;
+        }
+        Route route = routeFor(companyId);
+        if (route == null) {
+            return false;
+        }
+        String leadName = name != null && !name.isBlank() ? name.trim() : phone;
+        String requestId = route.connector().createLead(route.connection(), new CreateCrmLeadRequest(leadName, phone,
+                settings.newLeadStatusId(), settings.aiEmployeeId() != null ? Long.valueOf(settings.aiEmployeeId()) : null,
+                source));
+        if (requestId != null) {
+            log.info("CRM lead creation enqueued for company {} (requestId={})", companyId, requestId);
+        }
+        return requestId != null;
     }
 
     @Override
@@ -227,25 +254,10 @@ public class CrmService implements CrmUseCase {
         return route.connector().updateLeadStage(route.connection(), request);
     }
 
-    /**
-     * Where this company's CRM traffic goes, or {@code null} when there is nowhere to send
-     * it. A connection that cannot be read — a stored secret that no longer decrypts —
-     * counts as nowhere: the call goes ahead without the CRM. So does a company the platform has
-     * switched integrations off for.
-     */
+    /** Where this company's CRM traffic goes, or {@code null} when there is nowhere to send it. */
     private Route routeFor(long companyId) {
-        CrmConnection connection;
-        try {
-            connection = connectionFor(companyId);
-        } catch (RuntimeException e) {
-            log.warn("CRM connection of company {} could not be read: {}", companyId, e.getMessage());
-            return null;
-        }
+        CrmConnection connection = connectionResolver.findConnection(companyId);
         if (connection == null) {
-            return null;
-        }
-        // A provider the platform switched off for this company is nowhere to send to, even if it is connected.
-        if (!companyUseCase.isIntegrationAvailable(companyId, IntegrationProvider.valueOf(connection.provider().name()))) {
             return null;
         }
         for (CrmConnectorPort connector : connectors) {
@@ -255,23 +267,6 @@ public class CrmService implements CrmUseCase {
         }
         log.warn("No CRM connector for provider {}", connection.provider());
         return null;
-    }
-
-    private CrmConnection connectionFor(long companyId) {
-        Optional<CrmConnection> own = crmIntegrationUseCase.findConnection(companyId);
-        if (own.isPresent() && own.get().provider() != CrmProvider.UYSOT) {
-            // Chosen but not (or no longer) connected: nothing to call. Falling back to
-            // Uysot would write this company's calls into an account that is not theirs.
-            return own.get().baseUrl() != null ? own.get() : null;
-        }
-        if (!isPlatformUysotConfigured()) {
-            return null;
-        }
-        String token = own.map(CrmConnection::accessToken).orElse(null);
-        if (token == null && crmProperties.apiToken() != null && !crmProperties.apiToken().isBlank()) {
-            token = crmProperties.apiToken();
-        }
-        return new CrmConnection(CrmProvider.UYSOT, crmProperties.baseUrl(), token);
     }
 
     /**
@@ -296,6 +291,10 @@ public class CrmService implements CrmUseCase {
             append(text, "Uchrashuv", "Sotuv ofisiga belgilandi");
         }
         appendOutcome(text, "Shartnoma raqami", summary.outcome().get("contractNumber"));
+        if (Boolean.TRUE.equals(summary.outcome().get("managerCallbackRequested"))) {
+            append(text, "Menejer qayta qo'ng'iroq qilsin", String.valueOf(
+                    summary.outcome().getOrDefault("managerCallbackReason", "ha")));
+        }
         if (summary.sentiment() != null) {
             append(text, "Kayfiyat", summary.sentiment().name());
         }

@@ -30,7 +30,7 @@ public class ChatEntityMapper {
                 entity.getAiAgentId(), entity.getWidgetId(), entity.getTelegramBotId(),
                 entity.getTelegramChatId(), entity.getLanguage(), entity.getStage(),
                 readOutcome(entity.getOutcome()), entity.getDisposition(), entity.isEnded(),
-                entity.getMessageCount(), entity.getCreatedAt(), entity.getLastMessageAt());
+                entity.getMessageCount(), entity.getCreatedAt(), entity.getLastMessageAt(), entity.getOperatorUserId());
     }
 
     public ChatSessionEntity toChatSessionEntity(ChatSession session, ChatSessionEntity entity) {
@@ -50,6 +50,7 @@ public class ChatEntityMapper {
         entity.setMessageCount(session.messageCount());
         entity.setCreatedAt(session.createdAt() != null ? session.createdAt() : now);
         entity.setLastMessageAt(session.lastMessageAt() != null ? session.lastMessageAt() : now);
+        entity.setOperatorUserId(session.operatorUserId());
         return entity;
     }
 

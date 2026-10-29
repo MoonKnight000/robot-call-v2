@@ -198,6 +198,8 @@ public class SecurityConfig {
                     // chats of the day counted in Redis (ChatService, RedisChatQuotaAdapter).
                     auth.requestMatchers(HttpMethod.POST, "/api/public/widgets/*/chat",
                             "/api/public/widgets/*/chat/*").permitAll();
+                    // The widget's poll for an operator's lines in a conversation they took over.
+                    auth.requestMatchers(HttpMethod.GET, "/api/public/widgets/*/chat/*/messages").permitAll();
                     // Telegram posts a bot's updates here. It has no account on this platform,
                     // so what makes an update genuine is the secret it carries in
                     // X-Telegram-Bot-Api-Secret-Token — checked in TelegramService, in constant

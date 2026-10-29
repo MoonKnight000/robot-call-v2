@@ -10,6 +10,7 @@ import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.http.PublicHttpClientFactory;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -45,6 +46,18 @@ public class RestClientTelegramApiAdapter implements TelegramApiPort {
         call(botToken, "sendMessage", Map.of(
                 "chat_id", chatId,
                 "text", message.length() > MAX_MESSAGE_CHARS ? message.substring(0, MAX_MESSAGE_CHARS) : message));
+    }
+
+    @Override
+    public void sendMessageAskingContact(String botToken, String chatId, String text, String buttonLabel) {
+        String message = text == null ? "" : text;
+        call(botToken, "sendMessage", Map.of(
+                "chat_id", chatId,
+                "text", message.length() > MAX_MESSAGE_CHARS ? message.substring(0, MAX_MESSAGE_CHARS) : message,
+                "reply_markup", Map.of(
+                        "keyboard", List.of(List.of(Map.of("text", buttonLabel, "request_contact", true))),
+                        "resize_keyboard", true,
+                        "one_time_keyboard", true)));
     }
 
     @Override

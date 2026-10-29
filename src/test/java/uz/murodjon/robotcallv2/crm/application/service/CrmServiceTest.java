@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.crm.application.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmSettingsUseCase;
+import uz.murodjon.robotcallv2.crm.domain.entity.CrmSettings;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.company.CompanyFixtures;
 import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
@@ -190,7 +192,8 @@ class CrmServiceTest {
     void providerNoConnectorSupportsLeavesTheCompanyUnconnected() {
         when(integrations.findConnection(COMPANY_ID)).thenReturn(Optional.of(
                 new CrmConnection(CrmProvider.BITRIX24, "https://acme.bitrix24.kz/rest/1/code", null)));
-        CrmService withoutBitrix24 = new CrmService(uysotProperties(), integrations, List.of(uysot, amoCrm), CompanyFixtures.openCompanyUseCase());
+        CrmService withoutBitrix24 = new CrmService(uysotProperties(), integrations, List.of(uysot, amoCrm), CompanyFixtures.openCompanyUseCase(),
+                noCrmSettings());
 
         assertFalse(withoutBitrix24.isConnected(COMPANY_ID));
         assertNull(withoutBitrix24.findByPhone(COMPANY_ID, PHONE));
@@ -252,7 +255,8 @@ class CrmServiceTest {
     }
 
     private CrmService client(CrmProperties crmProperties) {
-        return new CrmService(crmProperties, integrations, List.of(uysot, amoCrm, bitrix24), CompanyFixtures.openCompanyUseCase());
+        return new CrmService(crmProperties, integrations, List.of(uysot, amoCrm, bitrix24), CompanyFixtures.openCompanyUseCase(),
+                noCrmSettings());
     }
 
     private static CrmConnectorPort connectorFor(CrmProvider... providers) {
@@ -273,5 +277,13 @@ class CrmServiceTest {
         return new CrmProperties(false, "https://uysot.example", "platform-token",
                 "/lead/{id}", "/lead/filter", "/lead/{id}/note", "/contract/{id}", "/contract/filter",
                 "/call-history", 3);
+    }
+
+    /** A company that saved no CRM settings of its own: every platform default applies. */
+    private static CrmSettingsUseCase noCrmSettings() {
+        CrmSettingsUseCase settings = mock(CrmSettingsUseCase.class);
+        when(settings.findByCompanyId(org.mockito.ArgumentMatchers.anyLong()))
+                .thenAnswer(invocation -> new CrmSettings(invocation.getArgument(0), null, null, null, null, null, null, null, null));
+        return settings;
     }
 }

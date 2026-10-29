@@ -122,6 +122,26 @@ public class ClientMemoryService implements ClientMemoryUseCase {
     }
 
     @Override
+    @Transactional
+    public void rememberFacts(long companyId, String phone, Map<String, Object> facts) {
+        String normalized = PhoneNumbers.normalize(phone);
+        if (normalized == null || facts == null || facts.isEmpty()) {
+            return;
+        }
+        ClientMemory current = orEmpty(repository.findByCompanyIdAndPhone(companyId, normalized), companyId, normalized);
+        Map<String, Object> mergedFacts = new LinkedHashMap<>(current.facts());
+        facts.forEach((key, value) -> {
+            if (value != null && !value.toString().isBlank()) {
+                mergedFacts.put(key, value);
+            }
+        });
+        repository.upsert(companyId, new ClientMemory(
+                current.id(), companyId, normalized,
+                current.preferredName(), current.preferredLanguage(), current.operatorNotes(),
+                current.recentCalls(), mergedFacts, Instant.now()));
+    }
+
+    @Override
     public int deleteNotUpdatedSince(Instant cutoff, int batchSize) {
         return repository.deleteNotUpdatedSince(cutoff, batchSize);
     }
