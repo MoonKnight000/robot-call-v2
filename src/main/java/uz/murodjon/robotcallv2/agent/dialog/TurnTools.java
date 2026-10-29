@@ -22,6 +22,7 @@ import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
@@ -56,9 +57,10 @@ public class TurnTools {
     private final CatalogSearchUseCase catalogSearch;
     private final StageScriptRunner stageScriptRunner;
     private final CrmCatalogUseCase crmCatalog;
+    private final ClientMemoryUseCase clientMemory;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null, null, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -69,7 +71,8 @@ public class TurnTools {
             McpToolCallbackFactory mcpToolCallbackFactory,
             CatalogSearchUseCase catalogSearch,
             StageScriptRunner stageScriptRunner,
-            CrmCatalogUseCase crmCatalog
+            CrmCatalogUseCase crmCatalog,
+            ClientMemoryUseCase clientMemory
     ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
@@ -78,6 +81,7 @@ public class TurnTools {
         this.catalogSearch = catalogSearch;
         this.stageScriptRunner = stageScriptRunner;
         this.crmCatalog = crmCatalog;
+        this.clientMemory = clientMemory;
     }
 
     /**
@@ -200,7 +204,7 @@ public class TurnTools {
             return List.of();
         }
         return List.of(MethodToolCallbackProvider.builder()
-                .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch))
+                .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch, clientMemory))
                 .build().getToolCallbacks());
     }
 
@@ -222,7 +226,7 @@ public class TurnTools {
             return List.of();
         }
         return List.of(MethodToolCallbackProvider.builder()
-                .toolObjects(new RealEstateTools(s, s.companyId(), crmCatalog))
+                .toolObjects(new RealEstateTools(s, s.companyId(), crmCatalog, clientMemory))
                 .build().getToolCallbacks());
     }
 

@@ -24,6 +24,19 @@ tili, inbound'da esa javob beruvchi agentning tili (`ai_agent.language`).
 ko'rinish: `998901234567`, `901234567`, `%2B998901234567`. `+` belgisini URL'da
 kodlash (`%2B`) yoki tashlab yuborish kerak. Noto'g'ri raqam → `400 PHONE_INVALID`.
 
+**Xonadon va mahsulotlar.** Suhbat davomida agent tool'lari ham xotiraga yozadi (yangi qo'ng'iroq
+qo'shmasdan, faqat `facts`):
+
+| Fakt | Kim yozadi | Ma'nosi |
+|---|---|---|
+| `flatSearch` | `searchFlats` | Mijoz nima qidirgani: "3 xonali, 60000 gacha, Yunusobod Residence" |
+| `offeredFlats` | `searchFlats` | Taklif qilingan xonadonlar (majmua, blok, №, xona, narx) |
+| `interestedFlat` | `rememberFlatInterest` | Mijoz yoqtirgan / tanlagan xonadon va izohi |
+| `productInterest`, `productSkus` | `searchCatalog` | Mahsulot katalogida nima so'ragani va ko'rsatilgan SKU'lar |
+
+Keyingi qo'ng'iroq yoki chatda agent buni ko'radi ("o'tgan safar 3 xonali A blok №45 yoqqan edi");
+narx eskirgan bo'lishi mumkin, shuning uchun aytishdan oldin qayta qidiradi.
+
 Huquq: **CONTACT_READ** (`GET`) / **CONTACT_EDIT** (`PUT`) — ya'ni kontaktlar sahifasiga
 kirish huquqi bo'lgan har kim ([roles.md](roles.md)).
 

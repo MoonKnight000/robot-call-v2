@@ -190,14 +190,21 @@ public class SystemPromptFactory {
      * prompt name some of them in Uzbek ("Peniya", "Shartnoma bekor bo'lishiga qolgan kun"),
      * so those keep the Uzbek name next to the English one.
      */
-    static final Map<String, String> FACT_LABELS = Map.of(
-            "clientName", "Name",
-            "debtAmount", "Amount",
-            "currency", "Currency",
-            "dueDate", "Due date",
-            "contractNumber", "Contract number",
-            "penaltyAmount", "Penalty (Peniya)",
-            "contractCancelDays", "Days until the contract is cancelled (Shartnoma bekor bo'lishiga qolgan kun)"
+    static final Map<String, String> FACT_LABELS = Map.ofEntries(
+            Map.entry("clientName", "Name"),
+            Map.entry("debtAmount", "Amount"),
+            Map.entry("currency", "Currency"),
+            Map.entry("dueDate", "Due date"),
+            Map.entry("contractNumber", "Contract number"),
+            Map.entry("penaltyAmount", "Penalty (Peniya)"),
+            Map.entry("contractCancelDays", "Days until the contract is cancelled (Shartnoma bekor bo'lishiga qolgan kun)"),
+            // Flats and products from earlier conversations (RealEstateTools, CatalogTools). A price
+            // in them may be stale: the agent searches again before stating one.
+            Map.entry("flatSearch", "Flats the client looked for"),
+            Map.entry("offeredFlats", "Flats offered to the client (re-check the price with searchFlats before saying it)"),
+            Map.entry("interestedFlat", "Flat the client liked or chose"),
+            Map.entry("productInterest", "Products the client asked about"),
+            Map.entry("productSkus", "Product SKUs the client was shown")
     );
 
     private final SentimentDetector sentimentDetector;

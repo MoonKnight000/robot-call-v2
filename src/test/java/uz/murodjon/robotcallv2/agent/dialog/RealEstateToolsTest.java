@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.*;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -104,6 +105,23 @@ class RealEstateToolsTest {
         when(catalog.findActiveContractsByPhone(eq(COMPANY), any())).thenReturn(List.of());
 
         assertThat(tools.getContractBalance("X-1")).startsWith("NO CONTRACT FOUND");
+    }
+
+    @Test
+    void offeredAndChosenFlatsAreRememberedForTheNextConversation() {
+        ClientMemoryUseCase memory = mock(ClientMemoryUseCase.class);
+        RealEstateTools remembering = new RealEstateTools(session, COMPANY, catalog, memory);
+        when(catalog.searchFlats(eq(COMPANY), any())).thenReturn(List.of(new CrmFlat(1, "Yunusobod Residence",
+                "A blok", "45", 3, new BigDecimal("78.5"), 5, new BigDecimal("58900"), null, null, "USD", "SALE")));
+
+        remembering.searchFlats(3, new BigDecimal("60000"), null, null, null, null);
+        remembering.rememberFlatInterest("Yunusobod Residence A blok №45", "ko'rgani keladi");
+
+        verify(memory).rememberFacts(COMPANY, "+998901234567", Map.of(
+                "flatSearch", "3 xonali, 60000 gacha",
+                "offeredFlats", "Yunusobod Residence A blok №45, 3 xona, 58900 USD"));
+        verify(memory).rememberFacts(COMPANY, "+998901234567",
+                Map.of("interestedFlat", "Yunusobod Residence A blok №45 — ko'rgani keladi"));
     }
 
     @Test

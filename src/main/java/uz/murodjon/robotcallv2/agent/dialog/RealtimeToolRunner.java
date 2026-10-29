@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
@@ -46,6 +47,7 @@ class RealtimeToolRunner {
     private final RealtimeMetrics metrics;
     private final StageScriptRunner stageScriptRunner;
     private final CrmCatalogUseCase crmCatalog;
+    private final ClientMemoryUseCase clientMemory;
 
     /**
      * Tool bodies hit the database and the CRM, and they arrive on the engine's network
@@ -56,13 +58,15 @@ class RealtimeToolRunner {
 
     RealtimeToolRunner(KnowledgeRetrievalUseCase knowledgeRetrieval, CatalogSearchUseCase catalogSearch,
                        RealtimeProperties realtimeProperties, RealtimeMetrics metrics,
-                       StageScriptRunner stageScriptRunner, CrmCatalogUseCase crmCatalog) {
+                       StageScriptRunner stageScriptRunner, CrmCatalogUseCase crmCatalog,
+                       ClientMemoryUseCase clientMemory) {
         this.knowledgeRetrieval = knowledgeRetrieval;
         this.catalogSearch = catalogSearch;
         this.realtimeProperties = realtimeProperties;
         this.metrics = metrics;
         this.stageScriptRunner = stageScriptRunner;
         this.crmCatalog = crmCatalog;
+        this.clientMemory = clientMemory;
     }
 
     /**
@@ -90,13 +94,13 @@ class RealtimeToolRunner {
         Long agentId = s.agent() != null ? s.agent().id() : null;
         if (catalogSearch.existsByCompanyIdAndAgentId(s.companyId(), agentId)) {
             callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
-                    .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch))
+                    .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch, clientMemory))
                     .build().getToolCallbacks()));
         }
         // The developer's Uysot lookups, for a company connected to Uysot (RealEstateTools).
         if (crmCatalog != null && crmCatalog.isUysotConnected(s.companyId())) {
             callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
-                    .toolObjects(new RealEstateTools(s, s.companyId(), crmCatalog))
+                    .toolObjects(new RealEstateTools(s, s.companyId(), crmCatalog, clientMemory))
                     .build().getToolCallbacks()));
         }
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()

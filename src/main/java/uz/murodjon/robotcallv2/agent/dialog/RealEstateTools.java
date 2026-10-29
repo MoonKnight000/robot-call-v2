@@ -6,11 +6,13 @@ import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.*;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -30,6 +32,10 @@ public class RealEstateTools {
 
     static final String CONTRACT_NUMBER_FACT = "contractNumber";
     static final String RESPONSIBLE_EMPLOYEE_OUTCOME = "responsibleEmployeeId";
+    /** Memory facts: what the client last looked for, what they were offered, and what they liked. */
+    static final String FLAT_SEARCH_FACT = "flatSearch";
+    static final String OFFERED_FLATS_FACT = "offeredFlats";
+    static final String INTERESTED_FLAT_FACT = "interestedFlat";
 
     private static final String NOT_AVAILABLE = "THE DATA IS NOT AVAILABLE RIGHT NOW — do not invent a price, "
             + "flat or amount. Tell the client a specialist will clarify it and offer to book a visit or a callback.";
@@ -45,11 +51,19 @@ public class RealEstateTools {
     private final DialogOutcomeSink session;
     private final long companyId;
     private final CrmCatalogUseCase catalog;
+    /** Where the flats a client asked about or liked are kept for the next conversation; null = not kept. */
+    private final ClientMemoryUseCase memory;
 
-    public RealEstateTools(DialogOutcomeSink session, long companyId, CrmCatalogUseCase catalog) {
+    public RealEstateTools(DialogOutcomeSink session, long companyId, CrmCatalogUseCase catalog,
+                           ClientMemoryUseCase memory) {
         this.session = session;
         this.companyId = companyId;
         this.catalog = catalog;
+        this.memory = memory;
+    }
+
+    public RealEstateTools(DialogOutcomeSink session, long companyId, CrmCatalogUseCase catalog) {
+        this(session, companyId, catalog, null);
     }
 
     @Tool(description = "Searches flats ON SALE in the company's residential complexes. Call it when the client "
@@ -87,11 +101,31 @@ public class RealEstateTools {
             if (maxPrice != null) {
                 session.recordOutcome("budgetRange", plain(maxPrice));
             }
+            remember(Map.of(
+                    FLAT_SEARCH_FACT, describeSearch(rooms, minPrice, maxPrice, complexName),
+                    OFFERED_FLATS_FACT, String.join("; ", flats.stream().map(RealEstateTools::shortLabel).toList())));
             return result;
         } catch (Exception e) {
             log.warn("[{}] flat search failed: {}", session.channelId(), e.getMessage());
             return NOT_AVAILABLE;
         }
+    }
+
+    @Tool(description = "Remembers the flat the client liked or chose, so the next call or chat continues from it. "
+            + "Call it when the client says a specific flat suits them, asks to hold it, or wants to see it.")
+    public String rememberFlatInterest(
+            @ToolParam(description = "the flat as it was offered: complex, block, number, rooms, area, price")
+            String flat,
+            @ToolParam(description = "what the client said about it (e.g. 'ko'rgani kelmoqchi', 'oilasi bilan maslahatlashadi')",
+                    required = false) String note) {
+        if (flat == null || flat.isBlank()) {
+            return "ERROR: say which flat the client liked.";
+        }
+        String text = PromptSafeText.sanitize(flat.trim(), MAX_TEXT * 2)
+                + (note != null && !note.isBlank() ? " — " + PromptSafeText.sanitize(note.trim(), MAX_TEXT) : "");
+        session.recordOutcome(INTERESTED_FLAT_FACT, text);
+        remember(Map.of(INTERESTED_FLAT_FACT, text));
+        return "Noted. The client's choice is remembered for the next conversation; continue with them.";
     }
 
     @Tool(description = "Lists the company's residential complexes on sale with their address, floors, blocks and "
@@ -223,6 +257,56 @@ public class RealEstateTools {
                 ? "Callback requested from the client's manager " + manager + ". Tell the client " + manager
                         + " will call them back."
                 : "Callback requested from a sales manager. Tell the client a manager will call them back.";
+    }
+
+    /** Keeps {@code facts} in the client's memory — never fails the turn over it. */
+    private void remember(Map<String, Object> facts) {
+        String phone = session.context() != null ? session.context().phone() : null;
+        if (memory == null || phone == null) {
+            return;
+        }
+        try {
+            memory.rememberFacts(companyId, phone, facts);
+        } catch (Exception e) {
+            log.warn("[{}] could not remember flat interest: {}", session.channelId(), e.getMessage());
+        }
+    }
+
+    private static String describeSearch(Integer rooms, BigDecimal minPrice, BigDecimal maxPrice, String complexName) {
+        List<String> parts = new java.util.ArrayList<>();
+        if (rooms != null) {
+            parts.add(rooms + " xonali");
+        }
+        if (minPrice != null) {
+            parts.add(plain(minPrice) + " dan");
+        }
+        if (maxPrice != null) {
+            parts.add(plain(maxPrice) + " gacha");
+        }
+        if (complexName != null && !complexName.isBlank()) {
+            parts.add(PromptSafeText.sanitize(complexName.trim(), MAX_TEXT));
+        }
+        return parts.isEmpty() ? "har qanday xonadon" : String.join(", ", parts);
+    }
+
+    private static String shortLabel(CrmFlat flat) {
+        StringBuilder label = new StringBuilder(safe(flat.houseName()));
+        if (flat.buildingName() != null) {
+            label.append(' ').append(safe(flat.buildingName()));
+        }
+        if (flat.number() != null) {
+            label.append(" №").append(safe(flat.number()));
+        }
+        if (flat.rooms() != null) {
+            label.append(", ").append(flat.rooms()).append(" xona");
+        }
+        if (flat.price() != null) {
+            label.append(", ").append(plain(flat.price()));
+            if (flat.currency() != null) {
+                label.append(' ').append(safe(flat.currency()));
+            }
+        }
+        return label.toString();
     }
 
     /** The contract the caller asked about: by the number they named, the call's own fact, or their phone. */

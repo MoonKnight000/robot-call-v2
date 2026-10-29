@@ -153,6 +153,7 @@ ishlaydi (katalog qidiruvi kabi: faqat o'qiydi, CRM'da hech narsa o'zgartirmaydi
 | Tool | Qachon | Nima qaytaradi |
 |---|---|---|
 | `searchFlats(rooms, maxPrice, minPrice, complexName, floorFrom, floorTo)` | "3 xonali bormi?", "60 mingga nima bor?" | Sotuvdagi 3 ta eng arzon xonadon: majmua, blok, xona, m², qavat, narx |
+| `rememberFlatInterest(flat, note?)` | "Shu menga yoqdi", "ko'rgani boraman" | Tanlangan xonadon mijoz xotirasiga yoziladi (`interestedFlat`) |
 | `listResidentialComplexes()` | "Qaysi loyihalaringiz bor?", "qachon topshiriladi?" | Sotuvdagi majmualar: manzil, qavatlar, bloklar, topshirish sanasi |
 | `getContractBalance(contractNumber?)` | "Qancha qoldi?", "Qarzim qancha?" | Shartnoma summasi, to'langan, qoldiq, kechikish kunlari, navbatdagi to'lov |
 | `getPaymentSchedule(contractNumber?)` | "To'lov jadvalim qanday?" | To'lanmagan navbatdagi 3 ta to'lov (sana, summa, muddati o'tganmi) |
