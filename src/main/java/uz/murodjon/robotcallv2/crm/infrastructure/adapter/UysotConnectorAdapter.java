@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.crm.application.dto.CreateCrmTaskRequest;
+import uz.murodjon.robotcallv2.crm.domain.entity.CreateCrmLeadRequest;
 import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
@@ -24,6 +25,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * {@link CrmConnectorPort} for the Uysot Open API v1 (PROJECT.md Stage 9, MASTER_ROADMAP.md §11).
@@ -68,8 +72,21 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
     /** Uysot matches a lead's contact phones on their last nine digits, digits only. */
     private static final int PHONE_SUFFIX_DIGITS = 9;
 
-    private static final String DEFAULT_TASK_PATH = "/v1/open-api/task";
-    private static final String DEFAULT_LEAD_STATUS_PATH = "/v1/open-api/lead/{id}/status";
+    /** {@code POST /v1/open-api/lead-task/{leadId}/save} — the Open API's only way to create a task. */
+    private static final String DEFAULT_TASK_PATH = "/v1/open-api/lead-task/{id}/save";
+    private static final String TASK_TYPES_PATH = "/v1/open-api/lead-task/types";
+    /**
+     * {@code POST /v1/open-api/lead} creates a lead, or updates one when the body carries its
+     * {@code id}: there is no separate status endpoint, a stage move is an update that sends
+     * {@code pipeStatusId}.
+     */
+    private static final String DEFAULT_LEAD_SAVE_PATH = "/v1/open-api/lead";
+    /** The note endpoint rejects a text longer than this; a longer note goes as several notes. */
+    private static final int MAX_NOTE_TEXT = 500;
+    /** One note request takes at most this many notes. */
+    private static final int MAX_NOTES_PER_REQUEST = 10;
+    /** How long a task the AI opens gives the person it is assigned to when the call set no time. */
+    private static final Duration DEFAULT_TASK_WINDOW = Duration.ofHours(24);
 
     private final CrmProperties crmProperties;
     private final ObjectMapper objectMapper;
@@ -158,12 +175,15 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
             return null;
         }
         try {
-            // The endpoint takes 1-10 notes at a time, so the body is an array even for one.
+            // The endpoint takes 1-10 notes of at most 500 characters each, so a longer note
+            // is sent as consecutive parts in one request rather than cut.
             ArrayNode body = objectMapper.createArrayNode();
-            ObjectNode note = body.addObject();
-            note.put("text", noteText);
-            note.put("type", "PHONE");
-            note.put("isPin", false);
+            for (String part : splitNote(noteText)) {
+                ObjectNode note = body.addObject();
+                note.put("text", part);
+                note.put("type", "PHONE");
+                note.put("isPin", false);
+            }
 
             String path = crmProperties.leadNotePath().replace("{id}", String.valueOf(leadId));
             HttpResponse<String> response = post(resolve(connection.baseUrl(), path), connection.accessToken(),
@@ -236,28 +256,43 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
         }
     }
 
+    /**
+     * {@code POST /v1/open-api/lead-task/{leadId}/save}. Both the task type and the assignee are
+     * required by the endpoint: the type is the company's configured one or, failing that, the
+     * CRM's first; the assignee is the request's or the platform's call-history employee. With
+     * no assignee there is nobody to give the task to, and it is skipped.
+     */
     @Override
     public String createTask(CrmConnection connection, CreateCrmTaskRequest request) {
         String taskPath = crmProperties.taskPath() != null && !crmProperties.taskPath().isBlank()
                 ? crmProperties.taskPath()
                 : DEFAULT_TASK_PATH;
         try {
+            Long assignee = request.responsibleId() != null && request.responsibleId() > 0 ? request.responsibleId()
+                    : crmProperties.callHistoryEmployeeId() != null && crmProperties.callHistoryEmployeeId() > 0
+                    ? Long.valueOf(crmProperties.callHistoryEmployeeId()) : null;
+            if (assignee == null) {
+                log.info("CRM task for lead {} skipped: no employee to assign it to", request.leadId());
+                return null;
+            }
+            Long taskTypeId = request.taskTypeId() != null ? request.taskTypeId() : findFirstTaskTypeId(connection);
+            if (taskTypeId == null) {
+                log.warn("CRM task for lead {} skipped: the CRM lists no task type", request.leadId());
+                return null;
+            }
+            Instant start = Instant.now();
+            Instant due = request.dueAt() != null && request.dueAt().isAfter(start) ? request.dueAt()
+                    : start.plus(DEFAULT_TASK_WINDOW);
             ObjectNode body = objectMapper.createObjectNode();
-            body.put("leadId", request.leadId());
-            body.put("title", request.title() != null ? request.title() : "AI Call Qualification Follow-up");
-            if (request.description() != null) {
-                body.put("description", request.description());
-            }
-            if (request.dueAt() != null) {
-                body.put("dueTimestamp", request.dueAt().getEpochSecond());
-            }
-            if (request.responsibleId() != null && request.responsibleId() > 0) {
-                body.put("responsibleId", request.responsibleId());
-            } else if (crmProperties.callHistoryEmployeeId() != null && crmProperties.callHistoryEmployeeId() > 0) {
-                body.put("responsibleId", crmProperties.callHistoryEmployeeId());
-            }
+            String title = request.title() != null ? request.title() : "AI qo'ng'iroq bo'yicha vazifa";
+            body.put("text", request.description() != null ? title + "\n" + request.description() : title);
+            body.put("leadTaskTypeId", taskTypeId);
+            body.put("assignedById", assignee);
+            body.put("deadlineStartTimestamp", start.getEpochSecond());
+            body.put("deadlineFinishTimestamp", due.getEpochSecond());
 
-            HttpResponse<String> response = post(resolve(connection.baseUrl(), taskPath), connection.accessToken(),
+            String path = taskPath.replace("{id}", String.valueOf(request.leadId()));
+            HttpResponse<String> response = post(resolve(connection.baseUrl(), path), connection.accessToken(),
                     objectMapper.writeValueAsString(body), WRITE_TIMEOUT);
             if (response.statusCode() / 100 != 2) {
                 log.warn("CRM create task HTTP {}: {}", response.statusCode(), response.body());
@@ -273,18 +308,61 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
         }
     }
 
+    /** {@code GET /v1/open-api/lead-task/types}: the first type the company has, or {@code null}. */
+    private Long findFirstTaskTypeId(CrmConnection connection) throws IOException, InterruptedException {
+        HttpResponse<String> response = get(resolve(connection.baseUrl(), TASK_TYPES_PATH), connection.accessToken(),
+                LOOKUP_TIMEOUT);
+        if (response.statusCode() / 100 != 2) {
+            return null;
+        }
+        JsonNode data = objectMapper.readTree(response.body()).path("data");
+        return data.isArray() && !data.isEmpty() && data.get(0).hasNonNull("id") ? data.get(0).get("id").asLong() : null;
+    }
+
+    /**
+     * Creates a lead for a person who reached the company without being one yet (a chat that
+     * learned their number). Asynchronous like every write here: the answer is a request id,
+     * never the new lead's id — the lead is found by phone afterwards.
+     */
+    @Override
+    public String createLead(CrmConnection connection, CreateCrmLeadRequest request) {
+        try {
+            ObjectNode body = objectMapper.createObjectNode();
+            body.put("name", request.name());
+            body.put("pipeStatusId", request.pipeStatusId());
+            if (request.responsibleId() != null) {
+                body.put("responsibleById", request.responsibleId());
+            }
+            ObjectNode contact = body.putArray("contacts").addObject();
+            contact.put("name", request.name());
+            contact.put("type", request.contactType());
+            contact.putArray("phones").add(request.phone());
+            String path = crmProperties.leadStatusPath() != null && !crmProperties.leadStatusPath().isBlank()
+                    ? crmProperties.leadStatusPath() : DEFAULT_LEAD_SAVE_PATH;
+            HttpResponse<String> response = post(resolve(connection.baseUrl(), path), connection.accessToken(),
+                    objectMapper.writeValueAsString(body), WRITE_TIMEOUT);
+            if (response.statusCode() / 100 != 2) {
+                log.warn("CRM create lead HTTP {}: {}", response.statusCode(), response.body());
+                return null;
+            }
+            JsonNode json = objectMapper.readTree(response.body());
+            return json.hasNonNull("requestId") ? json.get("requestId").asText() : null;
+        } catch (Exception e) {
+            log.warn("CRM create lead failed for {}: {}", PhoneMasker.mask(request.phone()), e.getMessage());
+            return null;
+        }
+    }
+
+    /** {@code POST /v1/open-api/lead} with the lead's {@code id} and its new {@code pipeStatusId}. */
     @Override
     public boolean updateLeadStage(CrmConnection connection, UpdateLeadStageRequest request) {
-        String statusPath = crmProperties.leadStatusPath() != null && !crmProperties.leadStatusPath().isBlank()
+        String path = crmProperties.leadStatusPath() != null && !crmProperties.leadStatusPath().isBlank()
                 ? crmProperties.leadStatusPath()
-                : DEFAULT_LEAD_STATUS_PATH;
+                : DEFAULT_LEAD_SAVE_PATH;
         try {
-            String path = statusPath.replace("{id}", String.valueOf(request.leadId()));
             ObjectNode body = objectMapper.createObjectNode();
-            body.put("statusId", request.statusId());
-            if (request.reason() != null && !request.reason().isBlank()) {
-                body.put("reason", request.reason());
-            }
+            body.put("id", request.leadId());
+            body.put("pipeStatusId", request.statusId());
 
             HttpResponse<String> response = post(resolve(connection.baseUrl(), path), connection.accessToken(),
                     objectMapper.writeValueAsString(body), WRITE_TIMEOUT);
@@ -298,6 +376,28 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
             log.warn("CRM update status failed for lead {}: {}", request.leadId(), e.getMessage());
             return false;
         }
+    }
+
+    /** {@code text} in parts of at most {@link #MAX_NOTE_TEXT} characters, at most {@link #MAX_NOTES_PER_REQUEST} of them. */
+    static List<String> splitNote(String text) {
+        List<String> parts = new ArrayList<>();
+        String rest = text.trim();
+        while (!rest.isEmpty() && parts.size() < MAX_NOTES_PER_REQUEST) {
+            if (rest.length() <= MAX_NOTE_TEXT) {
+                parts.add(rest);
+                break;
+            }
+            int cut = rest.lastIndexOf('\n', MAX_NOTE_TEXT);
+            if (cut < MAX_NOTE_TEXT / 2) {
+                cut = rest.lastIndexOf(' ', MAX_NOTE_TEXT);
+            }
+            if (cut < MAX_NOTE_TEXT / 2) {
+                cut = MAX_NOTE_TEXT;
+            }
+            parts.add(rest.substring(0, cut).trim());
+            rest = rest.substring(cut).trim();
+        }
+        return parts;
     }
 
     /** Digits only, last nine — the shape {@code POST /lead/filter} matches phones on. */

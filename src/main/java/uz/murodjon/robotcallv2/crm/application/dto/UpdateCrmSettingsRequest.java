@@ -9,6 +9,7 @@ public record UpdateCrmSettingsRequest(
         @Positive Integer promiseToPayStatusId,
         @Positive Integer notInterestedStatusId,
         @Positive Integer callbackStatusId,
-        @Positive Integer newLeadStatusId
+        @Positive Integer newLeadStatusId,
+        @Positive Integer taskTypeId
 ) {
 }

@@ -26,6 +26,10 @@ public interface UysotCatalogController {
     ResponseEntity<ResponseData<List<CrmEmployee>>> employees(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
+    @GetMapping("/task-types")
+    ResponseEntity<ResponseData<List<CrmTaskType>>> taskTypes(@CurrentCompanyId long companyId);
+
+    @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping("/houses")
     ResponseEntity<ResponseData<List<CrmHouse>>> houses(@CurrentCompanyId long companyId);
 

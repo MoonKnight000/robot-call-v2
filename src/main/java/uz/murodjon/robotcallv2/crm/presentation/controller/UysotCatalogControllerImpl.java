@@ -28,6 +28,11 @@ public class UysotCatalogControllerImpl implements UysotCatalogController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<List<CrmTaskType>>> taskTypes(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(crmCatalogUseCase.findTaskTypes(companyId)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<List<CrmHouse>>> houses(long companyId) {
         return ResponseEntity.ok(ResponseData.ok(crmCatalogUseCase.findHouses(companyId)));
     }

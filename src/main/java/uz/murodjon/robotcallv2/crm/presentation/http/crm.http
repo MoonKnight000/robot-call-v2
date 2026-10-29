@@ -13,7 +13,8 @@ Authorization: Bearer {{auth_token}}
   "promiseToPayStatusId": 22,
   "notInterestedStatusId": 19,
   "callbackStatusId": 12,
-  "newLeadStatusId": 11
+  "newLeadStatusId": 11,
+  "taskTypeId": 7
 }
 
 ### Uysot pipelines and their statuses (for the outcome → stage mapping)

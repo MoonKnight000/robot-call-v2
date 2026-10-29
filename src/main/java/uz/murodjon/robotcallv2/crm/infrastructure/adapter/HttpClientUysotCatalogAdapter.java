@@ -46,7 +46,10 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
     private static final String SERVICE = "uysot";
     private static final List<String> ACTIVE_CONTRACT_STATUSES = List.of("ACTIVE", "STARTED");
     private static final int PHONE_SUFFIX_DIGITS = 9;
+    private static final String TASK_TYPES_PATH = "v1/open-api/lead-task/types";
     private static final ZoneId TASHKENT = ZoneId.of("Asia/Tashkent");
+    private static final java.time.format.DateTimeFormatter DOTTED_DATE =
+            java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
     private final CrmProperties crmProperties;
     private final UysotCatalogProperties catalogProperties;
@@ -67,10 +70,16 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
         JsonNode response = get(connection, require(catalogProperties.housesPath(), "houses-path"));
         List<CrmHouse> houses = new ArrayList<>();
         for (JsonNode row : rows(response)) {
+            List<String> buildings = new ArrayList<>();
+            for (JsonNode building : row.path("buildings")) {
+                String name = text(building, "name");
+                if (name != null) {
+                    buildings.add(name);
+                }
+            }
             houses.add(new CrmHouse(row.path("id").asLong(), text(row, "name"),
-                    row.path("sale").asBoolean(true),
-                    firstText(row, "branchName", "branch.name"),
-                    firstText(row, "currencyCcy", "currency.ccy", "currency")));
+                    row.path("isSale").asBoolean(true), text(row, "address"), integer(row, "floor"),
+                    text(row, "release"), buildings));
         }
         return houses;
     }
@@ -81,7 +90,7 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("page", 1);
         body.put("size", filter.limit());
-        body.put("buildingSale", true);
+        body.putObject("orders").put("PRICE", "ASC");
         body.putArray("statuses").add("SALE");
         if (filter.rooms() != null) {
             body.putArray("rooms").add(String.valueOf(filter.rooms()));
@@ -101,8 +110,6 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
         if (filter.floorTo() != null) {
             body.put("floorTo", filter.floorTo());
         }
-        body.put("sort", "PRICE_NOT_REPAIRED");
-        body.put("order", "ASC");
         List<CrmFlat> flats = new ArrayList<>();
         for (JsonNode row : rows(post(connection, path, body))) {
             flats.add(new CrmFlat(
@@ -113,7 +120,7 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
                     integer(row, "rooms"),
                     decimal(row, "area"),
                     integer(row, "floor"),
-                    firstDecimal(row, "priceNotRepaired", "price"),
+                    firstDecimal(row, "price", "priceNotRepaired"),
                     firstDecimal(row, "priceRepaired"),
                     firstDecimal(row, "pricePerArea"),
                     firstText(row, "currencyCcy", "currency.ccy", "currency"),
@@ -151,16 +158,12 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
     public List<CrmPaymentDue> findPaymentSchedule(CrmConnection connection, long contractId) {
         String path = require(catalogProperties.contractPaymentPath(), "contract-payment-path")
                 .replace("{id}", String.valueOf(contractId));
-        JsonNode schedule = activeSchedule(rows(get(connection, path)));
+        // The active schedule's rows themselves (MonthlyPaymentPartDTO), date ascending.
         List<CrmPaymentDue> dues = new ArrayList<>();
-        if (schedule == null) {
-            return dues;
-        }
-        JsonNode parts = firstArray(schedule, "parts", "monthlyPaymentParts", "items", "rows");
-        for (JsonNode part : parts) {
+        for (JsonNode part : rows(get(connection, path))) {
             BigDecimal amount = firstDecimal(part, "amount");
             BigDecimal remaining = firstDecimal(part, "unpaidAmount", "residue", "remaining");
-            BigDecimal paidAmount = firstDecimal(part, "paidAmount", "payedAmount", "payed");
+            BigDecimal paidAmount = firstDecimal(part, "payment", "paidAmount", "payedAmount");
             if (remaining == null && amount != null && paidAmount != null) {
                 remaining = amount.subtract(paidAmount).max(BigDecimal.ZERO);
             }
@@ -176,7 +179,7 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
     public List<CrmEmployee> findEmployees(CrmConnection connection) {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("page", 1);
-        body.put("size", 200);
+        body.put("size", 100);
         List<CrmEmployee> employees = new ArrayList<>();
         for (JsonNode row : rows(post(connection, require(catalogProperties.employeeFilterPath(),
                 "employee-filter-path"), body))) {
@@ -204,6 +207,15 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
         return pipes;
     }
 
+    @Override
+    public List<CrmTaskType> findTaskTypes(CrmConnection connection) {
+        List<CrmTaskType> types = new ArrayList<>();
+        for (JsonNode row : rows(get(connection, TASK_TYPES_PATH))) {
+            types.add(new CrmTaskType(row.path("id").asLong(), text(row, "name")));
+        }
+        return types;
+    }
+
     private ObjectNode contractFilter() {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("page", 1);
@@ -229,16 +241,6 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
                 leadId > 0 ? leadId : null,
                 responsibleId > 0 ? responsibleId : null,
                 firstText(row, "responsibleBy.fullName", "responsibleBy.name", "responsibleByName"));
-    }
-
-    /** The schedule that is in force: one marked ACTIVE, or the only one there is. */
-    private static JsonNode activeSchedule(List<JsonNode> schedules) {
-        for (JsonNode schedule : schedules) {
-            if ("ACTIVE".equalsIgnoreCase(text(schedule, "status"))) {
-                return schedule;
-            }
-        }
-        return schedules.size() == 1 ? schedules.getFirst() : null;
     }
 
     private static String require(String path, String key) {
@@ -390,7 +392,7 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
         return com.fasterxml.jackson.databind.node.MissingNode.getInstance();
     }
 
-    /** {@code yyyy-MM-dd…} text, or epoch seconds — Uysot uses both. */
+    /** {@code dd.MM.yyyy} (the Open API's date form), {@code yyyy-MM-dd…}, or epoch seconds. */
     private static LocalDate date(JsonNode node, String... fields) {
         for (String field : fields) {
             JsonNode value = node.path(field);
@@ -400,7 +402,9 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
             String text = text(node, field);
             if (text != null && text.length() >= 10) {
                 try {
-                    return LocalDate.parse(text.substring(0, 10));
+                    return text.charAt(2) == '.'
+                            ? LocalDate.parse(text.substring(0, 10), DOTTED_DATE)
+                            : LocalDate.parse(text.substring(0, 10));
                 } catch (Exception e) {
                     // try the next name
                 }

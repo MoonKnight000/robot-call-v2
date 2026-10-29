@@ -29,4 +29,6 @@ public interface UysotCatalogPort {
     List<CrmEmployee> findEmployees(CrmConnection connection);
 
     List<CrmPipe> findPipes(CrmConnection connection);
+
+    List<CrmTaskType> findTaskTypes(CrmConnection connection);
 }

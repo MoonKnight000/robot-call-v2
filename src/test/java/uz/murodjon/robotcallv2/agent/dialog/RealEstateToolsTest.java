@@ -73,7 +73,7 @@ class RealEstateToolsTest {
 
     @Test
     void unknownComplexIsAskedAboutNotGuessed() {
-        when(catalog.findHouses(COMPANY)).thenReturn(List.of(new CrmHouse(7, "Yunusobod Residence", true, null, "USD")));
+        when(catalog.findHouses(COMPANY)).thenReturn(List.of(new CrmHouse(7, "Yunusobod Residence", true, null, null, null, List.of())));
 
         String answer = tools.searchFlats(2, null, null, "Chilonzor City", null, null);
 

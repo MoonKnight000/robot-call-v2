@@ -81,6 +81,8 @@ class ChatConversations {
     private static final String PHONE_KEY = "phone";
     /** Where it keeps the CRM lead that number belongs to — what its note is written onto. */
     private static final String CRM_LEAD_KEY = "crmLeadId";
+    /** Set when the conversation asked the CRM to open a lead for a number it did not know. */
+    private static final String CRM_LEAD_REQUESTED_KEY = "crmLeadRequested";
 
     /** What the agent is told when it has no opening line of its own — the bootstrap a call's greeting turn uses. */
     private static final String GREETING_BOOTSTRAP =
@@ -205,6 +207,11 @@ class ChatConversations {
                 if (client.leadId() != null) {
                     outcome.put(CRM_LEAD_KEY, client.leadId());
                 }
+            } else if (crmUseCase.createLead(session.companyId(), null, phone,
+                    session.telegramBotId() != null ? "TELEGRAM" : "WEBSITE")) {
+                // Somebody new: the CRM opens a lead for them, and the chat's note goes onto it once
+                // the conversation ends — by then the asynchronous write has long landed.
+                outcome.put(CRM_LEAD_REQUESTED_KEY, true);
             }
         } catch (Exception e) {
             log.warn("[chat {}] CRM lookup by phone failed: {}", session.sessionKey(), e.getMessage());
@@ -397,7 +404,12 @@ class ChatConversations {
 
     /** The conversation on the person's CRM lead, when their number led to one ({@link #attachPhone}). */
     private void postCrmNote(ChatSession session, String summary) {
-        if (!(session.outcome().get(CRM_LEAD_KEY) instanceof Number leadId)) {
+        Object lead = session.outcome().get(CRM_LEAD_KEY);
+        if (!(lead instanceof Number) && Boolean.TRUE.equals(session.outcome().get(CRM_LEAD_REQUESTED_KEY))) {
+            CrmClientSnapshot created = crmUseCase.findByPhone(session.companyId(), extractPhone(session.outcome()));
+            lead = created != null ? created.leadId() : null;
+        }
+        if (!(lead instanceof Number leadId)) {
             return;
         }
         String channel = session.telegramBotId() != null ? "Telegram" : "Sayt chati";

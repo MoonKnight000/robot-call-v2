@@ -40,6 +40,9 @@ public class CrmSettingsEntity {
     @Column(name = "new_lead_status_id")
     private Integer newLeadStatusId;
 
+    @Column(name = "task_type_id")
+    private Integer taskTypeId;
+
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
@@ -105,6 +108,14 @@ public class CrmSettingsEntity {
 
     public void setNewLeadStatusId(Integer newLeadStatusId) {
         this.newLeadStatusId = newLeadStatusId;
+    }
+
+    public Integer getTaskTypeId() {
+        return taskTypeId;
+    }
+
+    public void setTaskTypeId(Integer taskTypeId) {
+        this.taskTypeId = taskTypeId;
     }
 
     public Instant getUpdatedAt() {

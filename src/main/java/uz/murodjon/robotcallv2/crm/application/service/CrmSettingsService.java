@@ -22,14 +22,14 @@ public class CrmSettingsService implements CrmSettingsUseCase {
     @Override
     public CrmSettings findByCompanyId(long companyId) {
         return repository.findByCompanyId(companyId)
-                .orElseGet(() -> new CrmSettings(companyId, null, null, null, null, null, null, null));
+                .orElseGet(() -> new CrmSettings(companyId, null, null, null, null, null, null, null, null));
     }
 
     @Override
     public CrmSettings updateByCompanyId(long companyId, UpdateCrmSettingsRequest request) {
         CrmSettings saved = repository.upsert(companyId, CrmSettings.values(request.aiEmployeeId(),
                 request.meetingBookedStatusId(), request.promiseToPayStatusId(), request.notInterestedStatusId(),
-                request.callbackStatusId(), request.newLeadStatusId()));
+                request.callbackStatusId(), request.newLeadStatusId(), request.taskTypeId()));
         auditUseCase.record(companyId, "CRM_SETTINGS_UPDATE", "crm_settings", String.valueOf(companyId), null);
         return saved;
     }

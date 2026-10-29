@@ -10,6 +10,12 @@ public record CreateCrmTaskRequest(
         String title,
         String description,
         Instant dueAt,
-        Long responsibleId
+        Long responsibleId,
+        Long taskTypeId
 ) {
+
+    /** A task of the CRM's default type — the company's {@code crm_settings.task_type_id}, filled in by CrmService. */
+    public CreateCrmTaskRequest(long leadId, String title, String description, Instant dueAt, Long responsibleId) {
+        this(leadId, title, description, dueAt, responsibleId, null);
+    }
 }

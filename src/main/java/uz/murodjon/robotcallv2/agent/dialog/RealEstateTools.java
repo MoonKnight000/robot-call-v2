@@ -94,12 +94,35 @@ public class RealEstateTools {
         }
     }
 
-    @Tool(description = "Lists the company's residential complexes that are on sale. Call it when the client "
-            + "asks which projects or complexes there are.")
+    @Tool(description = "Lists the company's residential complexes on sale with their address, floors, blocks and "
+            + "planned hand-over date. Call it when the client asks which projects there are, where they are or "
+            + "when they will be finished.")
     public String listResidentialComplexes() {
         try {
-            String names = listComplexNames();
-            return names.isEmpty() ? NOT_AVAILABLE : "Residential complexes on sale: " + names + ".";
+            List<CrmHouse> houses = catalog.findHouses(companyId).stream().filter(CrmHouse::onSale).toList();
+            if (houses.isEmpty()) {
+                return NOT_AVAILABLE;
+            }
+            StringBuilder answer = new StringBuilder("Residential complexes on sale:\n");
+            for (CrmHouse house : houses) {
+                answer.append("- ").append(safe(house.name()));
+                if (house.address() != null) {
+                    answer.append(", address: ").append(safe(house.address()));
+                }
+                if (house.floors() != null) {
+                    answer.append(", ").append(house.floors()).append(" floors");
+                }
+                if (house.handOverDate() != null) {
+                    answer.append(", planned hand-over ").append(safe(house.handOverDate()));
+                }
+                if (!house.buildings().isEmpty()) {
+                    answer.append(", blocks: ").append(safe(String.join(", ", house.buildings())));
+                }
+                answer.append('\n');
+            }
+            String result = answer.toString();
+            session.recordToolFigures(FactGuard.figuresIn(result));
+            return result;
         } catch (Exception e) {
             log.warn("[{}] complex list failed: {}", session.channelId(), e.getMessage());
             return NOT_AVAILABLE;

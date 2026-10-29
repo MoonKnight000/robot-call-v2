@@ -283,7 +283,7 @@ class CrmServiceTest {
     private static CrmSettingsUseCase noCrmSettings() {
         CrmSettingsUseCase settings = mock(CrmSettingsUseCase.class);
         when(settings.findByCompanyId(org.mockito.ArgumentMatchers.anyLong()))
-                .thenAnswer(invocation -> new CrmSettings(invocation.getArgument(0), null, null, null, null, null, null, null));
+                .thenAnswer(invocation -> new CrmSettings(invocation.getArgument(0), null, null, null, null, null, null, null, null));
         return settings;
     }
 }

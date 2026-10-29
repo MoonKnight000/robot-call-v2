@@ -19,6 +19,7 @@ public class CrmSettingsEntityMapper {
                 entity.getNotInterestedStatusId(),
                 entity.getCallbackStatusId(),
                 entity.getNewLeadStatusId(),
+                entity.getTaskTypeId(),
                 entity.getUpdatedAt());
     }
 }

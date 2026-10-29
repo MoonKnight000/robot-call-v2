@@ -34,6 +34,8 @@ public interface CrmCatalogUseCase {
 
     List<CrmPipe> findPipes(long companyId);
 
+    List<CrmTaskType> findTaskTypes(long companyId);
+
     /**
      * The person behind {@code phone}: their lead and active contracts.
      * {@code 400 PHONE_INVALID} for a number that is not one.

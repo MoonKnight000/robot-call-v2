@@ -109,6 +109,12 @@ public class CrmCatalogService implements CrmCatalogUseCase {
     }
 
     @Override
+    public List<CrmTaskType> findTaskTypes(long companyId) {
+        return cached("taskTypes:" + companyId, catalogProperties.directoryTtl(),
+                () -> catalogPort.findTaskTypes(requireUysot(companyId)));
+    }
+
+    @Override
     public CrmClientProfile findClientProfile(long companyId, String phone) {
         String normalized = PhoneNumbers.require(phone);
         CrmConnection connection = requireUysot(companyId);

@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.crm.application.dto.UpdateLeadStageRequest;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmSettingsUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmSettings;
+import uz.murodjon.robotcallv2.crm.domain.entity.CreateCrmLeadRequest;
 import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
@@ -210,14 +211,35 @@ public class CrmService implements CrmUseCase {
         if (route == null) {
             return null;
         }
-        if (request.responsibleId() == null) {
-            Integer aiEmployeeId = crmSettingsUseCase.findByCompanyId(companyId).aiEmployeeId();
-            if (aiEmployeeId != null) {
-                request = new CreateCrmTaskRequest(request.leadId(), request.title(), request.description(),
-                        request.dueAt(), aiEmployeeId.longValue());
-            }
-        }
+        // The company's own AI employee and task type, unless the request already names them.
+        CrmSettings settings = crmSettingsUseCase.findByCompanyId(companyId);
+        Long responsibleId = request.responsibleId() != null ? request.responsibleId()
+                : settings.aiEmployeeId() != null ? Long.valueOf(settings.aiEmployeeId()) : null;
+        Long taskTypeId = request.taskTypeId() != null ? request.taskTypeId()
+                : settings.taskTypeId() != null ? Long.valueOf(settings.taskTypeId()) : null;
+        request = new CreateCrmTaskRequest(request.leadId(), request.title(), request.description(), request.dueAt(),
+                responsibleId, taskTypeId);
         return route.connector().createTask(route.connection(), request);
+    }
+
+    @Override
+    public boolean createLead(long companyId, String name, String phone, String source) {
+        CrmSettings settings = crmSettingsUseCase.findByCompanyId(companyId);
+        if (settings.newLeadStatusId() == null || phone == null || phone.isBlank()) {
+            return false;
+        }
+        Route route = routeFor(companyId);
+        if (route == null) {
+            return false;
+        }
+        String leadName = name != null && !name.isBlank() ? name.trim() : phone;
+        String requestId = route.connector().createLead(route.connection(), new CreateCrmLeadRequest(leadName, phone,
+                settings.newLeadStatusId(), settings.aiEmployeeId() != null ? Long.valueOf(settings.aiEmployeeId()) : null,
+                source));
+        if (requestId != null) {
+            log.info("CRM lead creation enqueued for company {} (requestId={})", companyId, requestId);
+        }
+        return requestId != null;
     }
 
     @Override

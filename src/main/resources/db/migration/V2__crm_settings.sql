@@ -11,5 +11,7 @@ CREATE TABLE crm_settings (
     not_interested_status_id  INTEGER,
     callback_status_id        INTEGER,
     new_lead_status_id        INTEGER,
+    -- Uysot lead-task type the AI's follow-up tasks are created with (GET /v1/open-api/lead-task/types).
+    task_type_id              INTEGER,
     updated_at                TIMESTAMPTZ NOT NULL DEFAULT now()
 );

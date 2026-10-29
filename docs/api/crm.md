@@ -24,6 +24,7 @@ Kompaniya hali hech narsa saqlamagan bo'lsa ham `200`: hamma maydon `null`, `upd
     "notInterestedStatusId": 19,
     "callbackStatusId": 12,
     "newLeadStatusId": 11,
+    "taskTypeId": 7,
     "updatedAt": "2026-10-29T10:15:00Z"
   },
   "message": null, "messageCode": null, "errors": null
@@ -37,7 +38,8 @@ Kompaniya hali hech narsa saqlamagan bo'lsa ham `200`: hamma maydon `null`, `upd
 | `promiseToPayStatusId` | `PROMISE_TO_PAY` yoki `promisedDate` bor → shu bosqich |
 | `notInterestedStatusId` | `REFUSED` / `DO_NOT_CALL` → shu bosqich |
 | `callbackStatusId` | `NO_ANSWER` / `CALLBACK_REQUESTED` / `CARRIER_REJECTED` → shu bosqich |
-| `newLeadStatusId` | Chat yoki kiruvchi qo'ng'iroqdan yaratilgan yangi lid boshlanadigan bosqich |
+| `newLeadStatusId` | Chat yoki kiruvchi qo'ng'iroqdan yaratilgan yangi lid boshlanadigan bosqich. Bo'sh bo'lsa — chatdan lid yaratilmaydi |
+| `taskTypeId` | AI ochadigan task turi (`GET /v1/open-api/lead-task/types`). Bo'sh bo'lsa — CRM'dagi birinchi tur |
 
 Ssenariy `outcomeSchema`sida `targetStatusId` qaytarsa — u hammasidan ustun.
 
@@ -53,7 +55,8 @@ Har bir ID musbat butun son bo'lishi shart (aks holda `400 VALIDATION_FAILED`).
   "promiseToPayStatusId": 22,
   "notInterestedStatusId": 19,
   "callbackStatusId": 12,
-  "newLeadStatusId": 11
+  "newLeadStatusId": 11,
+  "taskTypeId": 7
 }
 ```
 
@@ -75,6 +78,10 @@ Huquq: `INTEGRATION_READ`.
 | Uysot javob bermadi / xato qaytardi | `502 UYSOT_REQUEST_FAILED` |
 | Server konfiguratsiyasida yo'l bo'sh (`voice-agent.crm.catalog.*`) | `502 UYSOT_ENDPOINT_NOT_CONFIGURED` |
 
+Uysot yo'llari ([hujjat](https://apidoc.app.uysot.uz/docs/open-api/uysot-open-api)): `GET house/all`,
+`POST flat/filter` (grant `CONTRACT:READ`), `POST employee/filter`, `GET pipe/all` (`LEAD:READ`),
+`GET contract/{id}/monthly-payment` (`CONTRACT:READ`), `POST contract/filter` (`search` — raqam, mijoz ismi yoki telefon).
+
 Kesh: voronka, xodim va uylar — 15 daqiqa; xonadon qidiruvi — 3 daqiqa (sotilgan xonadon taklif
 qilinmasligi uchun). Shartnoma va to'lov jadvali keshlanmaydi.
 
@@ -95,13 +102,25 @@ qilinmasligi uchun). Shartnoma va to'lov jadvali keshlanmaydi.
 ## `GET /api/crm/uysot/employees` — Xodimlar
 
 ```json
-{ "accept": true, "data": [ { "id": 252, "fullName": "Dilshod Karimov", "phone": "+998901112233", "departmentName": "Sotuv" } ] }
+{ "accept": true, "data": [ { "id": 252, "fullName": "Dilshod Karimov", "phone": null, "departmentName": null } ] }
+```
+
+`phone` va `departmentName` Uysot `employee/filter` javobida yo'q — hozircha doim `null`.
+
+```text
+```
+
+## `GET /api/crm/uysot/task-types` — Task turlari
+
+```json
+{ "accept": true, "data": [ { "id": 7, "name": "Qo'ng'iroq" }, { "id": 8, "name": "Uchrashuv" } ] }
 ```
 
 ## `GET /api/crm/uysot/houses` — Turar-joy majmualari
 
 ```json
-{ "accept": true, "data": [ { "id": 7, "name": "Yunusobod Residence", "onSale": true, "branchName": "Toshkent", "currency": "USD" } ] }
+{ "accept": true, "data": [ { "id": 7, "name": "Yunusobod Residence", "onSale": true, "address": "Yunusobod 12-kvartal",
+                              "floors": 12, "handOverDate": "01.12.2027", "buildings": ["A blok", "B blok"] } ] }
 ```
 
 ## `POST /api/crm/uysot/flats/search` — Sotuvdagi xonadonlar
@@ -134,7 +153,7 @@ ishlaydi (katalog qidiruvi kabi: faqat o'qiydi, CRM'da hech narsa o'zgartirmaydi
 | Tool | Qachon | Nima qaytaradi |
 |---|---|---|
 | `searchFlats(rooms, maxPrice, minPrice, complexName, floorFrom, floorTo)` | "3 xonali bormi?", "60 mingga nima bor?" | Sotuvdagi 3 ta eng arzon xonadon: majmua, blok, xona, m², qavat, narx |
-| `listResidentialComplexes()` | "Qaysi loyihalaringiz bor?" | Sotuvdagi majmualar nomi |
+| `listResidentialComplexes()` | "Qaysi loyihalaringiz bor?", "qachon topshiriladi?" | Sotuvdagi majmualar: manzil, qavatlar, bloklar, topshirish sanasi |
 | `getContractBalance(contractNumber?)` | "Qancha qoldi?", "Qarzim qancha?" | Shartnoma summasi, to'langan, qoldiq, kechikish kunlari, navbatdagi to'lov |
 | `getPaymentSchedule(contractNumber?)` | "To'lov jadvalim qanday?" | To'lanmagan navbatdagi 3 ta to'lov (sana, summa, muddati o'tganmi) |
 | `requestManagerCallback(reason, preferredTime?)` | "Menejer bilan gaplashmoqchiman", chegirma/shartlar | Outcome'ga `managerCallbackRequested` yozadi → qo'ng'iroqdan keyin CRM task |

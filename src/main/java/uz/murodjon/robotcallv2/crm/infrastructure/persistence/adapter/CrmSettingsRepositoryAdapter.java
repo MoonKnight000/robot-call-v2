@@ -43,6 +43,7 @@ public class CrmSettingsRepositoryAdapter implements CrmSettingsRepository {
         entity.setNotInterestedStatusId(settings.notInterestedStatusId());
         entity.setCallbackStatusId(settings.callbackStatusId());
         entity.setNewLeadStatusId(settings.newLeadStatusId());
+        entity.setTaskTypeId(settings.taskTypeId());
         entity.setUpdatedAt(Instant.now());
         return mapper.toCrmSettings(jpaRepository.save(entity));
     }
