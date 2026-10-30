@@ -559,4 +559,29 @@ class SystemPromptFactoryTest {
         s.setOperatorWhisper("Muddatni 5-sanaga suring");
         assertThat(factory.turnAnnex(s)).contains("Muddatni 5-sanaga suring").doesNotContain("10% chegirma");
     }
+
+    @Test
+    void naturalFillersOnlyPresentInHumanLikePersona() {
+        DialogSession humanSession = DialogSession.builder("chan-human", "uz-UZ")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(1L)
+                .companyId(1L)
+                .agentPersona(AgentPersona.HUMAN_LIKE)
+                .build();
+        String humanPrompt = factory.stablePrefix(humanSession);
+        assertThat(humanPrompt).contains("NATURAL FILLERS AND BRIDGES");
+        assertThat(humanPrompt).contains("«Qarang...»");
+
+        DialogSession botSession = DialogSession.builder("chan-bot", "uz-UZ")
+                .context(ScenarioFixtures.fullContext())
+                .scenario(ScenarioFixtures.debtCollection())
+                .callAttemptId(2L)
+                .companyId(1L)
+                .agentPersona(AgentPersona.AI_ASSISTANT)
+                .build();
+        String botPrompt = factory.stablePrefix(botSession);
+        assertThat(botPrompt).doesNotContain("NATURAL FILLERS AND BRIDGES");
+        assertThat(botPrompt).doesNotContain("«Qarang...»");
+    }
 }

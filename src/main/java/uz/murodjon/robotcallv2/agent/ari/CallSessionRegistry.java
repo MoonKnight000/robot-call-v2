@@ -66,6 +66,11 @@ class CallSessionRegistry {
         return phases.get(channelId) == CallPhase.ACTIVE;
     }
 
+    /** Whether the call is being set up, is live or is ending — anything but unknown here. */
+    boolean hasPhase(String channelId) {
+        return phases.containsKey(channelId);
+    }
+
     /** Claims the first setup for a channel while its media is being prepared. */
     boolean markSettingUp(String channelId) {
         boolean[] started = new boolean[1];

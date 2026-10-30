@@ -516,6 +516,77 @@ o'chiradi (Uysot token'i Uysot tomonida ham bekor qilinadi). `provider` o'zgarma
 amoCRM/Kommo/Bitrix24 kompaniyasining qo'ng'iroqlari hech qaysi CRM'ga yozilmaydi —
 platformaning Uysot hisobiga ham. Javob — `data: null`.
 
+### `GET /api/settings/integrations/tools` — Agentga beriladigan CRM vositalari
+`INTEGRATION_READ`. Integratsiya oynasining **Vositalar** tabi shu ro'yxatni ko'rsatadi.
+Ro'yxatni **platforma admini** yuritadi ([platform-integration-tools.md](platform-integration-tools.md)):
+platforma o'chirgan vosita bu yerda ko'rinmaydi, har bir vositaning sukut holati (`defaultEnabled`)
+ham admin belgilaydi. Kompaniya o'zgartirmagan vosita sukut holatiga **ergashadi** (`inherited: true`),
+sukut o'zgarsa u ham o'zgaradi; kompaniya o'zi tanlagan holat esa hech qachon bosilmaydi.
+
+```json
+{
+  "accept": true,
+  "data": [
+    {
+      "tool": "SEARCH_FLATS",
+      "group": "FLATS",
+      "label": "Xonadon qidirish va narxlar",
+      "description": "Xona soni, byudjet, qavat va majmua bo'yicha sotuvdagi xonadonlar hamda ularning narxi.",
+      "permission": "CONTRACT",
+      "scope": "READ",
+      "writes": false,
+      "enabled": true,
+      "inherited": true,
+      "granted": true
+    }
+  ]
+}
+```
+
+| Maydon | Ma'nosi |
+|---|---|
+| `tool` | vosita kaliti, platforma katalogidan (`PUT` ham shuni ishlatadi) |
+| `group` | `FLATS` · `DEBTS` · `LEADS` · `BOOKINGS` — tabdagi guruhlash |
+| `permission` / `scope` | vosita uchun CRM tokenida kerak bo'lgan ruxsat; CRM'ga murojaat qilmaydigan vositada `null` |
+| `writes` | vosita CRM'da nimadir o'zgartiradi (lid, izoh, vazifa, bosqich) |
+| `enabled` | kalit shuni ko'rsatadi: kompaniyaning o'z tanlovi, tanlamagan bo'lsa platforma sukuti |
+| `inherited` | kompaniya hali tanlamagan — `enabled` sukut holati va u o'zgarsa birga o'zgaradi |
+| `granted` | kompaniyaning Uysot ruxsatlari vositani qoplaydi. `false` bo'lsa agentga vosita **berilmaydi** (`enabled` ga qaramay) — «Ulash» tabida ruxsat berib, qayta ulash kerak |
+
+| `tool` | Guruh | Ruxsat | Nima qiladi |
+|---|---|---|---|
+| `SEARCH_FLATS` | FLATS | CONTRACT:READ | Sotuvdagi xonadonlar va narxlari |
+| `LIST_COMPLEXES` | FLATS | CONTRACT:READ | Majmualar: manzil, qavat, bloklar, topshirish muddati |
+| `REMEMBER_FLAT_INTEREST` | FLATS | — | Yoqqan xonadonni mijoz xotirasiga yozadi |
+| `GET_CONTRACT_BALANCE` | DEBTS | CONTRACT:READ | Shartnoma summasi, to'langani, qoldiq, kechikish |
+| `GET_PAYMENT_SCHEDULE` | DEBTS | CONTRACT:READ | To'lanmagan oylik to'lovlar |
+| `GET_DEBT_SUMMARY` | DEBTS | CONTRACT:READ | Barcha faol shartnomalar bo'yicha qarz va kechikkan to'lovlar |
+| `GET_CLIENT_PROFILE` | LEADS | LEAD:READ | Raqam bo'yicha mijoz: ismi, lidi, faol shartnomalari |
+| `CREATE_LEAD` | LEADS | LEAD:SAVE | CRM'da yo'q mijoz uchun yangi lid |
+| `ADD_LEAD_NOTE` | LEADS | LEAD_NOTE:SAVE | Lidga izoh |
+| `CREATE_FOLLOW_UP_TASK` | LEADS | LEAD_TASK:SAVE | Menejerga aniq vaqtga vazifa |
+| `MOVE_LEAD_STAGE` | LEADS | LEAD:SAVE | Lidni voronkaning boshqa bosqichiga o'tkazadi |
+| `REQUEST_MANAGER_CALLBACK` | LEADS | — | Menejer qo'ng'iroq qilishini so'rash (qo'ng'iroq natijasiga yoziladi) |
+| `GET_BOOKING_STATUS` | BOOKINGS | BOOKING:READ | Mijozning bronlari ⚠️ Uysot `booking/filter` so'rov sxemasi hujjatda yo'q — real hisobda tekshirilmagan |
+
+> Agentga vositalar faqat kompaniya **Uysot'ga ulangan** bo'lsa beriladi. amoCRM / Kommo /
+> Bitrix24 ulangan kompaniyada ro'yxat ko'rinadi, lekin agentga hech narsa berilmaydi.
+
+### `PUT /api/settings/integrations/tools` — Vositalarni tanlash
+`INTEGRATION_EDIT`. Tanlangan vositalar yoqiq qoladi, ro'yxatda **yo'q** har biri o'chadi;
+bo'sh ro'yxat hammasini o'chiradi.
+
+Saqlashda faqat **sukutdan farq qiladigan** tanlov yoziladi: sukut bilan bir xil qiymat saqlanmaydi, ya'ni
+kompaniya o'sha vositada yana sukutga ergashadi.
+
+```json
+{ "enabledTools": ["SEARCH_FLATS", "GET_CONTRACT_BALANCE", "CREATE_LEAD"] }
+```
+
+Javob — `GET` bilan bir xil ro'yxat (yangilangan holatda). Noma'lum `tool` → `400`
+(`INTEGRATION_TOOL_UNKNOWN`). Platforma Uysot'ni o'chirgan kompaniyada — `403
+COMPANY_INTEGRATION_DISABLED`. O'zgarish **yangi qo'ng'iroqlardan** boshlab amal qiladi.
+
 ### 5.2 amoCRM & Kommo CRM Integratsiyasi
 
 **Kompaniya nima sozlaydi:** amoCRM (Kommo) hisobida private integratsiya yaratadi va uning

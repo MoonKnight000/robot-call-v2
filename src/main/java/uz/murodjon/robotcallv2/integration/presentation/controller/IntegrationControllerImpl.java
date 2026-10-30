@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
+import uz.murodjon.robotcallv2.integration.application.port.input.IntegrationToolUseCase;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -13,9 +14,12 @@ import java.util.List;
 public class IntegrationControllerImpl implements IntegrationController {
 
     private final CrmIntegrationUseCase crmIntegrationUseCase;
+    private final IntegrationToolUseCase integrationToolUseCase;
 
-    public IntegrationControllerImpl(CrmIntegrationUseCase crmIntegrationUseCase) {
+    public IntegrationControllerImpl(CrmIntegrationUseCase crmIntegrationUseCase,
+                                     IntegrationToolUseCase integrationToolUseCase) {
         this.crmIntegrationUseCase = crmIntegrationUseCase;
+        this.integrationToolUseCase = integrationToolUseCase;
     }
 
     @Override
@@ -48,6 +52,16 @@ public class IntegrationControllerImpl implements IntegrationController {
     public ResponseEntity<Void> callback(String code, String state) {
         return ResponseEntity.status(HttpStatus.FOUND)
                 .location(crmIntegrationUseCase.handleCallback(code, state)).build();
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<CrmToolRow>>> tools(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(integrationToolUseCase.findTools(companyId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<CrmToolRow>>> updateTools(long companyId, UpdateCrmToolsRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(integrationToolUseCase.updateTools(companyId, request)));
     }
 
     @Override

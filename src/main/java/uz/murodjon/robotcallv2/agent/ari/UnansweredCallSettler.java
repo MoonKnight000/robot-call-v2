@@ -23,7 +23,7 @@ import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
  * attempt row, the dialer slot, the balance hold, the trunk's health and the campaign target.
  */
 @Service
-class UnansweredCallSettler {
+public class UnansweredCallSettler {
 
     private static final Logger log = LoggerFactory.getLogger(UnansweredCallSettler.class);
 
@@ -79,14 +79,24 @@ class UnansweredCallSettler {
         Integer cause = callSessionRegistry.removeHangupCause(channelId);
         pbxLegService.notifyPbxLegGone(channelId, cause);
 
-        callAttemptUseCase.recordHangupCause(channelId, HangupCause.label(cause));
-
         Disposition disposition = HangupCause.toDisposition(cause);
         if (disposition == null) {
             disposition = Disposition.NO_ANSWER;
         }
-        callAttemptUseCase.finishUnansweredAttempt(channelId, disposition);
+        settleUnanswered(channelId, disposition, cause, HangupCause.label(cause));
         pendingCallRegistry.forgetUnanswered(channelId);
+    }
+
+    /**
+     * Settles a call that ended without being answered. Also the LiveKit engine's way out:
+     * its rooms raise no {@code ChannelDestroyed}, so {@link LiveKitCallService} calls
+     * this when a call it rang is not answered.
+     *
+     * @param cause Q.850 cause when the PBX gave one, otherwise {@code null}
+     */
+    public void settleUnanswered(String channelId, Disposition disposition, Integer cause, String causeLabel) {
+        callAttemptUseCase.recordHangupCause(channelId, causeLabel);
+        callAttemptUseCase.finishUnansweredAttempt(channelId, disposition);
 
         OutboundCall outbound = outboundCallTrackingUseCase.removeIfUnanswered(channelId);
         if (outbound == null) {
@@ -102,7 +112,7 @@ class UnansweredCallSettler {
         campaignTargetUseCase.applyOutcome(outbound.companyId(), outbound.targetId(), disposition);
         metrics.disposition(disposition);
         log.info("Unanswered call {} to {} settled as {} (cause {})",
-                channelId, PhoneMasker.mask(outbound.phone()), disposition, HangupCause.label(cause));
+                channelId, PhoneMasker.mask(outbound.phone()), disposition, causeLabel);
     }
 
     /**

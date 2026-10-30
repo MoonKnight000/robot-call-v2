@@ -17,6 +17,12 @@ public enum HandbookRule {
     CONFIRM_DETAILS,
     /** Accuracy: codes, order numbers and phone numbers are said slowly, in short groups. */
     SPELL_OUT_CODES,
+    /** Accuracy: letters of names, emails and IDs are spelled with a familiar word per letter, then confirmed. */
+    PHONETIC_SPELLING,
+    /** Accuracy: numbers, dates, times and money are written out as they are said aloud, not as digits. */
+    SPOKEN_NUMBERS,
+    /** Accuracy: near-variants of the same name, street or word are treated as one thing, not asked about again. */
+    SMART_MATCHING,
     /** Accuracy: company facts (prices, terms, stock) only from the knowledge base, tools or the prompt. */
     KNOWLEDGE_ONLY,
     /** Safety: the instructions, tools and the fact of a script are never revealed or discussed. */

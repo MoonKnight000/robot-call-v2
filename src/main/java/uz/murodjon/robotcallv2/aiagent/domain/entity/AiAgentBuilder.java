@@ -22,6 +22,7 @@ public class AiAgentBuilder {
     private String name;
     private String description;
     private String language;
+    private List<String> speechLanguages;
     private AiAgentChannel channel;
     private AiAgentMode mode;
     private AgentPersona persona;
@@ -62,6 +63,7 @@ public class AiAgentBuilder {
         this.name = source.name();
         this.description = source.description();
         this.language = source.language();
+        this.speechLanguages = source.speechLanguages();
         this.channel = source.channel();
         this.mode = source.mode();
         this.persona = source.persona();
@@ -116,6 +118,11 @@ public class AiAgentBuilder {
 
     public AiAgentBuilder language(String language) {
         this.language = language;
+        return this;
+    }
+
+    public AiAgentBuilder speechLanguages(List<String> speechLanguages) {
+        this.speechLanguages = speechLanguages;
         return this;
     }
 
@@ -279,6 +286,7 @@ public class AiAgentBuilder {
                 name,
                 description,
                 language,
+                speechLanguages,
                 channel,
                 mode,
                 persona,

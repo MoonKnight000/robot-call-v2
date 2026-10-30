@@ -4,6 +4,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.ari.WebTestProperties;
+import uz.murodjon.robotcallv2.agent.telephony.WebRtcJoin;
+import uz.murodjon.robotcallv2.operator.application.dto.OperatorJoinResponse;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
@@ -174,15 +176,20 @@ public class AgentWidgetService implements AgentWidgetUseCase {
     @Transactional
     public PublicWidgetSessionResponse startPublicSession(String widgetKey, String origin, String language) {
         AgentWidget widget = requirePublicWidget(widgetKey, origin);
-        if (webTestProperties.wsUrl() == null || webTestProperties.wsUrl().isBlank()) {
+        boolean inRoom = ariService.usesBrowserRooms(widget.companyId());
+        if (!inRoom && (webTestProperties.wsUrl() == null || webTestProperties.wsUrl().isBlank())) {
             throw new ConflictException(ErrorCode.WEB_TEST_NOT_CONFIGURED);
         }
         AiAgent agent = aiAgentUseCase.requirePublishedAgent(widget.companyId(), widget.agentId());
         WidgetCallBooking booking = callGate.reserve(agent);
 
         String sessionId;
+        WebRtcJoin join = null;
         try {
             sessionId = ariService.prepareWidgetCall(widget.companyId(), agent, language);
+            if (inRoom) {
+                join = ariService.openBrowserCall(widget.companyId(), sessionId);
+            }
         } catch (RuntimeException e) {
             // A session that was never prepared must not hold a line or spend the day's allowance.
             callGate.release(booking);
@@ -190,9 +197,13 @@ public class AgentWidgetService implements AgentWidgetUseCase {
         }
         auditService.record(widget.companyId(), "WIDGET_CALL_START", "agent_widget",
                 String.valueOf(widget.id()), origin);
+        if (join != null) {
+            return new PublicWidgetSessionResponse(sessionId, null, null, null, null, null,
+                    new OperatorJoinResponse(join.url(), join.token(), join.identity()));
+        }
         return new PublicWidgetSessionResponse(sessionId, webTestProperties.wsUrl(),
                 webTestProperties.sipUser(), webTestProperties.sipPassword(),
-                webTestProperties.dialNumber(), WIDGET_SESSION_HEADER);
+                webTestProperties.dialNumber(), WIDGET_SESSION_HEADER, null);
     }
 
     @Override

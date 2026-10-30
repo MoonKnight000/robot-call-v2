@@ -140,6 +140,7 @@ ro'yxatiga ega, u shu modulning hujjatida ko'rsatilgan.
 | [knowledge-base.md](knowledge-base.md) | `/api/knowledge-base`, `/api/knowledge-base/sources` | KNOWLEDGE_BASE_READ / KNOWLEDGE_BASE_EDIT | Bilim bazasi: qo'lda yoziladigan uch tilli javoblar va agentga biriktirilgan hujjat/URL manbalari (PDF/DOCX/XLSX/CSV/TXT/URL → indekslash → qo'ng'iroqda semantik qidiruv, `useRag` agentlar uchun) |
 | [settings.md](settings.md) | `/api/settings` | AI_MODEL_* · VOICE_* · NOTIFICATION_SETTINGS_* · INTEGRATION_* | Speech Engine variantlari katalogi (pipeline'ning o'zi endi agent darajasida), AI model sozlamalari (kompaniyaning o'z OpenAI-compatible LLM'i — `own-llm`), TTS tezlik/ohang, Bildirishnomalar matritsasi, CRM |
 | [uysot-oauth.md](uysot-oauth.md) | `/api/settings/integrations/uysot/*` | INTEGRATION_READ / INTEGRATION_EDIT · callback ochiq | **Frontend qo'llanmasi:** Uysot CRM'ni OAuth orqali ulash oqimi — `authorize-url` → Uysot → frontend `?code&state` → backend callback → `?crm=connected` |
+| [platform-integration-tools.md](platform-integration-tools.md) | `/api/platform/integration-tools` | PLATFORM_ADMIN | Platforma admini: integratsiya vositalari katalogi, sukut holati va uning kompaniyalarga tarqalishi (`ALL` / `NEW_ONLY`) |
 | [crm.md](crm.md) | `/api/settings/crm/*` | INTEGRATION_READ / INTEGRATION_EDIT | Kompaniyaning CRM sozlamalari (natija → voronka bosqichi, AI xodimi) va Uysot ma'lumotnomasi |
 | [memory.md](memory.md) | `/api/memory` | CONTACT_READ / CONTACT_EDIT | Mijoz xotirasi (kompaniya + telefon): avvalgi suhbatlar xulosasi, faktlar, operator eslatmalari — agent keyingi qo'ng'iroqda ishlatadi |
 | [contacts.md](contacts.md) | `/api/contacts` | CONTACT_READ / CONTACT_EDIT | Kontaktlar boshqaruvi: CRUD, CSV import, ommaviy telefon tekshirish va tozalash (`/scrub` — format, operator/prefiks, DNC), DNC ga qo'shish, GDPR eksport va o'chirish |
@@ -166,7 +167,7 @@ ro'yxatiga ega, u shu modulning hujjatida ko'rsatilgan.
 | [phone-numbers.md](phone-numbers.md) | `/api/phone-numbers` | SIP_TRUNK_READ / SIP_TRUNK_EDIT | Raqamlar bozori: sotib olish, kiruvchi yo'naltirish, bo'shatish, SIP ulanishini sinash |
 | [phone-numbers.md](phone-numbers.md#9-platforma-pulni-boshqarish) | `/api/platform/phone-numbers` | PLATFORM_ADMIN | Platforma raqamlar puli: qo'shish (bittalab va ommaviy), ro'yxat, o'chirish |
 | [caller-id-pools.md](caller-id-pools.md) | `/api/caller-id-pools` | SIP_TRUNK_READ / SIP_TRUNK_EDIT | Caller ID raqamlar puli va rotatsiya strategiyalari (ROUND_ROBIN, RANDOM, LEAST_USED, HIGHEST_ANSWER_RATE), cooldown |
-| [operator.md](operator.md) | `/api/operator` | OPERATOR_READ / OPERATOR_EDIT | Operator ekrani: uzatilgan qo'ng'iroq konteksti, takeover, whisper |
+| [operator.md](operator.md) | `/api/operator` | OPERATOR_READ / OPERATOR_EDIT | Operator ekrani: uzatilgan qo'ng'iroq konteksti, takeover, whisper; LiveKit uzatishini qabul/rad etish (`accept`, `decline`) |
 | [operators.md](operators.md) | `/api/operators` | OPERATOR_READ / OPERATOR_EDIT · USER_EDIT (SIP akkaunt) | Operatorlar: foydalanuvchiga SIP akkaunt berish / parolni tiklash / o'chirish (USER_EDIT), operatorlar ro'yxati, softfon uchun o'z SIP ma'lumotlari (`/me/sip-credentials`), o'z holati (`/me/status`), SSE hodisalar (`/me/events` — `CALL_OFFER`, `CALL_CONNECTED`, `CALL_ENDED`, `STATUS_CHANGED`, `MISSED_CALL`, `VOICEMAIL`) |
 | [users.md](users.md) | `/api/users` | USER_READ / USER_EDIT | Kompaniya xodimlarini taklif qilish (invite), rollar, bloklash |
 | [users.md](users.md#platforma-istalgan-kompaniya-foydalanuvchilari--apicompaniescompanyid) | `/api/companies/{companyId}/users`, `/roles` | PLATFORM_ADMIN | Platforma: istalgan kompaniya xodimlari va rollari, birinchi adminni taklif qilish |
@@ -185,7 +186,7 @@ ro'yxatiga ega, u shu modulning hujjatida ko'rsatilgan.
 | [files.md](files.md) | `/api/files` | Auth | MinIO/S3 fayl yuklash, audio yozuvlar va avatarlar yuklab olish |
 | [search.md](search.md) | `/api/search` | CALL_READ / CAMPAIGN_READ | Tizim bo'ylab global qidiruv (kontaktlar, kampaniyalar, qo'ng'iroqlar) |
 | [notifications.md](notifications.md) | `/api/notifications` | Auth | In-app bell bildirishnomalari ro'yxati, o'qilganlik belgisi, individual toggle'lar |
-| [webhooks.md](webhooks.md) | `/api/webhook-deliveries`, `/api/webhooks/livekit/sip` | AI_AGENT_READ / ochiq | Chiquvchi webhook yetkazishlar jurnali, qayta yuborish, jonli SSE oqimi va kiruvchi LiveKit SIP Gateway dispatch webhooki |
+| [webhooks.md](webhooks.md) | `/api/webhook-deliveries`, `/api/webhooks/livekit` | AI_AGENT_READ / ochiq (LiveKit imzosi) | Chiquvchi webhook yetkazishlar jurnali, qayta yuborish, jonli SSE oqimi va LiveKit server webhooki |
 | [partners.md](partners.md) | `/api/partners/{companyId}/branding`, `/api/partner/branding`, `/api/partner/clients`, `/api/branding`, `/api/public/branding` | PLATFORM_ADMIN / COMPANY_READ / COMPANY_EDIT / Auth / ochiq | Partner (reseller, white-label): partner brendi (nom, logo, rang, domen), partnerning mijoz kompaniyalari, panel va login sahifasi brendi |
 
 ---

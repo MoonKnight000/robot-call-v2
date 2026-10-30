@@ -18,6 +18,7 @@ import java.time.Duration;
  * @param employeeFilterPath  POST — the company's employees
  * @param pipePath            GET — sales pipelines and their statuses
  * @param contractPaymentPath GET — a contract's monthly payment schedule, {@code {id}} = contract id
+ * @param bookingFilterPath   POST — bookings of a client, found by the phone's last digits in {@code search}
  * @param directoryTtl        how long complexes, employees and pipelines are cached per company
  * @param flatTtl             how long one flat search is cached — prices and availability change
  */
@@ -28,6 +29,7 @@ public record UysotCatalogProperties(
         String employeeFilterPath,
         String pipePath,
         String contractPaymentPath,
+        String bookingFilterPath,
         Duration directoryTtl,
         Duration flatTtl
 ) {

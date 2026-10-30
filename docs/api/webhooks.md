@@ -149,54 +149,60 @@ Lokal muhitda webhook'larni ngrok/tunnel ochmasdan to'g'ridan-to'g'ri kuzatish y
     ```
   - Har 20 soniyada `:ping` heartbeat yuboriladi. Aloqa uzilganda abonent avtomatik o'chiriladi.
 
-### 1.4. Kiruvchi LiveKit SIP Gateway Webhook — `POST /api/webhooks/livekit/sip`
+### 1.4. LiveKit server webhook'i — `POST /api/webhooks/livekit`
 
-LiveKit SIP Gateway'dan kiruvchi qo'ng'iroq dispatch qilinganda backendga murojaat qiladi:
+LiveKit server (`docker-compose` dagi `livekit`, config `webhook.urls`) xona va ishtirokchi
+voqealarini shu manzilga yuboradi. Frontend uni chaqirmaydi. Sozlash: [../LIVEKIT.md](../LIVEKIT.md).
 
-- **Auth:** Ochiq (`SecurityConfig` da `permitAll`), LiveKit Gateway tomonidan to'g'ridan-to'g'ri chaqiriladi.
-- **Request (`LiveKitSipWebhookRequest`):**
+- **Auth:** login yo'q (`SecurityConfig` da `permitAll`). Uning o'rniga har bir so'rov LiveKit
+  imzosini olib keladi: `Authorization` sarlavhasida HS256 JWT, `LIVEKIT_API_SECRET` bilan
+  imzolangan, `iss` = `LIVEKIT_API_KEY`, `sha256` claim = body'ning base64 SHA-256'i.
+  Imzo yo'q yoki mos kelmasa — `403 LIVEKIT_WEBHOOK_SIGNATURE_INVALID`.
+- **Request:** `livekit.WebhookEvent` (protobuf JSON, `Content-Type: application/webhook+json`).
+  O'qiladigan maydonlar:
   ```json
   {
-    "callId": "lk-sip-call-001",
-    "caller": "+998901234567",
-    "called": "+998712000000",
-    "roomName": "optional-room-name",
-    "sipTrunkId": "trunk-livekit-main"
+    "event": "participant_joined",
+    "room": { "name": "inbound-_998712000000_abc" },
+    "participant": {
+      "identity": "sip_998901234567",
+      "kind": "SIP",
+      "attributes": { "sip.phoneNumber": "+998901234567", "sip.trunkPhoneNumber": "+998712000000" },
+      "disconnectReason": null
+    }
   }
   ```
-- **Response (`LiveKitSipWebhookResponse`):**
-  - Muvaffaqiyatli qabul qilinganda (`ACCEPT`):
-    ```json
-    {
-      "success": true,
-      "data": {
-        "action": "ACCEPT",
-        "roomName": "inbound-lk-sip-call-001",
-        "routeId": 12,
-        "agentId": 5,
-        "callFlowId": null,
-        "language": "uz-UZ",
-        "message": null,
-        "vip": false
-      }
-    }
-    ```
-  - Rad etilganda yoki raqam topilmaganda (`REJECT`):
-    ```json
-    {
-      "success": true,
-      "data": {
-        "action": "REJECT",
-        "roomName": null,
-        "routeId": null,
-        "agentId": null,
-        "callFlowId": null,
-        "language": "uz-UZ",
-        "message": "No route found for number: +998712000000",
-        "vip": false
-      }
-    }
-    ```
+- **Nima qilinadi** (faqat `participant.kind = SIP`, ya'ni telefon tomoni):
+
+| `event` | Xona | Natija |
+|---|---|---|
+| `participant_joined` | `inbound-…` (dispatch rule prefiksi) | `InboundCallGate` qaror qiladi: `AGENT` — media bridge xonaga kiradi va agent suhbatni boshlaydi (urinish `inboundRouteId` bilan ochiladi); `FLOW` — `CallFlowRunner` grafni yuritadi ([call-flows.md](call-flows.md)); `REJECT` / `CLOSED` / `NO_ROUTE` — xona o'chiriladi (go'shak qo'yiladi). |
+| `participant_joined` / `participant_left`, `identity = op-<userId>` | `livekit-…`, `inbound-…`, `web-…` | Brauzerdan qo'shilgan operator ([operator.md](operator.md)): qo'shilsa agent chiqadi va operator `ON_CALL`; chiqsa qo'ng'iroq tugaydi. |
+| `participant_joined` / `participant_left`, `identity = browser-caller` | `web-…` | Brauzer test yoki vidjet qo'ng'irog'i ([calls.md](calls.md)): qo'shilsa kutayotgan sessiya olinib qo'ng'iroq boshlanadi; chiqsa tugaydi. |
+| `participant_left` | `livekit-…` yoki `inbound-…` | Javob berilgan qo'ng'iroq Asterisk'dagi `StasisEnd` kabi yakunlanadi (dialog natijasi, finalizatsiya, kampaniya target'i), xona yopiladi. Javob berilmagan chiquvchi qo'ng'iroq — urinish yopiladi, dialer sloti va balans bloki bo'shatiladi; `disconnectReason` → disposition: `USER_UNAVAILABLE` → `NO_ANSWER`, `USER_REJECTED` → `REFUSED`, `SIP_TRUNK_FAILURE` → `CARRIER_REJECTED`, `JOIN_FAILURE`/`MEDIA_FAILURE`/`CONNECTION_TIMEOUT`/`SERVER_SHUTDOWN` → `FAILED`, qolganlari → `HUNG_UP` |
+| `participant_left`, `identity = sip-operator` | istalgan | Uzatish leg'i: ulangandan keyin chiqsa qo'ng'iroq tugaydi; ulanmasdan (rad etildi, javob yo'q) chiqsa e'tiborsiz — uzatishning o'z natijasi hal qiladi. Uning `participant_joined` hodisasi inbound qoidalardan o'tmaydi. |
+| boshqalar | — | e'tiborsiz, `200` |
+
+- **Response:** `200 { "success": true, "data": null }`. Body JSON bo'lmasa — `400 LIVEKIT_WEBHOOK_PAYLOAD_INVALID`.
+
+> Eski `POST /api/webhooks/livekit/sip` (accept/reject javobi bilan) olib tashlandi: LiveKit'da
+> bunday chaqiruv yo'q. Kiruvchi qo'ng'iroq statik dispatch rule bilan xonaga tushadi, qaror
+> shu webhook'da qabul qilinadi.
+
+### 1.5. Go media bridge hisoboti — `POST /api/webhooks/livekit-bridge/dtmf`
+
+Go media bridge ([../LIVEKIT.md](../LIVEKIT.md)) qo'ng'iroq qiluvchi bosgan tugmani shu manzilga yuboradi
+(LiveKit SIP xizmati uni xonaga `SipDTMF` data paketi qilib beradi). Frontend uni chaqirmaydi.
+
+- **Auth:** login yo'q (`SecurityConfig` da `permitAll`). `X-Bridge-Signature` sarlavhasida body'ning
+  HMAC-SHA256'i (hex), kalit — `LIVEKIT_API_SECRET`. Imzo yo'q yoki mos kelmasa —
+  `403 LIVEKIT_WEBHOOK_SIGNATURE_INVALID`.
+- **Request:** `{ "room": "inbound-…", "digit": "5" }` (`digit` — bitta belgi: `0-9`, `*`, `#`). Noto'g'ri
+  body — `400 LIVEKIT_WEBHOOK_PAYLOAD_INVALID`.
+- **Nima bo'ladi:** tugma Asterisk'dagi ARI hodisasi bilan bir xil joyga boradi: navbat tasdig'i, call flow
+  menyusi (yoki ichki raqam terish), AI agent esa `dtmfInputEnabled` bo'lsa dialog navbati sifatida.
+  Qo'ng'iroq jonli bo'lmasa e'tiborga olinmaydi.
+- **Response:** `200 { "success": true, "data": null }`.
 
 ---
 

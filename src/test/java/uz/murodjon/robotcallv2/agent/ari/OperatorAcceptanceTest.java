@@ -4,6 +4,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import uz.murodjon.robotcallv2.agent.flow.FlowPrompter;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGateway;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties;
 
 import java.util.concurrent.CompletableFuture;
@@ -18,7 +20,8 @@ import static org.mockito.Mockito.*;
 class OperatorAcceptanceTest {
 
     private final CallSessionRegistry registry = mock(CallSessionRegistry.class);
-    private final AriClient ariClient = mock(AriClient.class);
+    private final TelephonyGateway gateway = mock(TelephonyGateway.class);
+    private final TelephonyGatewayResolver gatewayResolver = mock(TelephonyGatewayResolver.class);
     private final ExecutorService executor = Executors.newCachedThreadPool();
 
     @AfterEach
@@ -72,7 +75,7 @@ class OperatorAcceptanceTest {
         acceptance.fallBack("caller");
         acceptance.fallBack("caller");
 
-        verify(ariClient, never()).hangup(anyString());
+        verify(gateway, never()).hangup(anyString());
         assertThat(acceptance.settle("caller")).isFalse();
     }
 
@@ -91,7 +94,8 @@ class OperatorAcceptanceTest {
     private OperatorAcceptance acceptance(boolean requireAcceptance) {
         ObjectProvider<FlowPrompter> noPrompter = mock(ObjectProvider.class);
         OperatorProperties properties = new OperatorProperties(true, null, 30, null, requireAcceptance, 5);
-        return new OperatorAcceptance(registry, ariClient, mock(CallMediaFactory.class), noPrompter,
+        when(gatewayResolver.findByCallId(anyString())).thenReturn(gateway);
+        return new OperatorAcceptance(registry, gatewayResolver, mock(CallMediaFactory.class), noPrompter,
                 properties, executor);
     }
 }

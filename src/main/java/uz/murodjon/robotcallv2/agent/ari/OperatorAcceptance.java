@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.flow.FlowPrompter;
 import uz.murodjon.robotcallv2.agent.flow.PbxPhrases;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -49,17 +50,17 @@ class OperatorAcceptance {
     private final Map<String, CompletableFuture<Character>> pendingKeys = new ConcurrentHashMap<>();
 
     private final CallSessionRegistry callSessionRegistry;
-    private final AriClient ariClient;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
     private final CallMediaFactory callMediaFactory;
     private final ObjectProvider<FlowPrompter> flowPrompterProvider;
     private final OperatorProperties operatorProperties;
     private final ExecutorService callExecutor;
 
-    OperatorAcceptance(CallSessionRegistry callSessionRegistry, AriClient ariClient,
+    OperatorAcceptance(CallSessionRegistry callSessionRegistry, TelephonyGatewayResolver telephonyGatewayResolver,
                        CallMediaFactory callMediaFactory, ObjectProvider<FlowPrompter> flowPrompterProvider,
                        OperatorProperties operatorProperties, ExecutorService callExecutor) {
         this.callSessionRegistry = callSessionRegistry;
-        this.ariClient = ariClient;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
         this.callMediaFactory = callMediaFactory;
         this.flowPrompterProvider = flowPrompterProvider;
         this.operatorProperties = operatorProperties;
@@ -162,7 +163,7 @@ class OperatorAcceptance {
                     + PLAYBACK_SLACK_MS);
         }
         callSessionRegistry.rememberDisposition(callerId, Disposition.CALLBACK_REQUESTED);
-        ariClient.hangup(callerId);
+        telephonyGatewayResolver.findByCallId(callerId).hangup(callerId);
         log.info("[{}] transfer fell back: caller told the operators are busy, filed CALLBACK_REQUESTED", callerId);
     }
 }

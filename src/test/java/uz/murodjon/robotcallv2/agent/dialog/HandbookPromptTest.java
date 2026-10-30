@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
+import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.util.Set;
 
@@ -44,6 +45,25 @@ class HandbookPromptTest {
         for (HandbookRule rule : HandbookRule.values()) {
             assertThat(HandbookPrompt.line(rule)).isNotBlank();
         }
+    }
+
+    @Test
+    void highEmpathyOnlyAppendedWhenPersonaIsHumanLike() {
+        StringBuilder sbHuman = new StringBuilder();
+        AiAgent humanAgent = AiAgent.builder().name("HumanAgent")
+                .persona(AgentPersona.HUMAN_LIKE)
+                .handbook(Set.of(HandbookRule.HIGH_EMPATHY))
+                .build();
+        HandbookPrompt.append(sbHuman, humanAgent);
+        assertThat(sbHuman.toString()).contains(HandbookPrompt.line(HandbookRule.HIGH_EMPATHY));
+
+        StringBuilder sbBot = new StringBuilder();
+        AiAgent botAgent = AiAgent.builder().name("BotAgent")
+                .persona(AgentPersona.AI_ASSISTANT)
+                .handbook(Set.of(HandbookRule.HIGH_EMPATHY))
+                .build();
+        HandbookPrompt.append(sbBot, botAgent);
+        assertThat(sbBot).isEmpty();
     }
 
     private static AiAgent agent(Set<HandbookRule> handbook) {

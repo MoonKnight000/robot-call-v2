@@ -44,6 +44,7 @@ public record AiAgent(
         String name,
         String description,
         String language,
+        List<String> speechLanguages,
         AiAgentChannel channel,
         AiAgentMode mode,
         AgentPersona persona,
@@ -81,6 +82,17 @@ public record AiAgent(
         if (language == null || language.isBlank()) {
             language = "uz-UZ";
         }
+        // The agent's own language always leads; the rest are the extra languages a call may switch to.
+        Set<String> spoken = new LinkedHashSet<>();
+        spoken.add(language);
+        if (speechLanguages != null) {
+            for (String extra : speechLanguages) {
+                if (extra != null && !extra.isBlank()) {
+                    spoken.add(extra.trim());
+                }
+            }
+        }
+        speechLanguages = List.copyOf(spoken);
         if (channel == null) {
             channel = AiAgentChannel.OMNICHANNEL;
         }
@@ -151,14 +163,22 @@ public record AiAgent(
     }
 
     /**
-     * The languages a call by this agent may be held in: its own language first, then every
-     * language it has a voice for. Language detection and a mid-call switch stay inside these.
+     * The languages a call by this agent may be held in: its own language first, then its
+     * other speech languages and every language it has a voice for. Language detection and a mid-call switch stay inside these.
      */
     public List<String> findSpokenLanguages() {
-        Set<String> languages = new LinkedHashSet<>();
-        languages.add(language);
+        Set<String> languages = new LinkedHashSet<>(speechLanguages);
         languages.addAll(voice.perLanguage().keySet());
         return List.copyOf(languages);
+    }
+
+    /**
+     * Whether this agent holds calls in more than one language (Retell's multilingual mode) —
+     * judged by {@link #findSpokenLanguages()}, so it says what a call really does: an agent
+     * that has a second language's voice switches to it even if the list names one language.
+     */
+    public boolean multilingual() {
+        return findSpokenLanguages().size() > 1;
     }
 
     public static AiAgentBuilder builder() {

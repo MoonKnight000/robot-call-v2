@@ -521,7 +521,7 @@ public class DialogTools {
             + "Do NOT write plain text alongside this tool — write your line in the new language in the "
             + "reply parameter; it is spoken in the new language's voice.")
     public String switchLanguage(@ToolParam(description = "the line to say to the client in the new language") String reply,
-                                 @ToolParam(description = "language code: uz-UZ, ru-RU or en-US") String language) {
+                                 @ToolParam(description = "language code of one of the languages allowed on this call, e.g. uz-UZ, ru-RU or en-US") String language) {
         if (!session.switchCallLanguage(language)) {
             log.info("[{}] language switch to {} refused — not one of this company's languages",
                     session.channelId(), language);

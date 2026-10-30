@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.agent.audio.VoicemailBeepDetector;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.tts.TtsRouter;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.agent.vad.AmdProperties;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
@@ -35,15 +36,16 @@ class RealtimeVoicemailDrop {
 
     private final TtsRouter ttsRouter;
     private final VadProperties vadProperties;
-    private final AriClient ariClient;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
     private final CallMediaFactory callMediaFactory;
     private final ExecutorService callExecutor;
 
-    RealtimeVoicemailDrop(TtsRouter ttsRouter, VadProperties vadProperties, AriClient ariClient,
+    RealtimeVoicemailDrop(TtsRouter ttsRouter, VadProperties vadProperties,
+                          TelephonyGatewayResolver telephonyGatewayResolver,
                           CallMediaFactory callMediaFactory, ExecutorService callExecutor) {
         this.ttsRouter = ttsRouter;
         this.vadProperties = vadProperties;
-        this.ariClient = ariClient;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
         this.callMediaFactory = callMediaFactory;
         this.callExecutor = callExecutor;
     }
@@ -72,7 +74,7 @@ class RealtimeVoicemailDrop {
         } catch (Exception e) {
             log.warn("[{}] voicemail message could not be left: {}", channelId, e.getMessage());
         } finally {
-            ariClient.hangup(channelId);
+            telephonyGatewayResolver.findByCallId(channelId).hangup(channelId);
         }
     }
 }

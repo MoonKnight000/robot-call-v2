@@ -18,6 +18,19 @@ operator navbatlari — `/api/call-queues` (`QUEUE` tuguni),
 Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 [README.md](README.md)ga qarang.
 
+> **Dvigatel (Asterisk / LiveKit).** Flow ikkala telefoniya dvigatelida ishlaydi ([../LIVEKIT.md](../LIVEKIT.md)).
+> LiveKit'da odamga yetadigan tugunlar boshqacha ishlaydi: `RING_GROUP` / `EXTENSION` — ro'yxatdagi `AVAILABLE`
+> operatorlarga ketma-ket (har biriga `ringSeconds`) `CALL_OFFER` yuboriladi, operator brauzerdan
+> [qabul qiladi](operator.md); `QUEUE` — haqiqiy kutish navbati: qo'ng'iroqlar kelish tartibida turadi (`maxLength`, `maxWaitSec`), hold musiqa,
+> pozitsiya e'loni, davriy e'lon va callback taklifi (`1` tugmasi) ishlaydi, navbat boshidagi qo'ng'iroq a'zolarga ketma-ket
+> (`ringTimeoutSec`) taklif qilinadi; kutish vaqti bahosi, `waitingAgentId` hamrohi va qo'ng'iroqdan keyingi so'rov yo'q; `FORWARD_EXTERNAL` — raqam kompaniyaning standart trunk'i orqali
+> xonaga chaqiriladi (`confirmAnswer` e'tiborga olinmaydi); `AI_AGENT` ning `TRANSFER` chiqishi agentning
+> `transferQueueId` navbat a'zolariga boradi. Hech kim olmasa tugunning `NO_ANSWER` (navbatda `OVERFLOW`)
+> chiqishi, u ham bo'lmasa mijozga "operatorlar band" aytilib, qo'ng'iroq `NO_OPERATOR` sababi bilan
+> o'tkazib yuborilganlar ro'yxatiga tushadi. Mijozning klaviatura tugmalari (`MENU` kalitlari, ichki raqam terish, `CALLBACK_OFFER` dagi `1`)
+> Go bridge orqali o'qiladi, shuning uchun menyu LiveKit'da ham tugma bilan ishlaydi (`FORWARD_EXTERNAL` dagi
+> `confirmAnswer` bundan mustasno).
+
 ---
 
 ## 📝 Qoralama (draft) va nashr (published)

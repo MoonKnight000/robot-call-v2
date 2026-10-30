@@ -79,6 +79,10 @@ public class AiAgentEntity {
     @Column(nullable = false)
     private String language;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "speech_languages", columnDefinition = "jsonb")
+    private String speechLanguages = "[]";
+
     @Embedded
     private AiAgentSpeechEngineEntity speechEngine = new AiAgentSpeechEngineEntity();
 
@@ -281,6 +285,14 @@ public class AiAgentEntity {
 
     public void setLanguage(String language) {
         this.language = language;
+    }
+
+    public String getSpeechLanguages() {
+        return speechLanguages;
+    }
+
+    public void setSpeechLanguages(String speechLanguages) {
+        this.speechLanguages = speechLanguages;
     }
 
     public Map<String, TtsVoiceEntity> getLanguageVoices() {

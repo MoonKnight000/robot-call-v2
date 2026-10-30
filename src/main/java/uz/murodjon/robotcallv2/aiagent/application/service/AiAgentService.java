@@ -111,7 +111,7 @@ public class AiAgentService implements AiAgentUseCase {
     @Override
     public AiAgentRow createSinglePromptAgent(long companyId, CreateSinglePromptAgentRequest request) {
         return createAgent(companyId, toCreateRequest(AiAgentMode.SINGLE_PROMPT, null, request.systemPrompt(),
-                request.name(), request.description(), request.language(), request.channel(), request.firstMessage(),
+                request.name(), request.description(), request.language(), request.speechLanguages(), request.channel(), request.firstMessage(),
                 request.engineProfileId(), request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
                 request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation(),
                 request.sipTrunkIds()));
@@ -120,7 +120,7 @@ public class AiAgentService implements AiAgentUseCase {
     @Override
     public AiAgentRow createConversationFlowAgent(long companyId, CreateConversationFlowAgentRequest request) {
         return createAgent(companyId, toCreateRequest(AiAgentMode.CONVERSATIONAL_FLOW, request.flowDefinition(), null,
-                request.name(), request.description(), request.language(), request.channel(), request.firstMessage(),
+                request.name(), request.description(), request.language(), request.speechLanguages(), request.channel(), request.firstMessage(),
                 request.engineProfileId(), request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
                 request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation(),
                 request.sipTrunkIds()));
@@ -129,14 +129,15 @@ public class AiAgentService implements AiAgentUseCase {
     /** The two preset endpoints as the general create request: an AI-assistant persona, not yet published elsewhere. */
     private static CreateAiAgentRequest toCreateRequest(AiAgentMode mode, ScenarioDefinition flowDefinition,
                                                         String systemPrompt, String name, String description,
-                                                        String language, AiAgentChannel channel, String firstMessage,
+                                                        String language, List<String> speechLanguages,
+                                                        AiAgentChannel channel, String firstMessage,
                                                         String engineProfileId,
                                                         AgentVoiceDto voice, AgentSpeechEngineDto speechEngine,
                                                         String llmModel, Double temperature, Integer maxOutputTokens,
                                                         AgentAmbienceDto ambience, List<DataExtractionField> dataNeeded,
                                                         List<DataEvaluationCriterion> dataEvaluation,
                                                         Set<Long> sipTrunkIds) {
-        return new CreateAiAgentRequest(name, description, language,
+        return new CreateAiAgentRequest(name, description, language, speechLanguages,
                 channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, engineProfileId,
                 new AgentScriptDto(null, null, mode.toScenarioMode(), flowDefinition, firstMessage, systemPrompt),
                 speechEngine, voice, llmModel, null, temperature, maxOutputTokens, ambience,
@@ -156,6 +157,7 @@ public class AiAgentService implements AiAgentUseCase {
         // as its BCP-47 code. Deriving it here from the enum's name instead produced
         // "uz_uz", which is not a language code any recogniser or voice accepts.
         String language = CompanyValidator.resolveLanguageCode(request.language());
+        List<String> speechLanguages = normalizeSpeechLanguages(request.speechLanguages(), language);
 
         // Auto-populate from template presets if templateId is specified and prompts are omitted
         TemplateDefaults defaults = (scriptRequest.templateId() != null)
@@ -210,6 +212,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .name(request.name().trim())
                 .description(request.description() != null ? request.description().trim() : null)
                 .language(language)
+                .speechLanguages(speechLanguages)
                 .channel(request.channel() != null ? request.channel() : AiAgentChannel.OMNICHANNEL)
                 .mode(request.mode() != null ? request.mode() : (scriptRequest.mode() != null ? AiAgentMode.fromScenarioMode(scriptRequest.mode()) : AiAgentMode.SINGLE_PROMPT))
                 .persona(request.persona())
@@ -279,6 +282,15 @@ public class AiAgentService implements AiAgentUseCase {
                 ? CompanyValidator.resolveLanguageCode(request.language())
                 : existing.language();
 
+        List<String> speechLanguages;
+        if (request.clearFields() != null && request.clearFields().contains(AgentClearableField.SPEECH_LANGUAGES)) {
+            speechLanguages = List.of(language);
+        } else if (request.speechLanguages() != null) {
+            speechLanguages = normalizeSpeechLanguages(request.speechLanguages(), language);
+        } else {
+            speechLanguages = normalizeSpeechLanguages(existing.speechLanguages(), language);
+        }
+
         // Checked against the mode the agent will have after this edit, not the one it had:
         // switching to REALTIME and picking a realtime voice arrives as a single request.
         PipelineMode pipelineMode = engineRequest.mode() != null
@@ -347,6 +359,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .mode(request.mode() != null ? request.mode() : (scriptRequest.mode() != null ? AiAgentMode.fromScenarioMode(scriptRequest.mode()) : existing.mode()))
                 .description(request.description() != null ? request.description().trim() : existing.description())
                 .language(language)
+                .speechLanguages(speechLanguages)
                 .persona(request.persona() != null ? request.persona() : existing.persona())
                 .script(new AiAgentScript(
                         scriptRequest.templateId() != null ? scriptRequest.templateId() : script.templateId(),
@@ -679,6 +692,7 @@ public class AiAgentService implements AiAgentUseCase {
                 case VOICEMAIL_MESSAGE -> behaviourRequest != null ? behaviourRequest.voicemailMessage() : null;
                 case FAST_LLM_MODEL -> request.fastLlmModel();
                 case GREETING_PAUSE -> request.greeting() != null ? request.greeting().pauseBeforeSpeakingMs() : null;
+                case SPEECH_LANGUAGES -> request.speechLanguages();
             };
             if (given != null) {
                 throw new ValidationException(ErrorCode.AI_AGENT_CLEAR_FIELD_CONFLICT, field);
@@ -691,6 +705,9 @@ public class AiAgentService implements AiAgentUseCase {
         Set<AgentClearableField> fields = request.clearFields();
         if (fields == null || fields.isEmpty()) {
             return agent;
+        }
+        if (fields.contains(AgentClearableField.SPEECH_LANGUAGES)) {
+            agent = agent.toBuilder().speechLanguages(List.of(agent.language())).build();
         }
         AiAgentCallBehaviour behaviour = agent.callBehaviour();
         AgentGreeting greeting = agent.greeting();
@@ -715,5 +732,18 @@ public class AiAgentService implements AiAgentUseCase {
                         behaviour.autoEscalateOnFrustration(),
                         behaviour.frustrationThreshold()))
                 .build();
+    }
+
+    private static List<String> normalizeSpeechLanguages(List<String> requested, String primaryLanguage) {
+        Set<String> set = new LinkedHashSet<>();
+        set.add(primaryLanguage);
+        if (requested != null) {
+            for (String lang : requested) {
+                if (lang != null && !lang.isBlank()) {
+                    set.add(CompanyValidator.resolveLanguageCode(lang));
+                }
+            }
+        }
+        return List.copyOf(set);
     }
 }

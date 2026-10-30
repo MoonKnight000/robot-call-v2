@@ -61,6 +61,11 @@ public class AiAgentControllerImpl implements AiAgentController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<List<SpeechLanguageRow>>> getSpeechLanguages() {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentCatalogUseCase.findSpeechLanguages()));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<AiAgentRow>> create(long companyId, CreateAiAgentRequest request) {
         return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.createAgent(companyId, request)));
     }

@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
 import uz.murodjon.robotcallv2.agent.dialog.DialogTechnicalSnapshot;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -37,7 +38,7 @@ class GhostCallReaper {
     private final DialogProperties dialogProperties;
     private final AsteriskProperties asteriskProperties;
     private final Clock clock;
-    private final AriClient ariClient;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
 
     GhostCallReaper(CallSessionRegistry callSessionRegistry,
                     FlowCallRegistry flowCallRegistry,
@@ -47,7 +48,7 @@ class GhostCallReaper {
                     DialogProperties dialogProperties,
                     AsteriskProperties asteriskProperties,
                     Clock clock,
-                    AriClient ariClient) {
+                    TelephonyGatewayResolver telephonyGatewayResolver) {
         this.callSessionRegistry = callSessionRegistry;
         this.flowCallRegistry = flowCallRegistry;
         this.pbxLegService = pbxLegService;
@@ -56,7 +57,7 @@ class GhostCallReaper {
         this.dialogProperties = dialogProperties;
         this.asteriskProperties = asteriskProperties;
         this.clock = clock;
-        this.ariClient = ariClient;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
     }
 
     @Scheduled(fixedDelay = 30_000)
@@ -80,7 +81,7 @@ class GhostCallReaper {
                     log.error("[{}] GHOST CALL DETECTED: call active for {}s (limit {}s) without StasisEnd. Forcing teardown.",
                             session.channelId(), elapsed, limit);
                     try {
-                        ariClient.hangup(session.channelId());
+                        telephonyGatewayResolver.findByCallId(session.channelId()).hangup(session.channelId());
                     } catch (Exception e) {
                         log.debug("[{}] Ghost call hangup attempt failed: {}", session.channelId(), e.getMessage());
                     }

@@ -35,4 +35,16 @@ public interface ToolUseCase {
 
     /** Runs the tool once with the given arguments, as the model would, and returns what it would see. */
     ToolTestResponse testTool(long companyId, long id, TestToolRequest request);
+
+    /**
+     * Checks a tool definition that no company owns (a platform template) and builds it — nothing is
+     * stored. The address is not required to be public: the caller decides what it is relative to.
+     */
+    Tool buildTemplate(CreateToolRequest request);
+
+    /** A template as the request that would build it again — what an admin screen edits. */
+    CreateToolRequest toTemplateRequest(Tool template);
+
+    /** Runs a ready tool once, as {@link #testTool} does, without it being a stored tool of anyone. */
+    ToolTestResponse testResolvedTool(Tool tool, TestToolRequest request);
 }

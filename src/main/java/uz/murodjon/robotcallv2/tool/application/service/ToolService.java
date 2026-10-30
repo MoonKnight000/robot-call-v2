@@ -179,6 +179,11 @@ public class ToolService implements ToolUseCase {
         Tool tool = toolRepository.findByCompanyIdAndId(companyId, id)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.TOOL_NOT_FOUND, id));
         log.info("Test run of tool {} for company {}", id, companyId);
+        return testResolvedTool(tool, request);
+    }
+
+    @Override
+    public ToolTestResponse testResolvedTool(Tool tool, TestToolRequest request) {
         String result = httpToolExecutor.executeForTest(tool,
                 request != null ? request.variables() : null, request != null ? request.args() : null);
         try {
@@ -186,6 +191,19 @@ public class ToolService implements ToolUseCase {
         } catch (Exception e) {
             return new ToolTestResponse(Map.of("raw", result));
         }
+    }
+
+    @Override
+    public Tool buildTemplate(CreateToolRequest request) {
+        requireValidMapping(request.responseMapping());
+        Tool template = mapper.fromTemplateRequest(request);
+        ToolValidator.validateBody(template.http().body(), template.http().bodySchema());
+        return template;
+    }
+
+    @Override
+    public CreateToolRequest toTemplateRequest(Tool template) {
+        return mapper.toCreateRequest(template);
     }
 
     @Override

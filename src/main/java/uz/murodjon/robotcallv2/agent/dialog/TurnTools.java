@@ -22,6 +22,7 @@ import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -59,9 +60,11 @@ public class TurnTools {
     private final StageScriptRunner stageScriptRunner;
     private final CrmCatalogUseCase crmCatalog;
     private final ClientMemoryUseCase clientMemory;
+    private final CrmUseCase crmUseCase;
+    private final IntegrationHttpToolFactory integrationHttpToolFactory;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null, null, null, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -73,7 +76,9 @@ public class TurnTools {
             CatalogSearchUseCase catalogSearch,
             StageScriptRunner stageScriptRunner,
             CrmCatalogUseCase crmCatalog,
-            ClientMemoryUseCase clientMemory
+            ClientMemoryUseCase clientMemory,
+            CrmUseCase crmUseCase,
+            IntegrationHttpToolFactory integrationHttpToolFactory
     ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
@@ -83,6 +88,8 @@ public class TurnTools {
         this.stageScriptRunner = stageScriptRunner;
         this.crmCatalog = crmCatalog;
         this.clientMemory = clientMemory;
+        this.crmUseCase = crmUseCase;
+        this.integrationHttpToolFactory = integrationHttpToolFactory;
     }
 
     /**
@@ -152,6 +159,8 @@ public class TurnTools {
         callbacks.addAll(catalog);
         List<ToolCallback> realEstate = realEstateTools(s);
         callbacks.addAll(realEstate);
+        List<ToolCallback> integration = integrationTools(s);
+        callbacks.addAll(integration);
         if (!dialogProperties.stateScopedTools()) {
             return callbacks;
         }
@@ -164,6 +173,7 @@ public class TurnTools {
         mcp.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         catalog.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         realEstate.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
+        integration.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         return callbacks.stream()
                 .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
                 .toList();
@@ -218,17 +228,33 @@ public class TurnTools {
         if (crmCatalog == null) {
             return List.of();
         }
-        Boolean available = s.realEstateAvailable();
-        if (available == null) {
-            available = crmCatalog.isUysotConnected(s.companyId());
-            s.setRealEstateAvailable(available);
+        Set<String> enabled = s.crmToolNames();
+        if (enabled == null) {
+            enabled = crmCatalog.findEnabledToolNames(s.companyId());
+            s.setCrmToolNames(enabled);
         }
-        if (!available) {
+        Map<String, String> descriptions = s.crmToolDescriptions();
+        if (descriptions == null) {
+            descriptions = integrationHttpToolFactory != null ? integrationHttpToolFactory.findBuiltInDescriptions() : Map.of();
+            s.setCrmToolDescriptions(descriptions);
+        }
+        return CrmToolCallbacks.build(s, s.companyId(), enabled, descriptions, crmCatalog, crmUseCase, clientMemory);
+    }
+
+    /**
+     * The HTTP tools the platform admin defined for the company's CRM. Built once per call and kept
+     * on the session: they hold the CRM token, and the list goes out on every turn.
+     */
+    private List<ToolCallback> integrationTools(DialogSession s) {
+        if (integrationHttpToolFactory == null || s.toolMocks() != null) {
             return List.of();
         }
-        return List.of(MethodToolCallbackProvider.builder()
-                .toolObjects(new RealEstateTools(s, s.companyId(), crmCatalog, clientMemory))
-                .build().getToolCallbacks());
+        List<ToolCallback> cached = s.integrationTools();
+        if (cached == null) {
+            cached = integrationHttpToolFactory.build(s, s.companyId(), buildCallVariables(s));
+            s.setIntegrationTools(cached);
+        }
+        return cached;
     }
 
     private static Set<String> declaredToolNames(ScenarioDefinition def) {

@@ -1,16 +1,17 @@
 package uz.murodjon.robotcallv2.webhook.application.port.input;
 
-import uz.murodjon.robotcallv2.webhook.application.dto.LiveKitSipWebhookRequest;
-import uz.murodjon.robotcallv2.webhook.application.dto.LiveKitSipWebhookResponse;
-
 /**
- * Inbound webhook processor for LiveKit SIP Gateway dispatch events.
+ * Webhooks from the LiveKit server (rooms and participants of LiveKit-engine calls).
  */
 public interface LiveKitWebhookUseCase {
 
     /**
-     * Evaluates an inbound LiveKit SIP call against company inbound routes and rules,
-     * returning room routing or rejection instructions.
+     * Verifies the event against the server's API secret, then acts on the phone legs in it:
+     * an inbound caller joining is routed through the inbound rules (or hung up), an
+     * outbound callee leaving settles the attempt.
+     *
+     * @param authorization the request's {@code Authorization} header (LiveKit's signed token)
+     * @param body          the raw body, exactly as signed
      */
-    LiveKitSipWebhookResponse handleSipWebhook(LiveKitSipWebhookRequest request);
+    void handleEvent(String authorization, byte[] body);
 }

@@ -154,6 +154,114 @@ services:
     # For Linux hosts, prefer host networking instead of the port mappings above:
     # network_mode: host
 
+  # --- LiveKit telephony engine (CompanyConfig.telephonyEngine = LIVEKIT, docs/LIVEKIT.md) ---
+  # Only started with the "livekit" profile: `docker compose --profile livekit up -d`, or
+  # COMPOSE_PROFILES=livekit in .env. Runs next to Asterisk, so every port differs from its:
+  # LiveKit SIP takes 5070 and RTP 10300-10400 (Asterisk: 5060, 10000-10200).
+  #
+  # Both configs are passed inline (LIVEKIT_CONFIG / SIP_CONFIG_BODY) so the API key and
+  # secret come from .env and no credential file is tracked in git. The secret must be at
+  # least 32 characters — the app signs with HS256, which refuses a shorter key. Not
+  # `:?`-required: Compose interpolates every service, so that would stop a plain
+  # Asterisk-only `up` too; a blank key makes livekit itself refuse to start instead.
+  livekit:
+    image: ${LIVEKIT_IMAGE:-livekit/livekit-server:v1.13.11}
+    container_name: robot-call-livekit
+    profiles: ["livekit"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          port_range_start: 50000
+          port_range_end: 50100
+          # true on a server behind NAT: LiveKit learns its public IP over STUN
+          use_external_ip: ${LIVEKIT_USE_EXTERNAL_IP:-false}
+        # Shared with livekit-sip: the two talk to each other over this Redis (and db).
+        redis:
+          address: redis:6379
+          db: 1
+        keys:
+          "${LIVEKIT_API_KEY:-}": "${LIVEKIT_API_SECRET:-}"
+        # Room/participant events -> LiveKitWebhookController. App run from IntelliJ instead
+        # of this compose: LIVEKIT_WEBHOOK_URL=http://host.docker.internal:8080/api/webhooks/livekit
+        webhook:
+          api_key: "${LIVEKIT_API_KEY:-}"
+          urls:
+            - ${LIVEKIT_WEBHOOK_URL:-http://app:8080/api/webhooks/livekit}
+        logging:
+          level: ${LIVEKIT_LOG_LEVEL:-info}
+    ports:
+      # HTTP API (Twirp) + WebRTC signalling. The app reaches it in-network
+      # (LIVEKIT_HOST=http://livekit:7880); publish it on 0.0.0.0 only for browser clients.
+      - "${LIVEKIT_HTTP_BIND:-127.0.0.1}:7880:7880"
+      - "7881:7881/tcp"               # WebRTC over TCP (fallback when UDP is blocked)
+      - "50000-50100:50000-50100/udp" # WebRTC media
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # LiveKit SIP: the phone side of a LiveKit call. Trunk calls (in and out) land here and are
+  # joined to a LiveKit room as a SIP participant. Trunks and the inbound dispatch rule are
+  # LiveKit API objects, not config: created once with the `lk` CLI (docs/LIVEKIT.md).
+  #
+  # NOTE on networking: like Asterisk, SIP/RTP behind Docker's bridge NAT advertises the
+  # container address in SDP. On a Linux server use `network_mode: host` (and drop `ports:`)
+  # with use_external_ip, as LiveKit's own deployment guide does.
+  livekit-sip:
+    image: ${LIVEKIT_SIP_IMAGE:-livekit/sip:latest}
+    container_name: robot-call-livekit-sip
+    profiles: ["livekit"]
+    depends_on:
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+    environment:
+      SIP_CONFIG_BODY: |
+        api_key: "${LIVEKIT_API_KEY:-}"
+        api_secret: "${LIVEKIT_API_SECRET:-}"
+        ws_url: ws://livekit:7880
+        redis:
+          address: redis:6379
+          db: 1
+        sip_port: 5070
+        rtp_port: 10300-10400
+        use_external_ip: ${LIVEKIT_USE_EXTERNAL_IP:-false}
+        logging:
+          level: ${LIVEKIT_LOG_LEVEL:-info}
+    ports:
+      - "5070:5070/udp"
+      - "5070:5070/tcp"
+      - "10300-10400:10300-10400/udp"
+    restart: unless-stopped
+
+  # The media bridge (./livekit-bridge, Go): joins each LiveKit call's room as the agent and
+  # streams the phone leg to the app's RTP port as G.711 — what externalMedia is to Asterisk.
+  # Nothing is published: the app drives it (LIVEKIT_BRIDGE_URL) and exchanges RTP with it
+  # inside this network, so the app has to run in this compose too (RTP_LOCAL_IP=app).
+  livekit-bridge:
+    build: ./livekit-bridge
+    image: robot-call-livekit-bridge
+    container_name: robot-call-livekit-bridge
+    profiles: ["livekit"]
+    depends_on:
+      livekit:
+        condition: service_started
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-}
+      # How the app reaches this container — the address it sends the agent's voice to.
+      BRIDGE_RTP_HOST: livekit-bridge
+      # Where the caller's keypad digits are reported (LiveKitBridgeController), signed with the API secret.
+      # App run from IntelliJ instead of this compose: http://host.docker.internal:8080/api/webhooks/livekit-bridge/dtmf
+      BRIDGE_APP_DTMF_URL: ${LIVEKIT_BRIDGE_DTMF_URL:-http://app:8080/api/webhooks/livekit-bridge/dtmf}
+    restart: unless-stopped
+
   # The voice-agent app. Running it here (same Docker network as Asterisk) is what
   # makes externalMedia RTP work on Docker Desktop (Windows/Mac): Asterisk sends
   # media to RTP_LOCAL_IP=app (this service's DNS name), container-to-container —
@@ -228,6 +336,10 @@ services:
       SIPTRUNK_CONFIG_DIR: /etc/asterisk/generated
       # Asterisk sends the caller's audio (externalMedia RTP) to this address.
       RTP_LOCAL_IP: app
+      # LiveKit engine (the "livekit" profile above). LIVEKIT_ENABLED, LIVEKIT_API_KEY,
+      # LIVEKIT_API_SECRET and LIVEKIT_SIP_TRUNK_ID come from .env as they are.
+      LIVEKIT_HOST: http://livekit:7880
+      LIVEKIT_BRIDGE_URL: http://livekit-bridge:8090
       MINIO_ENDPOINT: http://minio:9000
       MINIO_USER: ${MINIO_USER:-robot_call}
       MINIO_PASSWORD: ${MINIO_PASSWORD:?set MINIO_PASSWORD in .env}

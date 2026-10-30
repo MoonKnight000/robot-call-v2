@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
 import uz.murodjon.robotcallv2.agent.stt.*;
 import uz.murodjon.robotcallv2.agent.turn.*;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.agent.vad.AmdProperties;
 import uz.murodjon.robotcallv2.agent.vad.SileroVad;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
@@ -66,7 +67,7 @@ class AudioPipelineAssembler {
     private final CallMetrics callMetrics;
     private final AriEventLanes ariEventLanes;
     private final CallSessionRegistry callSessionRegistry;
-    private final AriClient ariClient;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
     private final ExecutorService callExecutor;
     private final TurnDatasetRecorder turnDatasetRecorder;
     private final ObjectProvider<NeuralDenoiser> neuralDenoiserProvider;
@@ -91,7 +92,7 @@ class AudioPipelineAssembler {
                            CallMetrics callMetrics,
                            AriEventLanes ariEventLanes,
                            CallSessionRegistry callSessionRegistry,
-                           AriClient ariClient,
+                           TelephonyGatewayResolver telephonyGatewayResolver,
                            ExecutorService callExecutor,
                            TurnDatasetRecorder turnDatasetRecorder,
                            ObjectProvider<NeuralDenoiser> neuralDenoiserProvider,
@@ -115,7 +116,7 @@ class AudioPipelineAssembler {
         this.callMetrics = callMetrics;
         this.ariEventLanes = ariEventLanes;
         this.callSessionRegistry = callSessionRegistry;
-        this.ariClient = ariClient;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
         this.callExecutor = callExecutor;
         this.turnDatasetRecorder = turnDatasetRecorder;
         this.neuralDenoiserProvider = neuralDenoiserProvider;
@@ -463,6 +464,6 @@ class AudioPipelineAssembler {
         }
 
         dialogRouter.notifyVoicemail(channelId);
-        callExecutor.execute(() -> CallMdc.with(channelId, () -> ariClient.hangup(channelId)));
+        callExecutor.execute(() -> CallMdc.with(channelId, () -> telephonyGatewayResolver.findByCallId(channelId).hangup(channelId)));
     }
 }

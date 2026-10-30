@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkCredentials;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 import uz.murodjon.robotcallv2.siptrunk.domain.service.SipTrunkValidator;
@@ -137,6 +138,16 @@ public class SipTrunkService implements SipTrunkUseCase {
     @Override
     public SipTrunkRow requireTrunk(long companyId, long id) {
         return SipTrunkRow.of(requireSipTrunk(companyId, id));
+    }
+
+    @Override
+    public SipTrunkCredentials requireCredentialsForCall(long companyId, long id) {
+        SipTrunk trunk = requireSipTrunk(companyId, id);
+        if (trunk.host() == null || trunk.sipPasswordEnc() == null) {
+            throw new ConflictException(ErrorCode.SIP_TRUNK_NOT_MANAGED, id);
+        }
+        return new SipTrunkCredentials(trunk.id(), trunk.host(), trunk.port(), trunk.transport(), trunk.sipUsername(),
+                cipher.decrypt(trunk.sipPasswordEnc()));
     }
 
     private SipTrunk requireSipTrunk(long companyId, long id) {

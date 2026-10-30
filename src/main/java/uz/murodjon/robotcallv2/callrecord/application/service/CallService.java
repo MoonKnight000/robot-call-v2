@@ -5,11 +5,13 @@ import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.ari.WebTestProperties;
 import uz.murodjon.robotcallv2.agent.queue.OperatorCallControl;
 import uz.murodjon.robotcallv2.agent.queue.OperatorFirstDialer;
-import uz.murodjon.robotcallv2.agent.queue.SupervisorMonitor;
+import uz.murodjon.robotcallv2.agent.telephony.SupervisorAccess;
+import uz.murodjon.robotcallv2.agent.telephony.WebRtcJoin;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.dto.*;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallControlUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTransferTarget;
+import uz.murodjon.robotcallv2.operator.application.dto.OperatorJoinResponse;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.security.CurrentUser;
@@ -40,20 +42,18 @@ public class CallService implements CallControlUseCase {
     private final AuditUseCase auditUseCase;
     private final WebTestProperties webTestProperties;
     private final OperatorCallControl operatorCallControl;
-    private final SupervisorMonitor supervisorMonitor;
     private final OperatorFirstDialer operatorFirstDialer;
     private final CurrentUser currentUser;
 
     public CallService(AriService ariService, ScenarioUseCase scenarioUseCase, AuditUseCase auditUseCase,
                        WebTestProperties webTestProperties, OperatorCallControl operatorCallControl,
-                       SupervisorMonitor supervisorMonitor, OperatorFirstDialer operatorFirstDialer,
+                       OperatorFirstDialer operatorFirstDialer,
                        CurrentUser currentUser) {
         this.ariService = ariService;
         this.scenarioUseCase = scenarioUseCase;
         this.auditUseCase = auditUseCase;
         this.webTestProperties = webTestProperties;
         this.operatorCallControl = operatorCallControl;
-        this.supervisorMonitor = supervisorMonitor;
         this.operatorFirstDialer = operatorFirstDialer;
         this.currentUser = currentUser;
     }
@@ -91,7 +91,8 @@ public class CallService implements CallControlUseCase {
 
     @Override
     public WebTestCallResponse startWebTest(long companyId, WebTestCallRequest request) {
-        if (webTestProperties.wsUrl() == null || webTestProperties.wsUrl().isBlank()) {
+        boolean inRoom = ariService.usesBrowserRooms(companyId);
+        if (!inRoom && (webTestProperties.wsUrl() == null || webTestProperties.wsUrl().isBlank())) {
             throw new ConflictException(ErrorCode.WEB_TEST_NOT_CONFIGURED);
         }
         int sources = (request.campaignId() != null ? 1 : 0) + (request.aiAgentId() != null ? 1 : 0)
@@ -105,8 +106,13 @@ public class CallService implements CallControlUseCase {
         }
         String sessionId = ariService.prepareWebTest(companyId, request.campaignId(), request.targetId(),
                 request.aiAgentId(), request.agentVersion(), request.scenarioId(), request.definition());
+        if (inRoom) {
+            WebRtcJoin join = ariService.openBrowserCall(companyId, sessionId);
+            return new WebTestCallResponse(sessionId, null, null, null, null, null,
+                    new OperatorJoinResponse(join.url(), join.token(), join.identity()));
+        }
         return new WebTestCallResponse(sessionId, webTestProperties.wsUrl(), webTestProperties.sipUser(),
-                webTestProperties.sipPassword(), webTestProperties.dialNumber(), WEB_TEST_SESSION_HEADER);
+                webTestProperties.sipPassword(), webTestProperties.dialNumber(), WEB_TEST_SESSION_HEADER, null);
     }
 
     private void requireValid(ScenarioDefinition definition) {
@@ -186,9 +192,11 @@ public class CallService implements CallControlUseCase {
 
     @Override
     public MonitorCallResponse monitor(long companyId, String channelId, MonitorCallRequest request) {
-        String supervisorChannel = supervisorMonitor.start(companyId, requireUserId(), channelId, request.mode());
+        SupervisorAccess access = ariService.monitorCall(companyId, requireUserId(), channelId, request.mode());
         auditUseCase.record(companyId, "CALL_MONITOR", "call", channelId, request.mode().name());
-        return new MonitorCallResponse(channelId, supervisorChannel, request.mode());
+        WebRtcJoin join = access.join();
+        return new MonitorCallResponse(channelId, access.channelId(), request.mode(),
+                join != null ? new OperatorJoinResponse(join.url(), join.token(), join.identity()) : null);
     }
 
     @Override

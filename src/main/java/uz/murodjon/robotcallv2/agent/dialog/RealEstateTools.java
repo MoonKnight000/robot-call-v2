@@ -238,6 +238,50 @@ public class RealEstateTools {
         }
     }
 
+    @Tool(description = "Reads ALL of the client's active contracts and what is owed on each: the remaining balance, "
+            + "how many days it is overdue and which monthly payments are past due. Call it when the client asks "
+            + "how much they owe in total, or when you must know every contract before talking about debt. "
+            + "State ONLY the figures returned from here — never add them up yourself.")
+    public String getDebtSummary() {
+        try {
+            String phone = session.context() != null ? session.context().phone() : null;
+            List<CrmContract> contracts = phone != null ? catalog.findActiveContractsByPhone(companyId, phone) : List.of();
+            if (contracts.isEmpty()) {
+                return NO_CONTRACT;
+            }
+            LocalDate today = LocalDate.now();
+            StringBuilder answer = new StringBuilder("Client's active contracts (most overdue first):\n");
+            contracts.stream()
+                    .sorted((a, b) -> Integer.compare(b.delayDays(), a.delayDays()))
+                    .limit(MAX_DUES)
+                    .forEach(c -> {
+                        answer.append("- contract ").append(safe(c.number()));
+                        appendFigure(answer, ", remaining", c.residue(), c.currency());
+                        answer.append(c.delayDays() > 0 ? ", overdue by " + c.delayDays() + " days" : ", on schedule");
+                        List<CrmPaymentDue> pastDue = catalog.findPaymentSchedule(companyId, c.id()).stream()
+                                .filter(due -> !due.paid() && due.date() != null && due.date().isBefore(today))
+                                .toList();
+                        if (!pastDue.isEmpty()) {
+                            answer.append(", past-due payments:");
+                            pastDue.stream().limit(MAX_DUES).forEach(due -> {
+                                answer.append(' ').append(due.date());
+                                appendFigure(answer, ":", due.remaining() != null ? due.remaining() : due.amount(),
+                                        c.currency());
+                                answer.append(';');
+                            });
+                        }
+                        answer.append('\n');
+                    });
+            contracts.stream().filter(c -> c.responsibleEmployeeId() != null).findFirst().ifPresent(this::rememberResponsible);
+            String result = answer.toString();
+            session.recordToolFigures(FactGuard.figuresIn(result));
+            return result;
+        } catch (Exception e) {
+            log.warn("[{}] debt summary read failed: {}", session.channelId(), e.getMessage());
+            return NOT_AVAILABLE;
+        }
+    }
+
     @Tool(description = "Asks the client's own sales or contract manager to call them back. Call it when the client "
             + "wants a person to call, has a question you cannot answer, or wants to discuss terms or a discount.")
     public String requestManagerCallback(

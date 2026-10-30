@@ -63,6 +63,7 @@ public class OperatorPresenceService implements OperatorPresenceUseCase {
         return presence != null ? presence : OperatorPresence.offline(userId, companyId, clock.instant());
     }
 
+    @Override
     public List<OperatorPresence> findByCompany(long companyId) {
         resetCountersOnNewDay();
         return presences.values().stream().filter(p -> p.companyId() == companyId).toList();

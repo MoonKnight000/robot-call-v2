@@ -94,7 +94,9 @@ kompaniyaning DNC ro'yxatida), `409 CALL_BALANCE_INSUFFICIENT` (faqat `BILLING_E
 bo'lganda, balans bitta qo'ng'iroq zaxirasidan kam), `404 SIP_TRUNK_NOT_FOUND` (berilgan `sipTrunkId`
 topilmadi — endi boshqa trunk'ka jimgina o'tilmaydi), `409 SIP_TRUNK_NONE_CONFIGURED` (kompaniyaning o'z
 trunk'i yo'q; platforma trunk'i faqat platforma kompaniyasining qo'ng'iroqlarini olib chiqadi),
-`502 ARI_ORIGINATE_FAILED`. Trunk sababli rad etilgan qo'ng'iroq ham `call_attempt` da `FAILED` bo'lib
+`502 ARI_ORIGINATE_FAILED`, `409 LIVEKIT_DISABLED` /
+`409 LIVEKIT_NOT_CONFIGURED` (serverda LiveKit o'chiq yoki sozlanmagan), `409 SIP_TRUNK_NOT_MANAGED` (LiveKit
+kompaniyasining trunk'i manual — [sip-trunks.md](sip-trunks.md)), `502 LIVEKIT_REQUEST_FAILED`. Trunk sababli rad etilgan qo'ng'iroq ham `call_attempt` da `FAILED` bo'lib
 yoziladi. Kampaniya dialerida trunk'i yo'q kompaniyaning kampaniyasi `PAUSED` qilinadi. Bu uch tekshiruv
 (to'xtatilgan kompaniya, DNC, balans) operator, callback, navbatdan tashqi raqamga yo'naltirish va
 konsultatsiya qo'ng'iroqlariga ham qo'llanadi — ilgari ularni faqat kampaniya dialeri tekshirardi.
@@ -215,6 +217,22 @@ Endpoint qo'ng'iroq qilmaydi — u bir martalik **sessiya** yaratadi va brauzer 
 **Xatolar:** `400 WEB_TEST_SOURCE_INVALID` (bir nechta manba, `targetId` `campaignId`siz yoki `agentVersion` `campaignId`/`aiAgentId`siz), `400 SCENARIO_DEFINITION_INVALID` (`definition` noto'g'ri; muammolar `errors` ro'yxatida), `404 CAMPAIGN_NOT_FOUND` / `TARGET_NOT_FOUND` / `SCENARIO_NOT_FOUND` / `AI_AGENT_NOT_FOUND` / `AI_AGENT_VERSION_NOT_FOUND`, `409 CAMPAIGN_NOT_AI` (kampaniyada AI agent yo'q — operator kampaniyasi)
 (`scenarioId` boshqa kompaniyaniki bo'lsa ham — test qo'ng'irog'i endi doim chaqiruvchi kompaniya nomidan ishlaydi), `403 COMPANY_SUSPENDED`,
 `409 CALL_BALANCE_INSUFFICIENT` (faqat `BILLING_ENFORCE_BALANCE=true` bo'lganda), `409 WEB_TEST_NOT_CONFIGURED` (serverda `ws-url` bo'sh).
+
+**LiveKit dvigatelida** ([../LIVEKIT.md](../LIVEKIT.md)) SIP maydonlari (`wsUrl`, `sipUser`, `sipPassword`,
+`dialNumber`, `sessionHeader`) `null`, o'rniga `join` keladi — brauzer `livekit-client` bilan `join.url` ga
+`join.token` bilan ulanadi va mikrofonini nashr etadi (`identity` = `browser-caller`):
+
+```json
+{
+  "sessionId": "6f1c2a4e-3b7d-4c1e-9a0f-2d5e8b7c1a90",
+  "wsUrl": null, "sipUser": null, "sipPassword": null, "dialNumber": null, "sessionHeader": null,
+  "join": { "url": "wss://livekit.example.com", "token": "eyJhbGci...", "identity": "browser-caller" }
+}
+```
+
+Brauzer xonaga qo'shilganda qo'ng'iroq boshlanadi (sessiya shu paytda "olinadi", bir martalik, 5 daqiqa
+amal qiladi); brauzer chiqsa qo'ng'iroq tugaydi. Qo'shimcha xatolar: `409 LIVEKIT_DISABLED`,
+`409 LIVEKIT_NOT_CONFIGURED` (`LIVEKIT_PUBLIC_URL`). `WEB_TEST_NOT_CONFIGURED` bu dvigatelda tekshirilmaydi.
 
 ### Frontend oqimi
 
@@ -574,11 +592,19 @@ uning jiringlayotgan liniyasi ham uziladi. Operator mijozga qaytariladi.
 
 Huquq: **CALL_MONITOR** (tizim rollaridan `SUPERVISOR`, `ADMIN`, `DEVELOPER` da bor).
 
-Brauzerga audio kelmaydi — so'rovdan keyin **supervayzerning o'z softfoni jiringlaydi**. Bu joriy
+Asterisk dvigatelida brauzerga audio kelmaydi — so'rovdan keyin **supervayzerning o'z softfoni jiringlaydi**. Bu joriy
 foydalanuvchining SIP akkaunti ([operators.md](operators.md)); telefon 30 soniya jiringlaydi,
 caller ID: `"Monitoring" <listen|whisper|barge>`. Supervayzer ko'targach, qo'ng'iroqqa tanlangan
 rejimda qo'shiladi. Kuzatuvni tugatish uchun supervayzer go'shakni qo'yadi. Kuzatilayotgan
 qo'ng'iroq tugasa, supervayzer ham avtomatik uziladi.
+
+**LiveKit dvigatelida** ([../LIVEKIT.md](../LIVEKIT.md)) softfon jiringlamaydi: javobdagi `join` bilan
+supervayzer **brauzerdan** qo'ng'iroq xonasiga WebRTC orqali qo'shiladi (`livekit-client`: `url` ga `token`
+bilan ulanish; `LISTEN` da mikrofon nashr etilmaydi). `LISTEN` da supervayzer xonada ko'rinmaydi va
+eshitilmaydi (`identity` = `sv-<userId>`); `BARGE` da mikrofoni qo'ng'iroqqa ketadi — mijoz eshitadi, AI agent
+ishlayotgan bo'lsa u ham eshitadi. `WHISPER` bu dvigatelda yo'q (`409 LIVEKIT_MONITOR_MODE_UNSUPPORTED`):
+xonadagi hamma har bir ovozni eshitadi, faqat operatorga pichirlab bo'lmaydi. Qo'ng'iroq tugaganda xona
+yopiladi va supervayzer uziladi.
 
 **Request Body** (`MonitorCallRequest`):
 
@@ -611,7 +637,8 @@ qo'ng'iroq tugasa, supervayzer ham avtomatik uziladi.
 | Maydon | Izoh |
 |---|---|
 | `channelId` | Kuzatilayotgan mijoz kanali |
-| `supervisorChannelId` | Supervayzerning jiringlayotgan telefon kanali |
+| `supervisorChannelId` | Supervayzerning jiringlayotgan telefon kanali; LiveKit dvigatelida `null` |
+| `join` | LiveKit dvigatelida brauzer ulanadigan `{url, token, identity}` (token faqat shu xona uchun, 10 daqiqa); Asterisk'da `null` |
 | `mode` | So'ralgan rejim |
 
 Timeline'ga `MONITOR` hodisasi (`userId`, `mode`) telefon jiringlagan paytda yoziladi —
@@ -620,7 +647,7 @@ supervayzer ko'tarmasa ham.
 **Xatolar:** `400 VALIDATION_FAILED` (`mode` yo'q), `403 NO_USER_SESSION` (`X-Api-Key` bilan
 chaqirilgan — foydalanuvchi yo'q), `404 OPERATOR_SIP_ACCOUNT_NOT_FOUND` (joriy foydalanuvchida SIP
 akkaunt yo'q), `409 CALL_NOT_ACTIVE` (kanal jonli emas yoki boshqa kompaniyaniki),
-`409 CALL_NOT_WITH_OPERATOR` (`WHISPER`, lekin qo'ng'iroqda operator yo'q),
+`409 CALL_NOT_WITH_OPERATOR` (`WHISPER`, lekin qo'ng'iroqda operator yo'q), `409 LIVEKIT_MONITOR_MODE_UNSUPPORTED` (`WHISPER`, kompaniya LiveKit dvigatelida), `409 LIVEKIT_NOT_CONFIGURED` (`LIVEKIT_PUBLIC_URL` yo'q),
 `502 ARI_ORIGINATE_FAILED` / `ARI_NOT_CONNECTED`. Supervayzer ko'targandan keyin ulab bo'lmasa,
 javob allaqachon qaytgan bo'ladi — bunda uning liniyasi shunchaki uziladi.
 

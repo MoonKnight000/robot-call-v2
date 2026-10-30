@@ -1,12 +1,9 @@
 package uz.murodjon.robotcallv2.agent.ari;
 
-import ch.loway.oss.ari4java.generated.models.Channel;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
-import uz.murodjon.robotcallv2.agent.livekit.LiveKitTelephonyService;
+import uz.murodjon.robotcallv2.agent.telephony.OutboundDial;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
@@ -18,95 +15,68 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.role.domain.enums.Feature;
-import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
-import uz.murodjon.robotcallv2.dialer.application.port.input.OutboundCallTrackingUseCase;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
-import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
-import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
-import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
-import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
-import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
  * Every call this application dials out: campaign calls, manual and test calls, and the
- * outside numbers the PBX side rings. Picks the trunk, endpoint and caller id, and applies
- * the company's checks (suspension, balance, do-not-call list) before Asterisk is asked.
+ * outside numbers the PBX side rings. Applies the company's checks (suspension, balance,
+ * do-not-call list) and hands the call to the company's telephony engine to place.
  */
 @Service
 class OutboundDialService {
 
-    private static final Logger log = LoggerFactory.getLogger(OutboundDialService.class);
-
-    private final AsteriskProperties asteriskProperties;
     private final AriClient ariClient;
     private final CallAttemptUseCase callAttemptUseCase;
-    private final OutboundCallTrackingUseCase outboundCallTrackingUseCase;
     private final DialogProperties dialogProperties;
-    private final SipTrunkUseCase sipTrunkUseCase;
     private final DoNotCallUseCase doNotCallUseCase;
     private final CompanyUseCase companyUseCase;
     private final CallBillingUseCase callBillingUseCase;
-    /** Whose calls may go out over the platform's own trunk. */
-    private final CompanyProperties companyProperties;
     private final ScenarioUseCase scenarioUseCase;
     private final AiAgentUseCase aiAgentUseCase;
     private final AuditUseCase audit;
     private final PendingCallRegistry pendingCallRegistry;
-    private final TrunkCallPacer trunkCallPacer;
-    private final ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider;
     private final CompanyConfigUseCase companyConfigUseCase;
-    private final LiveKitTelephonyService liveKitTelephonyService;
+    private final OutboundRouting outboundRouting;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
 
-    OutboundDialService(AsteriskProperties asteriskProperties,
-                        AriClient ariClient,
+    OutboundDialService(AriClient ariClient,
                         CallAttemptUseCase callAttemptUseCase,
-                        OutboundCallTrackingUseCase outboundCallTrackingUseCase,
                         DialogProperties dialogProperties,
-                        SipTrunkUseCase sipTrunkUseCase,
                         DoNotCallUseCase doNotCallUseCase,
                         CompanyUseCase companyUseCase,
                         CallBillingUseCase callBillingUseCase,
-                        CompanyProperties companyProperties,
                         ScenarioUseCase scenarioUseCase,
                         AiAgentUseCase aiAgentUseCase,
                         AuditUseCase audit,
                         PendingCallRegistry pendingCallRegistry,
-                        TrunkCallPacer trunkCallPacer,
-                        ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider,
                         CompanyConfigUseCase companyConfigUseCase,
-                        LiveKitTelephonyService liveKitTelephonyService) {
-        this.asteriskProperties = asteriskProperties;
+                        OutboundRouting outboundRouting,
+                        TelephonyGatewayResolver telephonyGatewayResolver) {
         this.ariClient = ariClient;
         this.callAttemptUseCase = callAttemptUseCase;
-        this.outboundCallTrackingUseCase = outboundCallTrackingUseCase;
         this.dialogProperties = dialogProperties;
-        this.sipTrunkUseCase = sipTrunkUseCase;
         this.doNotCallUseCase = doNotCallUseCase;
         this.companyUseCase = companyUseCase;
         this.callBillingUseCase = callBillingUseCase;
-        this.companyProperties = companyProperties;
         this.scenarioUseCase = scenarioUseCase;
         this.aiAgentUseCase = aiAgentUseCase;
         this.audit = audit;
         this.pendingCallRegistry = pendingCallRegistry;
-        this.trunkCallPacer = trunkCallPacer;
-        this.callerIdPoolUseCaseProvider = callerIdPoolUseCaseProvider;
         this.companyConfigUseCase = companyConfigUseCase;
-        this.liveKitTelephonyService = liveKitTelephonyService;
+        this.outboundRouting = outboundRouting;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
     }
 
     String originate(String rawNumber, long companyId) {
@@ -124,7 +94,7 @@ class OutboundDialService {
 
     private String originate(String rawNumber, long companyId, Long sipTrunkId, OutboundCall outboundCall) {
         String number = PhoneNumbers.require(rawNumber);
-        if (!isLocalNumber(number)) {
+        if (!outboundRouting.isLocalNumber(number)) {
             if (outboundCall == null) {
                 requireDialAllowed(companyId, rawNumber, number);
             } else {
@@ -140,100 +110,9 @@ class OutboundDialService {
         String language = outboundCall != null ? outboundCall.language() : dialogProperties.language();
 
         CompanyConfig config = companyConfigUseCase.find(companyId);
-        if (config != null && config.telephonyEngine() == TelephonyEngine.LIVEKIT) {
-            return originateViaLiveKit(companyId, targetId, number, language, sipTrunkId, outboundCall, callId);
-        }
-
-        List<SipTrunkRow> candidateTrunks;
-        try {
-            candidateTrunks = isLocalNumber(number) ? Collections.singletonList(null)
-                    : resolveTrunksForCall(companyId, sipTrunkId);
-        } catch (RuntimeException e) {
-            // Refused before Asterisk was asked, but the dialer has already counted the
-            // attempt: it still leaves a row saying why.
-            callAttemptUseCase.recordUnplacedAttempt(companyId, targetId, number, language,
-                    Disposition.FAILED, "no trunk for the call: " + e.getMessage());
-            throw e;
-        }
-
-        Exception lastException = null;
-        String lastEndpoint = null;
-
-        for (int i = 0; i < candidateTrunks.size(); i++) {
-            SipTrunkRow trunk = candidateTrunks.get(i);
-            String endpoint = endpointFor(number, trunk);
-            lastEndpoint = endpoint;
-            String callerId = callerIdFor(trunk, outboundCall, companyId);
-            String dialNumber = !isLocalNumber(number) && number.startsWith("+")
-                    ? number.substring(1)
-                    : number;
-            awaitTrunkSlot(number, endpoint, trunk);
-            try {
-                // Inside the try on purpose: an ARI connection that is down is one more way
-                // for the call never to happen, and it has to leave a row like the rest.
-                var request = ariClient.requireConnection().channels()
-                        .originate("PJSIP/" + dialNumber + "@" + endpoint)
-                        .setApp(asteriskProperties.appName())
-                        .setAppArgs(callId)
-                        .setTimeout(asteriskProperties.answerTimeoutSec());
-                if (callerId != null && !callerId.isBlank()) {
-                    request.setCallerId(callerId);
-                }
-                Channel channel = request.execute();
-                String channelId = channel.getId();
-                callAttemptUseCase.startAttempt(companyId, targetId, channelId, number, language, null,
-                        outboundCall != null ? outboundCall.variantId() : null);
-                if (outboundCall != null) {
-                    outboundCallTrackingUseCase.register(channelId, outboundCall);
-                }
-                Long usedTrunkId = trunk != null ? trunk.id() : sipTrunkId;
-                log.info("Originated call {} to {} (dial={}) via {} (trunkId={}) -> channel {}",
-                        callId, PhoneMasker.mask(number), PhoneMasker.mask(dialNumber), endpoint, usedTrunkId, channelId);
-                return channelId;
-            } catch (Exception e) {
-                lastException = e;
-                if (i < candidateTrunks.size() - 1) {
-                    log.warn("Originate via trunk {} ({}) failed ({}); attempting failover to next trunk...",
-                            trunk != null ? trunk.name() : "default", endpoint, e.getMessage());
-                }
-            }
-        }
-
-        // Asterisk never took the call, so no channel and no ChannelDestroyed will
-        // ever arrive to close a row — write the closed row here instead, or the
-        // attempt the dialer already counted leaves no trace of why it failed.
-        callAttemptUseCase.recordUnplacedAttempt(companyId, targetId, number, language,
-                Disposition.FAILED, "originate via " + lastEndpoint + " failed: " + (lastException != null ? lastException.getMessage() : "unknown"));
-        throw new ExternalServiceException(ErrorCode.ARI_ORIGINATE_FAILED, "asterisk", lastException,
-                number, lastEndpoint, lastException != null ? lastException.getMessage() : "unknown");
-    }
-
-    /**
-     * The LiveKit engine's originate. One id names the attempt row, the tracking entry and the
-     * room, so whatever ends the call finds all three; a dispatch that fails leaves a closed row,
-     * as an Asterisk originate that fails does.
-     */
-    private String originateViaLiveKit(long companyId, long targetId, String number, String language,
-                                       Long sipTrunkId, OutboundCall outboundCall, String callId) {
-        String channelId = "livekit-" + callId;
-        SipTrunkRow trunk;
-        try {
-            trunk = isLocalNumber(number) ? null : resolveTrunkForCall(companyId, sipTrunkId);
-            liveKitTelephonyService.dispatchOutboundSipCall(liveKitTelephonyService.createCallRoom(channelId),
-                    number, callerIdFor(trunk, outboundCall, companyId));
-        } catch (RuntimeException e) {
-            callAttemptUseCase.recordUnplacedAttempt(companyId, targetId, number, language,
-                    Disposition.FAILED, "LiveKit dispatch failed: " + e.getMessage());
-            throw e;
-        }
-        callAttemptUseCase.startAttempt(companyId, targetId, channelId, number, language, null,
-                outboundCall != null ? outboundCall.variantId() : null);
-        if (outboundCall != null) {
-            outboundCallTrackingUseCase.register(channelId, outboundCall);
-        }
-        log.info("Originated LiveKit call {} to {} (trunkId={}) -> room/channel {}",
-                callId, PhoneMasker.mask(number), trunk != null ? trunk.id() : sipTrunkId, channelId);
-        return channelId;
+        TelephonyEngine engine = config != null ? config.telephonyEngine() : TelephonyEngine.ASTERISK;
+        return telephonyGatewayResolver.findByEngine(engine)
+                .originate(new OutboundDial(companyId, targetId, number, language, sipTrunkId, outboundCall, callId));
     }
 
     /**
@@ -299,96 +178,24 @@ class OutboundDialService {
         return new CallOriginateResponse(number, channelId);
     }
 
-    private List<SipTrunkRow> resolveTrunksForCall(long companyId, Long sipTrunkId) {
-        if (sipTrunkId != null) {
-            // Used or refused: dialling it over another trunk showed the callee a caller ID nobody chose.
-            return List.of(sipTrunkUseCase.requireTrunk(companyId, sipTrunkId));
-        }
-        SipTrunkRow defaultTrunk = sipTrunkUseCase.findDefaultForCall(companyId);
-        if (defaultTrunk != null) {
-            List<SipTrunkRow> allTrunks = sipTrunkUseCase.findAllEnabledForCompany(companyId);
-            if (allTrunks == null || allTrunks.size() <= 1) {
-                return List.of(defaultTrunk);
-            }
-            List<SipTrunkRow> candidates = new ArrayList<>();
-            candidates.add(defaultTrunk);
-            for (SipTrunkRow t : allTrunks) {
-                if (t.id() != defaultTrunk.id()) {
-                    candidates.add(t);
-                }
-            }
-            return candidates;
-        }
-        requirePlatformTrunkAllowed(companyId);
-        return Collections.singletonList(null);
-    }
-
-    private SipTrunkRow resolveTrunkForCall(long companyId, Long sipTrunkId) {
-        List<SipTrunkRow> trunks = resolveTrunksForCall(companyId, sipTrunkId);
-        return trunks.isEmpty() ? null : trunks.getFirst();
-    }
-
-    /**
-     * The platform's own trunk carries the platform company's calls only. Any other company
-     * without a trunk of its own is refused rather than dialled out on the platform's SIP
-     * account and caller ID.
-     */
+    /** See {@link OutboundRouting#requirePlatformTrunkAllowed}. */
     void requirePlatformTrunkAllowed(long companyId) {
-        if (companyId != companyProperties.defaultId()) {
-            throw new ConflictException(ErrorCode.SIP_TRUNK_NONE_CONFIGURED, companyId);
-        }
-    }
-
-    private boolean isLocalNumber(String number) {
-        String local = asteriskProperties.localEndpoint();
-        String pattern = asteriskProperties.localNumberPattern();
-        return local != null && !local.isBlank()
-                && pattern != null && !pattern.isBlank()
-                && number != null && number.matches(pattern);
-    }
-
-    private String endpointFor(String number, SipTrunkRow trunk) {
-        if (isLocalNumber(number)) {
-            return asteriskProperties.localEndpoint();
-        }
-        return trunk != null ? trunk.pjsipEndpoint() : asteriskProperties.trunkEndpoint();
-    }
-
-    /** Under the trunk's calls-per-second limit; the local softphone has none. */
-    private void awaitTrunkSlot(String number, String endpoint, SipTrunkRow trunk) {
-        if (!isLocalNumber(number)) {
-            trunkCallPacer.awaitSlot(endpoint, trunk != null ? trunk.maxCps() : null);
-        }
-    }
-
-    private String callerIdFor(SipTrunkRow trunk, OutboundCall outboundCall, long companyId) {
-        if (outboundCall != null && outboundCall.callerIdPoolId() != null) {
-            CallerIdPoolUseCase poolUseCase = callerIdPoolUseCaseProvider.getIfAvailable();
-            if (poolUseCase != null) {
-                try {
-                    return poolUseCase.acquireCallerId(companyId, outboundCall.callerIdPoolId());
-                } catch (RuntimeException e) {
-                    log.warn("Failed to acquire caller ID from pool {}: {}", outboundCall.callerIdPoolId(), e.getMessage());
-                }
-            }
-        }
-        if (trunk != null && trunk.callerId() != null && !trunk.callerId().isBlank()) {
-            return trunk.callerId();
-        }
-        return asteriskProperties.callerId();
+        outboundRouting.requirePlatformTrunkAllowed(companyId);
     }
 
     /** The same for an outside number, over the company's trunk and with its caller id. */
     String originateExternalToStasis(long companyId, String rawNumber, String appArgs, int timeoutSec) {
         String number = PhoneNumbers.require(rawNumber);
-        if (!isLocalNumber(number)) {
+        if (!outboundRouting.isLocalNumber(number)) {
             requireDialAllowed(companyId, rawNumber, number);
         }
-        SipTrunkRow trunk = isLocalNumber(number) ? null : resolveTrunkForCall(companyId, null);
-        String endpoint = endpointFor(number, trunk);
-        String dialNumber = !isLocalNumber(number) && number.startsWith("+") ? number.substring(1) : number;
-        awaitTrunkSlot(number, endpoint, trunk);
-        return ariClient.originateToStasis("PJSIP/" + dialNumber + "@" + endpoint, appArgs, timeoutSec, callerIdFor(trunk, null, companyId));
+        SipTrunkRow trunk = outboundRouting.isLocalNumber(number) ? null : outboundRouting.findTrunk(companyId, null);
+        String endpoint = outboundRouting.findEndpoint(number, trunk);
+        String dialNumber = !outboundRouting.isLocalNumber(number) && number.startsWith("+")
+                ? number.substring(1) : number;
+        outboundRouting.awaitTrunkSlot(number, endpoint, trunk);
+        return ariClient.originateToStasis("PJSIP/" + dialNumber + "@" + endpoint, appArgs, timeoutSec,
+                outboundRouting.findCallerId(trunk, null, companyId));
     }
 
     /** An outside number dialled for an operator (a callback, a softphone call, a preview card) — booked as a call from the start. */

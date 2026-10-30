@@ -89,7 +89,15 @@ class DtmfInputRouter {
         if (channel == null || digit == null || digit.length() != 1) {
             return;
         }
-        String channelId = channel.getId();
+        onDigit(channel.getId(), digit.charAt(0));
+    }
+
+    /**
+     * A keypad digit on {@code channelId}, whichever engine decoded it: Asterisk reports it as an ARI event
+     * ({@link #onDtmf}), a LiveKit call as a report from the media bridge.
+     */
+    void onDigit(String channelId, char key) {
+        String digit = String.valueOf(key);
         // A forwarded leg confirming with 1, then a menu or a queue — only then a dialog turn.
         if (callQueueDispatcher.onDigit(channelId, digit.charAt(0))) {
             return;
@@ -103,7 +111,6 @@ class DtmfInputRouter {
             flowCall.digits().offer(digit.charAt(0));
             return;
         }
-        char key = digit.charAt(0);
         boolean terminator = key == '#';
         if (!terminator && (key < '0' || key > '9')) {
             return;

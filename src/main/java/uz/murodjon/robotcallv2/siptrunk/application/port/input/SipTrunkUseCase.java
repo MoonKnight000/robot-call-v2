@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.siptrunk.application.port.input;
 
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkCredentials;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 
 import java.util.Collection;
@@ -20,6 +21,8 @@ public interface SipTrunkUseCase {
     PageableData<SipTrunkRow> list(long companyId, SipTrunkFilter filter);
 
     SipTrunkRow requireTrunk(long companyId, long id);
+
+    SipTrunkCredentials requireCredentialsForCall(long companyId, long id);
 
     SipTrunkRow findDefaultForCall(long companyId);
 

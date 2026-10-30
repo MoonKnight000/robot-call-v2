@@ -31,6 +31,10 @@ Har bir kompaniya bir nechta chiquvchi PJSIP trunkga ega bo'lishi mumkin (ROADMA
 
 - **Manual** — asl ROADMAP B.3 shakli. `pjsipEndpoint` — Asterisk tomonda allaqachon qo'lda sozlangan endpoint nomi (masalan `pjsip.conf`dagi `[trunk-endpoint]` yoki `[600]` bo'limi). Bu yerda faqat qaysi allaqachon-mavjud endpoint qaysi kompaniyaning qaysi qo'ng'irog'ida ishlatilishi boshqariladi — parol/login saqlanmaydi, konfiguratsiya generatsiya qilinmaydi.
 - **Managed** — haqiqiy SIP account login/paroli shu yerda kiritiladi (`host`/`sipUsername`/`sipPassword`). Backend o'zi `pjsipEndpoint`ni generatsiya qiladi (`trunk_<companyId>_<id>`), `siptrunk.service.PjsipConfigWriter` mos PJSIP bo'limlarini (`auth`/`registration`/`endpoint`/`aor`) generatsiya qilingan faylga yozadi (Asterisk uni `#tryinclude` bilan o'qiydi), va `agent.ami.AmiClient` orqali Asterisk'ga `res_pjsip.so`ni qayta yuklashni buyuradi — trunk darhol jonli bo'ladi, konteyner qayta ishga tushirilishi shart emas.
+- **LiveKit dvigateli** (`telephonyEngine = LIVEKIT`, [../LIVEKIT.md](../LIVEKIT.md)) faqat **managed** trunk orqali
+  chiqadi: `host`, `sipUsername` va shifrdan ochilgan parol har bir qo'ng'iroq bilan LiveKit'ga beriladi. Manual trunk
+  faqat Asterisk konfiguratsiyasida mavjud, shuning uchun LiveKit kompaniyasining qo'ng'irog'i u orqali
+  `409 SIP_TRUNK_NOT_MANAGED` bilan rad etiladi.
   **HD Voice / Codec sozlash:** Har bir trunk uchun alohida audio kodeklar ro'yxati (List) belgilanishi mumkin (`codecs: ["g722", "opus", "ulaw", "alaw"]`).
   **Talab:** `voice-agent.siptrunk.enabled`/`voice-agent.asterisk.ami.enabled` ikkalasi ham yoqilgan bo'lishi kerak — aks holda trunk qatori saqlanadi, lekin Asterisk'da haqiqatan ro'yxatdan o'tkazilmaydi.
 

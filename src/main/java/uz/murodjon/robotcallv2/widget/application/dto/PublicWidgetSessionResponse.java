@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.widget.application.dto;
 
+import uz.murodjon.robotcallv2.operator.application.dto.OperatorJoinResponse;
+
 /**
  * Everything the embed script needs to put a visitor through to the agent: connect a
  * SIP-over-WebSocket client to {@code wsUrl} as {@code sipUser}/{@code sipPassword} and
@@ -16,6 +18,9 @@ package uz.murodjon.robotcallv2.widget.application.dto;
  * carry a session id this application issued. Getting one costs an allowed origin and a
  * slot from the agent's call limits. If that endpoint is ever pointed at a context that
  * can dial a trunk, this response becomes toll fraud — see {@code pjsip.conf}.
+ *
+ * <p>On the LiveKit engine the five SIP fields are null and the visitor joins the call's room with
+ * {@code join}: a token for that one room, which the session id it was issued for makes single-use.
  */
 public record PublicWidgetSessionResponse(
         String sessionId,
@@ -23,6 +28,7 @@ public record PublicWidgetSessionResponse(
         String sipUser,
         String sipPassword,
         String dialNumber,
-        String sessionHeader
+        String sessionHeader,
+        OperatorJoinResponse join
 ) {
 }

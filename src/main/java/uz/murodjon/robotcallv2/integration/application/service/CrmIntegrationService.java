@@ -241,6 +241,11 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     }
 
     @Override
+    public List<CrmGrant> findGrants(long companyId) {
+        return repository.find(companyId).map(c -> readGrants(c.grantsJson())).orElse(List.of());
+    }
+
+    @Override
     public Optional<CrmConnection> findConnection(long companyId) {
         return repository.find(companyId).map(integration -> {
             if (integration.provider() == CrmProvider.UYSOT) {

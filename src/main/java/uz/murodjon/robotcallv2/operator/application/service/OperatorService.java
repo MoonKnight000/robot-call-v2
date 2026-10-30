@@ -9,13 +9,17 @@ import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
 import uz.murodjon.robotcallv2.agent.dialog.LiveCallControlHub;
 import uz.murodjon.robotcallv2.agent.dialog.OperatorSnapshot;
+import uz.murodjon.robotcallv2.agent.telephony.WebRtcJoin;
 import uz.murodjon.robotcallv2.operator.application.dto.OperatorContextResponse;
+import uz.murodjon.robotcallv2.operator.application.dto.OperatorJoinResponse;
 import uz.murodjon.robotcallv2.operator.application.dto.OperatorTakeoverResponse;
 import uz.murodjon.robotcallv2.operator.application.dto.OperatorWhisperRequest;
 import uz.murodjon.robotcallv2.operator.application.dto.OperatorWhisperResponse;
 import uz.murodjon.robotcallv2.operator.application.port.input.OperatorUseCase;
 import uz.murodjon.robotcallv2.operator.domain.event.OperatorNotificationEvent;
+import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
 /**
@@ -33,9 +37,11 @@ public class OperatorService implements OperatorUseCase {
     private final ApplicationEventPublisher eventPublisher;
     private final AriService ari;
     private final LiveCallControlHub liveCallControlHub;
+    private final CurrentUser currentUser;
 
     public OperatorService(DialogRouter dialogRouter, ApplicationEventPublisher eventPublisher, AriService ari,
-                           LiveCallControlHub liveCallControlHub) {
+                           LiveCallControlHub liveCallControlHub, CurrentUser currentUser) {
+        this.currentUser = currentUser;
         this.dialogRouter = dialogRouter;
         this.eventPublisher = eventPublisher;
         this.ari = ari;
@@ -74,6 +80,21 @@ public class OperatorService implements OperatorUseCase {
         eventPublisher.publishEvent(new OperatorNotificationEvent(companyId, "WHISPER",
                 "Supervisor: " + message, channelId));
         return new OperatorWhisperResponse(channelId, delivered ? "DELIVERED" : "NOTIFIED", message);
+    }
+
+    @Override
+    public OperatorJoinResponse acceptTransfer(long companyId, String channelId) {
+        WebRtcJoin join = ari.acceptLiveKitTransfer(companyId, requireUserId(), channelId);
+        return new OperatorJoinResponse(join.url(), join.token(), join.identity());
+    }
+
+    @Override
+    public void rejectTransfer(long companyId, String channelId) {
+        ari.declineLiveKitTransfer(companyId, requireUserId(), channelId);
+    }
+
+    private long requireUserId() {
+        return currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
     }
 
     private void requireOwned(long companyId, String channelId) {

@@ -29,6 +29,16 @@ services:
     entrypoint: ["sh", "-c", "echo 'on-prem: external IP is static, set in pjsip.conf'"]
   asterisk:
     logging: *logging
+  # Only with --profile livekit; images come from `docker load` like the app's.
+  livekit:
+    pull_policy: never
+    logging: *logging
+  livekit-sip:
+    pull_policy: never
+    logging: *logging
+  livekit-bridge:
+    pull_policy: never
+    logging: *logging
   app:
     # The image loaded from robot-call-images.tar; never built or pulled on the server.
     pull_policy: never

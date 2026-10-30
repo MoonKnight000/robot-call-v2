@@ -3,11 +3,16 @@ package uz.murodjon.robotcallv2.operator.application.port.input;
 import uz.murodjon.robotcallv2.operator.domain.entity.OperatorPresence;
 import uz.murodjon.robotcallv2.operator.domain.enums.OperatorStatus;
 
+import java.util.List;
+
 /** Every operator's live presence — what the queue asks before and after each offer. */
 public interface OperatorPresenceUseCase {
 
     /** The operator's presence right now; OFFLINE for one not seen since the start. */
     OperatorPresence find(long companyId, long userId);
+
+    /** Every operator of the company seen since the start, whatever their status. */
+    List<OperatorPresence> findByCompany(long companyId);
 
     /** A status the operator picked in the panel. */
     OperatorPresence setStatus(long companyId, long userId, OperatorStatus status, String reason);

@@ -20,13 +20,20 @@ GET http://localhost:8080/api/webhook-deliveries/listen
 Accept: text/event-stream
 Authorization: Bearer {{auth_token}}
 
-### 4. Inbound LiveKit SIP Gateway dispatch webhook (Public)
-POST http://localhost:8080/api/webhooks/livekit/sip
-Content-Type: application/json
+### 4. LiveKit server webhook (Public, signed)
+# Normally only the LiveKit server posts here. The Authorization token is an HS256 JWT signed
+# with LIVEKIT_API_SECRET, iss = LIVEKIT_API_KEY, and a "sha256" claim = base64(SHA-256(body)).
+# An unsigned request answers 403 LIVEKIT_WEBHOOK_SIGNATURE_INVALID.
+POST http://localhost:8080/api/webhooks/livekit
+Content-Type: application/webhook+json
+Authorization: {{livekit_webhook_token}}
 
 {
-  "callId": "lk-sip-call-001",
-  "caller": "+998901234567",
-  "called": "+998712000000",
-  "sipTrunkId": "trunk-livekit-main"
+  "event": "participant_joined",
+  "room": { "name": "inbound-_abc123" },
+  "participant": {
+    "identity": "sip_998901234567",
+    "kind": "SIP",
+    "attributes": { "sip.phoneNumber": "+998901234567", "sip.trunkPhoneNumber": "+998712000000" }
+  }
 }

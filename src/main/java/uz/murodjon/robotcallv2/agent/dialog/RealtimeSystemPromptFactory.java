@@ -186,6 +186,11 @@ public class RealtimeSystemPromptFactory {
             }
         }
         for (String rule : SystemPromptFactory.PLATFORM_GUARDRAILS) {
+            if (persona != AgentPersona.HUMAN_LIKE) {
+                if (rule.startsWith("NATURAL FILLERS AND BRIDGES") || rule.startsWith("NATURAL CONVERSATIONAL TONE")) {
+                    continue;
+                }
+            }
             sb.append("- ").append(rule).append('\n');
         }
         for (String rule : REALTIME_RULES) {
@@ -198,12 +203,14 @@ public class RealtimeSystemPromptFactory {
         sb.append("\nSTYLE: short, respectful, natural sentences. Ask one question at a time. ")
                 .append("First give a brief reaction to what the client said, then continue — but ")
                 .append("vary it every time. NEVER address the client as \"suhbatdoshim\", \"suhbatdosh\" or \"mijoz\". \n");
-        String warmthLine = SystemPromptFactory.warmthStyleLine(SystemPromptFactory.warmthOf(s.agent()), russian);
-        if (warmthLine != null) {
-            // No per-turn annex here to carry the caller's mood, so the matching is asked for once.
-            sb.append(warmthLine).append(' ')
-                    .append("Match the client's mood: if they are upset — calm, slower and brief; ")
-                    .append("if they are warm — be a little warmer too. No staged sympathy (\"juda afsusdaman\").\n");
+        if (persona == AgentPersona.HUMAN_LIKE) {
+            String warmthLine = SystemPromptFactory.warmthStyleLine(SystemPromptFactory.warmthOf(s.agent()), russian);
+            if (warmthLine != null) {
+                // No per-turn annex here to carry the caller's mood, so the matching is asked for once.
+                sb.append(warmthLine).append(' ')
+                        .append("Match the client's mood: if they are upset — calm, slower and brief; ")
+                        .append("if they are warm — be a little warmer too. No staged sympathy (\"juda afsusdaman\").\n");
+            }
         }
         if (!russian) {
             sb.append("ADDRESS AND IDENTITY CHECK (STRICT): \n")

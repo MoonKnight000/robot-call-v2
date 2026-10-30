@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.queue.QueueOutcome;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowGraph;
 import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowNode;
@@ -20,6 +21,7 @@ import uz.murodjon.robotcallv2.missedcall.domain.entity.MissedCallOccurrence;
 import uz.murodjon.robotcallv2.missedcall.domain.enums.MissedCallReason;
 import uz.murodjon.robotcallv2.schedule.application.port.input.BusinessScheduleUseCase;
 import uz.murodjon.robotcallv2.schedule.domain.entity.BusinessHoursVerdict;
+import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 
@@ -65,6 +67,9 @@ public class CallFlowRunner {
     private final CallAttemptUseCase callAttemptUseCase;
     private final UserUseCase userUseCase;
     private final Clock clock;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
+    private final FlowPeople flowPeople;
+    private final FlowQueueLine queueLine;
 
     /** What a flow remembers between nodes: the last schedule it asked, for "{afterHours}". */
     private static final class FlowState {
@@ -76,7 +81,12 @@ public class CallFlowRunner {
                           FlowQueueRunner queueRunner, FlowMenuReader menuReader,
                           BusinessScheduleUseCase businessScheduleUseCase, CallQueueUseCase callQueueUseCase,
                           AiAgentUseCase aiAgentUseCase, MissedCallUseCase missedCallUseCase, CallEventUseCase callEventUseCase,
-                          CallAttemptUseCase callAttemptUseCase, UserUseCase userUseCase, Clock clock) {
+                          CallAttemptUseCase callAttemptUseCase, UserUseCase userUseCase, Clock clock,
+                          TelephonyGatewayResolver telephonyGatewayResolver, FlowPeople flowPeople,
+                          FlowQueueLine queueLine) {
+        this.queueLine = queueLine;
+        this.flowPeople = flowPeople;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
         this.prompter = prompter;
         this.voicemailRecorder = voicemailRecorder;
         this.webhookClient = webhookClient;
@@ -150,16 +160,21 @@ public class CallFlowRunner {
                 CallFlowExit exit = queueRunner.runAgent(call, node.aiAgentId());
                 if (exit == CallFlowExit.TRANSFER && node.exit(CallFlowExit.TRANSFER) == null) {
                     Long queueId = agentTransferQueue(call, node.aiAgentId());
-                    if (queueId != null) {
+                    if (queueId != null && isAsterisk(call)) {
                         queueRunner.waitAndSettle(call, queueId);
                         yield null;
+                    }
+                    if (!isAsterisk(call)) {
+                        yield queueId != null ? lineExit(call, node, callQueueUseCase.findQueue(call.companyId(), queueId))
+                                : withoutPeople(call, node);
                     }
                 }
                 yield node.exit(exit);
             }
             case QUEUE -> {
                 CallQueue queue = callQueueUseCase.findQueue(call.companyId(), node.queueId());
-                QueueOutcome outcome = queueRunner.waitInQueue(call, queue);
+                QueueOutcome outcome = isAsterisk(call) ? queueRunner.waitInQueue(call, queue)
+                        : queueLine.waitInQueue(call, queue);
                 yield switch (outcome) {
                     case ANSWERED, RESOLVED_BY_AGENT -> node.exit(CallFlowExit.ANSWERED);
                     case CALLBACK -> {
@@ -167,16 +182,21 @@ public class CallFlowRunner {
                         yield node.exit(CallFlowExit.CALLBACK);
                     }
                     case OVERFLOW -> node.exit(CallFlowExit.OVERFLOW) != null
-                            ? node.exit(CallFlowExit.OVERFLOW) : queueRunner.applyOverflow(call, queue);
+                            ? node.exit(CallFlowExit.OVERFLOW)
+                            : isAsterisk(call) ? queueRunner.applyOverflow(call, queue) : withoutPeople(call, node);
                     case ABANDONED, NO_ANSWER -> null;
                 };
             }
             case RING_GROUP, EXTENSION -> {
+                if (!isAsterisk(call)) {
+                    yield peopleExit(call, node, flowPeople.ringUsers(call, node.userIds(), ringSeconds(node)));
+                }
                 QueueOutcome outcome = queueRunner.ringUsers(call, node.userIds(), ringSeconds(node),
                         node.type() == CallFlowNodeType.RING_GROUP ? CallQueueStrategy.RING_ALL : CallQueueStrategy.LEAST_RECENT);
                 yield exitFor(node, outcome);
             }
-            case FORWARD_EXTERNAL -> exitFor(node,
+            case FORWARD_EXTERNAL -> !isAsterisk(call)
+                    ? peopleExit(call, node, flowPeople.forward(call, node.phoneNumber(), ringSeconds(node))) : exitFor(node,
                     queueRunner.forward(call, node.phoneNumber(), ringSeconds(node), Boolean.TRUE.equals(node.confirmAnswer())));
             case VOICEMAIL -> {
                 Long messageId = voicemailRecorder.record(call, node.voicemailBoxId());
@@ -240,8 +260,10 @@ public class CallFlowRunner {
                     if (user != null) {
                         callEventUseCase.record(call.companyId(), call.callAttemptId(), CallEventType.DTMF,
                                 "key", entry, "extension", true);
-                        QueueOutcome outcome = queueRunner.ringUsers(call, List.of(user.id()),
-                                FlowQueueRunner.DEFAULT_RING_SEC, CallQueueStrategy.LEAST_RECENT);
+                        QueueOutcome outcome = isAsterisk(call)
+                                ? queueRunner.ringUsers(call, List.of(user.id()), FlowQueueRunner.DEFAULT_RING_SEC,
+                                CallQueueStrategy.LEAST_RECENT)
+                                : flowPeople.ringUsers(call, List.of(user.id()), FlowQueueRunner.DEFAULT_RING_SEC);
                         if (outcome == QueueOutcome.ANSWERED || outcome == QueueOutcome.ABANDONED) {
                             return null;
                         }
@@ -314,6 +336,48 @@ public class CallFlowRunner {
         Instant now = clock.instant();
         return callAttemptUseCase.findAnsweredCalls(call.companyId(), call.callerNumber(), now.minus(REPEAT_CALLER_WINDOW), now)
                 .stream().anyMatch(answered -> answered.callAttemptId() != call.callAttemptId());
+    }
+
+    /**
+     * Whether this call is on Asterisk, whose queues, rings and forwards {@link FlowQueueRunner} runs;
+     * any other engine reaches people through {@link FlowPeople}.
+     */
+    private boolean isAsterisk(FlowCall call) {
+        return telephonyGatewayResolver.findByCallId(call.channelId()).findEngine() == TelephonyEngine.ASTERISK;
+    }
+
+    /** An AI agent's hand-over to its transfer queue on an engine without a dispatcher: the waiting line, then where the flow goes. */
+    private String lineExit(FlowCall call, CallFlowNode node, CallQueue queue) throws InterruptedException {
+        QueueOutcome outcome = queueLine.waitInQueue(call, queue);
+        return switch (outcome) {
+            case ANSWERED, RESOLVED_BY_AGENT, ABANDONED -> null;
+            case CALLBACK -> {
+                queueRunner.queueCallback(call, queue);
+                yield null;
+            }
+            default -> withoutPeople(call, node);
+        };
+    }
+
+    /** Where a flow goes after {@link FlowPeople} tried a person; nobody taking the call is {@link #withoutPeople}. */
+    private String peopleExit(FlowCall call, CallFlowNode node, QueueOutcome outcome) throws InterruptedException {
+        return switch (outcome) {
+            case ANSWERED, RESOLVED_BY_AGENT -> node.exit(CallFlowExit.ANSWERED);
+            case ABANDONED -> null;
+            default -> withoutPeople(call, node);
+        };
+    }
+
+    /** A node whose people did not take the call: its no-answer exit, or the caller is told and let go. */
+    private String withoutPeople(FlowCall call, CallFlowNode node) throws InterruptedException {
+        log.info("[{}] nobody took the call at {} node — taking its no-answer exit", call.channelId(), node.type());
+        call.setMissedReason(MissedCallReason.NO_OPERATOR);
+        String exit = node.exit(CallFlowExit.NO_ANSWER) != null ? node.exit(CallFlowExit.NO_ANSWER)
+                : node.exit(CallFlowExit.OVERFLOW);
+        if (exit == null) {
+            prompter.say(call, PbxPhrases.overflow(call.language()), false);
+        }
+        return exit;
     }
 
     private Long agentTransferQueue(FlowCall call, long agentId) {

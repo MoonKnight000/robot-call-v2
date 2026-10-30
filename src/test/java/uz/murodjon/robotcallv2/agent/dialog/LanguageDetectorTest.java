@@ -48,4 +48,20 @@ class LanguageDetectorTest {
         assertNull(detector.detect("bank", candidates));
         assertNull(detector.detect("karta", candidates));
     }
+
+    @Test
+    void detectsEnglishWhenTheAgentSpeaksIt() {
+        List<String> withEnglish = List.of("uz-UZ", "en-US");
+
+        assertEquals("en-US", detector.detect("Hello, can you speak english please", withEnglish));
+        assertEquals("uz-UZ", detector.detect("Ertaga to'layman, kartaga tashlang", withEnglish));
+    }
+
+    @Test
+    void doesNotGuessUzbekForLatinTextWhenALanguageWithoutAWordListIsAmongTheCandidates() {
+        List<String> withTurkish = List.of("uz-UZ", "tr-TR");
+
+        assertNull(detector.detect("Yarin odeme yapacagim, tesekkurler", withTurkish));
+        assertEquals("uz-UZ", detector.detect("Ertaga to'layman, kartaga tashlang", withTurkish));
+    }
 }

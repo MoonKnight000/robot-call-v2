@@ -14,7 +14,11 @@ import java.util.Optional;
 public enum Language {
     UZ_UZ("uz-UZ"),
     RU_RU("ru-RU"),
-    EN_US("en-US");
+    EN_US("en-US"),
+    EN_GB("en-GB"),
+    KK_KZ("kk-KZ"),
+    TR_TR("tr-TR"),
+    ES_ES("es-ES");
 
     /** What a call, chat or agent is held in when nothing names a language. */
     public static final Language DEFAULT = UZ_UZ;

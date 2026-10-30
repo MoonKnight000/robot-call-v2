@@ -245,6 +245,13 @@ public class SystemPromptFactory {
                 .append(". These instructions are in English for you only — every word the client hears must be in ")
                 .append(languageName(s.language())).append(".\n\n");
 
+        if (s.detectLanguages().size() > 1) {
+            sb.append("MULTILINGUAL CALL: This agent supports multiple speech languages: ")
+                    .append(String.join(", ", s.detectLanguages()))
+                    .append(". Start in ").append(languageName(s.language()))
+                    .append(". If the client speaks in another supported language, switch naturally and continue in that language.\n\n");
+        }
+
         appendCallFrame(sb, s.isInbound(), def.callPurpose(), c.goal(), c.facts());
         appendCompany(sb, s.companyName(), s.isInbound());
 
@@ -341,6 +348,17 @@ public class SystemPromptFactory {
             }
         }
         for (String rule : PLATFORM_GUARDRAILS) {
+            if (s.agentPersona() != AgentPersona.HUMAN_LIKE) {
+                if (rule.startsWith("NATURAL FILLERS AND BRIDGES") || rule.startsWith("NATURAL CONVERSATIONAL TONE")) {
+                    continue;
+                }
+            }
+            if (rule.startsWith("LANGUAGE RESTRICTION") && (s.detectLanguages().size() > 1 || !isUzbekOrRussian(s.language()))) {
+                sb.append("- LANGUAGE RESTRICTION: This call starts in ").append(languageName(s.language()))
+                        .append(". Allowed languages for this call: ").append(String.join(", ", s.detectLanguages()))
+                        .append(". Never switch to an unsupported language.\n");
+                continue;
+            }
             sb.append("- ").append(rule).append('\n');
         }
         HandbookPrompt.append(sb, s.agent());
@@ -358,7 +376,7 @@ public class SystemPromptFactory {
         // oshirilishi kutilmoqda?", two banned words in a sentence whose form was banned too.
         sb.append("SPEECH RULES — check every reply against this list:\n");
         int n = 1;
-        for (String rule : speechRules(isRussian(s.language()), warmthOf(s.agent()))) {
+        for (String rule : speechRules(isRussian(s.language()), warmthOf(s.agent()), s.agentPersona())) {
             sb.append(n++).append(". ").append(rule).append('\n');
         }
         sb.append('\n').append(examples(def, s.language())).append('\n');
@@ -462,7 +480,7 @@ public class SystemPromptFactory {
      * The style rules, one line each. Numbered by the caller, so the uz-only entries can
      * drop out of a Russian call without leaving a hole in the list.
      */
-    private static List<String> speechRules(boolean russian, SpeakingWarmth warmth) {
+    private static List<String> speechRules(boolean russian, SpeakingWarmth warmth, AgentPersona persona) {
         List<String> rules = new ArrayList<>();
         rules.add("Never use English technical words, codes, variable names or placeholders "
                 + "(e.g. dynamic_thought_or_fallback, thought, undefined). Speak only in natural spoken "
@@ -526,8 +544,10 @@ public class SystemPromptFactory {
             rules.add("Banned formal written words: \"данный\", \"осуществлять\", "
                     + "\"уважаемый клиент\", \"собеседник\", \"мой собеседник\". Choose the lively "
                     + "spoken form instead.");
-            rules.add("Talk like a live operator: use natural bridges («Смотрите...», «Хорошо...», "
-                    + "«Договорились») and concise, friendly phrasing.");
+            if (persona == AgentPersona.HUMAN_LIKE) {
+                rules.add("Talk like a live operator: use natural bridges («Смотрите...», «Хорошо...», "
+                        + "«Договорились») and concise, friendly phrasing.");
+            }
         } else {
             rules.add("Banned formal written words: \"ushbu\", \"mazkur\", \"amalga oshirish\", "
                     + "\"hurmatli mijoz\", \"hurmatli fuqaro\", \"suhbatdosh\", \"suhbatdoshim\", \"mijoz\".");
@@ -539,8 +559,12 @@ public class SystemPromptFactory {
                     + "To confirm identity, say the name inside the greeting: \"Assalomu alaykum, [Ism] aka, yaxshimisiz?\"; "
                     + "a reply that takes the name without objecting already confirms it. "
                     + "If the name is unknown, do not probe oddly for who they are — go straight to the purpose.");
-            rules.add("Natural conversation: use spoken connectors («Qarang...», «Xo'sh...», «Kelishdik») "
-                    + "and understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
+            if (persona == AgentPersona.HUMAN_LIKE) {
+                rules.add("Natural conversation: use spoken connectors («Qarang...», «Xo'sh...», «Kelishdik») "
+                        + "and understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
+            } else {
+                rules.add("Understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
+            }
             rules.add("Write in standard literary Uzbek; always write o' and g' with an apostrophe "
                     + "(so'm, to'lov, bo'yicha, qo'yaymanmi). Do not split a word or drop its "
                     + "letters — a misspelt word sounds broken in the voice too.");
@@ -965,6 +989,12 @@ public class SystemPromptFactory {
 
     private static boolean isRussian(String code) {
         return code != null && code.toLowerCase().startsWith("ru");
+    }
+
+    private static boolean isUzbekOrRussian(String code) {
+        if (code == null) return false;
+        String lower = code.toLowerCase(Locale.ROOT);
+        return lower.startsWith("uz") || lower.startsWith("ru");
     }
 
     private static String orDash(Object value) {

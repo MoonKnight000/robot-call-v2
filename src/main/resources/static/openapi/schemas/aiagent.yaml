@@ -80,6 +80,7 @@ AgentClearableField:
   - VOICEMAIL_MESSAGE
   - FAST_LLM_MODEL
   - GREETING_PAUSE
+  - SPEECH_LANGUAGES
   description: Optional agent setting `PUT /api/ai-agents/{id}` can remove through `clearFields`.
 AgentGreetingDto:
   type: object
@@ -554,8 +555,16 @@ AiAgentRow:
       type: string
     language:
       type: string
+    speechLanguages:
+      type: array
+      items:
+        type: string
+      description: "Languages a call may be held in (BCP-47, see GET /api/ai-agents/speech-languages); the agent language always leads. Update: null keeps, [] or clearFields SPEECH_LANGUAGES leaves only the agent language."
     persona:
       $ref: ../common.yaml#/schemas/AgentPersona
+    multilingual:
+      type: boolean
+      description: true when the agent holds calls in more than one language (speechLanguages plus languages it has a voice for)
     disclosureEnabled:
       type: boolean
     engineProfileId:
@@ -727,6 +736,11 @@ CreateAiAgentRequest:
       maxLength: 500
     language:
       type: string
+    speechLanguages:
+      type: array
+      items:
+        type: string
+      description: "Languages a call may be held in (BCP-47, see GET /api/ai-agents/speech-languages); the agent language always leads. Update: null keeps, [] or clearFields SPEECH_LANGUAGES leaves only the agent language."
     persona:
       $ref: ../common.yaml#/schemas/AgentPersona
     engineProfileId:
@@ -1062,6 +1076,11 @@ UpdateAiAgentRequest:
       maxLength: 500
     language:
       type: string
+    speechLanguages:
+      type: array
+      items:
+        type: string
+      description: "Languages a call may be held in (BCP-47, see GET /api/ai-agents/speech-languages); the agent language always leads. Update: null keeps, [] or clearFields SPEECH_LANGUAGES leaves only the agent language."
     persona:
       $ref: ../common.yaml#/schemas/AgentPersona
     engineProfileId:

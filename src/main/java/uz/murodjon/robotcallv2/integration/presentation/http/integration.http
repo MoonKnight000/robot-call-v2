@@ -53,3 +53,17 @@ Authorization: Bearer {{auth_token}}
 ### Disconnect Integration
 DELETE http://localhost:8080/api/settings/integrations/uysot
 Authorization: Bearer {{auth_token}}
+
+
+### Get CRM tools the agent can be offered
+GET http://localhost:8080/api/settings/integrations/tools
+Authorization: Bearer {{auth_token}}
+
+### Choose the CRM tools (every tool not listed is switched off)
+PUT http://localhost:8080/api/settings/integrations/tools
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "enabledTools": ["SEARCH_FLATS", "LIST_COMPLEXES", "GET_CONTRACT_BALANCE", "GET_DEBT_SUMMARY", "CREATE_LEAD"]
+}

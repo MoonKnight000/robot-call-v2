@@ -188,8 +188,14 @@ public class DialogSession implements DialogOutcomeSink {
     private volatile Boolean catalogAvailable;
     /** The last catalog search's answer ({@link CatalogTools}), shown again in every turn's annex until the next one. */
     private volatile String catalogResult;
-    /** Whether the company is connected to Uysot, so {@link RealEstateTools} are offered; resolved on the first turn. */
-    private volatile Boolean realEstateAvailable;
+    /** The Uysot tools this call may use ({@link CrmToolCallbacks}); empty = none; resolved on the first turn. */
+    private volatile Set<String> crmToolNames;
+
+    /** The platform admin's text for those tools, resolved with {@link #crmToolNames}. */
+    private volatile Map<String, String> crmToolDescriptions;
+
+    /** The admin-defined integration tools, built on the first turn: they carry the CRM token, which a query per turn would fetch again. */
+    private volatile List<ToolCallback> integrationTools;
 
     private final Map<String, Integer> stageAttempts = new ConcurrentHashMap<>();
     /** {@link #markBargeInPending}'s token, 0 when no barge-in is waiting to be confirmed. */
@@ -327,12 +333,28 @@ public class DialogSession implements DialogOutcomeSink {
     }
 
     /** Null until the first turn has asked. */
-    public Boolean realEstateAvailable() {
-        return realEstateAvailable;
+    public List<ToolCallback> integrationTools() {
+        return integrationTools;
     }
 
-    public void setRealEstateAvailable(boolean realEstateAvailable) {
-        this.realEstateAvailable = realEstateAvailable;
+    public void setIntegrationTools(List<ToolCallback> integrationTools) {
+        this.integrationTools = integrationTools;
+    }
+
+    public Map<String, String> crmToolDescriptions() {
+        return crmToolDescriptions;
+    }
+
+    public void setCrmToolDescriptions(Map<String, String> crmToolDescriptions) {
+        this.crmToolDescriptions = crmToolDescriptions;
+    }
+
+    public Set<String> crmToolNames() {
+        return crmToolNames;
+    }
+
+    public void setCrmToolNames(Set<String> crmToolNames) {
+        this.crmToolNames = crmToolNames;
     }
 
     @Override

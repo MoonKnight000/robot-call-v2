@@ -329,18 +329,33 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 >
 > | Qiymat | Studiya tabi | Agent nima qiladi |
 > |---|---|---|
-> | `HIGH_EMPATHY` | Shaxsiyat va ohang | Mijoz xafa bo'lsa, avval u aytgan aniq narsani bitta qisqa samimiy gap bilan tan oladi, keyin yechimga o'tadi. Sahnaviy hamdardlik baribir taqiqlangan |
+> | `HIGH_EMPATHY` | Shaxsiyat va ohang | Mijoz xafa bo'lsa, avval u aytgan aniq narsani bitta qisqa samimiy gap bilan tan oladi, keyin yechimga o'tadi (faqat `persona: HUMAN_LIKE` da ishlaydi, `AI_ASSISTANT` da qo'shilmaydi). Sahnaviy hamdardlik baribir taqiqlangan |
 > | `CONFIRM_DETAILS` | Aniqlik va format | Mijoz aytgan ism, telefon, sana, summa yoki manzilni bir marta qaytarib aytib, "ha" olgandan keyingina yozadi |
 > | `SPELL_OUT_CODES` | Aniqlik va format | Kod, buyurtma raqami va telefonni sekin, 2–3 raqamdan guruhlab aytadi |
+> | `PHONETIC_SPELLING` | Aniqlik va format | Ism, email, ko'cha yoki ID harflarini aytganda har bir harfni tanish so'z bilan beradi (uz: "A — Anor", ru: "А — Анна"), keyin to'liq yozilishini qaytarib aytib, "ha" oladi |
+> | `SPOKEN_NUMBERS` | Aniqlik va format | Raqam, sana, vaqt va pul summasini raqam/belgi bilan emas, og'zaki aytiladigan ko'rinishda (so'z bilan) yozadi — ovoz ularni tabiiy o'qiydi |
+> | `SMART_MATCHING` | Aniqlik va format | Bir narsaning yaqin variantlarini (imlo, lotin/kirill, qisqa/to'liq shakl: Alisher/Алишер, ko'cha/улица) bitta narsa deb biladi, yangi shaxs yoki joy deb olmaydi; haqiqatan noaniq bo'lsa so'raydi |
 > | `KNOWLEDGE_ONLY` | Aniqlik va format | Narx, shart, mavjudlik, muddatni faqat promptdan, bilimlar bazasidan yoki tool natijasidan aytadi; topilmasa tekshirib berishini aytib, operatorga uzatadi |
 > | `PROTECT_INSTRUCTIONS` | Ishonch va xavfsizlik | Ko'rsatmalari, tool'lari yoki skript bo'yicha ishlashini hech qachon oshkor qilmaydi |
 > | `STAY_ON_TOPIC` | Ishonch va xavfsizlik | Mavzudan tashqari so'rovni bir gap bilan rad etib, qo'ng'iroq maqsadiga qaytadi |
 > | `NO_PROFESSIONAL_ADVICE` | Ishonch va xavfsizlik | Kompaniya shartlaridan tashqari tibbiy, yuridik yoki moliyaviy maslahat bermaydi |
 >
 > Ohang — alohida qoida emas, mavjud `voice.warmth` (`RESERVED` / `BALANCED` / `WARM`). Tabiiy
-> to'ldiruvchi so'zlar, jonli operator ohangi, "bilmasa — operatorga" va "jahli chiqsa — operatorga"
-> esa platformada **har doim yoqilgan** (o'chirib bo'lmaydi), shuning uchun handbook'da qoida sifatida yo'q.
+> to'ldiruvchi so'zlar («Qarang...», «Xo'sh...», «Kelishdik») va yuqori hamdardlik (`HIGH_EMPATHY`) faqat **`persona == HUMAN_LIKE`** («Insondek»)
+> rejimida ishlaydi — `AI_ASSISTANT` rejimida bu to'ldiruvchilar ulanmaydi, agent AI yordamchisi sifatida qisqa va aniq javob beradi.
 > Agent versiyasi (publish) va klonida `handbook` ham saqlanadi.
+>
+> **`speechLanguages`** (Retell'ning "Speech Languages" tanlagichi; `POST`, `PUT` va javob qatorida; javobda yana `multilingual: boolean`) —
+> agent qo'ng'iroq o'tkaza oladigan tillar (BCP-47: `uz-UZ`, `ru-RU`, `en-US`, `en-GB`, `kk-KZ`, `tr-TR`, `es-ES`).
+> Ro'yxat `GET /api/ai-agents/speech-languages` dan olinadi (`AI_AGENT_READ`): `[{ code, name, nativeName, country, flag }]`.
+>
+> - Agentning asosiy tili (`language`) ro'yxatga doim birinchi bo'lib kiradi, takrorlar olib tashlanadi. Standart — `[language]`.
+> - **Bitta til** (`multilingual = false`): qo'ng'iroq shu tilda o'tadi, mijoz javobiga qarab avtomatik almashish **o'chiq** (Retell'ning single-select rejimi, eng aniq STT). `multilingual` agent haqiqatda gapira oladigan tillar bo'yicha hisoblanadi: ro'yxatda bitta til bo'lsa ham, boshqa tilning ovozi (`voice.perLanguage`) bo'lsa agent shu tilga o'tadi va `multilingual = true` qaytadi. Bitta tilli rejim uchun `voice.perLanguage` ham faqat shu tilni o'z ichiga olishi kerak.
+> - **Bir nechta til** (`multilingual = true`): STT shu tillarni tanlaydi; mijoz boshqa tilda ketma-ket javob bersa yoki tilni so'rasa, agent shu ro'yxat ichidagi tilga o'tadi. Promptga "multilingual call" qatori qo'shiladi.
+> - Tilning ovozi `voice.perLanguage` da bo'lmasa, shu tilda ham `voice.defaultVoice` gapiradi.
+> - Avtomatik aniqlash (mijoz javobiga qarab) hozir faqat `uz`, `ru`, `en` uchun ishlaydi. `kk`, `tr`, `es` ro'yxatda bo'lsa, ular faqat mijoz tilni **so'raganda** (`switchLanguage`) yoqiladi, lotin yozuvidagi matnga qarab Uzbek deb taxmin qilinmaydi.
+> - `PUT` da `null` — o'zgarmaydi; `[]` yoki `clearFields: ["SPEECH_LANGUAGES"]` — faqat asosiy til qoladi (ikkalasini birga yuborish — `400 AI_AGENT_CLEAR_FIELD_CONFLICT`).
+> - Noma'lum til kodi — `400 LANGUAGE_CODE_INVALID`. Agent versiyasi (publish) va klonida `speechLanguages` ham saqlanadi.
 
 > **`timezone`** (studiyadagi soat tugmasi, "Current Time Awareness") — agentning IANA vaqt zonasi
 > (`Asia/Tashkent`, `Europe/Moscow`). Promptdagi "bugun / hozir soat" va eslab qolingan qo'ng'iroqlar
@@ -487,6 +502,11 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > operatorlar band, birozdan so'ng qayta bog'laning" aytiladi, qo'ng'iroq `CALLBACK_REQUESTED` bilan
 > yopiladi (kampaniya nishoni qayta qo'ng'iroq navbatiga tushadi). Supervisor takeover'da tasdiq
 > so'ralmaydi.
+>
+> **LiveKit dvigatelidagi kompaniya** ([../LIVEKIT.md](../LIVEKIT.md)): uzatish faqat **oddiy raqamga**
+> ishlaydi — `transferPhoneNumber` (yoki bosqichning raqami), `PJSIP/` prefiksi bo'lsa olib tashlanadi.
+> Raqam kompaniyaning default trunk'i orqali chaqiriladi; brifing, "1 ni bosing" tasdig'i, `transferQueueId`
+> va `voice-agent.operator.endpoint` LiveKit'da yo'q. Javob bo'lmasa — yuqoridagidek `CALLBACK_REQUESTED`.
 > - Javobda (`AiAgentRow`, `GET .../advanced`) ham qaytadi.
 
 > **O'chirilgan maydonlar (breaking change).** Qo'ng'iroq hech qachon o'qimagan oltita maydon
@@ -573,6 +593,7 @@ faqat `PUT`):
 | `VOICEMAIL_MESSAGE` | `callBehaviour.voicemailMessage` |
 | `FAST_LLM_MODEL` | `fastLlmModel` |
 | `GREETING_PAUSE` | `greeting.pauseBeforeSpeakingMs` (platform defaultiga qaytadi) |
+| `SPEECH_LANGUAGES` | `speechLanguages` (faqat agentning asosiy tili qoladi — bitta til rejimi) |
 
 Bir xil so'rovda maydonga qiymat berib, uni `clearFields` ga ham qo'shish —
 `400 AI_AGENT_CLEAR_FIELD_CONFLICT` (hech narsa yozilmaydi). Ro'yxatda yo'q maydonlar avvalgidek

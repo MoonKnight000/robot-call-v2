@@ -1,114 +1,122 @@
 package uz.murodjon.robotcallv2.webhook.application.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.agent.ari.LiveKitCallService;
 import uz.murodjon.robotcallv2.agent.flow.InboundCallGate;
 import uz.murodjon.robotcallv2.agent.flow.InboundDecision;
 import uz.murodjon.robotcallv2.agent.livekit.LiveKitTelephonyService;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
-import uz.murodjon.robotcallv2.webhook.application.dto.LiveKitSipWebhookRequest;
-import uz.murodjon.robotcallv2.webhook.application.dto.LiveKitSipWebhookResponse;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import java.nio.charset.StandardCharsets;
+
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class LiveKitWebhookServiceTest {
 
+    private static final String DID = "998712000000";
+    private static final String CALLER = "998901234567";
+
     private InboundCallGate inboundCallGate;
     private LiveKitTelephonyService liveKitTelephonyService;
+    private LiveKitCallService liveKitCallService;
     private LiveKitWebhookService service;
 
     @BeforeEach
     void setUp() {
         inboundCallGate = mock(InboundCallGate.class);
         liveKitTelephonyService = mock(LiveKitTelephonyService.class);
-        service = new LiveKitWebhookService(inboundCallGate, liveKitTelephonyService);
+        liveKitCallService = mock(LiveKitCallService.class);
+        service = new LiveKitWebhookService(inboundCallGate, liveKitTelephonyService, liveKitCallService, new ObjectMapper());
     }
 
     @Test
-    void handleSipWebhookNullRequestReturnsReject() {
-        LiveKitSipWebhookResponse response = service.handleSipWebhook(null);
-        assertEquals("REJECT", response.action());
-        assertNotNull(response.message());
+    void unsignedWebhookIsRefusedBeforeAnythingIsRead() {
+        byte[] body = sipEvent("participant_joined", "inbound-abc", null);
+        doThrow(new ForbiddenException(ErrorCode.LIVEKIT_WEBHOOK_SIGNATURE_INVALID))
+                .when(liveKitTelephonyService).verifyWebhook(null, body);
+
+        assertThrows(ForbiddenException.class, () -> service.handleEvent(null, body));
+        verifyNoInteractions(inboundCallGate);
     }
 
     @Test
-    void handleSipWebhookAgentRouteDispatchesCall() {
+    void inboundCallerRoutedToAgentIsHandedToTheAgent() {
         InboundRoute route = mock(InboundRoute.class);
-        when(route.id()).thenReturn(10L);
-        when(route.aiAgentId()).thenReturn(20L);
+        when(inboundCallGate.decide(DID, CALLER)).thenReturn(InboundDecision.agent(route, "uz-UZ", false));
 
-        InboundDecision decision = InboundDecision.agent(route, "uz-UZ", true);
-        when(inboundCallGate.decide("+998712000000", "+998901234567")).thenReturn(decision);
-        when(liveKitTelephonyService.isEnabled()).thenReturn(true);
+        service.handleEvent("token", sipEvent("participant_joined", "inbound-abc", null));
 
-        LiveKitSipWebhookRequest request = new LiveKitSipWebhookRequest(
-                "sip-call-123", "+998901234567", "+998712000000", "my-room", "trunk-1"
-        );
-
-        LiveKitSipWebhookResponse response = service.handleSipWebhook(request);
-
-        assertEquals("ACCEPT", response.action());
-        assertEquals("my-room", response.roomName());
-        assertEquals(10L, response.routeId());
-        assertEquals(20L, response.agentId());
-        assertNull(response.callFlowId());
-        assertEquals("uz-UZ", response.language());
-        assertTrue(response.vip());
-        verify(liveKitTelephonyService).createCallRoom("my-room");
+        verify(liveKitCallService).startInboundCall("inbound-abc", route, CALLER, DID);
+        verify(liveKitTelephonyService, never()).deleteRoom(anyString());
     }
 
     @Test
-    void handleSipWebhookFlowRouteDispatchesCall() {
-        InboundRoute route = mock(InboundRoute.class);
-        when(route.id()).thenReturn(15L);
-        when(route.callFlowId()).thenReturn(35L);
+    void inboundCallerWithNoRouteIsHungUp() {
+        when(inboundCallGate.decide(DID, CALLER)).thenReturn(InboundDecision.noRoute());
 
-        InboundDecision decision = InboundDecision.flow(route, null, "ru-RU", false);
-        when(inboundCallGate.decide("+998712000000", "+998901234567")).thenReturn(decision);
+        service.handleEvent("token", sipEvent("participant_joined", "inbound-abc", null));
 
-        LiveKitSipWebhookRequest request = new LiveKitSipWebhookRequest(
-                "sip-call-456", "+998901234567", "+998712000000", null, null
-        );
-
-        LiveKitSipWebhookResponse response = service.handleSipWebhook(request);
-
-        assertEquals("ACCEPT", response.action());
-        assertEquals("inbound-sip-call-456", response.roomName());
-        assertEquals(15L, response.routeId());
-        assertNull(response.agentId());
-        assertEquals(35L, response.callFlowId());
-        assertEquals("ru-RU", response.language());
-        assertFalse(response.vip());
+        verify(liveKitTelephonyService).deleteRoom("inbound-abc");
     }
 
     @Test
-    void handleSipWebhookNoRouteReturnsReject() {
-        when(inboundCallGate.decide("+998712000000", "+998901234567")).thenReturn(InboundDecision.noRoute());
+    void phoneLegLeavingEndsTheCall() {
+        service.handleEvent("token", sipEvent("participant_left", "livekit-42", "USER_UNAVAILABLE"));
 
-        LiveKitSipWebhookRequest request = new LiveKitSipWebhookRequest(
-                "sip-call-789", "+998901234567", "+998712000000", null, null
-        );
-
-        LiveKitSipWebhookResponse response = service.handleSipWebhook(request);
-
-        assertEquals("REJECT", response.action());
-        assertTrue(response.message().contains("No route found"));
+        verify(liveKitCallService).onPhoneLegLeft("livekit-42", "sip-caller", "USER_UNAVAILABLE");
+        verifyNoInteractions(inboundCallGate);
     }
 
     @Test
-    void handleSipWebhookClosedReturnsReject() {
-        InboundRoute route = mock(InboundRoute.class);
-        InboundDecision decision = InboundDecision.closed(route, "Kompaniya hozir ishlamayapti", "uz-UZ", false, true);
-        when(inboundCallGate.decide("+998712000000", "+998901234567")).thenReturn(decision);
+    void nonSipParticipantIsIgnored() {
+        byte[] body = """
+                {"event":"participant_joined","room":{"name":"inbound-abc"},
+                 "participant":{"identity":"agent","kind":"AGENT"}}""".getBytes(StandardCharsets.UTF_8);
 
-        LiveKitSipWebhookRequest request = new LiveKitSipWebhookRequest(
-                "sip-call-999", "+998901234567", "+998712000000", null, null
-        );
+        service.handleEvent("token", body);
 
-        LiveKitSipWebhookResponse response = service.handleSipWebhook(request);
+        verifyNoInteractions(inboundCallGate);
+        verify(liveKitTelephonyService, never()).deleteRoom(anyString());
+        verifyNoInteractions(liveKitCallService);
+    }
 
-        assertEquals("REJECT", response.action());
-        assertEquals("Kompaniya hozir ishlamayapti", response.message());
+    @Test
+    void transferLegJoiningAnInboundRoomIsNotACaller() {
+        byte[] body = """
+                {"event":"participant_joined","room":{"name":"inbound-abc"},
+                 "participant":{"identity":"sip-operator","kind":"SIP",
+                  "attributes":{"sip.phoneNumber":"998901112233"}}}""".getBytes(StandardCharsets.UTF_8);
+
+        service.handleEvent("token", body);
+
+        verifyNoInteractions(inboundCallGate);
+        verify(liveKitTelephonyService, never()).deleteRoom(anyString());
+    }
+
+    @Test
+    void bodyThatIsNotJsonIsRejected() {
+        byte[] body = "not json".getBytes(StandardCharsets.UTF_8);
+
+        assertThrows(ValidationException.class, () -> service.handleEvent("token", body));
+    }
+
+    private static byte[] sipEvent(String event, String room, String disconnectReason) {
+        String reason = disconnectReason != null ? ",\"disconnectReason\":\"" + disconnectReason + "\"" : "";
+        return ("{\"event\":\"" + event + "\",\"room\":{\"name\":\"" + room + "\"},"
+                + "\"participant\":{\"identity\":\"sip-caller\",\"kind\":\"SIP\","
+                + "\"attributes\":{\"sip.phoneNumber\":\"" + CALLER + "\",\"sip.trunkPhoneNumber\":\"" + DID + "\"}"
+                + reason + "}}").getBytes(StandardCharsets.UTF_8);
     }
 }

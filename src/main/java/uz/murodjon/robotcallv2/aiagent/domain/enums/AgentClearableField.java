@@ -10,6 +10,7 @@ package uz.murodjon.robotcallv2.aiagent.domain.enums;
  * - {@link #VOICEMAIL_MESSAGE}: what the agent says to an answering machine.
  * - {@link #FAST_LLM_MODEL}: the optional second, faster model.
  * - {@link #GREETING_PAUSE}: the agent's own pause before speaking, back to the platform default.
+ * - {@link #SPEECH_LANGUAGES}: additional speech languages, back to single-language mode.
  */
 public enum AgentClearableField {
     INITIATION_WEBHOOK,
@@ -18,5 +19,6 @@ public enum AgentClearableField {
     MID_CALL_SMS_TEMPLATE,
     VOICEMAIL_MESSAGE,
     FAST_LLM_MODEL,
-    GREETING_PAUSE
+    GREETING_PAUSE,
+    SPEECH_LANGUAGES
 }

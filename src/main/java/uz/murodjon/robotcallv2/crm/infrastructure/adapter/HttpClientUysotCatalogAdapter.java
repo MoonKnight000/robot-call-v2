@@ -216,6 +216,30 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
         return types;
     }
 
+    @Override
+    public List<CrmBooking> findBookingsByPhone(CrmConnection connection, String phone) {
+        // The Open API's booking reference does not publish the filter body; the contract
+        // filter's `search` (the phone's last digits) is the only client lookup this adapter
+        // has verified, so the same is asked of bookings. A rejected body is a failed read.
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("page", 1);
+        body.put("size", 5);
+        body.put("search", phoneSuffix(phone));
+        List<CrmBooking> bookings = new ArrayList<>();
+        for (JsonNode row : rows(post(connection, require(catalogProperties.bookingFilterPath(),
+                "booking-filter-path"), body))) {
+            bookings.add(new CrmBooking(
+                    row.path("id").asLong(),
+                    firstText(row, "house.name", "houseName", "flat.house.name"),
+                    firstText(row, "flat.number", "flatNumber", "number"),
+                    firstText(row, "status", "bookingStatus"),
+                    date(row, "expireDate", "expiresAt", "endDate", "deadline"),
+                    firstDecimal(row, "amount", "bookingAmount", "payment"),
+                    firstText(row, "currency.ccy", "currencyCcy", "currency")));
+        }
+        return bookings;
+    }
+
     private ObjectNode contractFilter() {
         ObjectNode body = objectMapper.createObjectNode();
         body.put("page", 1);

@@ -156,7 +156,7 @@ class OperatorTransferService {
         }
     }
 
-    private CallOffer buildCallOffer(String channelId, CallSession session, OperatorSnapshot snapshot, String summary) {
+    CallOffer buildCallOffer(String channelId, CallSession session, OperatorSnapshot snapshot, String summary) {
         long attemptId = session.callAttemptId();
         String callerNumber = callAttemptUseCase.findPhoneByAttemptId(attemptId);
         String clientName = snapshot != null ? snapshot.clientName() : null;
@@ -176,7 +176,7 @@ class OperatorTransferService {
      * The facts and the tail of the conversation, as the operator should see them before
      * picking up; empty when the dialog has nothing to hand over.
      */
-    private static String buildHandoverSummary(OperatorSnapshot snapshot) {
+    static String buildHandoverSummary(OperatorSnapshot snapshot) {
         if (snapshot == null) {
             return "";
         }

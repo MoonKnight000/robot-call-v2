@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.aiagent.domain.service;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentVoice;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
+import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
@@ -41,6 +42,13 @@ public final class AiAgentValidator {
                 ZoneId.of(agent.timezone());
             } catch (DateTimeException e) {
                 throw new ValidationException(ErrorCode.AI_AGENT_TIMEZONE_INVALID, agent.timezone());
+            }
+        }
+        if (agent.speechLanguages() != null) {
+            for (String lang : agent.speechLanguages()) {
+                if (lang != null && !lang.isBlank() && Language.findByCode(lang).isEmpty()) {
+                    throw new ValidationException(ErrorCode.LANGUAGE_CODE_INVALID, lang, Language.codes());
+                }
             }
         }
         Double temperature = agent.temperature();

@@ -22,6 +22,7 @@ public final class AiAgentFixtures {
                 "Test agent",
                 null,
                 language,
+                List.of(language),
                 AiAgentChannel.OMNICHANNEL,
                 AiAgentMode.SINGLE_PROMPT,
                 AgentPersona.AI_ASSISTANT,

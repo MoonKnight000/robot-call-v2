@@ -1,6 +1,5 @@
 package uz.murodjon.robotcallv2.agent.ari;
 
-import ch.loway.oss.ari4java.ARI;
 import ch.loway.oss.ari4java.generated.models.StasisEnd;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +17,7 @@ import uz.murodjon.robotcallv2.agent.rtp.RtpQuality;
 import uz.murodjon.robotcallv2.agent.rtp.RtpStats;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallFinalizationUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
@@ -60,6 +60,7 @@ class CallTeardownService {
     private final DialogEngine dialogEngine;
     private final RealtimeDialogEngine realtimeDialogEngine;
     private final AriClient ariClient;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
     private final RtpPortAllocator portAllocator;
     private final OperatorCallRecorder operatorCallRecorder;
     private final RtpProperties rtpProperties;
@@ -85,6 +86,7 @@ class CallTeardownService {
                         DialogEngine dialogEngine,
                         RealtimeDialogEngine realtimeDialogEngine,
                         AriClient ariClient,
+                        TelephonyGatewayResolver telephonyGatewayResolver,
                         RtpPortAllocator portAllocator,
                         OperatorCallRecorder operatorCallRecorder,
                         RtpProperties rtpProperties,
@@ -108,6 +110,7 @@ class CallTeardownService {
         this.dialogEngine = dialogEngine;
         this.realtimeDialogEngine = realtimeDialogEngine;
         this.ariClient = ariClient;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
         this.portAllocator = portAllocator;
         this.operatorCallRecorder = operatorCallRecorder;
         this.rtpProperties = rtpProperties;
@@ -132,8 +135,11 @@ class CallTeardownService {
         CallMdc.with(channelId, () -> endStasis(channelId));
     }
 
-    /** Teardown proper, with the channel already in the MDC — {@link #onStasisEnd}. */
-    private void endStasis(String channelId) {
+    /**
+     * Teardown proper, with the channel already in the MDC — {@link #onStasisEnd}, and
+     * {@link LiveKitCallService} when a LiveKit call's phone leg leaves its room.
+     */
+    void endStasis(String channelId) {
         FlowCall flowCall = flowCallRegistry.remove(channelId);
         if (flowCall != null) {
             flowCall.markGone();
@@ -233,23 +239,11 @@ class CallTeardownService {
                         session.channelId(), HangupCause.label(cause), disposition);
             }
         }
-        // Asterisk's side first, then ours, then the port. Releasing the port while the
+        // The engine's side first, then ours, then the port. Releasing the port while the
         // externalMedia leg was still up let the next call bind it and receive the dying
         // leg's RTP — the endpoint latches onto the first sender, so that caller never
         // heard the bot.
-        ARI current = ariClient.findConnection();
-        if (current != null) {
-            try {
-                current.channels().hangup(session.extMediaChannelId()).execute();
-            } catch (Exception e) {
-                log.debug("externalMedia channel {} already gone: {}", session.extMediaChannelId(), e.getMessage());
-            }
-            try {
-                current.bridges().destroy(session.bridgeId()).execute();
-            } catch (Exception e) {
-                log.debug("Bridge {} already gone: {}", session.bridgeId(), e.getMessage());
-            }
-        }
+        telephonyGatewayResolver.findByCallId(session.channelId()).releaseMedia(session);
         // Before the endpoint closes its recorder, which the taps still write into.
         operatorCallRecorder.release(session.channelId());
         session.endpoint().close();

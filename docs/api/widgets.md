@@ -204,6 +204,12 @@ The browser connects a SIP-over-WebSocket client to `wsUrl` as `sipUser`/`sipPas
 and INVITEs `dialNumber` carrying `sessionHeader: sessionId`. From Asterisk on it is an
 ordinary call: Stasis → RTP → STT/LLM/TTS. The attempt is recorded with phone `WIDGET`.
 
+
+On the **LiveKit engine** the five SIP fields are `null` and the response carries
+`"join": { "url": "wss://…", "token": "…", "identity": "browser-caller" }` instead: the visitor's browser
+joins the call's room with `livekit-client` using that token (valid for that one room), and the call starts
+when it joins. The session id is still single-use and expires in 5 minutes; `WEB_TEST_NOT_CONFIGURED`
+is not checked on this engine, `409 LIVEKIT_NOT_CONFIGURED` (`LIVEKIT_PUBLIC_URL`) is.
 The session is **single-use** and is forgotten after **5 minutes** if the browser never
 dials in.
 

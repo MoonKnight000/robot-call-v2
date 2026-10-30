@@ -2,13 +2,21 @@
 # has a counterpart in asterisk/etc/asterisk/*.conf.
 voice-agent:
   telephony:
-    # Retell-style LiveKit WebRTC & SIP Telephony Engine
+    # LiveKit engine (CompanyConfig.telephonyEngine = LIVEKIT) — LiveKitProperties,
+    # docker-compose services livekit + livekit-sip, docs/LIVEKIT.md
     livekit:
       enabled: ${LIVEKIT_ENABLED:false}
       host: ${LIVEKIT_HOST:http://localhost:7880}
       api-key: ${LIVEKIT_API_KEY:}
       api-secret: ${LIVEKIT_API_SECRET:}
+      # The platform company's LiveKit trunk (ST_...); other companies dial their own managed trunk.
       sip-trunk-id: ${LIVEKIT_SIP_TRUNK_ID:}
+      # The LiveKit address a browser connects to (wss://...), for operators taking a transferred call.
+      public-url: ${LIVEKIT_PUBLIC_URL:}
+      # The Go media bridge (livekit-bridge/): joins each room and streams it to our RTP port.
+      bridge-url: ${LIVEKIT_BRIDGE_URL:http://localhost:8090}
+      # How long an outbound call rings before it is given up as NO_ANSWER.
+      answer-timeout-sec: ${LIVEKIT_ANSWER_TIMEOUT_SEC:30}
   # ARI (call control) — AsteriskProperties. Credentials must match ari.conf [robot_call].
   asterisk:
     enabled: ${ASTERISK_ENABLED:true}

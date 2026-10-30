@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.agent.dialog.TestContextProperties;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
+import uz.murodjon.robotcallv2.agent.telephony.WebRtcJoin;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
@@ -15,6 +17,8 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUse
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
@@ -24,6 +28,7 @@ import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 
@@ -63,6 +68,8 @@ class WebTestCallService {
     private final DialogProperties dialogProperties;
     private final AuditUseCase audit;
     private final ObjectMapper objectMapper;
+    private final CompanyConfigUseCase companyConfigUseCase;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
 
     WebTestCallService(PendingCallRegistry pendingCallRegistry,
                        OutboundDialService outboundDialService,
@@ -74,7 +81,11 @@ class WebTestCallService {
                        ScenarioUseCase scenarioUseCase,
                        DialogProperties dialogProperties,
                        AuditUseCase audit,
-                       ObjectMapper objectMapper) {
+                       ObjectMapper objectMapper,
+                       CompanyConfigUseCase companyConfigUseCase,
+                       TelephonyGatewayResolver telephonyGatewayResolver) {
+        this.companyConfigUseCase = companyConfigUseCase;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
         this.objectMapper = objectMapper;
         this.pendingCallRegistry = pendingCallRegistry;
         this.outboundDialService = outboundDialService;
@@ -86,6 +97,21 @@ class WebTestCallService {
         this.scenarioUseCase = scenarioUseCase;
         this.dialogProperties = dialogProperties;
         this.audit = audit;
+    }
+
+    /** Whether the company's browser calls go into a room (LiveKit) rather than dial in over SIP (Asterisk). */
+    boolean usesBrowserRooms(long companyId) {
+        return findEngine(companyId) != TelephonyEngine.ASTERISK;
+    }
+
+    /** See {@link uz.murodjon.robotcallv2.agent.telephony.TelephonyGateway#openBrowserCall}. */
+    WebRtcJoin openBrowserCall(long companyId, String sessionId) {
+        return telephonyGatewayResolver.findByEngine(findEngine(companyId)).openBrowserCall(sessionId);
+    }
+
+    private TelephonyEngine findEngine(long companyId) {
+        CompanyConfig config = companyConfigUseCase.find(companyId);
+        return config != null ? config.telephonyEngine() : TelephonyEngine.ASTERISK;
     }
 
     /**

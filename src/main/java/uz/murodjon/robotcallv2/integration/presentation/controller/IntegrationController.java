@@ -54,6 +54,21 @@ public interface IntegrationController {
             @RequestParam String code,
             @RequestParam String state);
 
+    /**
+     * The CRM tools the voice agent can be offered, with the company's choice. All are on
+     * until switched off; {@code granted=false} marks a tool the company's CRM grants do not cover.
+     */
+    @PreAuthorize("hasAuthority('INTEGRATION_READ')")
+    @GetMapping("/tools")
+    ResponseEntity<ResponseData<List<CrmToolRow>>> tools(@CurrentCompanyId long companyId);
+
+    /** Saves the tools the agent is offered; every tool not in {@code enabledTools} is switched off. */
+    @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
+    @PutMapping("/tools")
+    ResponseEntity<ResponseData<List<CrmToolRow>>> updateTools(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody UpdateCrmToolsRequest request);
+
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @DeleteMapping("/uysot")
     ResponseEntity<ResponseData<Void>> disconnect(@CurrentCompanyId long companyId);

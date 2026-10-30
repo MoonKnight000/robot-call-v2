@@ -339,7 +339,7 @@ class AiAgentServiceTest {
     private static CreateAiAgentRequest createRequest(AgentTemplate templateId, AgentPersona persona, Long transferQueueId,
                                                       Boolean zeroPiiRetention) {
         return new CreateAiAgentRequest(
-                " Sotuv agenti ", null, null, null, null, persona, null,
+                " Sotuv agenti ", null, null, null, null, null, persona, null,
                 new AgentScriptDto(templateId, null, null, null, null, null),
                 null, null,
                 null, null, null, null,
@@ -362,7 +362,7 @@ class AiAgentServiceTest {
     private static UpdateAiAgentRequest updateRequest(String name, Long version, AgentWebhookConfig postCallWebhook,
                                                       Set<AgentClearableField> clearFields) {
         return new UpdateAiAgentRequest(
-                name, null, null, null, null, null, null,
+                name, null, null, null, null, null, null, null,
                 null, null, null,
                 null, null, null, null,
                 null, null, null, null, null,

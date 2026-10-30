@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.application.port.input;
 
 import uz.murodjon.robotcallv2.aiagent.application.dto.EngineOptionsResponse;
+import uz.murodjon.robotcallv2.aiagent.application.dto.SpeechLanguageRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.TemplatePresetDto;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.EngineProfile;
 
@@ -18,4 +19,7 @@ public interface AiAgentCatalogUseCase {
 
     /** The profile {@code id} names; a {@code ValidationException} when this build does not offer it. */
     EngineProfile requireEngineProfile(String id);
+
+    /** Supported speech languages for agent configuration (Retell-style picker). */
+    List<SpeechLanguageRow> findSpeechLanguages();
 }

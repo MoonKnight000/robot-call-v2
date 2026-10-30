@@ -45,6 +45,13 @@ public interface AiAgentController {
     @GetMapping("/engine-profiles")
     ResponseEntity<ResponseData<List<EngineProfile>>> getEngineProfiles();
 
+    /**
+     * Supported speech languages for Retell-style agent language selection.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/speech-languages")
+    ResponseEntity<ResponseData<List<SpeechLanguageRow>>> getSpeechLanguages();
+
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping
     ResponseEntity<ResponseData<AiAgentRow>> create(

@@ -204,6 +204,15 @@ Keyin:
 `DELETE /api/settings/integrations/uysot` · `INTEGRATION_EDIT` → `data: null`.
 Token Uysot tomonida ham bekor qilinadi. Shundan keyin `status` `NOT_CONNECTED` bo'ladi.
 
+### 2.7 Vositalar (ulangandan keyin)
+
+Ulangach, agent qaysi CRM vositalarini ishlata olishini kompaniya o'zi tanlaydi:
+`GET`/`PUT /api/settings/integrations/tools` — [settings.md §5](settings.md#get-apisettingsintegrationstools--agentga-beriladigan-crm-vositalari).
+Ba'zi vositalar 2.2 dagi sukut `grants` ro'yxatida **yo'q** ruxsat talab qiladi:
+`LEAD:SAVE` (lid yaratish, bosqich), `LEAD_TASK:SAVE` (vazifa), `BOOKING:READ` (bronlar).
+Ular berilmaguncha `granted: false` bo'ladi va agentga berilmaydi. Ruxsat `PUT .../uysot`
+bilan qo'shilgach OAuth qayta o'tiladi (Uysot ruxsatni rozilik ekranida beradi).
+
 ---
 
 ## 3. Namuna (React + TypeScript)

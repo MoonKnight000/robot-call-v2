@@ -175,6 +175,8 @@ emas, **texnik tamoyil** bo'yicha bo'linadi: `agent/ari`, `agent/ami`, `agent/rt
 `agent/codec`, `agent/vad`, `agent/turn`, `agent/stt`, `agent/tts`, `agent/realtime`,
 `agent/dialog`, `agent/audio`, `agent/session`, `agent/routing`, `agent/metrics`,
 `agent/lifecycle`, `agent/alerting`, `agent/summary`, `agent/flow`, `agent/queue`,
+`agent/telephony` (dvigatel porti `TelephonyGateway` va resolver; implementatsiyalar — `AsteriskGateway`
+va `LiveKitGateway` — `agent/ari` da, chunki LiveKit qo'ng'iroq hayot sikli (`LiveKitCallService`) shu paketning ichki klasslariga tayanadi),
 `agent/provider` (STT/TTS selector'lari va vendor WebSocket listener'larining umumiy bazasi). Bu
 bo'linish ataylab shunday — `agent/` hexagonal'ga o'tkazilmaydi. Katta klass esa shu
 paket ichida kichik klasslarga bo'linadi (2026-09-14: `AriService` fasad bo'lib qoldi,

@@ -35,6 +35,7 @@ public class AiAgentEntityMapper {
     private static final TypeReference<List<PostCallAction>> POST_CALL_ACTIONS_TYPE = new TypeReference<>() {};
     private static final TypeReference<Set<HandbookRule>> HANDBOOK_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Double>> SPEED_PER_LANGUAGE_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {};
 
     public AiAgentEntityMapper(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -56,6 +57,7 @@ public class AiAgentEntityMapper {
                 .name(entity.getName())
                 .description(entity.getDescription())
                 .language(entity.getLanguage())
+                .speechLanguages(read(entity.getSpeechLanguages(), STRING_LIST_TYPE, List.of()))
                 .channel(entity.getChannel())
                 .mode(entity.getAgentMode())
                 .persona(entity.getPersona())
@@ -142,6 +144,7 @@ public class AiAgentEntityMapper {
         entity.setName(agent.name());
         entity.setDescription(agent.description());
         entity.setLanguage(agent.language());
+        entity.setSpeechLanguages(write(agent.speechLanguages(), "[]"));
         entity.setChannel(agent.channel());
         entity.setAgentMode(agent.mode());
         entity.setPersona(agent.persona());

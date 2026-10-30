@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
 import uz.murodjon.robotcallv2.aiagent.application.dto.EngineOptionsResponse;
+import uz.murodjon.robotcallv2.aiagent.application.dto.SpeechLanguageRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.TemplatePresetDto;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentCatalogUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.EngineProfile;
@@ -38,6 +39,17 @@ public class AiAgentCatalogService implements AiAgentCatalogUseCase {
     );
     private static final List<String> PIPECAT_TTS_OPTIONS = List.of(
             "cartesia", "elevenlabs", "gemini", "yandex", "google-chirp"
+    );
+
+    /** The languages the agent form offers; every code is one {@code Language} accepts. */
+    private static final List<SpeechLanguageRow> SPEECH_LANGUAGES = List.of(
+            new SpeechLanguageRow("uz-UZ", "Uzbek", "O'zbekcha", "O'zbekiston", "🇺🇿"),
+            new SpeechLanguageRow("ru-RU", "Russian", "Русский", "Rossiya", "🇷🇺"),
+            new SpeechLanguageRow("en-US", "English (US)", "English (US)", "AQSh", "🇺🇸"),
+            new SpeechLanguageRow("en-GB", "English (UK)", "English (UK)", "Buyuk Britaniya", "🇬🇧"),
+            new SpeechLanguageRow("kk-KZ", "Kazakh", "Қазақша", "Qozog'iston", "🇰🇿"),
+            new SpeechLanguageRow("tr-TR", "Turkish", "Türkçe", "Turkiya", "🇹🇷"),
+            new SpeechLanguageRow("es-ES", "Spanish (Spain)", "Español", "Ispaniya", "🇪🇸")
     );
 
     private final SttProviderSelector sttProviderSelector;
@@ -136,5 +148,10 @@ public class AiAgentCatalogService implements AiAgentCatalogUseCase {
                 PIPECAT_LLM_OPTIONS,
                 PIPECAT_TTS_OPTIONS
         );
+    }
+
+    @Override
+    public List<SpeechLanguageRow> findSpeechLanguages() {
+        return SPEECH_LANGUAGES;
     }
 }

@@ -8,6 +8,7 @@ import ch.loway.oss.ari4java.tools.BaseAriAction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.telephony.DtmfDigits;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 
@@ -29,8 +30,6 @@ class AriClient {
     private static final int DTMF_TONE_MS = 100;
     /** Silence between tones in ms — without a gap a repeated digit reads as one long press. */
     private static final int DTMF_GAP_MS = 100;
-    /** An IVR selection is a digit or two; a longer string is a model that has lost the plot. */
-    private static final int MAX_DTMF_DIGITS = 12;
 
     private final AsteriskProperties asteriskProperties;
     private final ExecutorService callExecutor;
@@ -266,7 +265,7 @@ class AriClient {
      *               than sent, because a stray character makes Asterisk fail the whole request
      */
     void sendDtmf(String channelId, String digits) {
-        String cleaned = cleanDtmf(digits);
+        String cleaned = DtmfDigits.clean(digits);
         if (cleaned.isEmpty()) {
             log.warn("[{}] refusing to send DTMF: '{}' has no dialable digits", channelId, digits);
             return;
@@ -300,19 +299,5 @@ class AriClient {
         } catch (Exception e) {
             log.warn("[{}] could not enable the {} jitter buffer: {}", channelId, kind, e.getMessage());
         }
-    }
-
-    /** Keeps only what a keypad can actually produce; everything else would fail the ARI request. */
-    private static String cleanDtmf(String digits) {
-        if (digits == null) {
-            return "";
-        }
-        StringBuilder kept = new StringBuilder();
-        for (char c : digits.toCharArray()) {
-            if ((c >= '0' && c <= '9') || c == '*' || c == '#') {
-                kept.append(c);
-            }
-        }
-        return kept.length() > MAX_DTMF_DIGITS ? kept.substring(0, MAX_DTMF_DIGITS) : kept.toString();
     }
 }

@@ -52,6 +52,7 @@ public class PackMapper {
         AiAgentDataPolicy policy = agent.dataPolicy();
         return new CreateAiAgentRequest(
                 agent.name(), agent.description(), agent.language(),
+                null,                                          // speechLanguages
                 AiAgentChannel.VOICE, AiAgentMode.CONVERSATIONAL_FLOW,
                 null, null,                                    // persona, engineProfileId
                 new AgentScriptDto(null, null, ScenarioMode.STRUCTURED_STEPS, agent.scenario(),

@@ -6,16 +6,21 @@ import org.springframework.context.SmartLifecycle;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
 import uz.murodjon.robotcallv2.agent.flow.FlowCall;
+import uz.murodjon.robotcallv2.agent.telephony.WebRtcJoin;
 import uz.murodjon.robotcallv2.agent.lifecycle.GracefulShutdownManager;
 import uz.murodjon.robotcallv2.agent.lifecycle.ShutdownProperties;
 import uz.murodjon.robotcallv2.agent.lifecycle.ShutdownTasks;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGateway;
+import uz.murodjon.robotcallv2.agent.telephony.SupervisorAccess;
+import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.callrecord.application.dto.CallOriginateResponse;
 import uz.murodjon.robotcallv2.callrecord.application.dto.LiveCallRow;
 import uz.murodjon.robotcallv2.callrecord.application.dto.PlayResponse;
 import uz.murodjon.robotcallv2.callrecord.application.dto.SayResponse;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.MonitorMode;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.api.AudioStreamWriter;
@@ -72,6 +77,8 @@ public class AriService implements SmartLifecycle {
     private final ClusterOperatorPresence clusterOperatorPresence;
     private final AsteriskProperties asteriskProperties;
     private final CallSetupService callSetupService;
+    private final TelephonyGatewayResolver telephonyGatewayResolver;
+    private final LiveKitOperatorTransfers liveKitOperatorTransfers;
 
     public AriService(OutboundDialService outboundDialService,
                       WebTestCallService webTestCallService,
@@ -92,8 +99,12 @@ public class AriService implements SmartLifecycle {
                       AnsweringMachineWatcher answeringMachineWatcher,
                       ClusterOperatorPresence clusterOperatorPresence,
                       AsteriskProperties asteriskProperties,
-                      CallSetupService callSetupService) {
+                      CallSetupService callSetupService,
+                      TelephonyGatewayResolver telephonyGatewayResolver,
+                      LiveKitOperatorTransfers liveKitOperatorTransfers) {
+        this.liveKitOperatorTransfers = liveKitOperatorTransfers;
         this.callSetupService = callSetupService;
+        this.telephonyGatewayResolver = telephonyGatewayResolver;
         this.clusterOperatorPresence = clusterOperatorPresence;
         this.asteriskProperties = asteriskProperties;
         this.answeringMachineWatcher = answeringMachineWatcher;
@@ -154,6 +165,16 @@ public class AriService implements SmartLifecycle {
                                  Long scenarioId, ScenarioDefinition definition) {
         return webTestCallService.prepareWebTest(companyId, campaignId, targetId, aiAgentId, agentVersion,
                 scenarioId, definition);
+    }
+
+    /** See {@link WebTestCallService#usesBrowserRooms}. */
+    public boolean usesBrowserRooms(long companyId) {
+        return webTestCallService.usesBrowserRooms(companyId);
+    }
+
+    /** See {@link WebTestCallService#openBrowserCall}. */
+    public WebRtcJoin openBrowserCall(long companyId, String sessionId) {
+        return webTestCallService.openBrowserCall(companyId, sessionId);
     }
 
     /** See {@link WebTestCallService#prepareWidgetCall}. */
@@ -237,12 +258,27 @@ public class AriService implements SmartLifecycle {
     }
 
     public void transferToOperator(String channelId) {
-        operatorTransferService.transferToOperator(channelId);
+        telephonyGatewayResolver.findByCallId(channelId).transferToOperator(channelId);
     }
 
     /** See {@link OperatorTransferService#transferToOperator(String, String)}. */
     public void transferToOperator(String channelId, String operatorEndpoint) {
         operatorTransferService.transferToOperator(channelId, operatorEndpoint);
+    }
+
+    /** See {@link TelephonyGateway#monitor}. */
+    public SupervisorAccess monitorCall(long companyId, long supervisorUserId, String channelId, MonitorMode mode) {
+        return telephonyGatewayResolver.findByCallId(channelId).monitor(companyId, supervisorUserId, channelId, mode);
+    }
+
+    /** See {@link LiveKitOperatorTransfers#accept}. */
+    public WebRtcJoin acceptLiveKitTransfer(long companyId, long userId, String channelId) {
+        return liveKitOperatorTransfers.accept(companyId, userId, channelId);
+    }
+
+    /** See {@link LiveKitOperatorTransfers#decline}. */
+    public void declineLiveKitTransfer(long companyId, long userId, String channelId) {
+        liveKitOperatorTransfers.decline(companyId, userId, channelId);
     }
 
     // ---------------------------------------------------------------------------------
@@ -277,7 +313,7 @@ public class AriService implements SmartLifecycle {
     }
 
     public void hangupChannel(String channelId) {
-        ariClient.hangup(channelId);
+        telephonyGatewayResolver.findByCallId(channelId).hangup(channelId);
     }
 
     /**
@@ -286,7 +322,7 @@ public class AriService implements SmartLifecycle {
      */
     public void hangupChannelWithDisposition(String channelId, Disposition disposition) {
         callSessionRegistry.rememberDisposition(channelId, disposition);
-        ariClient.hangup(channelId);
+        telephonyGatewayResolver.findByCallId(channelId).hangup(channelId);
     }
 
     /** See {@link AnsweringMachineWatcher#watch}. */
@@ -305,17 +341,17 @@ public class AriService implements SmartLifecycle {
     }
 
     public void answerChannel(String channelId) {
-        ariClient.answer(channelId);
+        telephonyGatewayResolver.findByCallId(channelId).answer(channelId);
     }
 
     /** Refuses the channel with a busy signal instead of a plain hang-up. */
     public void hangupChannelBusy(String channelId) {
-        ariClient.hangupBusy(channelId);
+        telephonyGatewayResolver.findByCallId(channelId).hangupBusy(channelId);
     }
 
     /** Ringback to a channel that is waiting for someone to pick up. */
     public void ringChannel(String channelId) {
-        ariClient.ring(channelId);
+        telephonyGatewayResolver.findByCallId(channelId).ring(channelId);
     }
 
     /**
@@ -375,9 +411,9 @@ public class AriService implements SmartLifecycle {
                 operatorChannelId, language);
     }
 
-    /** See {@link AriClient#sendDtmf}. */
+    /** See {@link TelephonyGateway#sendDtmf}. */
     public void sendDtmf(String channelId, String digits) {
-        ariClient.sendDtmf(channelId, digits);
+        telephonyGatewayResolver.findByCallId(channelId).sendDtmf(channelId, digits);
     }
 
     // ---------------------------------------------------------------------------------
@@ -440,7 +476,7 @@ public class AriService implements SmartLifecycle {
      * nobody behind it (audit §4.13). The hangup stays ahead of the teardown for every call.
      */
     private void hangUpAndTearDown(CallSession session) {
-        ariClient.hangup(session.channelId());
+        telephonyGatewayResolver.findByCallId(session.channelId()).hangup(session.channelId());
         try {
             callTeardownService.tearDownClaimed(session, dialogRouter.outcome(session.channelId()),
                     callSessionRegistry.findHangupCause(session.channelId()),

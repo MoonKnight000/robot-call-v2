@@ -17,7 +17,15 @@ import java.time.Instant;
 public class ToolMapper {
 
     public Tool fromCreateRequest(long companyId, CreateToolRequest request) {
-        Instant now = Instant.now();
+        return build(companyId, Instant.now(), request);
+    }
+
+    /** A definition no company owns and nothing stores here — a platform template; carries no timestamps. */
+    public Tool fromTemplateRequest(CreateToolRequest request) {
+        return build(null, null, request);
+    }
+
+    private Tool build(Long companyId, Instant now, CreateToolRequest request) {
         ToolHttpConfigDto http = request.http();
         ToolSpeechDto speech = request.speech();
         return new Tool(

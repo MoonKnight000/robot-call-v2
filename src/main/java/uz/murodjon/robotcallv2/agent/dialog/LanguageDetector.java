@@ -69,6 +69,14 @@ public class LanguageDetector {
             "платить", "хочу", "буду", "могу"
     );
 
+    /** Core English words to distinguish English from Uzbek Latin when candidate list includes English. */
+    private static final Set<String> ENGLISH_WORDS = Set.of(
+            "hello", "hi", "yes", "no", "okay", "ok", "please", "thank", "thanks", "you",
+            "what", "why", "where", "when", "who", "how", "i", "we", "they", "he", "she",
+            "call", "calling", "speak", "english", "can", "could", "would", "sorry",
+            "pardon", "repeat", "number", "money", "pay", "payment", "tomorrow", "today", "help"
+    );
+
     /**
      * Detects language of {@code text}, returning matched candidate subtag or {@code null}.
      */
@@ -115,8 +123,27 @@ public class LanguageDetector {
             return match(candidates, "uz");
         }
 
-        // 2. Predominant Latin script indicates Uzbek in this domain
+        // 2. Predominant Latin script
         if (latinCount > cyrillicCount * 2) {
+            boolean hasEnglishCandidate = hasCandidate(candidates, "en");
+            if (hasEnglishCandidate && containsWord(lower, ENGLISH_WORDS)) {
+                return match(candidates, "en");
+            }
+            boolean hasUzbekWord = containsWord(lower, UZBEK_WORDS);
+            if (hasUzbekWord) {
+                return match(candidates, "uz");
+            }
+            // Latin script alone cannot tell Uzbek from Turkish, Kazakh or Spanish: when the agent also
+            // speaks one the word lists do not cover, guessing Uzbek would switch that caller away.
+            if (hasUndetectableCandidate(candidates)) {
+                return null;
+            }
+            if (hasCandidate(candidates, "uz")) {
+                return match(candidates, "uz");
+            }
+            if (hasEnglishCandidate) {
+                return match(candidates, "en");
+            }
             return match(candidates, "uz");
         }
 
@@ -140,6 +167,29 @@ public class LanguageDetector {
         String[] tokens = text.split("[^\\p{L}']+");
         for (String token : tokens) {
             if (token != null && !token.isBlank() && dictionary.contains(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Whether a candidate is a language this detector has no word list for (anything but uz, ru, en). */
+    private static boolean hasUndetectableCandidate(Collection<String> candidates) {
+        for (String candidate : candidates) {
+            if (candidate == null) {
+                continue;
+            }
+            String code = candidate.toLowerCase(Locale.ROOT);
+            if (!code.startsWith("uz") && !code.startsWith("ru") && !code.startsWith("en")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasCandidate(Collection<String> candidates, String subtag) {
+        for (String candidate : candidates) {
+            if (candidate != null && candidate.toLowerCase(Locale.ROOT).startsWith(subtag)) {
                 return true;
             }
         }

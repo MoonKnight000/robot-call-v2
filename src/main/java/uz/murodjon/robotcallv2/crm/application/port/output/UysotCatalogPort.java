@@ -31,4 +31,7 @@ public interface UysotCatalogPort {
     List<CrmPipe> findPipes(CrmConnection connection);
 
     List<CrmTaskType> findTaskTypes(CrmConnection connection);
+
+    /** The bookings of the client this phone belongs to, newest first. */
+    List<CrmBooking> findBookingsByPhone(CrmConnection connection, String phone);
 }

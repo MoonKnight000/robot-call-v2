@@ -36,6 +36,7 @@ public record UpdateAiAgentRequest(
         @NotBlank @Size(max = 255) String name,
         @Size(max = 500) String description,
         String language,
+        List<String> speechLanguages,
         AiAgentChannel channel,
         AiAgentMode mode,
         AgentPersona persona,

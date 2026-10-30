@@ -7,6 +7,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
+import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
@@ -21,6 +22,7 @@ import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -50,6 +52,8 @@ class RealtimeToolRunner {
     private final StageScriptRunner stageScriptRunner;
     private final CrmCatalogUseCase crmCatalog;
     private final ClientMemoryUseCase clientMemory;
+    private final CrmUseCase crmUseCase;
+    private final IntegrationHttpToolFactory integrationHttpToolFactory;
 
     /**
      * Tool bodies hit the database and the CRM, and they arrive on the engine's network
@@ -61,7 +65,8 @@ class RealtimeToolRunner {
     RealtimeToolRunner(KnowledgeRetrievalUseCase knowledgeRetrieval, CatalogSearchUseCase catalogSearch,
                        RealtimeProperties realtimeProperties, RealtimeMetrics metrics,
                        StageScriptRunner stageScriptRunner, CrmCatalogUseCase crmCatalog,
-                       ClientMemoryUseCase clientMemory) {
+                       ClientMemoryUseCase clientMemory, CrmUseCase crmUseCase,
+                       IntegrationHttpToolFactory integrationHttpToolFactory) {
         this.knowledgeRetrieval = knowledgeRetrieval;
         this.catalogSearch = catalogSearch;
         this.realtimeProperties = realtimeProperties;
@@ -69,6 +74,8 @@ class RealtimeToolRunner {
         this.stageScriptRunner = stageScriptRunner;
         this.crmCatalog = crmCatalog;
         this.clientMemory = clientMemory;
+        this.crmUseCase = crmUseCase;
+        this.integrationHttpToolFactory = integrationHttpToolFactory;
     }
 
     /**
@@ -100,10 +107,15 @@ class RealtimeToolRunner {
                     .build().getToolCallbacks()));
         }
         // The developer's Uysot lookups, for a company connected to Uysot (RealEstateTools).
-        if (crmCatalog != null && crmCatalog.isUysotConnected(s.companyId())) {
-            callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
-                    .toolObjects(new RealEstateTools(s, s.companyId(), crmCatalog, clientMemory))
-                    .build().getToolCallbacks()));
+        // Only the ones the company switched on and its CRM grants cover (CrmToolCallbacks).
+        if (crmCatalog != null) {
+            callbacks.addAll(CrmToolCallbacks.build(s, s.companyId(), crmCatalog.findEnabledToolNames(s.companyId()),
+                    integrationHttpToolFactory != null ? integrationHttpToolFactory.findBuiltInDescriptions() : Map.of(),
+                    crmCatalog, crmUseCase, clientMemory));
+        }
+        // The HTTP tools the platform admin defined for the company's CRM; declared once, with the token they carry.
+        if (integrationHttpToolFactory != null) {
+            callbacks.addAll(integrationHttpToolFactory.build(s, s.companyId(), callVariablesOf(s)));
         }
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()
                 .toolObjects(new DialogTools(s, stageScriptRunner)).build().getToolCallbacks()) {
@@ -140,6 +152,23 @@ class RealtimeToolRunner {
             callbacks.add(ScenarioToolCallbackFactory.build(extraction, s));
         }
         return callbacks;
+    }
+
+    /** The call's facts and number, for a tool body's variables — the same ones the cascade pipeline gives its tools. */
+    private static Map<String, Object> callVariablesOf(RealtimeDialogSession s) {
+        Map<String, Object> vars = new HashMap<>();
+        vars.put("channel_id", s.channelId());
+        vars.put("company_id", s.companyId());
+        vars.put("language", s.language());
+        vars.put("call_attempt_id", s.callAttemptId());
+        if (s.context() != null && s.context().facts() != null) {
+            vars.putAll(s.context().facts());
+        }
+        String phone = s.context() != null ? s.context().clientPhone() : null;
+        if (phone != null) {
+            vars.putIfAbsent("phone", phone);
+        }
+        return vars;
     }
 
     /**
