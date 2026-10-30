@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.dialer.domain.service.ContactFrequencyPolicy;
 import uz.murodjon.robotcallv2.dialer.domain.service.DialWindow;
@@ -174,7 +175,7 @@ public class ProgressiveDialService {
     private void dial(Campaign campaign, CampaignTarget target, long userId) {
         long companyId = campaign.companyId();
         String language = target.language() != null ? target.language()
-                : companyConfigUseCase.resolveLanguage(companyId, null);
+                : Language.DEFAULT.code();
         try {
             progressiveDialer.dial(companyId, userId, target.id(), target.phone(), language);
             log.info("Progressive: target {} ({}) of campaign {} dialled for operator {}", target.id(),

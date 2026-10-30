@@ -270,6 +270,79 @@
         $ref: ../common.yaml#/responses/Forbidden
       '404':
         $ref: ../common.yaml#/responses/NotFound
+/api/companies/{id}/telephony-engine:
+  get:
+    tags:
+    - Companies
+    summary: Telefoniya dvigateli (faqat platforma)
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: company_getTelephonyEngine
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/company.yaml#/TelephonyEngineResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - Companies
+    summary: Telefoniya dvigatelini almashtirish (faqat platforma)
+    description: '**Huquq:** `PLATFORM_ADMIN`'
+    operationId: company_updateTelephonyEngine
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/company.yaml#/UpdateTelephonyEngineRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/company.yaml#/TelephonyEngineResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
 /api/companies/{id}/logo:
   post:
     tags:

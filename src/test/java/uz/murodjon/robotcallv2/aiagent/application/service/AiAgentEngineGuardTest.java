@@ -10,7 +10,6 @@ import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
@@ -31,7 +30,6 @@ class AiAgentEngineGuardTest {
     private RealtimeProviderRegistry realtimeProviderRegistry;
     private TtsVoiceUseCase ttsVoiceUseCase;
     private AiModelUseCase aiModelUseCase;
-    private CompanyConfigUseCase companyConfigUseCase;
     private AiAgentEngineGuard guard;
 
     @BeforeEach
@@ -39,9 +37,8 @@ class AiAgentEngineGuardTest {
         realtimeProviderRegistry = mock(RealtimeProviderRegistry.class);
         ttsVoiceUseCase = mock(TtsVoiceUseCase.class);
         aiModelUseCase = mock(AiModelUseCase.class);
-        companyConfigUseCase = mock(CompanyConfigUseCase.class);
         guard = new AiAgentEngineGuard(mock(SttProviderSelector.class), mock(TtsProviderSelector.class),
-                realtimeProviderRegistry, ttsVoiceUseCase, aiModelUseCase, companyConfigUseCase);
+                realtimeProviderRegistry, ttsVoiceUseCase, aiModelUseCase);
     }
 
     /** Every agent needs endCall at least, so an engine that cannot call tools cannot run one. */
@@ -106,7 +103,7 @@ class AiAgentEngineGuardTest {
     void aRealtimeModelOfAnotherEngineIsRefused() {
         when(aiModelUseCase.isSelectable(AiModelKind.LLM, PipelineMode.REALTIME, "gpt-realtime-2.1")).thenReturn(true);
         when(aiModelUseCase.find("gpt-realtime-2.1")).thenReturn(
-                new AiModel("gpt-realtime-2.1", AiModelKind.LLM, "openai", PipelineMode.REALTIME, "GPT Realtime"));
+                new AiModel("gpt-realtime-2.1", AiModelKind.LLM, "openai", PipelineMode.REALTIME, "GPT Realtime", null, false));
 
         assertRefused(() -> guard.requireKnownModel(PipelineMode.REALTIME, "gemini", "gpt-realtime-2.1"),
                 ErrorCode.REALTIME_MODEL_PROVIDER_MISMATCH);
@@ -134,7 +131,7 @@ class AiAgentEngineGuardTest {
     /** Reported as the provider's model even when that provider has no key here, not as unknown. */
     @Test
     void anSttModelOfAnotherProviderIsAMismatchNotUnknown() {
-        when(aiModelUseCase.find("nova-3")).thenReturn(new AiModel("nova-3", AiModelKind.STT, "deepgram", null, "Nova 3"));
+        when(aiModelUseCase.find("nova-3")).thenReturn(new AiModel("nova-3", AiModelKind.STT, "deepgram", null, "Nova 3", null, false));
 
         assertRefused(() -> guard.requireKnownSttModel("yandex", "nova-3"), ErrorCode.STT_MODEL_PROVIDER_MISMATCH);
     }
@@ -142,7 +139,7 @@ class AiAgentEngineGuardTest {
     @Test
     void onlyAnSttModelTheBuildCanReachIsAccepted() {
         when(aiModelUseCase.findSelectableByKindAndMode(AiModelKind.STT, null)).thenReturn(
-                List.of(new AiModel("general", AiModelKind.STT, "yandex", null, "General")));
+                List.of(new AiModel("general", AiModelKind.STT, "yandex", null, "General", null, false)));
 
         assertThat(guard.requireKnownSttModel("yandex", " general ")).isEqualTo("general");
         assertRefused(() -> guard.requireKnownSttModel("yandex", "nova-9"), ErrorCode.STT_MODEL_UNKNOWN);
@@ -150,11 +147,10 @@ class AiAgentEngineGuardTest {
 
     @Test
     void aVoiceForALanguageItDoesNotSpeakIsRefused() {
-        when(companyConfigUseCase.resolveLanguage(COMPANY_ID, "ru")).thenReturn("ru-RU");
         when(ttsVoiceUseCase.isSelectable(COMPANY_ID, PipelineMode.CASCADE, "nigora")).thenReturn(true);
         when(ttsVoiceUseCase.find("nigora")).thenReturn(new TtsVoice("nigora", "yandex", "uz-UZ", "Nigora", "Nigora", null, null, null, null));
 
-        assertRefused(() -> guard.requireKnownVoicePerLanguage(COMPANY_ID, PipelineMode.CASCADE, Map.of("ru", "nigora")),
+        assertRefused(() -> guard.requireKnownVoicePerLanguage(COMPANY_ID, PipelineMode.CASCADE, Map.of("ru-RU", "nigora")),
                 ErrorCode.TTS_VOICE_LANGUAGE_MISMATCH);
     }
 

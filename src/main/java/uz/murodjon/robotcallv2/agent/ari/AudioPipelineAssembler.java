@@ -23,7 +23,6 @@ import uz.murodjon.robotcallv2.agent.vad.VadStream;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.live.application.port.input.LiveUseCase;
 import uz.murodjon.robotcallv2.live.infrastructure.config.LiveProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -62,7 +61,6 @@ class AudioPipelineAssembler {
     private final RealtimeDialogEngine realtimeDialogEngine;
     private final DialogRouter dialogRouter;
     /** The company's own languages, for the recogniser's detect list. */
-    private final CompanyConfigUseCase companyConfigService;
     private final CallTranscriptUseCase callTranscriptUseCase;
     private final SttMetrics sttMetrics;
     private final CallMetrics callMetrics;
@@ -88,7 +86,6 @@ class AudioPipelineAssembler {
                            DialogEngine dialogEngine,
                            RealtimeDialogEngine realtimeDialogEngine,
                            DialogRouter dialogRouter,
-                           CompanyConfigUseCase companyConfigService,
                            CallTranscriptUseCase callTranscriptUseCase,
                            SttMetrics sttMetrics,
                            CallMetrics callMetrics,
@@ -113,7 +110,6 @@ class AudioPipelineAssembler {
         this.dialogEngine = dialogEngine;
         this.realtimeDialogEngine = realtimeDialogEngine;
         this.dialogRouter = dialogRouter;
-        this.companyConfigService = companyConfigService;
         this.callTranscriptUseCase = callTranscriptUseCase;
         this.sttMetrics = sttMetrics;
         this.callMetrics = callMetrics;
@@ -345,11 +341,9 @@ class AudioPipelineAssembler {
                 : null;
         String sttLanguage = (language == null || language.isBlank())
                 ? sttProperties.defaultLanguage() : language;
-        // The company's own languages first; the deployment list only when it set none.
-        List<String> detectLangs = companyConfigService.findSupportedLanguageCodes(companyId);
-        if (detectLangs.isEmpty() && sttProperties.detectLanguages() != null) {
-            detectLangs = sttProperties.detectLanguages();
-        }
+        // The agent's own languages; the deployment list only for a call with no agent.
+        List<String> detectLangs = agent != null ? agent.findSpokenLanguages()
+                : sttProperties.detectLanguages() != null ? sttProperties.detectLanguages() : List.of();
         return new SttStreamBridge(stt, stt.sampleRate(), CallMediaFactory.SAMPLE_RATE,
                 channelId, sttLanguage, detectLangs, listener, speechGate, sttMetrics,
                 sttProperties.endpointing(), sttProperties.responseTimeoutMs(), onUtteranceEnd,

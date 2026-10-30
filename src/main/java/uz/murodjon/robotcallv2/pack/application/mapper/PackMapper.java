@@ -59,7 +59,7 @@ public class PackMapper {
                 new AgentSpeechEngineDto(PACK_PIPELINE, null, null, null, null, null, null, null, null),
                 null,                                          // voice
                 null, null, null, null,                        // llmModel, fastLlmModel, temperature, maxOutputTokens
-                null, null, null,                              // ambience, call behaviour, limits
+                null, null, null, null,                        // ambience, greeting, call behaviour, limits
                 // All four together or none: a pack that answers "what is kept" answers it whole
                 // (E.3), and one that stays silent leaves every part to the agent's defaults.
                 policy == null ? null : AgentDataPolicyDto.of(policy),

@@ -7,7 +7,7 @@ import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.service.CompanyValidator;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
@@ -32,17 +32,15 @@ class AiAgentEngineGuard {
     private final RealtimeProviderRegistry realtimeProviderRegistry;
     private final TtsVoiceUseCase ttsVoiceUseCase;
     private final AiModelUseCase aiModelUseCase;
-    private final CompanyConfigUseCase companyConfigUseCase;
 
     AiAgentEngineGuard(SttProviderSelector sttProviderSelector, TtsProviderSelector ttsProviderSelector,
                        RealtimeProviderRegistry realtimeProviderRegistry, TtsVoiceUseCase ttsVoiceUseCase,
-                       AiModelUseCase aiModelUseCase, CompanyConfigUseCase companyConfigUseCase) {
+                       AiModelUseCase aiModelUseCase) {
         this.sttProviderSelector = sttProviderSelector;
         this.ttsProviderSelector = ttsProviderSelector;
         this.realtimeProviderRegistry = realtimeProviderRegistry;
         this.ttsVoiceUseCase = ttsVoiceUseCase;
         this.aiModelUseCase = aiModelUseCase;
-        this.companyConfigUseCase = companyConfigUseCase;
     }
 
     /**
@@ -109,7 +107,7 @@ class AiAgentEngineGuard {
         }
         Map<String, String> checked = new LinkedHashMap<>();
         for (Map.Entry<String, String> entry : languageVoices.entrySet()) {
-            String language = companyConfigUseCase.resolveLanguage(companyId, entry.getKey());
+            String language = CompanyValidator.resolveLanguageCode(entry.getKey());
             String voiceId = requireKnownVoice(companyId, pipelineMode, entry.getValue());
             if (voiceId == null) {
                 continue;

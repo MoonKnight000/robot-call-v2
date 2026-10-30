@@ -25,10 +25,12 @@ to'g'ridan-to'g'ri bazaga yoziladi.
 - **Company** — identifikatsiya: nom, holat (`ACTIVE`/`SUSPENDED`/`DELETED`/`EXPIRED`), logotip URL'i
   va manzil (backend-uchun-talablar.md §5 — sozlama emas, identifikatsiya
   ma'lumoti sifatida shu yerda).
-- **CompanyConfig** — sozlamalar: qo'llab-quvvatlanadigan tillar ro'yxati,
-  aniq `defaultLanguage` maydoni (backend-uchun-talablar.md §13), qat'iy
-  qo'ng'iroq oralig'i, timezone. Har bir kompaniya yaratilganda avtomatik
-  default config bilan ta'minlanadi (`uz-UZ`, 08:00–20:00, `Asia/Tashkent`).
+- **CompanyConfig** — sozlamalar: qat'iy qo'ng'iroq oralig'i, timezone, kontakt
+  siyosati, tatil kunlari. Har bir kompaniya yaratilganda avtomatik default config bilan
+  ta'minlanadi (09:00–20:00, `Asia/Tashkent`). **Til va §11.1 ochiqlik matni bu yerda yo'q:**
+  qo'ng'iroq tili — AI agentniki (`language` + `perLanguage` ovozlari, [ai-agents.md](ai-agents.md)),
+  ochiqlik matni — ssenariyniki yoki platformaniki. **Telefoniya dvigateli ham yo'q** — uni faqat
+  platforma ko'radi va o'zgartiradi ([pastda](#get--put-apicompaniesidtelephony-engine--telefoniya-dvigateli)).
 
 Caller ID bu yerda emas — trunk darajasida (`sip_trunk.callerId`), chunki bitta
 kompaniyaning bir nechta trunki har xil caller ID bilan bo'lishi mumkin.
@@ -231,9 +233,6 @@ bir xil scoping — boshqa kompaniyaniki so'ralsa `404`).
   "dialWindowStart": "09:00",
   "dialWindowEnd": "20:00",
   "timezone": "Asia/Tashkent",
-  "defaultLanguage": "uz-UZ",
-  "supportedLanguages": ["uz-UZ", "ru-RU"],
-  "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.",
   "maxAttemptsPerPhonePerWeek": 3,
   "quietDaysAfterConversation": 1,
   "respectPromisedDate": true,
@@ -280,27 +279,10 @@ mavjud bo'lgan kompaniyalarda `true` (xatti-harakat o'zgarmasligi uchun).
 - Ruxsat bo'lsa ham `HUMAN_LIKE` agent **yozib olish ogohlantirishini** aytadi ("Suhbat sifat
   nazorati uchun yozib olinmoqda.") — faqat "avtomatik qo'ng'iroq" qismi tushib qoladi.
 
-`defaultLanguage`/`supportedLanguages` — yopiq to'plam (report #6, `company.enums.Language`):
-faqat `"uz-UZ"`, `"ru-RU"`, `"en-US"`. Boshqa qiymat JSON darajasida
-rad etiladi — `400`, validatsiyagacha yetib bormaydi.
-
-`disclosureText` — §11.1 ochiqlik matni: qo'ng'iroq boshida, bot gapirishni
-boshlashidan oldin aytiladi. Har bir kompaniya yaratilganda yuqoridagi default
-bilan to'ldiriladi.
-
-- `{company}` — kompaniya nomiga almashadi (shuning uchun bitta matn hamma
-  tenantga yaraydi).
-- **Matn ikkala majburiy faktni aytishi shart** — qo'ng'iroq avtomatik ekani *va*
-  yozib olinayotgani. Aks holda `PUT` `400` qaytaradi
-  (`COMPANY_CONFIG_DISCLOSURE_INCOMPLETE`). Ochiqlik — platformaning huquqiy
-  majburiyati, tenant uni o'chira olmaydi (§11.1).
-- `null`/bo'sh qoldirilsa — platformaning o'z matni aytiladi (qo'ng'iroq tiliga
-  qarab o'zbekcha yoki ruscha). Ya'ni maydonni tozalash ochiqlikni o'chirmaydi.
-- Matn **bitta tilda** saqlanadi: yozuvi qo'ng'iroq tiliga mos kelmasa (kirill
-  matn `uz-UZ` qo'ng'irog'ida yoki aksincha) shu qo'ng'iroqda platforma matni
-  ishlatiladi. Ikkala tilda dial qiladigan kompaniya matnni bo'sh qoldirsin.
-- Ssenariy o'z `disclosureText` ini bersa, u shu ssenariy bo'yicha qo'ng'iroqlarda
-  kompaniya matnidan ustun turadi (`docs/api/scenarios.md`).
+**Ochiqlik (§11.1)** — qo'ng'iroq boshida aytiladigan "avtomatik qo'ng'iroq, yozib olinmoqda"
+matni kompaniya sozlamasi emas: ssenariy o'z `disclosureText` ini bersa o'sha
+(`docs/api/scenarios.md`), bo'lmasa platformaning o'z matni (qo'ng'iroq tiliga qarab o'zbekcha
+yoki ruscha) aytiladi.
 
 Topilmasa `404` — amalda bo'lmasligi kerak, chunki har bir kompaniya
 yaratilganda avtomatik config oladi.
@@ -314,25 +296,42 @@ yaratilganda avtomatik config oladi.
 **Request body** (`UpdateCompanyConfigRequest`):
 
 ```json
-{ "dialWindowStart": "08:00", "dialWindowEnd": "21:00", "timezone": "Asia/Tashkent", "defaultLanguage": "uz-UZ", "supportedLanguages": ["uz-UZ", "ru-RU"], "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda." }
+{ "dialWindowStart": "08:00", "dialWindowEnd": "21:00", "timezone": "Asia/Tashkent" }
 ```
 
 | Maydon | Majburiymi | Izoh |
 |---|---|---|
 | `dialWindowStart`/`dialWindowEnd` | ✅ | **Qat'iy chegara** — `DialerService` har bir kampaniyani o'z oynasi BILAN BIRGA shu oraliqqa ham tekshiradi; kampaniya bu kompaniyaning oralig'idan tashqariga chiqa olmaydi, hatto kampaniyaning o'z oynasi kengroq bo'lsa ham. |
 | `timezone` | ✅ (`@NotBlank`) | — |
-| `defaultLanguage` | ✅ | Aniq maydon (backend-uchun-talablar.md §13) — `supportedLanguages` ro'yxatining a'zosi bo'lishi shart, aks holda `400`. Kampaniya yaratish/tahrirlashda (`CreateCampaignRequest.defaultLanguage`/`UpdateCampaignRequest.defaultLanguage`) til berilmasa shu qiymatga tushadi. Yopiq to'plam — `"uz-UZ"`/`"ru-RU"`/`"en-US"` (report #6), boshqa qiymat `400`. |
-| `supportedLanguages` | ✅ (bo'sh bo'lmasin) | Kampaniya/marshrut e'lon qilishi mumkin bo'lgan barcha tillar, `defaultLanguage`ni ham o'z ichiga olgan holda; berilgan til shu ro'yxatda bo'lishi shart, aks holda `400`. Yopiq to'plam, xuddi `defaultLanguage` kabi. |
-| `disclosureText` | ❌ | §11.1 ochiqlik matni (yuqoridagi `GET` izohiga qarang). Matn qo'ng'iroq avtomatik ekanini va yozib olinayotganini aytmasa — `400` (`COMPANY_CONFIG_DISCLOSURE_INCOMPLETE`). `null`/bo'sh — platforma matniga qaytadi, ochiqlik o'chmaydi. |
 | `maxAttemptsPerPhonePerWeek` | ❌ | `0..100`; `null` — o'zgarmaydi. Yuqoridagi "Kontakt siyosati" |
 | `quietDaysAfterConversation` | ❌ | `0..90`; `null` — o'zgarmaydi |
 | `respectPromisedDate` | ❌ | `null` — o'zgarmaydi |
 | `humanLikePersonaAllowed` | ❌ | `null` — o'zgarmaydi. Qiymatni faqat platform admin o'zgartira oladi, aks holda `403 HUMAN_LIKE_PERSONA_PLATFORM_ONLY`. O'zgarishi audit log'ga yoziladi |
 | `holidays` | ❌ | Sanalar (`YYYY-MM-DD`, ko'pi bilan 366 ta). Shu kunlari kampaniyalar umuman termaydi, retry va callback esa keyingi ruxsat etilgan kunga suriladi. Kun kompaniyaning `timezone`ida hisoblanadi. `null` — o'zgarmaydi, `[]` — tozalaydi |
 | `scorecardReviewThreshold` | ❌ | `0..100`, standart `60`; `null` — o'zgarmaydi. Operator qo'ng'irog'i bahosi shundan past bo'lsa, tekshiruv inbox'iga tushadi ([scorecards.md](scorecards.md)). `0` — faqat norozi mijozli qo'ng'iroqlar tushadi |
-| `telephonyEngine` | ❌ | `ASTERISK` (standart) yoki `LIVEKIT`; `null` — o'zgarmaydi. Qiymatni faqat platform admin o'zgartira oladi, aks holda `403 TELEPHONY_ENGINE_PLATFORM_ONLY` (o'zgarmagan qiymatni qayta yuborish mumkin). Kompaniya o'z SIP trunklarini qo'shaveradi, ular qaysi dvigatelda ishlashini platforma tanlaydi |
 
 **Response** — yangilangan `CompanyConfig`.
+
+---
+
+## `GET` / `PUT /api/companies/{id}/telephony-engine` — telefoniya dvigateli
+
+**SUPERADMIN-only** (`PLATFORM_ADMIN`). Kompaniya qo'ng'iroqlari qaysi media stekda ishlashi —
+platformaning qarori: kompaniya o'z SIP trunklarini qo'shadi, lekin ular ostidagi dvigatelni na ko'radi,
+na o'zgartiradi. Shuning uchun u `CompanyConfig` javobida ham yo'q. Kompaniya foydalanuvchisi so'rasa — `403`.
+
+`PUT` body (`UpdateTelephonyEngineRequest`):
+
+```json
+{ "telephonyEngine": "LIVEKIT" }
+```
+
+| Maydon | Majburiymi | Izoh |
+|---|---|---|
+| `telephonyEngine` | ✅ | `ASTERISK` (standart) yoki `LIVEKIT` |
+
+Ikkala endpoint javobi — `TelephonyEngineResponse`: `{ "telephonyEngine": "ASTERISK" }`. `PUT` audit'ga
+`COMPANY_TELEPHONY_ENGINE_UPDATE` (`ASTERISK -> LIVEKIT`) yozadi. Kompaniya topilmasa — `404`.
 
 ---
 
@@ -344,6 +343,7 @@ Hammasi `SUPERADMIN` token bilan, istalgan kompaniya `{id}` si uchun ishlaydi:
 |---|---|
 | Logotip (rasm) | `POST /api/companies/{id}/logo` |
 | Nom, manzil, holat (blok/unblok/o'chirish), muddat, limit, feature'lar — bitta forma | `PUT /api/companies/{id}/platform` |
-| Ish vaqti, tillar, tatil kunlari, limitlar | `GET` / `PUT /api/companies/{id}/config` |
+| Ish vaqti, tatil kunlari, limitlar | `GET` / `PUT /api/companies/{id}/config` |
+| Telefoniya dvigateli (ASTERISK / LIVEKIT) | `GET` / `PUT /api/companies/{id}/telephony-engine` |
 | Foydalanuvchilar, rollar | `/api/companies/{id}/users`, `/roles` — [users.md](users.md) |
 | SIP trunklar | `/api/companies/{id}/sip-trunks` — [sip-trunks.md](sip-trunks.md) |

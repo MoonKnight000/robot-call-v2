@@ -67,4 +67,15 @@ public class CompanyControllerImpl implements CompanyController {
         return ResponseEntity.ok(ResponseData.ok(
                 companyConfigUseCase.update(callerCompanyId, id, request)));
     }
+
+    @Override
+    public ResponseEntity<ResponseData<TelephonyEngineResponse>> getTelephonyEngine(long id) {
+        return ResponseEntity.ok(ResponseData.ok(companyConfigUseCase.findTelephonyEngine(id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TelephonyEngineResponse>> updateTelephonyEngine(
+            long id, UpdateTelephonyEngineRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(companyConfigUseCase.updateTelephonyEngine(id, request)));
+    }
 }

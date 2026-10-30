@@ -55,6 +55,16 @@ public class McpServerToolCatalog {
             Permission.AGENT_EVAL_RUN);
     private static final Set<Permission> CALL_READ = EnumSet.of(Permission.REPORT_READ);
 
+    /** The opening settings, part of both the create and the update request. */
+    private static final String GREETING_FIELD = """
+            "greeting": {"type": "object", "description": "How the call opens. Omitted fields keep their value; lines replaces the whole list.", "properties": {
+              "mode": {"type": "string", "enum": ["AI_CUSTOM", "AI_DYNAMIC", "USER_FIRST"], "description": "AI_CUSTOM: the agent speaks first (script.firstMessage and lines); AI_DYNAMIC: the agent speaks first and writes the opening itself; USER_FIRST: the agent waits for the caller"},
+              "pauseBeforeSpeakingMs": {"type": "integer", "minimum": 0, "maximum": 10000, "description": "Quiet time before the agent's first words; omit for the platform default"},
+              "lines": {"type": "array", "maxItems": 20, "description": "Extra opening lines besides script.firstMessage; the one aimed most narrowly at the call is said, equals are picked at random", "items": {"type": "object", "required": ["text"], "properties": {
+                "direction": {"type": "string", "enum": ["INBOUND", "OUTBOUND"], "description": "omit for both"},
+                "language": {"type": "string", "description": "uz, ru, uz-UZ ...; omit for any"},
+                "text": {"type": "string", "maxLength": 500}}}}}}""";
+
     private static final String AGENT_FIELDS = """
             "name": {"type": "string", "maxLength": 255},
             "description": {"type": "string", "maxLength": 500},
@@ -66,7 +76,8 @@ public class McpServerToolCatalog {
               "mode": {"type": "string", "enum": ["PROMPT", "STRUCTURED_STEPS"]},
               "definition": {"type": "object", "description": "Stages, facts and guardrails (mode STRUCTURED_STEPS); the shape export_agent returns under agent.scenario"}}},
             "llmModel": {"type": "string"},
-            "temperature": {"type": "number"}""";
+            "temperature": {"type": "number"},
+            """ + GREETING_FIELD;
 
     private final AiAgentUseCase aiAgentUseCase;
     private final AgentEvaluationUseCase agentEvaluationUseCase;

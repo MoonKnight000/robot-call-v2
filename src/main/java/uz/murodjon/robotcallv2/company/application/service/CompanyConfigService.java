@@ -2,20 +2,18 @@ package uz.murodjon.robotcallv2.company.application.service;
 
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.company.application.dto.TelephonyEngineResponse;
 import uz.murodjon.robotcallv2.company.application.dto.UpdateCompanyConfigRequest;
+import uz.murodjon.robotcallv2.company.application.dto.UpdateTelephonyEngineRequest;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyConfigRepository;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.company.domain.enums.Language;
-import uz.murodjon.robotcallv2.company.domain.service.CompanyValidator;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.security.CompanyAccessGuard;
 import uz.murodjon.robotcallv2.security.CurrentUser;
-import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -42,15 +40,6 @@ public class CompanyConfigService implements CompanyConfigUseCase {
     }
 
     @Override
-    public List<String> findSupportedLanguageCodes(long companyId) {
-        CompanyConfig config = find(companyId);
-        if (config == null || config.supportedLanguages() == null) {
-            return List.of();
-        }
-        return config.supportedLanguages().stream().map(Language::code).toList();
-    }
-
-    @Override
     public CompanyConfig find(long companyId) {
         return companyConfigRepository.find(companyId);
     }
@@ -74,8 +63,6 @@ public class CompanyConfigService implements CompanyConfigUseCase {
     public CompanyConfig update(long callerCompanyId, long companyId, UpdateCompanyConfigRequest request) {
         companyAccessGuard.requireOwnOrSuperadmin(callerCompanyId, companyId);
         CompanyConfig existing = requireConfig(companyId);
-        CompanyValidator.validateLanguages(request.defaultLanguage(), request.supportedLanguages());
-        CompanyValidator.validateDisclosure(request.disclosureText());
 
         int maxAttempts = request.maxAttemptsPerPhonePerWeek() != null
                 ? request.maxAttemptsPerPhonePerWeek() : existing.maxAttemptsPerPhonePerWeek();
@@ -93,44 +80,38 @@ public class CompanyConfigService implements CompanyConfigUseCase {
         List<LocalDate> holidays = request.holidays() != null ? request.holidays() : existing.holidays();
         int reviewThreshold = request.scorecardReviewThreshold() != null
                 ? request.scorecardReviewThreshold() : existing.scorecardReviewThreshold();
-        TelephonyEngine telephonyEngine = request.telephonyEngine() != null
-                ? request.telephonyEngine() : existing.telephonyEngine();
-        // The engine decides which media stack the platform runs the company's calls on;
-        // the company adds its own trunks, but the stack under them is the platform's choice.
-        if (telephonyEngine != existing.telephonyEngine() && !currentUser.hasPermission(Permission.PLATFORM_ADMIN)) {
-            throw new ForbiddenException(ErrorCode.TELEPHONY_ENGINE_PLATFORM_ONLY);
-        }
 
         companyConfigRepository.update(companyId, CompanyConfig.settings(
                 request.dialWindowStart(), request.dialWindowEnd(), request.timezone(),
-                request.defaultLanguage(), request.supportedLanguages(), request.disclosureText(),
-                maxAttempts, quietDays, respectPromise, humanLike, holidays, reviewThreshold, telephonyEngine));
+                maxAttempts, quietDays, respectPromise, humanLike, holidays, reviewThreshold,
+                existing.telephonyEngine()));
         // Who allowed the company's agents to pass as a person is the one line in this
         // record a regulator would ask for, so it is written out whenever it changes.
         String persona = humanLike != existing.humanLikePersonaAllowed()
                 ? " humanLikePersonaAllowed=" + humanLike : "";
         audit.record(companyId, "COMPANY_CONFIG_UPDATE", "company_config", String.valueOf(companyId),
-                codesOf(request.supportedLanguages()) + " contactPolicy=" + maxAttempts + "/7d,quiet="
-                        + quietDays + "d,promise=" + respectPromise + ",holidays=" + holidays.size() + persona
-                        + " engine=" + telephonyEngine);
+                "contactPolicy=" + maxAttempts + "/7d,quiet=" + quietDays + "d,promise=" + respectPromise
+                        + ",holidays=" + holidays.size() + persona);
         return requireConfig(companyId);
     }
 
     @Override
-    public String resolveLanguage(long companyId, String requested) {
-        CompanyConfig config = requireConfig(companyId);
-        if (requested == null || requested.isBlank()) {
-            return config.defaultLanguage().code();
-        }
-        Language language = CompanyValidator.parseLanguage(requested);
-        if (!config.supportedLanguages().contains(language)) {
-            throw new ValidationException(ErrorCode.COMPANY_CONFIG_LANGUAGE_NOT_SUPPORTED,
-                    requested, codesOf(config.supportedLanguages()));
-        }
-        return language.code();
+    public TelephonyEngineResponse findTelephonyEngine(long companyId) {
+        return new TelephonyEngineResponse(requireConfig(companyId).telephonyEngine());
     }
 
-    private static List<String> codesOf(List<Language> languages) {
-        return languages.stream().map(Language::code).toList();
+    @Override
+    public TelephonyEngineResponse updateTelephonyEngine(long companyId, UpdateTelephonyEngineRequest request) {
+        CompanyConfig existing = requireConfig(companyId);
+        // The engine decides which media stack the platform runs the company's calls on; the
+        // company adds its own trunks, but the stack under them is the platform's choice alone.
+        companyConfigRepository.update(companyId, CompanyConfig.settings(
+                existing.dialWindowStart(), existing.dialWindowEnd(), existing.timezone(),
+                existing.maxAttemptsPerPhonePerWeek(), existing.quietDaysAfterConversation(),
+                existing.respectPromisedDate(), existing.humanLikePersonaAllowed(), existing.holidays(),
+                existing.scorecardReviewThreshold(), request.telephonyEngine()));
+        audit.record(companyId, "COMPANY_TELEPHONY_ENGINE_UPDATE", "company_config", String.valueOf(companyId),
+                existing.telephonyEngine() + " -> " + request.telephonyEngine());
+        return findTelephonyEngine(companyId);
     }
 }

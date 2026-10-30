@@ -233,9 +233,7 @@ public class RealtimeDialogEngine implements CallDialog {
             // A HUMAN_LIKE agent was allowed not to say it is a machine, not to leave out
             // that the call is recorded: it opens with the recording notice alone.
             disclosureText = disclosureEnabled
-                    ? DialogPolicy.resolveDisclosureLine(session.scenario(),
-                            companyConfig != null ? companyConfig.disclosureText() : null,
-                            session.language(), companyName)
+                    ? DialogPolicy.resolveDisclosureLine(session.scenario(), session.language(), companyName)
                     : DialogPhrases.recordingNotice(language);
         }
         if (disclosureText != null) {
@@ -338,10 +336,18 @@ public class RealtimeDialogEngine implements CallDialog {
      * lands on the click of the handset and the caller's own "alo".
      */
     private void requestOpening(RealtimeDialogSession session, RealtimeSession engine) {
-        int delayMs = dialogProperties.greetingDelayMs();
+        AiAgent agent = session.agent();
+        if (agent != null && !agent.speaksFirst()) {
+            // The caller speaks first: the engine answers their voice, nothing nudges it to open.
+            log.info("[{}] caller speaks first — no opening requested", session.channelId());
+            return;
+        }
+        String nudge = openingNudge(session);
+        int delayMs = agent != null && agent.greeting().pauseBeforeSpeakingMs() != null
+                ? agent.greeting().pauseBeforeSpeakingMs() : dialogProperties.greetingDelayMs();
         if (delayMs <= 0) {
             session.markOpeningRequested();
-            engine.sendUserText(GREETING_BOOTSTRAP);
+            engine.sendUserText(nudge);
             return;
         }
         engineTaskExecutor.execute(() -> CallMdc.with(session.channelId(), () -> {
@@ -355,8 +361,23 @@ public class RealtimeDialogEngine implements CallDialog {
                 return;
             }
             session.markOpeningRequested();
-            engine.sendUserText(GREETING_BOOTSTRAP);
+            engine.sendUserText(nudge);
         }));
+    }
+
+    /**
+     * The nudge that gets the engine to speak first. When the agent's greeting has a line for
+     * this call the engine is told to say it as written; otherwise it opens in its own words.
+     */
+    private String openingNudge(RealtimeDialogSession session) {
+        AiAgent agent = session.agent();
+        String line = agent != null ? agent.findOpeningLine(session.language(), session.isInbound()) : null;
+        if (line == null) {
+            return GREETING_BOOTSTRAP;
+        }
+        String spoken = PromptTemplateEngine.render(line, session.context() != null ? session.context().facts() : Map.of());
+        return "[SYSTEM: the call has started, the client has picked up. Open the conversation by saying exactly this, "
+                + "word for word, and nothing before it: «" + spoken + "»]";
     }
 
     /**

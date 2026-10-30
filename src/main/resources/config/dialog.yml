@@ -40,11 +40,31 @@ spring:
           model: ${LLM_DIALOG_MODEL:gpt-5.6-luna}
           max-tokens: 1024
 
+    # Claude. Auto-configured only when LLM_CHAT_PROVIDER=anthropic; otherwise built from
+    # voice-agent.llm.anthropic-api-key the first time a request names a claude-* model.
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:disabled}
+      chat:
+        options:
+          model: ${LLM_DIALOG_MODEL:claude-haiku-5-5}
+          max-tokens: 1024
+
 voice-agent:
+  # Which text-LLM vendors can be picked, and the one a request naming no model runs on —
+  # ChatProviderProperties. A vendor with no key is neither offered in the model catalog nor
+  # routed to; spring.ai.model.chat above is the one Spring AI auto-configures, the other
+  # vendors are built from these keys on first use (ChatModelRegistry).
+  llm:
+    default-provider: ${LLM_CHAT_PROVIDER:google-genai}
+    gemini-api-key: ${GEMINI_API_KEY:}
+    open-ai-api-key: ${OPENAI_API_KEY:}
+    open-ai-base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+    anthropic-api-key: ${ANTHROPIC_API_KEY:}
+
   # Panel AI copilot — CopilotProperties
   copilot:
     model: ${COPILOT_MODEL:gemini-3.8-flash}
-    max-tokens: ${COPILOT_MAX_TOKENS:4096}
+    max-tokens: ${COPILOT_MAX_TOKENS:8192}
     max-tool-calls: ${COPILOT_MAX_TOOL_CALLS:15}
     max-history: ${COPILOT_MAX_HISTORY:20}
 

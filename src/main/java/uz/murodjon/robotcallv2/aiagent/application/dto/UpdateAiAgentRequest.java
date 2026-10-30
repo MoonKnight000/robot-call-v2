@@ -48,6 +48,7 @@ public record UpdateAiAgentRequest(
         Double temperature,
         Integer maxOutputTokens,
         AgentAmbienceDto ambience,
+        @Valid AgentGreetingDto greeting,
         @Valid AgentCallBehaviourDto callBehaviour,
         AgentLimitsDto limits,
         AgentDataPolicyDto dataPolicy,

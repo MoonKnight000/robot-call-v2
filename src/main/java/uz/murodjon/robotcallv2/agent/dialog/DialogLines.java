@@ -16,14 +16,9 @@ final class DialogLines {
     private DialogLines() {
     }
 
-    /**
-     * The §11.1 disclosure this call opens with, most specific wording first: the
-     * scenario's own, then the calling company's, then the platform's. Each configured
-     * text has to survive {@link uz.murodjon.robotcallv2.shared.dialog.Disclosure} to be used at all — that is what keeps the
-     * notice from being worded away, whichever level tries it.
-     */
+    /** The §11.1 disclosure this call opens with ({@link DialogPolicy#resolveDisclosureLine}). */
     static String disclosure(DialogSession s) {
-        return DialogPolicy.resolveDisclosureLine(s.scenario(), s.companyDisclosureText(), s.language(), s.companyName());
+        return DialogPolicy.resolveDisclosureLine(s.scenario(), s.language(), s.companyName());
     }
 
     /**

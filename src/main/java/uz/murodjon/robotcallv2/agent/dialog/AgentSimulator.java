@@ -105,7 +105,7 @@ public class AgentSimulator {
         List<String> transcript = new ArrayList<>();
         List<Message> callerHistory = new ArrayList<>();
         List<String> problems = new ArrayList<>();
-        String opening = agent != null ? agent.script().firstMessage() : null;
+        String opening = agent != null ? agent.findOpeningLine(language, false) : null;
         String clientText = GREETING_BOOTSTRAP;
 
         for (int turn = 1; turn <= maxTurns && !session.isEnded(); turn++) {

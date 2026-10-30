@@ -10,7 +10,7 @@ import uz.murodjon.robotcallv2.agent.flow.PbxPhrases;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.missedcall.application.port.input.MissedCallUseCase;
 import uz.murodjon.robotcallv2.missedcall.domain.enums.MissedCallStatus;
 import uz.murodjon.robotcallv2.operator.application.port.input.OperatorAccountUseCase;
@@ -59,7 +59,6 @@ public class OperatorFirstDialer {
     /** Fewer digits than this dialled from a softphone is an extension, more is an outside number. */
     private static final int OUTSIDE_NUMBER_MIN_DIGITS = 7;
     private static final Pattern ENDPOINT_OF_CHANNEL = Pattern.compile("PJSIP/(.+)-[0-9a-fA-F]+");
-    private static final String FALLBACK_LANGUAGE = "uz-UZ";
 
     private final ObjectProvider<AriService> ariProvider;
     private final OperatorAccountUseCase operatorAccountUseCase;
@@ -69,7 +68,6 @@ public class OperatorFirstDialer {
     private final CallAttemptUseCase callAttemptUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
     private final FlowPrompter prompter;
-    private final CompanyConfigUseCase companyConfig;
     private final ExecutorService callExecutor;
 
     /** A call whose operator side exists and whose client side is being placed. */
@@ -109,7 +107,7 @@ public class OperatorFirstDialer {
     public OperatorFirstDialer(ObjectProvider<AriService> ariProvider, OperatorAccountUseCase operatorAccountUseCase,
                                OperatorPresenceUseCase operatorPresenceUseCase, MissedCallUseCase missedCallUseCase, UserUseCase userUseCase,
                                CallAttemptUseCase callAttemptUseCase, CampaignTargetUseCase campaignTargetUseCase,
-                               FlowPrompter prompter, CompanyConfigUseCase companyConfig, ExecutorService callExecutor) {
+                               FlowPrompter prompter, ExecutorService callExecutor) {
         this.ariProvider = ariProvider;
         this.operatorAccountUseCase = operatorAccountUseCase;
         this.operatorPresenceUseCase = operatorPresenceUseCase;
@@ -118,7 +116,6 @@ public class OperatorFirstDialer {
         this.callAttemptUseCase = callAttemptUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
         this.prompter = prompter;
-        this.companyConfig = companyConfig;
         this.callExecutor = callExecutor;
     }
 
@@ -190,7 +187,7 @@ public class OperatorFirstDialer {
         callExecutor.execute(() -> {
             try {
                 ari.answerChannel(channelId);
-                String language = companyLanguage(call.companyId);
+                String language = Language.DEFAULT.code();
                 ari.playToChannel(channelId, prompter.speech(PbxPhrases.callingClient(call.phone, language), language));
                 placeClientLeg(call);
             } catch (Exception e) {
@@ -213,7 +210,7 @@ public class OperatorFirstDialer {
         callExecutor.execute(() -> {
             try {
                 long attemptId = ari.bridgeWithRecording(channelId, channelName, call.companyId, call.phone,
-                        call.operatorChannelId, companyLanguage(call.companyId));
+                        call.operatorChannelId, Language.DEFAULT.code());
                 callAttemptUseCase.markOperatorAnswered(attemptId, call.userId, 0);
                 if (call.missedCallId != null || call.automatic) {
                     missedCallUseCase.resolveByPhone(call.companyId, call.phone, MissedCallStatus.CALLED_BACK, call.userId);
@@ -317,7 +314,7 @@ public class OperatorFirstDialer {
     private void placeClientLeg(PendingCall call) {
         // Booked as a call the moment it is dialled: an unanswered callback is an attempt too.
         String clientChannel = ariProvider.getObject().originateClientCall(call.companyId, call.phone,
-                "callback-client," + call.token, CLIENT_RING_SEC, companyLanguage(call.companyId), call.targetId);
+                "callback-client," + call.token, CLIENT_RING_SEC, Language.DEFAULT.code(), call.targetId);
         call.clientChannelId = clientChannel;
         byChannel.put(clientChannel, call);
     }
@@ -344,7 +341,7 @@ public class OperatorFirstDialer {
         callExecutor.execute(() -> {
             AriService ari = ariProvider.getObject();
             try {
-                String language = companyLanguage(call.companyId);
+                String language = Language.DEFAULT.code();
                 ari.answerChannel(operatorChannel);
                 ari.playToChannel(operatorChannel, prompter.speech(PbxPhrases.clientDidNotAnswer(language), language));
             } catch (Exception e) {
@@ -377,14 +374,6 @@ public class OperatorFirstDialer {
     private void reopen(PendingCall call) {
         if (call.missedCallId != null) {
             missedCallUseCase.markCallbackFailed(call.companyId, call.missedCallId);
-        }
-    }
-
-    private String companyLanguage(long companyId) {
-        try {
-            return companyConfig.resolveLanguage(companyId, null);
-        } catch (Exception e) {
-            return FALLBACK_LANGUAGE;
         }
     }
 

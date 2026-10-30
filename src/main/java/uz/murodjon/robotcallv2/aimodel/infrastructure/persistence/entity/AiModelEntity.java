@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.aimodel.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
+import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelTier;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 @Entity
@@ -24,6 +25,13 @@ public class AiModelEntity {
 
     @Column(nullable = false)
     private String label;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private AiModelTier tier;
+
+    @Column(nullable = false)
+    private boolean suggested;
 
     public String getId() {
         return id;
@@ -63,5 +71,21 @@ public class AiModelEntity {
 
     public void setLabel(String label) {
         this.label = label;
+    }
+
+    public AiModelTier getTier() {
+        return tier;
+    }
+
+    public void setTier(AiModelTier tier) {
+        this.tier = tier;
+    }
+
+    public boolean isSuggested() {
+        return suggested;
+    }
+
+    public void setSuggested(boolean suggested) {
+        this.suggested = suggested;
     }
 }

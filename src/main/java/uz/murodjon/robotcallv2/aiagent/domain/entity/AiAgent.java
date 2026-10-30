@@ -2,15 +2,18 @@ package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.GreetingMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * An AI agent: the voice, persona, model, speech engine and limits a call or chat is run with.
@@ -48,6 +51,7 @@ public record AiAgent(
         AiAgentSpeechEngine speechEngine,
         AiAgentVoice voice,
         AiAgentAmbience ambience,
+        AgentGreeting greeting,
         AiAgentCallBehaviour callBehaviour,
         AiAgentLimits limits,
         AiAgentDataPolicy dataPolicy,
@@ -108,6 +112,9 @@ public record AiAgent(
         if (ambience == null) {
             ambience = new AiAgentAmbience(null, null, null, null, null, true, null);
         }
+        if (greeting == null) {
+            greeting = AgentGreeting.DEFAULT;
+        }
         if (callBehaviour == null) {
             callBehaviour = new AiAgentCallBehaviour(null, false, null, null, false, null, null, null, null);
         }
@@ -143,6 +150,17 @@ public record AiAgent(
         return voice.forLanguage(callLanguage);
     }
 
+    /**
+     * The languages a call by this agent may be held in: its own language first, then every
+     * language it has a voice for. Language detection and a mid-call switch stay inside these.
+     */
+    public List<String> findSpokenLanguages() {
+        Set<String> languages = new LinkedHashSet<>();
+        languages.add(language);
+        languages.addAll(voice.perLanguage().keySet());
+        return List.copyOf(languages);
+    }
+
     public static AiAgentBuilder builder() {
         return new AiAgentBuilder();
     }
@@ -154,6 +172,29 @@ public record AiAgent(
 
     public AiAgent withFirstMessage(String newFirstMessage) {
         return withScript(script.withFirstMessage(newFirstMessage));
+    }
+
+    /**
+     * The same agent set to open this one call with exactly {@code line} — a per-contact or
+     * webhook override, or the apology after a dropped line. It wins over the greeting's mode
+     * and lines; the pause before speaking stays.
+     */
+    public AiAgent withSpokenOpening(String line) {
+        return toBuilder().script(script.withFirstMessage(line)).greeting(greeting.speakingOnlyFirstMessage()).build();
+    }
+
+    /**
+     * The line this call opens with, or null when the model should compose it. The greeting's
+     * own mode decides; whether the agent speaks at all is {@link #speaksFirst()}.
+     */
+    public String findOpeningLine(String callLanguage, boolean inbound) {
+        return greeting.findLine(script.firstMessage(), callLanguage, inbound,
+                bound -> ThreadLocalRandom.current().nextInt(bound));
+    }
+
+    /** Whether the agent opens the call rather than waiting for the caller. */
+    public boolean speaksFirst() {
+        return greeting.mode() != GreetingMode.USER_FIRST;
     }
 
     public AiAgent withScenario(AiAgentScript newScript) {

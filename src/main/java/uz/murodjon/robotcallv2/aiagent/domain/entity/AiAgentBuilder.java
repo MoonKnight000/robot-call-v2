@@ -29,6 +29,7 @@ public class AiAgentBuilder {
     private AiAgentSpeechEngine speechEngine;
     private AiAgentVoice voice;
     private AiAgentAmbience ambience;
+    private AgentGreeting greeting;
     private AiAgentCallBehaviour callBehaviour;
     private AiAgentLimits limits;
     private AiAgentDataPolicy dataPolicy;
@@ -68,6 +69,7 @@ public class AiAgentBuilder {
         this.speechEngine = source.speechEngine();
         this.voice = source.voice();
         this.ambience = source.ambience();
+        this.greeting = source.greeting();
         this.callBehaviour = source.callBehaviour();
         this.limits = source.limits();
         this.dataPolicy = source.dataPolicy();
@@ -147,6 +149,11 @@ public class AiAgentBuilder {
 
     public AiAgentBuilder voice(AiAgentVoice voice) {
         this.voice = voice;
+        return this;
+    }
+
+    public AiAgentBuilder greeting(AgentGreeting greeting) {
+        this.greeting = greeting;
         return this;
     }
 
@@ -279,6 +286,7 @@ public class AiAgentBuilder {
                 speechEngine,
                 voice,
                 ambience,
+                greeting,
                 callBehaviour,
                 limits,
                 dataPolicy,

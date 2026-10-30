@@ -12,7 +12,7 @@ import uz.murodjon.robotcallv2.agent.stt.SttProvider;
 import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
 import uz.murodjon.robotcallv2.agent.stt.SttStreamBridge;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.enums.Language;
 
 import java.time.Instant;
 import java.util.List;
@@ -32,23 +32,23 @@ class OperatorCallTranscriber {
     static final String CLIENT = "CLIENT";
     static final String OPERATOR = "OPERATOR";
 
+    /** What a call without an agent is recognised in: the platform's two languages, Uzbek first. */
+    private static final List<String> OPERATOR_CALL_LANGUAGES = List.of(Language.UZ_UZ.code(), Language.RU_RU.code());
+
     private static final Logger log = LoggerFactory.getLogger(OperatorCallTranscriber.class);
 
     private final SttProperties sttProperties;
     private final SttProviderSelector sttProviderSelector;
     private final SttMetrics sttMetrics;
     private final CallTranscriptUseCase callTranscriptUseCase;
-    private final CompanyConfigUseCase companyConfigUseCase;
     private final AriEventLanes ariEventLanes;
 
     OperatorCallTranscriber(SttProperties sttProperties, SttProviderSelector sttProviderSelector, SttMetrics sttMetrics,
-                            CallTranscriptUseCase callTranscriptUseCase, CompanyConfigUseCase companyConfigUseCase,
-                            AriEventLanes ariEventLanes) {
+                            CallTranscriptUseCase callTranscriptUseCase, AriEventLanes ariEventLanes) {
         this.sttProperties = sttProperties;
         this.sttProviderSelector = sttProviderSelector;
         this.sttMetrics = sttMetrics;
         this.callTranscriptUseCase = callTranscriptUseCase;
-        this.companyConfigUseCase = companyConfigUseCase;
         this.ariEventLanes = ariEventLanes;
     }
 
@@ -66,12 +66,9 @@ class OperatorCallTranscriber {
             if (provider == null) {
                 return null;
             }
-            List<String> languages = companyConfigUseCase.findSupportedLanguageCodes(session.companyId());
-            if (languages.isEmpty() && sttProperties.detectLanguages() != null) {
-                languages = sttProperties.detectLanguages();
-            }
-            String language = session.agent() != null ? session.agent().language()
-                    : !languages.isEmpty() ? languages.getFirst() : sttProperties.defaultLanguage();
+            List<String> languages = session.agent() != null ? session.agent().findSpokenLanguages()
+                    : OPERATOR_CALL_LANGUAGES;
+            String language = session.agent() != null ? session.agent().language() : languages.getFirst();
             return new SttStreamBridge(provider, provider.sampleRate(), CallMediaFactory.SAMPLE_RATE,
                     channelId + "-" + role.toLowerCase(), language, languages, (text, isFinal, confidence) -> {
                         if (!isFinal || text == null || text.isBlank()) {

@@ -43,10 +43,20 @@ Authorization: Bearer {{auth_token}}
 {
   "dialWindowStart": "09:00:00",
   "dialWindowEnd": "20:00:00",
-  "timezone": "Asia/Tashkent",
-  "defaultLanguage": "uz-UZ",
-  "supportedLanguages": ["uz-UZ", "ru-RU"],
-  "disclosureText": "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda."
+  "timezone": "Asia/Tashkent"
+}
+
+### Get Telephony Engine (platform admin only)
+GET http://localhost:8080/api/companies/1/telephony-engine
+Authorization: Bearer {{auth_token}}
+
+### Update Telephony Engine (platform admin only)
+PUT http://localhost:8080/api/companies/1/telephony-engine
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "telephonyEngine": "ASTERISK"
 }
 
 ### Platform edit: name, status (ACTIVE / SUSPENDED = blocked / DELETED), expiry, call limit, features (SUPERADMIN)

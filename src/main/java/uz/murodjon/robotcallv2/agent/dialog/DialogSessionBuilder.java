@@ -35,7 +35,6 @@ public class DialogSessionBuilder {
     NoInputWatchdog watchdog;
     boolean disclosureEnabled = true;
     String companyName;
-    String companyDisclosureText;
     EffectiveAiModelConfig aiModel;
     EffectiveVoiceSettings voiceSettings = EffectiveVoiceSettings.NONE;
     boolean emotionAdaptiveVoice = true;
@@ -104,11 +103,6 @@ public class DialogSessionBuilder {
 
     public DialogSessionBuilder companyName(String companyName) {
         this.companyName = companyName;
-        return this;
-    }
-
-    public DialogSessionBuilder companyDisclosureText(String companyDisclosureText) {
-        this.companyDisclosureText = companyDisclosureText;
         return this;
     }
 

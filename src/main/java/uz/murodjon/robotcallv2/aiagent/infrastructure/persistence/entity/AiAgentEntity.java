@@ -140,6 +140,10 @@ public class AiAgentEntity {
     private String postCallWebhook;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "greeting", columnDefinition = "jsonb")
+    private String greeting;
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "pronunciation_rules", columnDefinition = "jsonb")
     private String pronunciationRules = "[]";
 
@@ -375,6 +379,14 @@ public class AiAgentEntity {
 
     public void setPostCallWebhook(String postCallWebhook) {
         this.postCallWebhook = postCallWebhook;
+    }
+
+    public String getGreeting() {
+        return greeting;
+    }
+
+    public void setGreeting(String greeting) {
+        this.greeting = greeting;
     }
 
     public String getPronunciationRules() {

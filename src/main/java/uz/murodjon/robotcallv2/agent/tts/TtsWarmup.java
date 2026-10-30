@@ -9,10 +9,8 @@ import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
-import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
@@ -52,7 +50,6 @@ public class TtsWarmup {
     private final TtsRouter router;
     private final TtsCache cache;
     private final CompanyUseCase companyUseCase;
-    private final CompanyConfigUseCase companyConfigService;
     private final VoiceSettingsUseCase voiceSettingsUseCase;
     private final ScenarioUseCase scenarioUseCase;
     private final AiAgentUseCase aiAgentService;
@@ -61,7 +58,6 @@ public class TtsWarmup {
 
     public TtsWarmup(TtsProperties ttsProperties, DialogProperties dialogProperties, TtsRouter router,
                      TtsCache cache, CompanyUseCase companyUseCase,
-                     CompanyConfigUseCase companyConfigService,
                      VoiceSettingsUseCase voiceSettingsUseCase, ScenarioUseCase scenarioUseCase,
                      AiAgentUseCase aiAgentService) {
         this.ttsProperties = ttsProperties;
@@ -69,7 +65,6 @@ public class TtsWarmup {
         this.router = router;
         this.cache = cache;
         this.companyUseCase = companyUseCase;
-        this.companyConfigService = companyConfigService;
         this.voiceSettingsUseCase = voiceSettingsUseCase;
         this.scenarioUseCase = scenarioUseCase;
         this.aiAgentService = aiAgentService;
@@ -126,7 +121,6 @@ public class TtsWarmup {
 
         Company company = companyUseCase.findById(campaign.companyId());
         String companyName = company != null ? company.name() : null;
-        CompanyConfig config = companyConfigService.find(campaign.companyId());
         EffectiveVoiceSettings style = voiceSettingsUseCase.findEffectiveByCompanyId(campaign.companyId());
 
         Scenario scenario = scenarioUseCase.findById(campaign.companyId(), agent.script().scenarioId());
@@ -144,8 +138,7 @@ public class TtsWarmup {
         int count = 0;
         for (String lang : languages) {
             String voiceId = agent.voiceFor(lang);
-            List<String> lines = linesFor(companyName, lang, scenarios,
-                    config != null ? config.disclosureText() : null);
+            List<String> lines = linesFor(companyName, lang, scenarios);
 
             for (String line : lines) {
                 try {
@@ -191,22 +184,18 @@ public class TtsWarmup {
         List<Company> companies = companyUseCase.findAllForWarmup();
         List<Scenario> scenarios = scenarioUseCase.findAllActiveForWarmup();
         if (companies.isEmpty()) {
-            return spoken(linesFor(null, language, scenarios, null), EffectiveVoiceSettings.NONE);
+            return spoken(linesFor(null, language, scenarios), EffectiveVoiceSettings.NONE);
         }
         Set<Spoken> lines = new LinkedHashSet<>();
         for (Company company : companies) {
-            CompanyConfig config = companyConfigService.find(company.id());
-            lines.addAll(spoken(linesFor(company.name(), language, scenarios,
-                            config != null ? config.disclosureText() : null),
+            lines.addAll(spoken(linesFor(company.name(), language, scenarios),
                     voiceSettingsUseCase.findEffectiveByCompanyId(company.id())));
         }
         return lines;
     }
 
-    private static List<String> linesFor(String companyName, String language, List<Scenario> scenarios,
-                                         String companyDisclosureText) {
+    private static List<String> linesFor(String companyName, String language, List<Scenario> scenarios) {
         List<String> lines = new ArrayList<>(DialogPhrases.forLanguage(language, companyName));
-        addIfPresent(lines, Disclosure.resolve(companyDisclosureText, language, companyName));
         for (Scenario scenario : scenarios) {
             if (scenario.definition() != null) {
                 addIfPresent(lines, Disclosure.resolve(scenario.definition().disclosureText(), language, companyName));

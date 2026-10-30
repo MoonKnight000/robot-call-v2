@@ -40,7 +40,7 @@ public record CallStart(String channelId,
      * that engine's voice, which no synthesizer can speak.
      */
     public CallStart withReconnectingAgent() {
-        AiAgent reconnecting = agent == null ? null : agent.withFirstMessage(DialogPhrases.reconnected(language));
+        AiAgent reconnecting = agent == null ? null : agent.withSpokenOpening(DialogPhrases.reconnected(language));
         return new CallStart(channelId, endpoint, context, scenario, language, null, reconnecting,
                 hangup, transfer, callAttemptId, dtmf);
     }

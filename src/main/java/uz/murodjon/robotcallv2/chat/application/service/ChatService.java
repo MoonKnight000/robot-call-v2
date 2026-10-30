@@ -14,7 +14,7 @@ import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatTurn;
 import uz.murodjon.robotcallv2.chat.domain.entity.StartedChat;
 import uz.murodjon.robotcallv2.chat.domain.enums.ChatRole;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.service.CompanyValidator;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
@@ -40,17 +40,15 @@ public class ChatService implements ChatUseCase {
     private final ChatConversations conversations;
     private final ChatSessionRepository repository;
     private final AgentWidgetUseCase widgetUseCase;
-    private final CompanyConfigUseCase companyConfigUseCase;
     private final AuditUseCase auditUseCase;
     private final CompanyUseCase companyUseCase;
 
     public ChatService(ChatConversations conversations, ChatSessionRepository repository,
-                       AgentWidgetUseCase widgetUseCase, CompanyConfigUseCase companyConfigUseCase, CompanyUseCase companyUseCase,
+                       AgentWidgetUseCase widgetUseCase, CompanyUseCase companyUseCase,
                        AuditUseCase auditUseCase) {
         this.conversations = conversations;
         this.repository = repository;
         this.widgetUseCase = widgetUseCase;
-        this.companyConfigUseCase = companyConfigUseCase;
         this.auditUseCase = auditUseCase;
         this.companyUseCase = companyUseCase;
     }
@@ -63,7 +61,7 @@ public class ChatService implements ChatUseCase {
             throw new ConflictException(ErrorCode.CHAT_MODEL_NOT_CONFIGURED);
         }
         String resolvedLanguage = language != null && !language.isBlank()
-                ? companyConfigUseCase.resolveLanguage(target.companyId(), language)
+                ? CompanyValidator.resolveLanguageCode(language)
                 : null;
         StartedChat started = conversations.start(ChatSession.startingOnWidget(conversations.newSessionKey(),
                 target.companyId(), target.agentId(), target.widgetId(), resolvedLanguage,

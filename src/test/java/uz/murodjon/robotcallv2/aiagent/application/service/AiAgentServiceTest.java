@@ -35,7 +35,6 @@ import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
@@ -82,11 +81,10 @@ class AiAgentServiceTest {
                 mock(AiModelConfigUseCase.class), mock(SipTrunkUseCase.class), companyConfigUseCase);
         AiAgentEngineGuard engineGuard = new AiAgentEngineGuard(mock(SttProviderSelector.class),
                 mock(TtsProviderSelector.class), mock(RealtimeProviderRegistry.class), mock(TtsVoiceUseCase.class),
-                mock(AiModelUseCase.class), companyConfigUseCase);
+                mock(AiModelUseCase.class));
         service = new AiAgentService(repository, versionRepository, drafts, engineGuard, mock(ScenarioUseCase.class),
-                companyConfigUseCase, mock(UserUseCase.class), auditUseCase, currentUser, eventPublisher,
+                mock(UserUseCase.class), auditUseCase, currentUser, eventPublisher,
                 mock(AgentRolloutRepository.class), catalogUseCase);
-        when(companyConfigUseCase.resolveLanguage(eq(COMPANY_ID), any())).thenReturn("uz-UZ");
     }
 
     private static AiAgent agent() {
@@ -128,7 +126,7 @@ class AiAgentServiceTest {
     @Test
     void createAgentAsAPersonIsSavedOnceThePlatformAllowedIt() {
         when(companyConfigUseCase.find(COMPANY_ID)).thenReturn(CompanyConfig.settings(LocalTime.of(9, 0),
-                LocalTime.of(20, 0), "Asia/Tashkent", Language.UZ_UZ, List.of(Language.UZ_UZ), null, 3, 1, true, true));
+                LocalTime.of(20, 0), "Asia/Tashkent", 3, 1, true, true));
         when(repository.create(any())).thenReturn(AGENT_ID);
         when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(agent());
 
@@ -345,7 +343,7 @@ class AiAgentServiceTest {
                 new AgentScriptDto(templateId, null, null, null, null, null),
                 null, null,
                 null, null, null, null,
-                null,
+                null, null,
                 new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null, null, null),
                 null,
                 new AgentDataPolicyDto(zeroPiiRetention, null, null, null),
@@ -367,7 +365,7 @@ class AiAgentServiceTest {
                 name, null, null, null, null, null, null,
                 null, null, null,
                 null, null, null, null,
-                null, null, null, null,
+                null, null, null, null, null,
                 null,
                 null, null,
                 null, postCallWebhook,

@@ -54,14 +54,6 @@ CompanyConfig:
       description: 'Format: `HH:mm` Format: `HH:mm`'
     timezone:
       type: string
-    defaultLanguage:
-      $ref: '#/Language'
-    supportedLanguages:
-      type: array
-      items:
-        $ref: '#/Language'
-    disclosureText:
-      type: string
     maxAttemptsPerPhonePerWeek:
       type: integer
       format: int32
@@ -159,13 +151,6 @@ CreateCompanyRequest:
       maxLength: 120
   required:
   - name
-Language:
-  type: string
-  enum:
-  - uz-UZ
-  - ru-RU
-  - en-US
-  description: 'BCP-47 languages the platform can speak (report #6).'
 UpdateCompanyConfigRequest:
   type: object
   description: 'The contact-policy fields, `humanLikePersonaAllowed` and `holidays` are optional: null keeps what the company already has, so a client written before they existed does not reset them by omission.'
@@ -181,16 +166,6 @@ UpdateCompanyConfigRequest:
     timezone:
       type: string
       minLength: 1
-    defaultLanguage:
-      $ref: '#/Language'
-    supportedLanguages:
-      type: array
-      items:
-        $ref: '#/Language'
-      minItems: 1
-    disclosureText:
-      type: string
-      maxLength: 500
     maxAttemptsPerPhonePerWeek:
       type: integer
       format: int32
@@ -215,8 +190,6 @@ UpdateCompanyConfigRequest:
   - dialWindowStart
   - dialWindowEnd
   - timezone
-  - defaultLanguage
-  - supportedLanguages
 UpdateCompanyRequest:
   type: object
   properties:
@@ -266,3 +239,21 @@ UpdateCompanyByPlatformRequest:
   - status
   - disabledFeatures
   - disabledIntegrations
+TelephonyEngine:
+  type: string
+  enum:
+  - ASTERISK
+  - LIVEKIT
+  description: The media stack the platform runs a company's calls on. Platform-only.
+TelephonyEngineResponse:
+  type: object
+  properties:
+    telephonyEngine:
+      $ref: '#/TelephonyEngine'
+UpdateTelephonyEngineRequest:
+  type: object
+  properties:
+    telephonyEngine:
+      $ref: '#/TelephonyEngine'
+  required:
+  - telephonyEngine

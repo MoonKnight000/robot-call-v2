@@ -79,7 +79,54 @@ AgentClearableField:
   - MID_CALL_SMS_TEMPLATE
   - VOICEMAIL_MESSAGE
   - FAST_LLM_MODEL
+  - GREETING_PAUSE
   description: Optional agent setting `PUT /api/ai-agents/{id}` can remove through `clearFields`.
+AgentGreetingDto:
+  type: object
+  description: "How a call opens. On a write a null field keeps what the agent has; lines replaces the whole list (empty removes all); GREETING_PAUSE in clearFields returns the pause to the platform default."
+  properties:
+    mode:
+      $ref: '#/GreetingMode'
+    pauseBeforeSpeakingMs:
+      type: integer
+      format: int32
+      minimum: 0
+      maximum: 10000
+      nullable: true
+      description: quiet time between answering and the agent's first words; null = platform default
+    lines:
+      type: array
+      maxItems: 20
+      items:
+        $ref: '#/GreetingLineDto'
+GreetingLineDto:
+  type: object
+  required:
+  - text
+  properties:
+    direction:
+      $ref: '#/GreetingDirection'
+    language:
+      type: string
+      maxLength: 16
+      nullable: true
+      description: BCP-47 tag or bare language (ru-RU, ru); null = any language
+    text:
+      type: string
+      maxLength: 500
+      description: what is said; {{variables}} are filled from the call facts
+GreetingMode:
+  type: string
+  enum:
+  - AI_CUSTOM
+  - AI_DYNAMIC
+  - USER_FIRST
+  description: AI_CUSTOM - the agent speaks first with a configured line; AI_DYNAMIC - the agent speaks first and composes the opening; USER_FIRST - the caller speaks first.
+GreetingDirection:
+  type: string
+  enum:
+  - INBOUND
+  - OUTBOUND
 AgentDataPolicyDto:
   type: object
   description: '`AiAgentDataPolicy` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
@@ -533,6 +580,8 @@ AiAgentRow:
       format: int32
     ambience:
       $ref: '#/AgentAmbienceDto'
+    greeting:
+      $ref: '#/AgentGreetingDto'
     callBehaviour:
       $ref: '#/AgentCallBehaviourDto'
     limits:
@@ -702,6 +751,8 @@ CreateAiAgentRequest:
       format: int32
     ambience:
       $ref: '#/AgentAmbienceDto'
+    greeting:
+      $ref: '#/AgentGreetingDto'
     callBehaviour:
       $ref: '#/AgentCallBehaviourDto'
     limits:
@@ -1035,6 +1086,8 @@ UpdateAiAgentRequest:
       format: int32
     ambience:
       $ref: '#/AgentAmbienceDto'
+    greeting:
+      $ref: '#/AgentGreetingDto'
     callBehaviour:
       $ref: '#/AgentCallBehaviourDto'
     limits:

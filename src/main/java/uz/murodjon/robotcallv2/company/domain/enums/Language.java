@@ -16,6 +16,9 @@ public enum Language {
     RU_RU("ru-RU"),
     EN_US("en-US");
 
+    /** What a call, chat or agent is held in when nothing names a language. */
+    public static final Language DEFAULT = UZ_UZ;
+
     private final String code;
 
     Language(String code) {

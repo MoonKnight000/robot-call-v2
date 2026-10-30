@@ -15,7 +15,9 @@ import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /** The agent form's choices: starting templates and the speech engines this build can run. */
 @Service
@@ -56,7 +58,13 @@ public class AiAgentCatalogService implements AiAgentCatalogUseCase {
 
     @Override
     public List<EngineProfile> findEngineProfiles() {
-        return engineProfileProperties.items().stream().filter(this::isRunnable).toList();
+        // The config lists a profile once per vendor; with several vendors reachable the first one
+        // that runs wins, so an id is offered once and means one bundle.
+        Set<String> offeredIds = new HashSet<>();
+        return engineProfileProperties.items().stream()
+                .filter(this::isRunnable)
+                .filter(profile -> offeredIds.add(profile.id()))
+                .toList();
     }
 
     @Override

@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.aimodel.domain.entity;
 
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
+import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelTier;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 /**
@@ -14,18 +15,23 @@ import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
  *
  * @param id       model id sent to the provider verbatim, e.g. {@code gemini-3.8-flash}
  * @param kind     which of the agent's model fields this row fills
- * @param provider who serves it — for {@code LLM} a {@code spring.ai.model.chat} value
+ * @param provider who serves it — for {@code LLM} a chat vendor ({@code google-genai}, {@code openai}, {@code anthropic})
  *                 (CASCADE) or a {@code RealtimeProvider} name (REALTIME), for {@code STT}
  *                 and {@code TTS} the speech provider id ({@code gemini}, {@code yandex})
  * @param mode     the pipeline this model belongs to; the two sets never overlap
  * @param label    human-readable name shown in the settings and agent forms
+ * @param tier     what a chat model is for, which is how the picker groups it; null for
+ *                 rows that are not tiered (speech models, realtime engines)
+ * @param suggested whether the picker puts this model forward first
  */
 public record AiModel(
         String id,
         AiModelKind kind,
         String provider,
         PipelineMode mode,
-        String label
+        String label,
+        AiModelTier tier,
+        boolean suggested
 ) {
 
     /**

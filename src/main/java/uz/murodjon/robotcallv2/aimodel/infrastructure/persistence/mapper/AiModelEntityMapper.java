@@ -12,6 +12,7 @@ public class AiModelEntityMapper {
         if (entity == null) {
             return null;
         }
-        return new AiModel(entity.getId(), entity.getKind(), entity.getProvider(), entity.getMode(), entity.getLabel());
+        return new AiModel(entity.getId(), entity.getKind(), entity.getProvider(), entity.getMode(), entity.getLabel(),
+                entity.getTier(), entity.isSuggested());
     }
 }

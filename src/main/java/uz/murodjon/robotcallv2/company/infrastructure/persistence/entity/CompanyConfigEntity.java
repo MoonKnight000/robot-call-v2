@@ -1,16 +1,11 @@
 package uz.murodjon.robotcallv2.company.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import org.hibernate.annotations.Fetch;
-import org.hibernate.annotations.FetchMode;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 
 import java.time.Instant;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * JPA entity for company_config (ROADMAP B.1/B.3).
@@ -35,23 +30,6 @@ public class CompanyConfigEntity {
 
     @Column(nullable = false)
     private String timezone;
-
-    @Convert(converter = LanguageConverter.class)
-    @Column(name = "default_language", nullable = false)
-    private Language defaultLanguage;
-
-    // Eager (the mapper reads it outside any transaction); SUBSELECT loads it for a whole
-    // list of configs in one query instead of one per config.
-    @ElementCollection(fetch = FetchType.EAGER)
-    @Fetch(FetchMode.SUBSELECT)
-    @CollectionTable(name = "company_config_language", joinColumns = @JoinColumn(name = "company_config_id"))
-    @OrderColumn(name = "ord")
-    @Convert(converter = LanguageConverter.class)
-    @Column(name = "language", nullable = false)
-    private List<Language> supportedLanguages = new ArrayList<>();
-
-    @Column(name = "disclosure_text", length = 500)
-    private String disclosureText;
 
     @Column(name = "max_attempts_per_phone_per_week", nullable = false)
     private int maxAttemptsPerPhonePerWeek;
@@ -121,30 +99,6 @@ public class CompanyConfigEntity {
 
     public void setTimezone(String timezone) {
         this.timezone = timezone;
-    }
-
-    public Language getDefaultLanguage() {
-        return defaultLanguage;
-    }
-
-    public void setDefaultLanguage(Language defaultLanguage) {
-        this.defaultLanguage = defaultLanguage;
-    }
-
-    public List<Language> getSupportedLanguages() {
-        return supportedLanguages;
-    }
-
-    public void setSupportedLanguages(List<Language> supportedLanguages) {
-        this.supportedLanguages = supportedLanguages;
-    }
-
-    public String getDisclosureText() {
-        return disclosureText;
-    }
-
-    public void setDisclosureText(String disclosureText) {
-        this.disclosureText = disclosureText;
     }
 
     public int getMaxAttemptsPerPhonePerWeek() {

@@ -478,7 +478,7 @@ class CallSetupService {
                             context = context.withMergedFacts(initResult.variables());
                         }
                         if (initResult.firstMessageOverride() != null && !initResult.firstMessageOverride().isBlank()) {
-                            agent = agent.withFirstMessage(initResult.firstMessageOverride());
+                            agent = agent.withSpokenOpening(initResult.firstMessageOverride());
                         }
                     }
                 } catch (Exception e) {

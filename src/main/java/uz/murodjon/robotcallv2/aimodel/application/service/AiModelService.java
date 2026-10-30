@@ -1,14 +1,19 @@
 package uz.murodjon.robotcallv2.aimodel.application.service;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.agent.provider.ChatModelRegistry;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
+import uz.murodjon.robotcallv2.aiagent.domain.service.AgentCostEstimator;
+import uz.murodjon.robotcallv2.aimodel.application.dto.AiModelResponse;
+import uz.murodjon.robotcallv2.aimodel.application.mapper.AiModelMapper;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.application.port.output.AiModelRepository;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
+import uz.murodjon.robotcallv2.billing.application.port.input.ModelPricingUseCase;
+import uz.murodjon.robotcallv2.billing.domain.entity.CallCostBreakdown;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 import java.util.List;
@@ -30,24 +35,36 @@ public class AiModelService implements AiModelUseCase {
     private final RealtimeProviderRegistry realtimeProviderRegistry;
     private final SttProviderSelector sttProviderSelector;
     private final TtsProviderSelector ttsProviderSelector;
-    /** {@code spring.ai.model.chat} — which chat provider the single ChatModel bean is. */
-    private final String chatProvider;
+    private final ChatModelRegistry chatModelRegistry;
+    private final ModelPricingUseCase modelPricingUseCase;
+    private final AiModelMapper aiModelMapper;
 
     public AiModelService(AiModelRepository repository,
                           RealtimeProviderRegistry realtimeProviderRegistry,
                           SttProviderSelector sttProviderSelector,
                           TtsProviderSelector ttsProviderSelector,
-                          @Value("${spring.ai.model.chat:}") String chatProvider) {
+                          ChatModelRegistry chatModelRegistry,
+                          ModelPricingUseCase modelPricingUseCase,
+                          AiModelMapper aiModelMapper) {
         this.repository = repository;
         this.realtimeProviderRegistry = realtimeProviderRegistry;
         this.sttProviderSelector = sttProviderSelector;
         this.ttsProviderSelector = ttsProviderSelector;
-        this.chatProvider = chatProvider;
+        this.chatModelRegistry = chatModelRegistry;
+        this.modelPricingUseCase = modelPricingUseCase;
+        this.aiModelMapper = aiModelMapper;
     }
 
     @Override
     public List<AiModel> findSelectableByKindAndMode(AiModelKind kind, PipelineMode mode) {
         return repository.findByKindAndMode(kind, catalogMode(kind, mode)).stream().filter(this::reachable).toList();
+    }
+
+    @Override
+    public List<AiModelResponse> findPricedSelectableByKindAndMode(AiModelKind kind, PipelineMode mode) {
+        return findSelectableByKindAndMode(kind, mode).stream()
+                .map(model -> aiModelMapper.toAiModelResponse(model, findPricePerMinuteUzs(model)))
+                .toList();
     }
 
     @Override
@@ -68,6 +85,19 @@ public class AiModelService implements AiModelUseCase {
         return findSelectableByKindAndMode(kind, mode).stream().map(AiModel::id).toList();
     }
 
+    /** What the model adds to one minute of an ordinary call, in the line of the bill it belongs to. */
+    private long findPricePerMinuteUzs(AiModel model) {
+        boolean realtime = model.kind() == AiModelKind.LLM && model.mode() == PipelineMode.REALTIME;
+        CallCostBreakdown cost = modelPricingUseCase.findCostBreakdown(
+                AgentCostEstimator.createTypicalOneMinuteUsage(realtime),
+                model.kind() == AiModelKind.LLM && !realtime ? model.id() : null);
+        return switch (model.kind()) {
+            case LLM -> realtime ? cost.realtimeUzs() : cost.llmUzs();
+            case STT -> cost.sttUzs();
+            case TTS -> cost.ttsUzs();
+        };
+    }
+
     /**
      * The mode the catalog files this agent's models under. A HALF_CASCADE agent hears the
      * caller with our STT and thinks and speaks on a realtime engine, so its recognizers are
@@ -82,8 +112,8 @@ public class AiModelService implements AiModelUseCase {
 
     /**
      * Whether this build can serve the model at all: a realtime engine has to be
-     * registered, a cascade chat model has to belong to the one chat provider the
-     * application was wired with — a Gemini key does not answer for an OpenAI model id — and
+     * registered, a cascade chat model has to belong to a chat vendor the
+     * deployment holds a key for — a Gemini key does not answer for an OpenAI model id — and
      * a recognizer or synthesizer has to belong to a speech provider that is a bean here,
      * which it only is when its API key is configured.
      */
@@ -93,7 +123,7 @@ public class AiModelService implements AiModelUseCase {
             case TTS -> ttsProviderSelector.exists(model.provider());
             case LLM -> model.mode() == PipelineMode.REALTIME
                     ? realtimeProviderRegistry.exists(model.provider())
-                    : model.provider().equalsIgnoreCase(chatProvider);
+                    : chatModelRegistry.isAvailable(model.provider());
         };
     }
 }

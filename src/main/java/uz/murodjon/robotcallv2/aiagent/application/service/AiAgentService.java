@@ -29,7 +29,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.service.AgentRolloutRouter;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentSnapshot;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentTemplates;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.service.CompanyValidator;
 import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -73,7 +73,6 @@ public class AiAgentService implements AiAgentUseCase {
     private final AiAgentDrafts drafts;
     private final AiAgentEngineGuard engineGuard;
     private final ScenarioUseCase scenarioUseCase;
-    private final CompanyConfigUseCase companyConfigUseCase;
     private final UserUseCase userUseCase;
     private final AuditUseCase auditUseCase;
     private final CurrentUser currentUser;
@@ -89,7 +88,6 @@ public class AiAgentService implements AiAgentUseCase {
             AiAgentDrafts drafts,
             AiAgentEngineGuard engineGuard,
             ScenarioUseCase scenarioUseCase,
-            CompanyConfigUseCase companyConfigUseCase,
             UserUseCase userUseCase,
             AuditUseCase auditUseCase,
             CurrentUser currentUser,
@@ -104,7 +102,6 @@ public class AiAgentService implements AiAgentUseCase {
         this.drafts = drafts;
         this.engineGuard = engineGuard;
         this.scenarioUseCase = scenarioUseCase;
-        this.companyConfigUseCase = companyConfigUseCase;
         this.userUseCase = userUseCase;
         this.auditUseCase = auditUseCase;
         this.currentUser = currentUser;
@@ -143,7 +140,7 @@ public class AiAgentService implements AiAgentUseCase {
                 channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, engineProfileId,
                 new AgentScriptDto(null, null, mode.toScenarioMode(), flowDefinition, firstMessage, systemPrompt),
                 speechEngine, voice, llmModel, null, temperature, maxOutputTokens, ambience,
-                null, null, null, false, dataNeeded, dataEvaluation, null, null, null, null, sipTrunkIds, true);
+                null, null, null, null, false, dataNeeded, dataEvaluation, null, null, null, null, sipTrunkIds, true);
     }
 
     @Override
@@ -158,7 +155,7 @@ public class AiAgentService implements AiAgentUseCase {
         // resolveLanguage already answers a blank request with the company's own default,
         // as its BCP-47 code. Deriving it here from the enum's name instead produced
         // "uz_uz", which is not a language code any recogniser or voice accepts.
-        String language = companyConfigUseCase.resolveLanguage(companyId, request.language());
+        String language = CompanyValidator.resolveLanguageCode(request.language());
 
         // Auto-populate from template presets if templateId is specified and prompts are omitted
         TemplateDefaults defaults = (scriptRequest.templateId() != null)
@@ -241,6 +238,7 @@ public class AiAgentService implements AiAgentUseCase {
                         voiceRequest.emotionAdaptive() != null && voiceRequest.emotionAdaptive(),
                         voiceRequest.warmth()))
                 .ambience(AiAgentSettingsMapper.toAiAgentAmbience(request.ambience(), NEW_AMBIENCE))
+                .greeting(AiAgentSettingsMapper.toAgentGreeting(request.greeting(), AgentGreeting.DEFAULT))
                 .callBehaviour(AiAgentSettingsMapper.toAiAgentCallBehaviour(request.callBehaviour(), NEW_CALL_BEHAVIOUR))
                 .limits(AiAgentSettingsMapper.toAiAgentLimits(request.limits(), AiAgentLimits.NONE))
                 .dataPolicy(AiAgentSettingsMapper.toAiAgentDataPolicy(request.dataPolicy(), NEW_DATA_POLICY))
@@ -278,7 +276,7 @@ public class AiAgentService implements AiAgentUseCase {
         drafts.requirePersonaAllowed(companyId, request.persona());
 
         String language = (request.language() != null && !request.language().isBlank())
-                ? companyConfigUseCase.resolveLanguage(companyId, request.language())
+                ? CompanyValidator.resolveLanguageCode(request.language())
                 : existing.language();
 
         // Checked against the mode the agent will have after this edit, not the one it had:
@@ -377,6 +375,7 @@ public class AiAgentService implements AiAgentUseCase {
                         voiceRequest.emotionAdaptive() != null ? voiceRequest.emotionAdaptive() : voice.emotionAdaptive(),
                         voiceRequest.warmth() != null ? voiceRequest.warmth() : voice.warmth()))
                 .ambience(AiAgentSettingsMapper.toAiAgentAmbience(request.ambience(), existing.ambience()))
+                .greeting(AiAgentSettingsMapper.toAgentGreeting(request.greeting(), existing.greeting()))
                 .callBehaviour(AiAgentSettingsMapper.toAiAgentCallBehaviour(request.callBehaviour(), existing.callBehaviour()))
                 .limits(AiAgentSettingsMapper.toAiAgentLimits(request.limits(), existing.limits()))
                 .dataPolicy(AiAgentSettingsMapper.toAiAgentDataPolicy(request.dataPolicy(), existing.dataPolicy()))
@@ -679,6 +678,7 @@ public class AiAgentService implements AiAgentUseCase {
                 case MID_CALL_SMS_TEMPLATE -> behaviourRequest != null ? behaviourRequest.midCallSmsTemplate() : null;
                 case VOICEMAIL_MESSAGE -> behaviourRequest != null ? behaviourRequest.voicemailMessage() : null;
                 case FAST_LLM_MODEL -> request.fastLlmModel();
+                case GREETING_PAUSE -> request.greeting() != null ? request.greeting().pauseBeforeSpeakingMs() : null;
             };
             if (given != null) {
                 throw new ValidationException(ErrorCode.AI_AGENT_CLEAR_FIELD_CONFLICT, field);
@@ -693,7 +693,10 @@ public class AiAgentService implements AiAgentUseCase {
             return agent;
         }
         AiAgentCallBehaviour behaviour = agent.callBehaviour();
+        AgentGreeting greeting = agent.greeting();
         return agent.toBuilder()
+                .greeting(fields.contains(AgentClearableField.GREETING_PAUSE)
+                        ? new AgentGreeting(greeting.mode(), null, greeting.lines()) : greeting)
                 .initiationWebhook(fields.contains(AgentClearableField.INITIATION_WEBHOOK) ? null : agent.initiationWebhook())
                 .postCallWebhook(fields.contains(AgentClearableField.POST_CALL_WEBHOOK) ? null : agent.postCallWebhook())
                 .fastLlmModel(fields.contains(AgentClearableField.FAST_LLM_MODEL) ? null : agent.fastLlmModel())

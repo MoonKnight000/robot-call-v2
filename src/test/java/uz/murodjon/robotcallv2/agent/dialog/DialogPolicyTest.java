@@ -57,32 +57,27 @@ class DialogPolicyTest {
     // ------------------------------------------------------------------
 
     @Test
-    void disclosureFallsBackToThePlatformWordingWhenNothingIsConfigured() {
-        assertThat(DialogPolicy.resolveDisclosureLine(null, null, "uz-UZ", "Uysot"))
+    void disclosureFallsBackToThePlatformWordingWhenTheScenarioHasNone() {
+        assertThat(DialogPolicy.resolveDisclosureLine(null, "uz-UZ", "Uysot"))
                 .isEqualTo(DialogPhrases.disclosure("uz-UZ", "Uysot"));
     }
 
     @Test
-    void companyWordingIsUsedWhenItDisclosesBothFacts() {
-        assertThat(DialogPolicy.resolveDisclosureLine(null,
-                "Bu {company} avtomatik tizimi, suhbat yozib olinadi.", "uz-UZ", "Uysot"))
-                .isEqualTo("Bu Uysot avtomatik tizimi, suhbat yozib olinadi.");
-    }
-
-    @Test
-    void companyWordingThatLeavesOutTheRecordingFallsBackToThePlatform() {
-        assertThat(DialogPolicy.resolveDisclosureLine(null, "Bu avtomatik tizim.", "uz-UZ", "Uysot"))
-                .isEqualTo(DialogPhrases.disclosure("uz-UZ", "Uysot"));
-    }
-
-    @Test
-    void scenarioWordingWinsOverTheCompanys() {
+    void scenarioWordingIsUsedWhenItDisclosesBothFacts() {
         ScenarioDefinition scenario = mock(ScenarioDefinition.class);
         when(scenario.disclosureText()).thenReturn("Robot qo'ng'iroq qilmoqda, suhbat yozuvga olinadi.");
 
-        assertThat(DialogPolicy.resolveDisclosureLine(scenario,
-                "Bu avtomatik tizim, suhbat yozib olinadi.", "uz-UZ", "Uysot"))
+        assertThat(DialogPolicy.resolveDisclosureLine(scenario, "uz-UZ", "Uysot"))
                 .isEqualTo("Robot qo'ng'iroq qilmoqda, suhbat yozuvga olinadi.");
+    }
+
+    @Test
+    void scenarioWordingThatLeavesOutTheRecordingFallsBackToThePlatform() {
+        ScenarioDefinition scenario = mock(ScenarioDefinition.class);
+        when(scenario.disclosureText()).thenReturn("Bu avtomatik tizim.");
+
+        assertThat(DialogPolicy.resolveDisclosureLine(scenario, "uz-UZ", "Uysot"))
+                .isEqualTo(DialogPhrases.disclosure("uz-UZ", "Uysot"));
     }
 
     // ------------------------------------------------------------------

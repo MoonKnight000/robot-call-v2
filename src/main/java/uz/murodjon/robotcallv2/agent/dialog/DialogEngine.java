@@ -195,7 +195,6 @@ public class DialogEngine implements CallDialog {
         Company company = companyUseCase.findById(companyId);
         String companyName = company != null ? company.name() : null;
         CompanyConfig companyConfig = companyConfigService.find(companyId);
-        String companyDisclosure = companyConfig != null ? companyConfig.disclosureText() : null;
         AgentPersona agentPersona = DialogPolicy.resolvePersona(agent, companyConfig);
         boolean disclosureEnabled = agentPersona == AgentPersona.AI_ASSISTANT;
         boolean emotionAdaptiveVoice = agent == null || agent.voice().emotionAdaptive();
@@ -208,7 +207,13 @@ public class DialogEngine implements CallDialog {
                 log.warn("[{}] failed to load active tools for agent {}: {}", channelId, agent.id(), e.getMessage());
             }
         }
-        String firstMessage = agent != null ? agent.script().firstMessage() : null;
+        boolean inbound = callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null;
+        // The line this call opens with: the agent's greeting picks among its lines by language and
+        // direction; null leaves the opening to the model (dynamic greeting, or no line configured).
+        String openingLine = agent != null ? agent.findOpeningLine(language, inbound) : null;
+        String firstMessage = openingLine != null
+                ? PromptTemplateEngine.render(openingLine, context != null ? context.facts() : Map.of()) : null;
+        boolean speaksFirst = agent == null || agent.speaksFirst();
         DialogSession session = DialogSession.builder(channelId, language)
                 .ttsVoice(ttsVoice)
                 .context(context)
@@ -221,7 +226,6 @@ public class DialogEngine implements CallDialog {
                 .watchdog(watchdogRunner.createWatchdog())
                 .disclosureEnabled(disclosureEnabled)
                 .companyName(companyName)
-                .companyDisclosureText(companyDisclosure)
                 .aiModel(aiModel)
                 .voiceSettings(voiceSettings)
                 .emotionAdaptiveVoice(emotionAdaptiveVoice)
@@ -248,9 +252,8 @@ public class DialogEngine implements CallDialog {
             session.setAgentScenarioResolver(agentId -> agentHandoffResolver.findPublishedScenario(companyId, agentId));
         }
         session.setDtmfSender(dtmf);
-        boolean inbound = callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null;
         session.setInbound(inbound);
-        session.setDetectLanguages(companyConfigService.findSupportedLanguageCodes(companyId));
+        session.setDetectLanguages(agent != null ? agent.findSpokenLanguages() : List.of());
         // Which model a one-word turn is answered on is the agent's call, the same way its
         // own llmModel is: a survey agent and a collections agent share a deployment and
         // not a tolerance for a weaker model. Null leaves the installation default.
@@ -270,10 +273,14 @@ public class DialogEngine implements CallDialog {
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
         watchdogRunner.start(session);
         executors.submit(() -> {
-            if (!awaitCallerReady(session)) {
+            if (!awaitCallerReady(session, agent)) {
                 return;
             }
             speakDisclosure(session);
+            if (!speaksFirst) {
+                log.info("[{}] caller speaks first — the agent waits for them", channelId);
+                return;
+            }
             if (session.isCancelled()) {
                 log.info("[{}] caller spoke over the disclosure — greeting deferred to their turn",
                         channelId);
@@ -285,12 +292,14 @@ public class DialogEngine implements CallDialog {
         });
     }
 
-    private boolean awaitCallerReady(DialogSession s) {
-        if (dialogProperties.greetingDelayMs() <= 0) {
+    private boolean awaitCallerReady(DialogSession s, AiAgent agent) {
+        int pauseMs = agent != null && agent.greeting().pauseBeforeSpeakingMs() != null
+                ? agent.greeting().pauseBeforeSpeakingMs() : dialogProperties.greetingDelayMs();
+        if (pauseMs <= 0) {
             return true;
         }
         try {
-            Thread.sleep(dialogProperties.greetingDelayMs());
+            Thread.sleep(pauseMs);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;

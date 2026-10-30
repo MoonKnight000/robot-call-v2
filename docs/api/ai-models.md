@@ -41,7 +41,7 @@ Query parametrlar: `?kind=LLM|STT|TTS` (berilmasa `LLM`) va `?mode=CASCADE|REALT
    > tahrirlash ekrani o'sha agentning rejimini `mode` parametri bilan yuborishi kerak.
 3. **Shu build haqiqatan yeta oladigan provayderlar bo'yicha** — `LLM`+`REALTIME` uchun
    registratsiyadan o'tgan engine (`RealtimeProviderRegistry`), `LLM`+`CASCADE` uchun
-   `spring.ai.model.chat` bilan sozlangan yagona chat provayder, `STT` va `TTS` uchun esa
+   API kaliti (`GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) sozlangan har bir chat provayder — Gemini, ChatGPT va Claude bir vaqtda ro'yxatda bo'ladi, `STT` va `TTS` uchun esa
    API kaliti sozlangani uchun bean bo'lgan nutq provayderi (`SttProviderSelector` /
    `TtsProviderSelector` — `GET /api/ai-agents/engine-options` dagi ro'yxatlar bilan bir
    manba). Gemini kaliti bilan ishlayotgan deployment OpenAI model id'ini ham, Deepgram
@@ -50,7 +50,7 @@ Query parametrlar: `?kind=LLM|STT|TTS` (berilmasa `LLM`) va `?mode=CASCADE|REALT
 
 | `kind` + `mode` | Qaytadigan modellar |
 |---|---|
-| `LLM` + `CASCADE` | `spring.ai.model.chat` provayderining matn modellari (`google-genai` → `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`; `openai` → `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-6-astra`, `gpt-5.5`, `gpt-5.4-mini`) |
+| `LLM` + `CASCADE` | kaliti sozlangan chat provayderlarning matn modellari (`google-genai` → `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash-lite`; `openai` → `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-6-astra`, `gpt-5.5`, `gpt-5.4-mini`; `anthropic` → `claude-haiku-5-5`, `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-fable-5-1`) |
 | `LLM` + `REALTIME` | shu build'da yoqilgan speech-to-speech engine modellari (`gemini-live` → `gemini-3.8-live`, `gemini-3.8-live-extended-thinking`, `gemini-3.1-flash-live-preview`, `gemini-2.5-flash-native-audio-latest`; `openai-realtime` → `gpt-realtime-2.1`, `gpt-realtime-2.1-mini`; `qwen-omni`, `moshi`, `pipecat`) |
 | `STT` | kaliti sozlangan STT provayderining tanish modellari (`gemini` → `gemini-3.5-transcribe-live`, `deepgram` → `nova-3`, `yandex` → `general`, `openai` → `gpt-live-transcribe`, `gpt-transcribe`) |
 | `TTS` | kaliti sozlangan TTS provayderining modellari (`gemini` → `gemini-3.8-flash-tts`, `gemini-3.1-flash-tts-preview`, `cartesia` → `sonic-multilingual`, `openai` → `gpt-4o-mini-tts`, `elevenlabs` → `eleven_v4_turbo`) |
@@ -75,9 +75,9 @@ Shu sababli formada **avval engine, keyin model** tanlanadi: model ro'yxati
 {
   "accept": true,
   "data": [
-    { "id": "gemini-3.5-flash-lite", "kind": "LLM", "provider": "google-genai", "mode": "CASCADE", "label": "Gemini 3.5 Flash Lite — eng arzon, qisqa javoblar uchun" },
-    { "id": "gemini-3.6-flash", "kind": "LLM", "provider": "google-genai", "mode": "CASCADE", "label": "Gemini 3.6 Flash — oldingi avlod" },
-    { "id": "gemini-3.8-flash", "kind": "LLM", "provider": "google-genai", "mode": "CASCADE", "label": "Gemini 3.8 Flash — standart, tezkor" }
+    { "id": "gemini-3.5-flash-lite", "kind": "LLM", "provider": "google-genai", "mode": "CASCADE", "label": "Gemini 3.5 Flash Lite — eng arzon, qisqa javoblar uchun", "tier": "FAST", "suggested": false, "pricePerMinuteUzs": 31 },
+    { "id": "gemini-3.6-flash", "kind": "LLM", "provider": "google-genai", "mode": "CASCADE", "label": "Gemini 3.6 Flash — oldingi avlod", "tier": "BALANCED", "suggested": false, "pricePerMinuteUzs": 31 },
+    { "id": "gemini-3.8-flash", "kind": "LLM", "provider": "google-genai", "mode": "CASCADE", "label": "Gemini 3.8 Flash — standart, tezkor", "tier": "BALANCED", "suggested": true, "pricePerMinuteUzs": 31 }
   ],
   "messageCode": null
 }
@@ -87,9 +87,12 @@ Shu sababli formada **avval engine, keyin model** tanlanadi: model ro'yxati
 |---|---|
 | `id` | Provayderga o'zgarishsiz yuboriladigan model id — `llmModel`, `fastLlmModel`, `sttModel`, `ttsModel` yoki `model` maydoniga aynan shu yoziladi |
 | `kind` | `LLM` · `STT` · `TTS` — qaysi maydonga yozilishi mumkinligi (`LLM` ikkalasiga: `llmModel` va `fastLlmModel`) |
-| `provider` | Kim xizmat qiladi: `LLM`/`CASCADE` uchun `spring.ai.model.chat` qiymati, `LLM`/`REALTIME` uchun engine nomi, `STT`/`TTS` uchun nutq provayderi id'si |
+| `provider` | Kim xizmat qiladi: `LLM`/`CASCADE` uchun chat provayder (`google-genai` · `openai` · `anthropic`), `LLM`/`REALTIME` uchun engine nomi, `STT`/`TTS` uchun nutq provayderi id'si |
 | `mode` | `CASCADE` yoki `REALTIME`; `STT`/`TTS` qatorlari doim `CASCADE` |
 | `label` | Formada ko'rsatiladigan nom |
+| `tier` | Chat modelining vazifasi: `FAST` (qisqa va arzon javoblar) · `BALANCED` (kundalik tanlov) · `SMART` (murakkab suhbatlar). `null` — darajalanmagan qatorlar (STT/TTS, realtime engine). Ro'yxat shu bo'yicha guruhlanadi |
+| `suggested` | `true` — tanlagich bu modelni birinchi bo'lib "Tavsiya etiladi" belgisi bilan ko'rsatadi |
+| `pricePerMinuteUzs` | Shu model oddiy qo'ng'iroqning bir daqiqasiga qo'shadigan narx, so'mda, ustama bilan: chat modeli uchun tokenlar, realtime uchun engine daqiqasi, STT/TTS uchun tanish yoki sintez. Model tarifi `billing.yml` dagi `model-rates` da berilmagan bo'lsa umumiy `rates.llm` tarifi ishlatiladi. **Bu ko'rsatiladigan narx**: haqiqiy qo'ng'iroq hisobi hozircha umumiy LLM tarifi bilan yuritiladi |
 
 Ro'yxat bo'sh qaytishi mumkin — bu build'da tanlangan rejim uchun bironta ham
 provayder sozlanmaganini bildiradi. Bunday holda `llmModel`/`model` ni bo'sh

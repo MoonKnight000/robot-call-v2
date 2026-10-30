@@ -48,20 +48,14 @@ class DialogPolicy {
     }
 
     /**
-     * The §11.1 disclosure this call opens with, most specific wording first: the
-     * scenario's own, then the calling company's, then the platform's. Each configured
-     * text has to survive {@link Disclosure} to be used at all — that is what keeps the
-     * notice from being worded away, whichever level tries it.
+     * The §11.1 disclosure this call opens with: the scenario's own wording, else the
+     * platform's. The scenario's text has to survive {@link Disclosure} to be used at all —
+     * that is what keeps the notice from being worded away.
      */
-    static String resolveDisclosureLine(ScenarioDefinition scenario, String companyText,
-                                        String language, String companyName) {
+    static String resolveDisclosureLine(ScenarioDefinition scenario, String language, String companyName) {
         String scenarioLine = Disclosure.resolve(
                 scenario != null ? scenario.disclosureText() : null, language, companyName);
-        if (scenarioLine != null) {
-            return scenarioLine;
-        }
-        String companyLine = Disclosure.resolve(companyText, language, companyName);
-        return companyLine != null ? companyLine : DialogPhrases.disclosure(language, companyName);
+        return scenarioLine != null ? scenarioLine : DialogPhrases.disclosure(language, companyName);
     }
 
     /** Whether a call has spent its token budget (§C14); a cap of 0 or less is no budget. */

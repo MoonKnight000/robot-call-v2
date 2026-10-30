@@ -79,7 +79,8 @@ public class StudioTestChat {
 
         String reply;
         List<String> violations = List.of();
-        String firstMessage = agent.script().firstMessage();
+        // The preview opens as an outbound call in the agent's own language would.
+        String firstMessage = agent.findOpeningLine(agent.language(), false);
         if (clientText == null && firstMessage != null && !firstMessage.isBlank()) {
             // A call says the opening line as written, without asking the model.
             reply = PromptTemplateEngine.render(firstMessage.trim(), dialog.context().facts());

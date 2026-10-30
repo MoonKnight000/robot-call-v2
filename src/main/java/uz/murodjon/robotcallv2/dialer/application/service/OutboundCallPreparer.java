@@ -71,7 +71,7 @@ public class OutboundCallPreparer {
         // The target's own opening line (agentOverrides.firstMessage, NEXT-PLAN A.8).
         String firstMessage = CallContextFactory.readFirstMessageOverride(objectMapper, task.contextData());
         if (firstMessage != null) {
-            agent = agent.withFirstMessage(firstMessage);
+            agent = agent.withSpokenOpening(firstMessage);
         }
 
         return new OutboundCall(

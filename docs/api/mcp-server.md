@@ -49,7 +49,7 @@ tool'larni ko'radi.
 | `list_agents` | `AI_AGENT_READ` | Agentlar ro'yxati (`search`, `page`, `size`) |
 | `get_agent` | `AI_AGENT_READ` | Agentning qoralamasi yoki `version` |
 | `create_agent` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | Yangi agent (`POST /api/ai-agents` maydonlari) |
-| `update_agent_draft` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | Qoralamani o'zgartirish; berilmagan maydon o'zgarmaydi |
+| `update_agent_draft` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | Qoralamani o'zgartirish; berilmagan maydon o'zgarmaydi. `greeting` (kim birinchi gapiradi, pauza, til/yo'nalish bo'yicha salom satrlari — `ai-agents.md` "Salomlashish") `create_agent` bilan bir xil |
 | `list_test_cases` | `AI_AGENT_READ` | Eval test holatlari |
 | `create_test_case` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | Test holati (`toolMocks`, `expectTools` bilan) |
 | `run_evaluation` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT`, `AGENT_EVAL_RUN` | Evalni boshlash (`version`, `mode`, `repeat` 1–10) — darhol `runId` qaytaradi |

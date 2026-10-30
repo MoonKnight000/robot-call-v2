@@ -350,6 +350,8 @@ paths:
     $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1config
   /api/companies/{id}/platform:
     $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1platform
+  /api/companies/{id}/telephony-engine:
+    $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1telephony-engine
   /api/companies/{id}/logo:
     $ref: paths/company.yaml#/~1api~1companies~1%7Bid%7D~1logo
   /api/contacts:

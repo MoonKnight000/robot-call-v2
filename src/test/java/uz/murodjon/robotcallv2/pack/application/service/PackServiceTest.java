@@ -11,7 +11,6 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentEvaluationUse
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentTestCase;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.conversion.application.dto.ConversionGoalRequest;
 import uz.murodjon.robotcallv2.conversion.application.port.input.ConversionUseCase;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionGoal;
@@ -74,7 +73,7 @@ class PackServiceTest {
         secretUseCase = mock(SecretUseCase.class);
         service = new PackService(packCatalog, new PackMapper(), aiAgentUseCase, toolUseCase, knowledgeSourceUseCase,
                 agentEvaluationUseCase, conversionUseCase, secretUseCase, mock(AuditUseCase.class),
-                mock(ToolImportUseCase.class), mock(CompanyConfigUseCase.class), mock(PackGeneratorPort.class));
+                mock(ToolImportUseCase.class), mock(PackGeneratorPort.class));
 
         AiAgentRow agent = mock(AiAgentRow.class);
         when(agent.id()).thenReturn(AGENT_ID);

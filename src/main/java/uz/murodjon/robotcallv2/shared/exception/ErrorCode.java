@@ -110,7 +110,6 @@ public enum ErrorCode {
     ROLE_PERMISSION_NOT_HELD("you cannot grant %s — your own role does not have it"),
     INBOUND_ROUTE_DID_PLATFORM_ONLY("only a platform admin can assign or change a route's DID number"),
     HUMAN_LIKE_PERSONA_PLATFORM_ONLY("only a platform admin can allow or withdraw a human-like agent persona"),
-    TELEPHONY_ENGINE_PLATFORM_ONLY("only a platform admin can switch the telephony engine"),
     ROLE_NOT_ASSIGNABLE("role %s can only be assigned by platform staff"),
     PERMISSION_DENIED("your role does not include this action"),
     ACCOUNT_BLOCKED("this account has been blocked"),
@@ -188,12 +187,7 @@ public enum ErrorCode {
     /** @deprecated a non-numeric clientId travels in the target's context; kept because the frontend may still translate it. */
     @Deprecated
     CSV_CLIENT_ID_NOT_NUMBER("clientId '%s' is not a number"),
-    COMPANY_CONFIG_DEFAULT_LANGUAGE_NOT_IN_SUPPORTED("defaultLanguage '%s' must be one of supportedLanguages %s"),
     LANGUAGE_CODE_INVALID("Unknown language '%s'; supported: %s"),
-    COMPANY_CONFIG_LANGUAGE_NOT_SUPPORTED("Language '%s' is not supported by this company; supported: %s"),
-    COMPANY_CONFIG_DISCLOSURE_INCOMPLETE(
-            "disclosureText qo'ng'iroq avtomatik ekanini va yozib olinayotganini aytishi shart (§11.1); "
-                    + "platforma matni ishlatilishi uchun bo'sh qoldiring"),
     EMAIL_ALREADY_TAKEN("bu email allaqachon band"),
     CURRENT_PASSWORD_INCORRECT("joriy parol noto'g'ri"),
     SCHEDULE_START_AFTER_END("boshlanish vaqti tugash vaqtidan oldin bo'lishi kerak"),

@@ -31,6 +31,7 @@ public final class AiAgentFixtures {
                 new AiAgentVoice(ttsVoice, null, Map.of(), Map.of(), true),
                 new AiAgentAmbience(AmbientSound.OFF, 0.35, 1.5, AmbientSound.OFF, 0.35,
                         true, NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION),
+                AgentGreeting.DEFAULT,
                 new AiAgentCallBehaviour(InterruptionSensitivity.MEDIUM, false,
                         VoicemailAction.LEAVE_MESSAGE, null, false, null, null, null, null),
                 new AiAgentLimits(600, 30, 10, 1000),

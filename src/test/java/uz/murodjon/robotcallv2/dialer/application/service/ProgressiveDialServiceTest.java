@@ -76,7 +76,6 @@ class ProgressiveDialServiceTest {
         DialerProperties dialerProperties = mock(DialerProperties.class);
         when(dialerProperties.enabled()).thenReturn(true);
         CompanyConfigUseCase companyConfig = mock(CompanyConfigUseCase.class);
-        when(companyConfig.resolveLanguage(COMPANY_ID, null)).thenReturn("uz-UZ");
         when(campaigns.findActiveCampaigns()).thenReturn(List.of(campaign(DialMode.PROGRESSIVE)));
         when(queues.findQueue(COMPANY_ID, QUEUE_ID)).thenReturn(queue(FIRST_OPERATOR, SECOND_OPERATOR));
         when(billing.hasBalanceForCall(COMPANY_ID)).thenReturn(true);

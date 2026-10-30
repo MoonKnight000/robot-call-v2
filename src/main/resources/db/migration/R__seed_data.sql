@@ -16,30 +16,16 @@ ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name WHERE company.name = 'Defaul
 SELECT setval(pg_get_serial_sequence('company', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM company), 1), true);
 
--- disclosure_text: the §11.1 notice this company's calls open with. {company} is
--- filled in at call time, so the same wording serves every tenant; blank would fall back
--- to the platform's own line, but every company is provisioned with it explicitly so an
--- owner can see and edit what their callers hear.
---
 -- human_like_persona_allowed is on so the HUMAN_LIKE test agent below can be tried; the
 -- contact-frequency caps stay off so the softphone test campaign can be run again and again.
 -- holidays are days the dialer skips.
-INSERT INTO company_config (id, company_id, dial_window_start, dial_window_end, timezone, default_language,
-                            disclosure_text, human_like_persona_allowed, holidays)
-VALUES (1, 1, '07:00:00', '23:00:00', 'Asia/Tashkent', 'uz-UZ',
-        NULL,
+INSERT INTO company_config (id, company_id, dial_window_start, dial_window_end, timezone,
+                            human_like_persona_allowed, holidays)
+VALUES (1, 1, '07:00:00', '23:00:00', 'Asia/Tashkent',
         true, '2026-10-01,2026-12-08')
 ON CONFLICT (company_id) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('company_config', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM company_config), 1), true);
-
-INSERT INTO company_config_language (company_config_id, ord, language)
-SELECT id, 0, 'uz-UZ' FROM company_config WHERE company_id = 1
-ON CONFLICT (company_config_id, ord) DO NOTHING;
-
-INSERT INTO company_config_language (company_config_id, ord, language)
-SELECT id, 1, 'ru-RU' FROM company_config WHERE company_id = 1
-ON CONFLICT (company_config_id, ord) DO NOTHING;
 -- System roles for the bootstrap tenant. RoleBootstrap creates them at startup too, but the
 -- users seeded below need their ids now.
 INSERT INTO app_role (company_id, code, name, is_system)
@@ -175,8 +161,9 @@ UPDATE tts_voice SET gender = 'NEUTRAL' WHERE gender IS NULL AND company_id IS N
 -- and synthesizer models too (kind STT/TTS). The label is refreshed on every reseed, the id is
 -- not — an id already stored on an agent must keep meaning the same model.
 INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
-    -- CASCADE: the text LLM behind a turn. Only rows whose provider matches
-    -- spring.ai.model.chat are offered, so an OpenAI build never lists Gemini and back.
+    -- CASCADE: the text LLM behind a turn. Only rows whose vendor (google-genai, openai,
+    -- anthropic) has an API key in this deployment are offered; a request is routed to
+    -- the vendor its model id belongs to, so all three can be in use at once.
     ('gemini-3.8-flash',            'LLM', 'google-genai',    'CASCADE',  'Gemini 3.8 Flash — standart, tezkor'),
     ('gemini-3.6-flash',            'LLM', 'google-genai',    'CASCADE',  'Gemini 3.6 Flash — oldingi avlod'),
     ('gemini-3.5-flash-lite',       'LLM', 'google-genai',    'CASCADE',  'Gemini 3.5 Flash Lite — eng arzon, qisqa javoblar uchun'),
@@ -189,6 +176,10 @@ INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
     -- model_not_found bo'ladi va gpt-5.6-* qatorlaridan birini tanlash kerak.
     ('gpt-5.5',                     'LLM', 'openai',          'CASCADE',  'GPT-5.5 — oldingi avlod'),
     ('gpt-5.4-mini',                'LLM', 'openai',          'CASCADE',  'GPT-5.4 mini — oldingi avlod, arzon'),
+    ('claude-haiku-5-5',            'LLM', 'anthropic',       'CASCADE',  'Claude Haiku 5.5 — tezkor va arzon, qisqa javoblar uchun'),
+    ('claude-sonnet-5-5',           'LLM', 'anthropic',       'CASCADE',  'Claude Sonnet 5.5 — aql va narx muvozanati'),
+    ('claude-opus-5-5',             'LLM', 'anthropic',       'CASCADE',  'Claude Opus 5.5 — murakkab suhbatlar uchun, sekinroq va qimmatroq'),
+    ('claude-fable-5-1',            'LLM', 'anthropic',       'CASCADE',  'Claude Fable 5.1'),
     -- REALTIME: the speech-to-speech engine's own model. Only rows whose provider is
     -- registered in this build are offered.
     ('gemini-3.8-live',             'LLM', 'gemini-live',     'REALTIME', 'Gemini 3.8 Live — tezroq, tool''lar fonda ishlaydi'),
@@ -219,6 +210,19 @@ ON CONFLICT (id) DO UPDATE SET kind     = EXCLUDED.kind,
                                provider = EXCLUDED.provider,
                                mode     = EXCLUDED.mode,
                                label    = EXCLUDED.label;
+
+-- How the picker groups the chat models (tier) and which it puts forward (suggested). Kept
+-- apart from the insert so the two lists read as the decisions they are; a row left out of
+-- every tier list is simply not grouped.
+UPDATE ai_model SET tier = NULL, suggested = false WHERE kind = 'LLM';
+UPDATE ai_model SET tier = 'FAST'
+ WHERE id IN ('gemini-3.5-flash-lite', 'gpt-5.4-mini', 'gpt-5.6-luna', 'claude-haiku-5-5');
+UPDATE ai_model SET tier = 'BALANCED'
+ WHERE id IN ('gemini-3.8-flash', 'gemini-3.6-flash', 'gpt-5.5', 'gpt-5.6-terra', 'claude-sonnet-5-5');
+UPDATE ai_model SET tier = 'SMART'
+ WHERE id IN ('gpt-5.6-sol', 'gpt-6-astra', 'claude-opus-5-5', 'claude-fable-5-1');
+UPDATE ai_model SET suggested = true
+ WHERE id IN ('gemini-3.8-flash', 'gpt-5.6-luna', 'claude-sonnet-5-5');
 
 -- Retired ids. The insert above only ever adds and refreshes, so a model this project has
 -- stopped supporting stays in the picker until it is deleted by name. The Groq llama rows
@@ -736,7 +740,7 @@ SELECT 1, 'Kiruvchi qabulxona',
        'OMNICHANNEL', 'CONVERSATIONAL_FLOW',
        (SELECT id FROM scenario WHERE scenario_key = 'reception' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
-       -- Opens with the question, not with a greeting: company_config.disclosure_text is
+       -- Opens with the question, not with a greeting: the platform's §11.1 disclosure is
        -- spoken from code just before this, and it already says hello.
        'Sizni tinglayapman, qanday yordam bera olaman?',
        'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'nigora',
@@ -1025,7 +1029,7 @@ VALUES
  'Of course, I can transfer you to a live operator. If none is free, you can call support during business hours, Monday to Friday from 9:00 to 18:00.',
  'operator,odam,jonli,ulang,оператор,человек,живой,соедините,operator,human'),
 
--- Pairs with company_config.disclosure_text: the call opens by saying it is recorded, so
+-- Pairs with the §11.1 disclosure: the call opens by saying it is recorded, so
 -- "why are you recording me" is a question this agent will be asked.
 (1, 'call_recording', 'legal', 'Suhbat yozib olinishi va shaxsiy ma''lumotlar',
  'Suhbat xizmat sifatini nazorat qilish uchun yozib olinadi va shaxsiy ma''lumotlar to''g''risidagi qonunchilikka muvofiq saqlanadi. Yozuvni o''chirish yoki nusxasini olish uchun qo''llab-quvvatlash xizmatiga yozma murojaat qilishingiz mumkin.',
@@ -2667,7 +2671,6 @@ DO $seed$
 DECLARE
     v_hash   CONSTANT TEXT := '$2a$12$OXJCG27t4EEQWD9lMVvccOXLLZDeh9IYyfsVxg.UTs5nq4N.ii0NO'; -- Test12345!
     v_c2     BIGINT;
-    v_config BIGINT;
     v_admin  BIGINT;
     v_agent  BIGINT;
     v_camp   BIGINT;
@@ -2682,14 +2685,11 @@ BEGIN
     VALUES ('Demo Savdo MChJ', 'ACTIVE', 'Toshkent, Amir Temur ko''chasi 107', now() - interval '30 days')
     RETURNING id INTO v_c2;
 
-    INSERT INTO company_config (company_id, dial_window_start, dial_window_end, timezone, default_language, disclosure_text,
+    INSERT INTO company_config (company_id, dial_window_start, dial_window_end, timezone,
                                 max_attempts_per_phone_per_week, quiet_days_after_conversation, respect_promised_date,
                                 human_like_persona_allowed)
-    VALUES (v_c2, '09:00', '20:00', 'Asia/Tashkent', 'ru-RU',
-            'Здравствуйте! Это автоматический голосовой сервис компании {company}. Разговор записывается.',
-            7, 2, true, false)
-    RETURNING id INTO v_config;
-    INSERT INTO company_config_language (company_config_id, ord, language) VALUES (v_config, 0, 'ru-RU'), (v_config, 1, 'uz-UZ');
+    VALUES (v_c2, '09:00', '20:00', 'Asia/Tashkent',
+            7, 2, true, false);
 
     INSERT INTO app_role (company_id, code, name, is_system) VALUES
         (v_c2, 'DEVELOPER', 'Developer', true), (v_c2, 'ADMIN', 'Administrator', true),
@@ -3166,7 +3166,6 @@ DECLARE
     v_old     BIGINT;
     v_blocked BIGINT;
     v_c       BIGINT;
-    v_config  BIGINT;
 BEGIN
     IF EXISTS (SELECT 1 FROM company WHERE name = 'CallPro Hamkor MChJ') THEN
         RETURN;
@@ -3203,10 +3202,8 @@ BEGIN
 
     -- Settings and system roles for each, as CompanyService would provision them.
     FOREACH v_c IN ARRAY ARRAY[v_partner, v_client, v_old, v_blocked] LOOP
-        INSERT INTO company_config (company_id, dial_window_start, dial_window_end, timezone, default_language)
-        VALUES (v_c, '09:00', '20:00', 'Asia/Tashkent', 'uz-UZ')
-        RETURNING id INTO v_config;
-        INSERT INTO company_config_language (company_config_id, ord, language) VALUES (v_config, 0, 'uz-UZ'), (v_config, 1, 'ru-RU');
+        INSERT INTO company_config (company_id, dial_window_start, dial_window_end, timezone)
+        VALUES (v_c, '09:00', '20:00', 'Asia/Tashkent');
         INSERT INTO app_role (company_id, code, name, is_system)
         SELECT v_c, r.code, r.name, true
         FROM (VALUES ('DEVELOPER', 'Developer'), ('ADMIN', 'Administrator'), ('OPERATOR', 'Operator'),

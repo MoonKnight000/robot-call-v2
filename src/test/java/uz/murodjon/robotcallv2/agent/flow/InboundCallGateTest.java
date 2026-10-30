@@ -10,7 +10,6 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callflow.application.port.input.CallFlowUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundCallerRuleUseCase;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
@@ -41,8 +40,6 @@ class InboundCallGateTest {
     @Mock
     private BusinessScheduleUseCase businessScheduleUseCase;
     @Mock
-    private CompanyConfigUseCase companyConfigService;
-    @Mock
     private CompanyUseCase companyUseCase;
     @Mock
     private CallBillingUseCase callBillingUseCase;
@@ -55,12 +52,11 @@ class InboundCallGateTest {
         clock = Clock.fixed(Instant.parse("2026-10-10T12:00:00Z"), ZoneId.of("UTC"));
         gate = new InboundCallGate(
                 inboundRouteUseCase, callerRuleUseCase, callFlowUseCase,
-                businessScheduleUseCase, companyConfigService, companyUseCase,
+                businessScheduleUseCase, companyUseCase,
                 callBillingUseCase, clock
         );
         when(companyUseCase.isFeatureAvailable(anyLong(), any())).thenReturn(true);
         when(callBillingUseCase.hasBalanceForCall(anyLong())).thenReturn(true);
-        when(companyConfigService.resolveLanguage(anyLong(), any())).thenReturn("uz-UZ");
         when(businessScheduleUseCase.findZone(anyLong(), any())).thenReturn(ZoneId.of("Asia/Tashkent"));
     }
 

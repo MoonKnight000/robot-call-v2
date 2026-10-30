@@ -132,8 +132,6 @@ public class DialogSession implements DialogOutcomeSink {
 
     /** Whose name the §11.1 disclosure is spoken in — the company this call's campaign belongs to. */
     private final String companyName;
-    /** That company's own wording of the §11.1 disclosure (company config), resolved once. */
-    private final String companyDisclosureText;
     /**
      * Copy-on-write: the greeting appends to it without holding {@code busy}, and a
      * speculation copies it from another thread while a turn may be adding to it.
@@ -241,7 +239,6 @@ public class DialogSession implements DialogOutcomeSink {
         this.disclosureEnabled = builder.disclosureEnabled;
         this.agentPersona = builder.agentPersona != null ? builder.agentPersona : AgentPersona.AI_ASSISTANT;
         this.companyName = builder.companyName;
-        this.companyDisclosureText = builder.companyDisclosureText;
         this.aiModel = builder.aiModel;
         this.voiceSettings = builder.voiceSettings;
         this.emotionAdaptiveVoice = builder.emotionAdaptiveVoice;
@@ -503,10 +500,6 @@ public class DialogSession implements DialogOutcomeSink {
 
     public String companyName() {
         return companyName;
-    }
-
-    public String companyDisclosureText() {
-        return companyDisclosureText;
     }
 
     public boolean disclosureEnabled() {

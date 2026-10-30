@@ -341,7 +341,9 @@ public class TurnTools {
      * the speech rules in the prompt ("ko'pi bilan ikki qisqa gap"), not by this, and
      * raising it costs nothing because only tokens actually generated are billed.
      *
-     * <p>The vendor is decided here from the model id, and it has to agree with
+     * <p>The OpenAI-or-Gemini shape of the options is decided here from the model id (a
+     * {@code claude-*} id takes the Gemini shape; {@code RoutingChatModel} carries it over
+     * to Claude), and it has to agree with
      * {@code spring.ai.openai.base-url}: the ids in the model catalog are OpenAI's, and a
      * catalog listing one vendor's ids while the URL points at another is exactly the
      * failure this branch exists to prevent. That slot used to point at Groq's

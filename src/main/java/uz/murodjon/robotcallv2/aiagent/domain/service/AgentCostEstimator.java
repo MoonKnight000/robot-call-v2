@@ -28,6 +28,8 @@ public final class AgentCostEstimator {
     static final int COMPLETION_TOKENS_PER_TURN = 40;
     /** About half a minute of the agent's speech. */
     static final int TTS_CHARS_PER_MINUTE = 450;
+    /** The instructions of an ordinary agent — what a price shown before any agent exists assumes. */
+    static final int TYPICAL_PROMPT_TOKENS = 1500;
 
     private AgentCostEstimator() {
     }
@@ -66,7 +68,16 @@ public final class AgentCostEstimator {
      * turn, the speech it synthesizes and the line.
      */
     public static CallUsage createOneMinuteUsage(AiAgent agent, int promptTokens) {
-        if (isRealtime(agent)) {
+        return createOneMinuteUsage(isRealtime(agent), promptTokens);
+    }
+
+    /** One minute of an ordinary agent's talk, for the price a model picker shows. */
+    public static CallUsage createTypicalOneMinuteUsage(boolean realtime) {
+        return createOneMinuteUsage(realtime, TYPICAL_PROMPT_TOKENS);
+    }
+
+    private static CallUsage createOneMinuteUsage(boolean realtime, int promptTokens) {
+        if (realtime) {
             return new CallUsage(60, 0, 0, 0, 0, 60);
         }
         long averageTurnPrompt = (findLowTokensPerTurn(promptTokens) + findHighTokensPerTurn(promptTokens)) / 2

@@ -3,7 +3,10 @@ package uz.murodjon.robotcallv2.aiagent.application.mapper;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentAmbienceDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentCallBehaviourDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentDataPolicyDto;
+import uz.murodjon.robotcallv2.aiagent.application.dto.AgentGreetingDto;
+import uz.murodjon.robotcallv2.aiagent.application.dto.GreetingLineDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentLimitsDto;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentGreeting;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentAmbience;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentDataPolicy;
@@ -31,6 +34,16 @@ public final class AiAgentSettingsMapper {
                 dto.thinkingVolume() != null ? dto.thinkingVolume() : base.thinkingVolume(),
                 dto.noiseCancellationEnabled() != null ? dto.noiseCancellationEnabled() : base.noiseCancellationEnabled(),
                 dto.noiseCancellationMode() != null ? dto.noiseCancellationMode() : base.noiseCancellationMode());
+    }
+
+    public static AgentGreeting toAgentGreeting(AgentGreetingDto dto, AgentGreeting base) {
+        if (dto == null) {
+            return base;
+        }
+        return new AgentGreeting(
+                dto.mode() != null ? dto.mode() : base.mode(),
+                dto.pauseBeforeSpeakingMs() != null ? dto.pauseBeforeSpeakingMs() : base.pauseBeforeSpeakingMs(),
+                dto.lines() != null ? dto.lines().stream().map(GreetingLineDto::toGreetingLine).toList() : base.lines());
     }
 
     public static AiAgentCallBehaviour toAiAgentCallBehaviour(AgentCallBehaviourDto dto, AiAgentCallBehaviour base) {

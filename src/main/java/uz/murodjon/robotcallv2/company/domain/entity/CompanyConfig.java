@@ -1,7 +1,7 @@
 package uz.murodjon.robotcallv2.company.domain.entity;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
-import uz.murodjon.robotcallv2.company.domain.enums.Language;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
@@ -27,7 +27,8 @@ import java.util.List;
  *                                   AI assistant, disclosure included
  * @param scorecardReviewThreshold   an operator call scored below this (0–100) goes to the
  *                                   review inbox (docs/OPERATOR-DIALER-ANALYTICS-PLAN.md §2.3b)
- * @param telephonyEngine            telephony media engine (ASTERISK, LIVEKIT)
+ * @param telephonyEngine            telephony media engine (ASTERISK, LIVEKIT); the platform's choice,
+ *                                   so it is not part of the company's own settings JSON
  */
 public record CompanyConfig(
         long id,
@@ -35,16 +36,13 @@ public record CompanyConfig(
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowStart,
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN) LocalTime dialWindowEnd,
         String timezone,
-        Language defaultLanguage,
-        List<Language> supportedLanguages,
-        String disclosureText,
         int maxAttemptsPerPhonePerWeek,
         int quietDaysAfterConversation,
         boolean respectPromisedDate,
         boolean humanLikePersonaAllowed,
         List<LocalDate> holidays,
         int scorecardReviewThreshold,
-        TelephonyEngine telephonyEngine,
+        @JsonIgnore TelephonyEngine telephonyEngine,
         Instant createdAt
 ) {
 
@@ -61,13 +59,8 @@ public record CompanyConfig(
     private static final LocalTime DEFAULT_DIAL_WINDOW_START = LocalTime.of(9, 0);
     private static final LocalTime DEFAULT_DIAL_WINDOW_END = LocalTime.of(20, 0);
     private static final String DEFAULT_TIMEZONE = "Asia/Tashkent";
-    private static final Language DEFAULT_LANGUAGE = Language.UZ_UZ;
-    private static final List<Language> DEFAULT_SUPPORTED_LANGUAGES =
-            List.of(Language.UZ_UZ, Language.RU_RU);
     private static final int DEFAULT_MAX_ATTEMPTS_PER_PHONE_PER_WEEK = 3;
     private static final int DEFAULT_QUIET_DAYS_AFTER_CONVERSATION = 1;
-    private static final String DEFAULT_DISCLOSURE_TEXT =
-            "Assalomu alaykum! Bu {company} kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda.";
 
     /**
      * What a tenant starts with before anyone edits its settings — the single definition,
@@ -75,7 +68,6 @@ public record CompanyConfig(
      */
     public static CompanyConfig defaults() {
         return settings(DEFAULT_DIAL_WINDOW_START, DEFAULT_DIAL_WINDOW_END, DEFAULT_TIMEZONE,
-                DEFAULT_LANGUAGE, DEFAULT_SUPPORTED_LANGUAGES, DEFAULT_DISCLOSURE_TEXT,
                 DEFAULT_MAX_ATTEMPTS_PER_PHONE_PER_WEEK, DEFAULT_QUIET_DAYS_AFTER_CONVERSATION, true, false);
     }
 
@@ -84,12 +76,10 @@ public record CompanyConfig(
      * storage layer, which stamps them itself.
      */
     public static CompanyConfig settings(LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
-                                         Language defaultLanguage, List<Language> supportedLanguages,
-                                         String disclosureText, int maxAttemptsPerPhonePerWeek,
+                                         int maxAttemptsPerPhonePerWeek,
                                          int quietDaysAfterConversation, boolean respectPromisedDate,
                                          boolean humanLikePersonaAllowed) {
         return new CompanyConfig(0, 0, dialWindowStart, dialWindowEnd, timezone,
-                defaultLanguage, supportedLanguages, disclosureText,
                 maxAttemptsPerPhonePerWeek, quietDaysAfterConversation, respectPromisedDate,
                 humanLikePersonaAllowed, List.of(), DEFAULT_SCORECARD_REVIEW_THRESHOLD, null, null);
     }
@@ -99,13 +89,11 @@ public record CompanyConfig(
      * below which an operator call is reviewed, and the telephony engine (null = the default one).
      */
     public static CompanyConfig settings(LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
-                                         Language defaultLanguage, List<Language> supportedLanguages,
-                                         String disclosureText, int maxAttemptsPerPhonePerWeek,
+                                         int maxAttemptsPerPhonePerWeek,
                                          int quietDaysAfterConversation, boolean respectPromisedDate,
                                          boolean humanLikePersonaAllowed, List<LocalDate> holidays,
                                          int scorecardReviewThreshold, TelephonyEngine telephonyEngine) {
         return new CompanyConfig(0, 0, dialWindowStart, dialWindowEnd, timezone,
-                defaultLanguage, supportedLanguages, disclosureText,
                 maxAttemptsPerPhonePerWeek, quietDaysAfterConversation, respectPromisedDate,
                 humanLikePersonaAllowed, holidays, scorecardReviewThreshold,
                 telephonyEngine, null);

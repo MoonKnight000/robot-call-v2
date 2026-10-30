@@ -4,7 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
+import uz.murodjon.robotcallv2.aimodel.application.dto.AiModelResponse;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
@@ -26,7 +26,7 @@ import java.util.List;
 public interface AiModelController {
 
     @GetMapping
-    ResponseEntity<ResponseData<List<AiModel>>> models(
+    ResponseEntity<ResponseData<List<AiModelResponse>>> models(
             @RequestParam(defaultValue = "LLM") AiModelKind kind,
             @RequestParam(required = false) PipelineMode mode);
 }

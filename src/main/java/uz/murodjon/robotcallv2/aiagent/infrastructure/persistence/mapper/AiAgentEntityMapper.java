@@ -31,6 +31,7 @@ public class AiAgentEntityMapper {
     private static final TypeReference<AgentWebhookConfig> WEBHOOK_TYPE = new TypeReference<>() {};
     private static final TypeReference<ScenarioDefinition> SCENARIO_DEF_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<PronunciationRule>> PRONUNCIATION_RULES_TYPE = new TypeReference<>() {};
+    private static final TypeReference<AgentGreeting> GREETING_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<PostCallAction>> POST_CALL_ACTIONS_TYPE = new TypeReference<>() {};
     private static final TypeReference<Set<HandbookRule>> HANDBOOK_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Double>> SPEED_PER_LANGUAGE_TYPE = new TypeReference<>() {};
@@ -122,6 +123,7 @@ public class AiAgentEntityMapper {
                 .dataEvaluation(read(entity.getDataEvaluation(), DATA_EVALUATION_TYPE, List.of()))
                 .initiationWebhook(read(entity.getInitiationWebhook(), WEBHOOK_TYPE, null))
                 .postCallWebhook(read(entity.getPostCallWebhook(), WEBHOOK_TYPE, null))
+                .greeting(read(entity.getGreeting(), GREETING_TYPE, AgentGreeting.DEFAULT))
                 .pronunciationRules(read(entity.getPronunciationRules(), PRONUNCIATION_RULES_TYPE, List.of()))
                 .postCallActions(read(entity.getPostCallActions(), POST_CALL_ACTIONS_TYPE, List.of()))
                 .handbook(read(entity.getHandbook(), HANDBOOK_TYPE, Set.of()))
@@ -160,6 +162,7 @@ public class AiAgentEntityMapper {
         entity.setDataEvaluation(write(agent.dataEvaluation(), "[]"));
         entity.setInitiationWebhook(agent.initiationWebhook() != null ? write(agent.initiationWebhook(), null) : null);
         entity.setPostCallWebhook(agent.postCallWebhook() != null ? write(agent.postCallWebhook(), null) : null);
+        entity.setGreeting(AgentGreeting.DEFAULT.equals(agent.greeting()) ? null : write(agent.greeting(), null));
         entity.setPronunciationRules(write(agent.pronunciationRules(), "[]"));
         entity.setPostCallActions(write(agent.postCallActions(), "[]"));
         entity.setHandbook(write(agent.handbook(), "[]"));

@@ -3,8 +3,6 @@ package uz.murodjon.robotcallv2.company.application.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.*;
-import uz.murodjon.robotcallv2.company.domain.enums.Language;
-import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.time.LocalDate;
@@ -12,10 +10,10 @@ import java.time.LocalTime;
 import java.util.List;
 
 /**
- * The contact-policy fields, {@code humanLikePersonaAllowed}, {@code holidays},
- * {@code scorecardReviewThreshold} and {@code telephonyEngine} are optional: null keeps
- * what the company already has, so a client written before they existed does not reset
- * them by omission.
+ * The contact-policy fields, {@code humanLikePersonaAllowed}, {@code holidays} and
+ * {@code scorecardReviewThreshold} are optional: null keeps what the company already has, so
+ * a client written before they existed does not reset them by omission. The telephony engine
+ * is not here: only the platform sets it ({@link UpdateTelephonyEngineRequest}).
  */
 public record UpdateCompanyConfigRequest(
         @Schema(type = "string", pattern = DateTimeProperties.TIME_PATTERN, example = "09:00:00")
@@ -25,15 +23,11 @@ public record UpdateCompanyConfigRequest(
         @JsonFormat(pattern = DateTimeProperties.TIME_PATTERN)
         @NotNull LocalTime dialWindowEnd,
         @NotBlank String timezone,
-        @NotNull Language defaultLanguage,
-        @NotEmpty List<Language> supportedLanguages,
-        @Size(max = 500) String disclosureText,
         @Min(0) @Max(100) Integer maxAttemptsPerPhonePerWeek,
         @Min(0) @Max(90) Integer quietDaysAfterConversation,
         Boolean respectPromisedDate,
         Boolean humanLikePersonaAllowed,
         @Size(max = 366) List<LocalDate> holidays,
-        @Min(0) @Max(100) Integer scorecardReviewThreshold,
-        TelephonyEngine telephonyEngine
+        @Min(0) @Max(100) Integer scorecardReviewThreshold
 ) {
 }

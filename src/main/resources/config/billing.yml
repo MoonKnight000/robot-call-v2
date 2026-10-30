@@ -21,6 +21,13 @@ voice-agent:
       platform-fee-per-minute-uzs: ${BILLING_PLATFORM_FEE_UZS:100}
       markup-basis-points: ${BILLING_MARKUP_BPS:2000}
 
+    # Token prices of individual chat models, for the price the model picker shows
+    # (BillingModelRateProperties). A model left out is priced at rates.llm above. Settlement of
+    # real calls still uses rates.llm. An id with a dot is written in brackets, e.g.:
+    #   model-rates:
+    #     llm:
+    #       "[gemini-3.8-flash]": { prompt-per-million-uzs: 1900, completion-per-million-uzs: 7600, cached-prompt-per-million-uzs: 475 }
+
     auto-recharge:
       threshold-uzs: ${BILLING_AUTO_RECHARGE_THRESHOLD_UZS:50000}
       amount-uzs: ${BILLING_AUTO_RECHARGE_AMOUNT_UZS:500000}

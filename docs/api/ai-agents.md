@@ -237,6 +237,11 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "noiseCancellationEnabled": true,
     "noiseCancellationMode": "BACKGROUND_NOISE_SUPPRESSION"
   },
+  "greeting": {
+    "mode": "AI_CUSTOM",
+    "pauseBeforeSpeakingMs": null,
+    "lines": []
+  },
   "callBehaviour": {
     "interruptionSensitivity": "MEDIUM",
     "dtmfInputEnabled": true,
@@ -286,7 +291,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 
 > **Maydon guruhlari (2026-10-28 dan, breaking change).** Agent sozlamalari domain'dagi
 > guruhlar bo'yicha ichma-ich obyektlarda keladi: `script`, `speechEngine`, `voice`, `ambience`,
-> `callBehaviour`, `limits`, `dataPolicy`. Shu shakl `POST`, `PUT` va javob (`AiAgentRow`) da bir
+> `greeting`, `callBehaviour`, `limits`, `dataPolicy`. Shu shakl `POST`, `PUT` va javob (`AiAgentRow`) da bir
 > xil, shuning uchun forma `GET` da o'qiganini `PUT` ga qaytara oladi. Har qanday guruhni butunlay
 > tashlab ketish mumkin: `POST` da u standart qiymatlarni oladi, `PUT` da agentniki saqlanadi.
 > Guruh ichida `null` maydon ham xuddi shunday ishlaydi. Quyidagi matnda maydonlar qisqa nomi
@@ -532,6 +537,25 @@ qabul qilmaydi, lekin ikki saqlash aynan bir vaqtga to'g'ri kelsa ikkinchisi `40
 mumkin. `GET /{id}/versions/{version}` javobidagi `version` — doim `0` (snapshot qulf
 hisoblagichini saqlamaydi), uni `PUT` ga yubormang.
 
+**Salomlashish (`greeting`).** Qo'ng'iroq qanday ochilishini boshqaradi. Javobda (`AiAgentRow`) va `PUT` da
+keladi; `POST` da ham yuboriladi (tashlab ketilsa standart: `AI_CUSTOM`, pauza standart, qo'shimcha satrlarsiz).
+Asosiy matn `script.firstMessage` bo'lib qoladi; `greeting` unga qo'shimcha.
+
+| Maydon | Ma'nosi |
+|---|---|
+| `mode` | `AI_CUSTOM` (standart) — agent birinchi gapiradi, matni belgilangan (matn bo'lmasa LLM o'zi ochadi); `AI_DYNAMIC` — agent birinchi gapiradi, ochilishni LLM har safar yangidan yozadi; `USER_FIRST` — avval mijoz gapiradi, agent kutadi |
+| `pauseBeforeSpeakingMs` | 0..10000. Javob berilgandan keyin agent birinchi so'zgacha kutadigan vaqt. `null` — platforma standarti (`greeting-delay-ms`). Qaytarish: `clearFields: ["GREETING_PAUSE"]` |
+| `lines[]` | `{ direction?, language?, text }` — `firstMessage` dan tashqari qo'shimcha ochilish matnlari (ko'pi bilan 20). `direction`: `INBOUND`/`OUTBOUND`/`null` (ikkalasi). `language`: `ru`, `uz-UZ` kabi; `null` — istalgan til. `text` da `{{o'zgaruvchi}}` qo'ng'iroq faktlaridan to'ldiriladi. `PUT` da ro'yxat **butunlay almashtiriladi** (`[]` — hammasini o'chiradi) |
+
+Qo'ng'iroq uchun matn tanlash: `firstMessage` ham bitta "satr" sifatida qatnashadi. Qo'ng'iroqning yo'nalishi va tiliga mos
+satrlar orasidan **eng aniq mo'ljallangani** olinadi (yo'nalish ham, til ham ko'rsatilgan satr — bittasi ko'rsatilgandan,
+u esa hech biri ko'rsatilmagandan ustun); teng aniqlikdagilar orasidan tasodifiy bittasi tanlanadi — shu tufayli bir nechta
+satr "variant" vazifasini bajaradi. Mos satr topilmasa (yoki `mode` = `AI_DYNAMIC`) ochilishni LLM yozadi. `USER_FIRST`
+da agent kutadi (kaskad va realtime ikkalasida); majburiy ochiq-oydin aytish matni (disclosure) bundan mustasno —
+u baribir aytiladi. Mijoz ham, agent ham gapirmasa, jimlik nazoratchisi odatdagidek "alo?" deb so'raydi.
+Kontaktdagi `agentOverrides.firstMessage`, initiation webhook'ning `firstMessage` i va uzilgan ulanishdan keyingi
+uzr — bularning hammasi shu qo'ng'iroq uchun salomlashishdan ustun turadi.
+
 **Qiymatni o'chirish (`clearFields`).** `PUT` da `null` maydon "o'zgartirma" degani, shuning uchun
 ixtiyoriy sozlamani bo'shatishning yagona yo'li — uni `clearFields` ro'yxatida yuborish (ixtiyoriy,
 faqat `PUT`):
@@ -548,6 +572,7 @@ faqat `PUT`):
 | `MID_CALL_SMS_TEMPLATE` | `callBehaviour.midCallSmsTemplate` |
 | `VOICEMAIL_MESSAGE` | `callBehaviour.voicemailMessage` |
 | `FAST_LLM_MODEL` | `fastLlmModel` |
+| `GREETING_PAUSE` | `greeting.pauseBeforeSpeakingMs` (platform defaultiga qaytadi) |
 
 Bir xil so'rovda maydonga qiymat berib, uni `clearFields` ga ham qo'shish —
 `400 AI_AGENT_CLEAR_FIELD_CONFLICT` (hech narsa yozilmaydi). Ro'yxatda yo'q maydonlar avvalgidek

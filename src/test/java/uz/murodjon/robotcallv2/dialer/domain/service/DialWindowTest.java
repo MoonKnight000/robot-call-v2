@@ -58,7 +58,7 @@ class DialWindowTest {
         Campaign campaign = createCampaign(LocalTime.of(9, 0), LocalTime.of(20, 0));
         CompanyConfig config = CompanyConfig.settings(
                 LocalTime.of(9, 0), LocalTime.of(20, 0), "Asia/Tashkent",
-                null, List.of(), "", 3, 1, true, false,
+                3, 1, true, false,
                 List.of(today), 60, null
         );
 

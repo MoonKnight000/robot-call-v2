@@ -69,4 +69,16 @@ public interface CompanyController {
             @CurrentCompanyId long callerCompanyId,
             @PathVariable long id,
             @Valid @RequestBody UpdateCompanyConfigRequest request);
+
+    /** Platform-only: the telephony engine (ASTERISK / LIVEKIT) the company's calls run on. */
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
+    @GetMapping("/companies/{id}/telephony-engine")
+    ResponseEntity<ResponseData<TelephonyEngineResponse>> getTelephonyEngine(@PathVariable long id);
+
+    /** Platform-only: switches the company's telephony engine. The company neither sees nor changes it. */
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
+    @PutMapping("/companies/{id}/telephony-engine")
+    ResponseEntity<ResponseData<TelephonyEngineResponse>> updateTelephonyEngine(
+            @PathVariable long id,
+            @Valid @RequestBody UpdateTelephonyEngineRequest request);
 }

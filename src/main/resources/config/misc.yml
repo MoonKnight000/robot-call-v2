@@ -87,8 +87,8 @@ voice-agent:
   # One-click engine bundles on the agent form (speed / cost / quality) — EngineProfileProperties.
   # An agent keeps whatever the request names itself; a profile only fills the rest. The voice is
   # not part of it: it decides the synthesizer. GET /api/ai-agents/engine-profiles lists only the
-  # profiles this build can run in full, so the same id may appear once per chat provider — only
-  # the one whose models are in the catalog (spring.ai.model.chat) is offered.
+  # profiles this build can run in full. The same id is listed once per chat vendor; the first vendor
+  # (in this order) with a key in this deployment supplies it.
   engine-profiles:
     items:
       - id: fast

@@ -30,7 +30,6 @@ import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
 import uz.murodjon.robotcallv2.campaign.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
-import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -270,7 +269,7 @@ class CampaignServiceTest {
     void campaignWithoutWindowTakesTheCompanysDialWindow() {
         when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
         when(companyConfig.find(1L)).thenReturn(CompanyConfig.settings(LocalTime.of(10, 0), LocalTime.of(18, 0),
-                "Asia/Tashkent", Language.UZ_UZ, List.of(Language.UZ_UZ), null, 0, 0, false, false));
+                "Asia/Tashkent", 0, 0, false, false));
 
         service.createCampaign(1L, createRequestWithWindow(null, null));
 

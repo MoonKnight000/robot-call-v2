@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.aimodel.application.port.input;
 
+import uz.murodjon.robotcallv2.aimodel.application.dto.AiModelResponse;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
@@ -13,6 +14,9 @@ public interface AiModelUseCase {
      * pipeline's family of ids; null asks for both.
      */
     List<AiModel> findSelectableByKindAndMode(AiModelKind kind, PipelineMode mode);
+
+    /** {@link #findSelectableByKindAndMode} as the picker shows it: each model with its price per minute. */
+    List<AiModelResponse> findPricedSelectableByKindAndMode(AiModelKind kind, PipelineMode mode);
 
     /**
      * The catalog row for {@code id}, reachable in this build or not, or null when no

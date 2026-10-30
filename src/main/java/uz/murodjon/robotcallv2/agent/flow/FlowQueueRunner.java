@@ -18,7 +18,7 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCas
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallTransferTarget;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.CallEventType;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.missedcall.domain.enums.MissedCallReason;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
@@ -49,7 +49,6 @@ public class FlowQueueRunner {
     private static final long SURVEY_ANSWER_MS = 8000;
     private static final int MAX_OVERFLOW_DEPTH = 3;
     private static final int LOW_SURVEY_SCORE = 2;
-    private static final String FALLBACK_LANGUAGE = "uz-UZ";
 
     private final FlowPrompter prompter;
     private final VoicemailRecorder voicemailRecorder;
@@ -59,7 +58,6 @@ public class FlowQueueRunner {
     private final CallAttemptUseCase callAttemptUseCase;
     private final NotificationUseCase notificationUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
-    private final CompanyConfigUseCase companyConfig;
     private final ObjectProvider<AriService> ariProvider;
     private final Clock clock;
     private final CallFlowProperties callFlowProperties;
@@ -68,8 +66,7 @@ public class FlowQueueRunner {
     public FlowQueueRunner(FlowPrompter prompter, VoicemailRecorder voicemailRecorder, CallQueueDispatcher dispatcher,
                            CallQueueUseCase callQueueUseCase, CallEventUseCase callEventUseCase,
                            CallAttemptUseCase callAttemptUseCase, NotificationUseCase notificationUseCase,
-                           CampaignTargetUseCase campaignTargetUseCase, CompanyConfigUseCase companyConfig,
-                           ObjectProvider<AriService> ariProvider, Clock clock, CallFlowProperties callFlowProperties) {
+                           CampaignTargetUseCase campaignTargetUseCase, ObjectProvider<AriService> ariProvider, Clock clock, CallFlowProperties callFlowProperties) {
         this.prompter = prompter;
         this.voicemailRecorder = voicemailRecorder;
         this.dispatcher = dispatcher;
@@ -78,7 +75,6 @@ public class FlowQueueRunner {
         this.callAttemptUseCase = callAttemptUseCase;
         this.notificationUseCase = notificationUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
-        this.companyConfig = companyConfig;
         this.ariProvider = ariProvider;
         this.clock = clock;
         this.callFlowProperties = callFlowProperties;
@@ -192,7 +188,7 @@ public class FlowQueueRunner {
             }
         }
         String transcript = ariProvider.getObject().findHandoverTranscript(call.channelId());
-        WaitingCall waiting = dispatcher.enqueue(call, queue, companyLanguage(companyId), transcript,
+        WaitingCall waiting = dispatcher.enqueue(call, queue, Language.DEFAULT.code(), transcript,
                 externalNumber, confirmExternal);
         if (!adHoc) {
             call.setQueueId(queue.id());
@@ -459,13 +455,5 @@ public class FlowQueueRunner {
                             + score + " ga baholadi", null);
         }
         prompter.say(call, PbxPhrases.surveyThanks(call.language()), false);
-    }
-
-    private String companyLanguage(long companyId) {
-        try {
-            return companyConfig.resolveLanguage(companyId, null);
-        } catch (Exception e) {
-            return FALLBACK_LANGUAGE;
-        }
     }
 }

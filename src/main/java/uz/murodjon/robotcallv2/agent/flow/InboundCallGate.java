@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.callflow.application.port.input.CallFlowUseCase;
 import uz.murodjon.robotcallv2.callflow.domain.entity.CallFlowGraph;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.enums.Language;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundCallerRuleUseCase;
@@ -35,26 +35,23 @@ import java.time.Instant;
 public class InboundCallGate {
 
     private static final Logger log = LoggerFactory.getLogger(InboundCallGate.class);
-    private static final String FALLBACK_LANGUAGE = "uz-UZ";
 
     private final InboundRouteUseCase inboundRouteUseCase;
     private final InboundCallerRuleUseCase callerRuleUseCase;
     private final CallFlowUseCase callFlowUseCase;
     private final BusinessScheduleUseCase businessScheduleUseCase;
-    private final CompanyConfigUseCase companyConfigService;
     private final CompanyUseCase companyUseCase;
     private final CallBillingUseCase callBillingUseCase;
     private final Clock clock;
 
     public InboundCallGate(InboundRouteUseCase inboundRouteUseCase, InboundCallerRuleUseCase callerRuleUseCase,
                            CallFlowUseCase callFlowUseCase, BusinessScheduleUseCase businessScheduleUseCase,
-                           CompanyConfigUseCase companyConfigService, CompanyUseCase companyUseCase,
+                           CompanyUseCase companyUseCase,
                            CallBillingUseCase callBillingUseCase, Clock clock) {
         this.inboundRouteUseCase = inboundRouteUseCase;
         this.callerRuleUseCase = callerRuleUseCase;
         this.callFlowUseCase = callFlowUseCase;
         this.businessScheduleUseCase = businessScheduleUseCase;
-        this.companyConfigService = companyConfigService;
         this.companyUseCase = companyUseCase;
         this.callBillingUseCase = callBillingUseCase;
         this.clock = clock;
@@ -66,7 +63,7 @@ public class InboundCallGate {
             return InboundDecision.noRoute();
         }
         long companyId = route.companyId();
-        String language = companyLanguage(companyId);
+        String language = Language.DEFAULT.code();
 
         if (!companyUseCase.isFeatureAvailable(companyId, Feature.VOICE_AGENT)) {
             log.info("Inbound call to DID {} rejected: company {} is suspended or has no voice agent", did, companyId);
@@ -148,14 +145,6 @@ public class InboundCallGate {
             // A rules lookup that fails must not cost the caller the call.
             log.warn("Caller rules of company {} could not be read: {}", companyId, e.getMessage());
             return null;
-        }
-    }
-
-    private String companyLanguage(long companyId) {
-        try {
-            return companyConfigService.resolveLanguage(companyId, null);
-        } catch (Exception e) {
-            return FALLBACK_LANGUAGE;
         }
     }
 }

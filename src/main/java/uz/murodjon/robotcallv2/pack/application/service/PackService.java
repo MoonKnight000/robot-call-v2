@@ -6,7 +6,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentEvaluationUse
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
-import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.service.CompanyValidator;
 import uz.murodjon.robotcallv2.conversion.application.port.input.ConversionUseCase;
 import uz.murodjon.robotcallv2.conversion.domain.entity.ConversionGoal;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeSourceUseCase;
@@ -54,7 +54,6 @@ public class PackService implements PackUseCase {
     private final AuditUseCase auditUseCase;
     /** E.1: the tools of a generated pack come from an API document, never from the model. */
     private final ToolImportUseCase toolImportUseCase;
-    private final CompanyConfigUseCase companyConfigUseCase;
     private final PackGeneratorPort packGenerator;
 
     public PackService(PackCatalogPort packCatalog,
@@ -67,7 +66,6 @@ public class PackService implements PackUseCase {
                        SecretUseCase secretUseCase,
                        AuditUseCase auditUseCase,
                        ToolImportUseCase toolImportUseCase,
-                       CompanyConfigUseCase companyConfigUseCase,
                        PackGeneratorPort packGenerator) {
         this.packCatalog = packCatalog;
         this.mapper = mapper;
@@ -79,7 +77,6 @@ public class PackService implements PackUseCase {
         this.secretUseCase = secretUseCase;
         this.auditUseCase = auditUseCase;
         this.toolImportUseCase = toolImportUseCase;
-        this.companyConfigUseCase = companyConfigUseCase;
         this.packGenerator = packGenerator;
     }
 
@@ -117,7 +114,7 @@ public class PackService implements PackUseCase {
                 ? toolImportUseCase.findTools(new ImportToolsRequest(request.openApiUrl(), request.openApiSpec(),
                         null, request.baseUrl(), request.secretPrefix())).stream().map(PackMapper::toPackTool).toList()
                 : List.of();
-        String language = companyConfigUseCase.resolveLanguage(companyId, request.language());
+        String language = CompanyValidator.resolveLanguageCode(request.language());
         VerticalPack draft = packGenerator.generate(request.business(), language, tools);
         VerticalPack complete = new VerticalPack(draft.key(), draft.name(), draft.description(), draft.industry(),
                 draft.agent(), tools, draft.catalogFeed(), draft.conversionGoal(), draft.testCases(),

@@ -59,9 +59,6 @@ public class CompanyConfigRepositoryAdapter implements CompanyConfigRepository {
         entity.setDialWindowStart(config.dialWindowStart());
         entity.setDialWindowEnd(config.dialWindowEnd());
         entity.setTimezone(config.timezone());
-        entity.setDefaultLanguage(config.defaultLanguage());
-        entity.setSupportedLanguages(config.supportedLanguages());
-        entity.setDisclosureText(config.disclosureText());
         entity.setMaxAttemptsPerPhonePerWeek(config.maxAttemptsPerPhonePerWeek());
         entity.setQuietDaysAfterConversation(config.quietDaysAfterConversation());
         entity.setRespectPromisedDate(config.respectPromisedDate());
