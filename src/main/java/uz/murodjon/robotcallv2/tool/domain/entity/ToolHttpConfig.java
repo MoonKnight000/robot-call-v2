@@ -17,6 +17,11 @@ import java.util.Map;
  * @param retryAttempts       retries after a failed request, at most {@value Tool#MAX_RETRY_ATTEMPTS}
  * @param auth                the tool's own OAuth client (B.5); null when its headers and
  *                            address carry the authentication
+ * @param waitForResult       {@code true} (the default): the model waits for the answer. {@code false}:
+ *                            the request runs in the background and the model is told it was started;
+ *                            the answer's mapped fields and the status variable still land on the call
+ * @param statusVariable      call outcome field set to {@code success} or {@code failure} once the
+ *                            request has finished, so a scenario can branch on it; null sets none
  */
 public record ToolHttpConfig(
         String url,
@@ -28,7 +33,9 @@ public record ToolHttpConfig(
         Map<String, Object> bodySchema,
         Integer responseTimeoutSecs,
         int retryAttempts,
-        ToolAuth auth
+        ToolAuth auth,
+        Boolean waitForResult,
+        String statusVariable
 ) {
     public ToolHttpConfig {
         method = (method == null || method.isBlank()) ? "POST" : method.toUpperCase();
@@ -40,5 +47,7 @@ public record ToolHttpConfig(
         bodySchema = bodySchema == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(bodySchema));
         responseTimeoutSecs = responseTimeoutSecs == null ? 10 : responseTimeoutSecs;
         retryAttempts = Math.max(0, Math.min(Tool.MAX_RETRY_ATTEMPTS, retryAttempts));
+        waitForResult = waitForResult == null || waitForResult;
+        statusVariable = statusVariable == null || statusVariable.isBlank() ? null : statusVariable.trim();
     }
 }

@@ -317,7 +317,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > Yuqori darajada qolganlar: `name`, `description`, `language`, `persona`, `engineProfileId`,
 > `llmModel`, `fastLlmModel`, `temperature`, `maxOutputTokens`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
 > `postCallWebhook`, `handbook`, `timezone`, `sipTrunkIds`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
-> `id`, `companyId`, `disclosureEnabled`, `scenarioName`, `pronunciationRules`, `postCallActions`,
+> `id`, `companyId`, `disclosureEnabled`, `scenarioName`, `pronunciationRules`, `postCallActions`, `preCallFunctions`,
 > `createdAt`, `createdBy`, `createdByName`, `publishedVersion`, `hasDraftChanges`, `version`.
 
 > **`handbook`** (Agent Handbook, `POST`/`PUT /api/ai-agents` va javob qatorida) — agent yoqqan
@@ -552,7 +552,7 @@ qaytaradi (ixtiyoriy). Agent shu orada boshqa foydalanuvchi tomonidan saqlangan 
 `409 ENTITY_VERSION_CONFLICT`, hech narsa yozilmaydi: agentni qayta o'qib, o'zgarishni
 qaytadan kiritish kerak. `version` yuborilmasa — amalda avvalgidek (eski klientlar buzilmaydi).
 Har bir saqlash versiyani oshiradi — `PUT /{id}/scenario`, `/analysis`, `/limits`,
-`/advanced`, `/pronunciation`, `/post-call-actions` va `rollback` ham. Bu bo'limlar `version`
+`/advanced`, `/pronunciation`, `/post-call-actions`, `/pre-call-functions` va `rollback` ham. Bu bo'limlar `version`
 qabul qilmaydi, lekin ikki saqlash aynan bir vaqtga to'g'ri kelsa ikkinchisi `409` olishi
 mumkin. `GET /{id}/versions/{version}` javobidagi `version` — doim `0` (snapshot qulf
 hisoblagichini saqlamaydi), uni `PUT` ga yubormang.
@@ -1021,6 +1021,68 @@ Qo'ng'iroq yakunlangach (suhbat muvaffaqiyatli bo'ladimi yoki javobsiz/band `NO_
 
 ### `PUT /api/ai-agents/{id}/post-call-actions`
 Yuqoridagi formatdagi amallar massivini yuborish orqali yangilanadi.
+
+---
+
+## 13a. Workflow: pre-call funksiyalar — `/api/ai-agents/{id}/pre-call-functions`
+
+Agent birinchi so'zni aytishdan **oldin** ishlaydigan vositalar (Retell'dagi pre-call workflow). Mijozning lidi,
+shartnomasi, qarzi kabi suhbat boshlanishi kerak bo'lgan ma'lumotni CRM'dan olib keladi; natija `{{o'zgaruvchi}}`
+bo'lib suhbatga (promptga, vositalarga, initiation webhook'ka) tushadi. Slot — funksiyalar grafi:
+
+- eng ko'pi **15** funksiya; bir-biriga bog'liq zanjir eng ko'pi **4** ta (`dependsOn` bo'yicha chuqurlik);
+- `dependsOn` bo'sh funksiyalar bir vaqtda boshlanadi; bog'liq funksiya hammasi **muvaffaqiyatli** tugagach ishlaydi
+  va oldingilar bergan o'zgaruvchilarni o'qiy oladi;
+- funksiya yiqilsa, o'chiq bo'lsa yoki ishlamasa — unga bog'liqlar ishlamaydi, qolganlari davom etadi;
+  qo'ng'iroq hech qachon shu sababli to'xtamaydi;
+- butun slotga **10 soniya** byudjet (qo'ng'iroq boshida mijoz kutadigan eng ko'p vaqt);
+- faqat `effect: READ` vositalar ishlaydi (hali hech kim gapirmagan — o'qib berib tasdiq olinadigan odam yo'q);
+  `WRITE`/`DESTRUCTIVE` vosita o'tkazib yuboriladi.
+
+`toolName` — agentga biriktirilgan vosita yoki kompaniyaga yoqilgan integratsiya vositasi nomi (agentniki ustun).
+Vositalarga qo'shimcha o'zgaruvchilar: `phone`, `phone_last9`, `language`, `call_attempt_id`, qo'ng'iroq faktlari va
+kompaniyaning CRM sozlamalari (`crm_new_lead_status_id`, … — `platform-integration-tools.md`).
+
+### `GET /api/ai-agents/{id}/pre-call-functions` — `AI_AGENT_READ`
+### `PUT /api/ai-agents/{id}/pre-call-functions` — `AI_AGENT_EDIT`
+
+```json
+{
+  "functions": [
+    {
+      "id": "lead",
+      "toolName": "find_lead_by_phone",
+      "inputs": { "search": "{{phone_last9}}" },
+      "outputs": { "lead_id": "$.data[0].id", "client_name": "$.data[0].name" },
+      "dependsOn": [],
+      "enabled": true
+    },
+    {
+      "id": "debt",
+      "toolName": "get_debt_summary",
+      "inputs": { "leadId": "{{lead_id}}" },
+      "outputs": { "debt_total": "$.total" },
+      "dependsOn": ["lead"],
+      "enabled": true
+    }
+  ]
+}
+```
+
+| Maydon | Ma'nosi |
+|---|---|
+| `id` | slot ichida nom (harf/raqam/`_`, ≤ 64), `dependsOn` shunga ishora qiladi |
+| `inputs` | vosita argumenti → matn; `{{o'zgaruvchi}}` qo'ng'iroq o'zgaruvchilaridan va oldingi funksiyalar natijasidan to'ldiriladi. Butun qiymat bitta `{{x}}` bo'lsa tipi saqlanadi (son — son). Qiymati yo'q o'zgaruvchi bo'lsa funksiya **o'tkazib yuboriladi** |
+| `outputs` | hosil bo'ladigan o'zgaruvchi → `$`-yo'l (`responseMapping` sintaksisi, `[*]` ham). Yo'l vositaning **to'liq xom javobidan** o'qiladi (modelga qisqartirilgandan oldin) |
+| `dependsOn` | kutiladigan funksiyalar `id`si |
+| `enabled` | `false` — ishlamaydi (unga bog'liqlar ham) |
+
+Validatsiya (`400 WORKFLOW_INVALID`, barcha muammolar `errors` ro'yxatida): 15 dan ko'p funksiya, takroriy/noto'g'ri
+`id`, mavjud bo'lmagan yoki o'ziga `dependsOn`, sikl, 4 dan uzun zanjir, noto'g'ri o'zgaruvchi nomi, `$` bilan
+boshlanmagan `outputs` yo'li. Vosita nomi mavjudligi saqlashda tekshirilmaydi — topilmasa funksiya qo'ng'iroqda
+o'tkazib yuboriladi (logda).
+
+`AiAgentRow.preCallFunctions` va versiya snapshot'ida ham shu ro'yxat bor (publish/rollback bilan versiyalanadi).
 
 ---
 

@@ -54,7 +54,9 @@ public class ToolEntityMapper {
                         read(entity.getBodySchema(), SCHEMA_TYPE, Map.of()),
                         entity.getResponseTimeoutSecs(),
                         entity.getRetryAttempts(),
-                        read(entity.getAuth(), AUTH_TYPE, null)),
+                        read(entity.getAuth(), AUTH_TYPE, null),
+                        entity.isWaitForResult(),
+                        entity.getStatusVariable()),
                 read(entity.getDynamicVariables(), KV_LIST_TYPE, List.of()),
                 new ToolSpeech(entity.isDisableInterruptions(), entity.isForcePreToolSpeech(),
                         entity.getPreToolSpeech()),
@@ -91,6 +93,8 @@ public class ToolEntityMapper {
         entity.setPreToolSpeech(domain.speech().preToolSpeech());
         entity.setResponseMapping(domain.responseMapping().isEmpty() ? null : write(domain.responseMapping()));
         entity.setRetryAttempts(http.retryAttempts());
+        entity.setWaitForResult(http.waitForResult());
+        entity.setStatusVariable(http.statusVariable());
         entity.setMaxCallsPerCall(domain.maxCallsPerCall());
         entity.setBodySchema(http.bodySchema().isEmpty() ? null : write(http.bodySchema()));
         entity.setEffect(domain.effect());

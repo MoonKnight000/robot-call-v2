@@ -60,6 +60,11 @@ public class IntegrationControllerImpl implements IntegrationController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<CrmConnectionCheckResponse>> checkConnection(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(crmIntegrationUseCase.checkConnection(companyId)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<List<CrmToolRow>>> updateTools(long companyId, UpdateCrmToolsRequest request) {
         return ResponseEntity.ok(ResponseData.ok(integrationToolUseCase.updateTools(companyId, request)));
     }

@@ -88,6 +88,14 @@ public class CrmIntegrationRepositoryAdapter implements CrmIntegrationRepository
     }
 
     @Override
+    public void markConnected(long companyId) {
+        jpaRepository.findByCompanyId(companyId).ifPresent(entity -> {
+            entity.setStatus(CrmIntegrationStatus.CONNECTED);
+            jpaRepository.save(entity);
+        });
+    }
+
+    @Override
     public void disconnect(long companyId) {
         jpaRepository.findByCompanyId(companyId).ifPresent(entity -> {
             entity.setAccessTokenEnc(null);

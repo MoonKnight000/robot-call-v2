@@ -170,6 +170,8 @@ paths:
     $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1limits
   /api/ai-agents/{id}/post-call-actions:
     $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1post-call-actions
+  /api/ai-agents/{id}/pre-call-functions:
+    $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1pre-call-functions
   /api/ai-agents/{id}/pronunciation:
     $ref: paths/ai-agent.yaml#/~1api~1ai-agents~1%7Bid%7D~1pronunciation
   /api/ai-agents/{id}/publish:
@@ -622,6 +624,8 @@ paths:
     $ref: paths/integration.yaml#/~1api~1settings~1integrations
   /api/settings/integrations/account:
     $ref: paths/integration.yaml#/~1api~1settings~1integrations~1account
+  /api/settings/integrations/check:
+    $ref: paths/integration.yaml#/~1api~1settings~1integrations~1check
   /api/settings/integrations/catalog:
     $ref: paths/integration.yaml#/~1api~1settings~1integrations~1catalog
   /api/settings/integrations/uysot:

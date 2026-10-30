@@ -14,6 +14,7 @@ import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnectionCheck;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.http.PublicHttpClient;
 import uz.murodjon.robotcallv2.shared.http.PublicHttpRequest;
@@ -21,6 +22,7 @@ import uz.murodjon.robotcallv2.shared.http.PublicHttpResponse;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -47,6 +49,8 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
     /** Writes happen after the call has ended; what does not land the outbox re-posts. */
     private static final Duration WRITE_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
+    /** A person pressing "check" is waiting on the answer, but not for long. */
+    private static final Duration CHECK_TIMEOUT = Duration.ofSeconds(5);
 
     /** {@code telephony.externalcall.register} TYPE: 1 — outgoing, 2 — incoming. */
     private static final int CALL_TYPE_OUTGOING = 1;
@@ -75,6 +79,38 @@ public class Bitrix24ConnectorAdapter implements CrmConnectorPort {
     @Override
     public boolean isSupported(CrmProvider provider) {
         return provider == CrmProvider.BITRIX24;
+    }
+
+    /**
+     * Reads the webhook user's profile ({@code profile.json}), which needs no scope: a 200 with a
+     * {@code result} means the webhook code is valid. A revoked webhook answers with an
+     * {@code error} body, or 401/403.
+     */
+    @Override
+    public CrmConnectionCheck checkConnection(CrmConnection connection) {
+        URI webhook = PublicUrlGuard.parsePublic(connection.baseUrl());
+        if (webhook == null) {
+            return CrmConnectionCheck.refused("webhook address missing, or not public");
+        }
+        try {
+            String auth = authQuery(connection);
+            PublicHttpResponse response = httpClient.send(PublicHttpRequest.create("GET",
+                            URI.create(method(webhook, "profile") + (auth.isEmpty() ? "" : "?" + auth.substring(1))))
+                    .setTimeout(CHECK_TIMEOUT)
+                    .addHeader("Accept", "application/json"));
+            CrmConnectionCheck byStatus = CrmConnectionCheck.ofStatus(response.statusCode());
+            if (!byStatus.ok()) {
+                return byStatus;
+            }
+            return objectMapper.readTree(response.readBodyText()).has("result")
+                    ? byStatus
+                    : CrmConnectionCheck.refused("webhook rejected");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return CrmConnectionCheck.unreachable(e);
+        } catch (IOException | RuntimeException e) {
+            return CrmConnectionCheck.unreachable(e);
+        }
     }
 
     /**

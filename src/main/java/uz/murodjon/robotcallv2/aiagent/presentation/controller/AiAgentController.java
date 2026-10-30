@@ -278,6 +278,19 @@ public interface AiAgentController {
             @Valid @RequestBody AgentPostCallActionsDto request);
 
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/pre-call-functions")
+    ResponseEntity<ResponseData<AgentPreCallFunctionsDto>> getPreCallFunctions(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PutMapping("/{id:\\d+}/pre-call-functions")
+    ResponseEntity<ResponseData<AgentPreCallFunctionsDto>> updatePreCallFunctions(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentPreCallFunctionsDto request);
+
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/{id:\\d+}/tools")
     ResponseEntity<ResponseData<List<ToolRow>>> getTools(
             @CurrentCompanyId long companyId,

@@ -43,7 +43,9 @@ public class ToolMapper {
                         http.bodySchema(),
                         http.responseTimeoutSecs(),
                         http.retryAttempts() != null ? http.retryAttempts() : 0,
-                        http.auth()),
+                        http.auth(),
+                        http.waitForResult(),
+                        http.statusVariable()),
                 request.dynamicVariables(),
                 new ToolSpeech(
                         speech != null && speech.disableInterruptions() != null && speech.disableInterruptions(),

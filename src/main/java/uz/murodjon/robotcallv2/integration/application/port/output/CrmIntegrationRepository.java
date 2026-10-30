@@ -22,5 +22,8 @@ public interface CrmIntegrationRepository {
 
     void markError(long companyId);
 
+    /** Puts a connection whose credential has just been seen to work back to {@code CONNECTED}. */
+    void markConnected(long companyId);
+
     void disconnect(long companyId);
 }

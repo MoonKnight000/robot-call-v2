@@ -73,9 +73,16 @@ public class CampaignValidator {
      * the same request. Rejecting here means the failure arrives when the source is saved,
      * rather than at 09:00 the next morning as an empty campaign.
      */
-    public void validateTargetSource(TargetSourceProvider provider, String url, List<TargetSourceStep> steps) {
+    public void validateTargetSource(TargetSourceProvider provider, String url, List<TargetSourceStep> steps,
+                                     String toolName) {
         if (provider == TargetSourceProvider.CHAINED) {
             validateSteps(steps);
+            return;
+        }
+        if (provider == TargetSourceProvider.TOOL) {
+            if (toolName == null || toolName.isBlank()) {
+                throw new ValidationException(ErrorCode.TARGET_SOURCE_TOOL_REQUIRED);
+            }
             return;
         }
         if (url == null || url.isBlank()) {

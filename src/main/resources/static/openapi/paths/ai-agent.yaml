@@ -693,6 +693,77 @@
         $ref: ../common.yaml#/responses/Forbidden
       '404':
         $ref: ../common.yaml#/responses/NotFound
+/api/ai-agents/{id}/pre-call-functions:
+  get:
+    tags:
+    - AI Agents
+    summary: Workflow pre-call funksiyalari
+    description: '**Huquq:** `AI_AGENT_READ`'
+    operationId: aiAgent_getPreCallFunctions
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentPreCallFunctionsDto
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+  put:
+    tags:
+    - AI Agents
+    summary: Workflow pre-call funksiyalarini tahrirlash
+    description: '**Huquq:** `AI_AGENT_EDIT`. Barcha muammolar `errors` da (`WORKFLOW_INVALID`).'
+    operationId: aiAgent_updatePreCallFunctions
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/aiagent.yaml#/AgentPreCallFunctionsDto
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/aiagent.yaml#/AgentPreCallFunctionsDto
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
 /api/ai-agents/{id}/pronunciation:
   get:
     tags:

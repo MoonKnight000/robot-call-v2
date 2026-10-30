@@ -17,6 +17,7 @@ import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.Ta
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class TargetSourceRepositoryAdapter implements TargetSourceRepository {
@@ -24,6 +25,7 @@ public class TargetSourceRepositoryAdapter implements TargetSourceRepository {
     private static final Logger log = LoggerFactory.getLogger(TargetSourceRepositoryAdapter.class);
     private final ObjectMapper objectMapper;
     private static final TypeReference<List<TargetSourceStep>> STEP_LIST_TYPE = new TypeReference<>() {};
+    private static final TypeReference<Map<String, Object>> TOOL_ARGUMENTS_TYPE = new TypeReference<>() {};
 
     private final TargetSourceJpaRepository jpaRepository;
     private final CampaignJpaRepository campaignJpaRepository;
@@ -66,6 +68,8 @@ public class TargetSourceRepositoryAdapter implements TargetSourceRepository {
         entity.setSyncOnRecurrence(source.syncOnRecurrence());
         entity.setEnabled(source.enabled());
         entity.setSteps(writeSteps(source.steps()));
+        entity.setToolName(source.toolName());
+        entity.setToolArguments(writeToolArguments(source.toolArguments()));
         return toTargetSource(jpaRepository.save(entity));
     }
 
@@ -116,6 +120,30 @@ public class TargetSourceRepositoryAdapter implements TargetSourceRepository {
         }
     }
 
+    private Map<String, Object> readToolArguments(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, TOOL_ARGUMENTS_TYPE);
+        } catch (Exception e) {
+            log.warn("target source tool arguments are not readable, treating as none: {}", e.getMessage());
+            return Map.of();
+        }
+    }
+
+    private String writeToolArguments(Map<String, Object> arguments) {
+        if (arguments == null || arguments.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(arguments);
+        } catch (Exception e) {
+            log.warn("target source tool arguments could not be stored: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private TargetSource toTargetSource(TargetSourceEntity entity) {
         return new TargetSource(
                 entity.getCampaignId(),
@@ -133,6 +161,8 @@ public class TargetSourceRepositoryAdapter implements TargetSourceRepository {
                 entity.isSyncOnRecurrence(),
                 entity.isEnabled(),
                 readSteps(entity.getSteps()),
+                entity.getToolName(),
+                readToolArguments(entity.getToolArguments()),
                 entity.getLastSyncAt(),
                 entity.getLastSyncAdded(),
                 entity.getLastSyncError());

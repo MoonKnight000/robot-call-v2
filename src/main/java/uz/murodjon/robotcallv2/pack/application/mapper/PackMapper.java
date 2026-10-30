@@ -82,7 +82,7 @@ public class PackMapper {
         return new CreateToolRequest(tool.name(), tool.description(),
                 new ToolHttpConfigDto(tool.apiUrl(), tool.apiMethod(), tool.apiHeaders(), tool.apiBody(),
                         tool.apiQueryParams(), tool.apiPathParams(), tool.bodySchema(), tool.responseTimeoutSecs(),
-                        tool.retryAttempts(), tool.auth()),
+                        tool.retryAttempts(), tool.auth(), null, null),
                 tool.dynamicVariables(),
                 new ToolSpeechDto(tool.disableInterruptions(), tool.forcePreToolSpeech(), tool.preToolSpeech()),
                 tool.responseMapping(), tool.maxCallsPerCall(), tool.effect(), tool.requiresConfirmation(),

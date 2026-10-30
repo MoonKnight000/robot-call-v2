@@ -346,6 +346,45 @@ AgentPostCallActionsDto:
       type: array
       items:
         $ref: '#/PostCallAction'
+AgentPreCallFunctionsDto:
+  type: object
+  description: Workflow pre-call slot — the functions that run before the agent speaks.
+  properties:
+    functions:
+      type: array
+      maxItems: 15
+      items:
+        $ref: '#/WorkflowFunction'
+WorkflowFunction:
+  type: object
+  required:
+  - id
+  - toolName
+  properties:
+    id:
+      type: string
+      maxLength: 64
+      description: Names the function inside its slot; what `dependsOn` refers to.
+    toolName:
+      type: string
+      maxLength: 100
+      description: An agent tool or an enabled integration tool; only `READ` tools run.
+    inputs:
+      type: object
+      additionalProperties:
+        type: string
+      description: Tool argument → text; `{{variable}}` is filled from call variables and earlier outputs.
+    outputs:
+      type: object
+      additionalProperties:
+        type: string
+      description: Variable → `$` path into the tool's raw answer (responseMapping syntax).
+    dependsOn:
+      type: array
+      items:
+        type: string
+    enabled:
+      type: boolean
 AgentPronunciationDto:
   type: object
   description: DTO for Pronunciation / Phonetic Dictionary tab.
@@ -619,6 +658,10 @@ AiAgentRow:
       type: array
       items:
         $ref: '#/PostCallAction'
+    preCallFunctions:
+      type: array
+      items:
+        $ref: '#/WorkflowFunction'
     sipTrunkIds:
       type: array
       items:

@@ -28,4 +28,8 @@ public interface AiAgentSettingsUseCase {
     AgentPostCallActionsDto findPostCallActions(long companyId, long agentId);
 
     AgentPostCallActionsDto updatePostCallActions(long companyId, long agentId, AgentPostCallActionsDto request);
+
+    AgentPreCallFunctionsDto findPreCallFunctions(long companyId, long agentId);
+
+    AgentPreCallFunctionsDto updatePreCallFunctions(long companyId, long agentId, AgentPreCallFunctionsDto request);
 }

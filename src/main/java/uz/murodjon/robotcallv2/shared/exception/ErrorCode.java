@@ -264,6 +264,7 @@ public enum ErrorCode {
     SAY_TEXT_BLANK("text must not be blank"),
     SAY_TEXT_TOO_LONG("text is longer than %s characters"),
     VOICE_SPEED_OUT_OF_RANGE("speed must be between 0.25 and 3.0, got %s"),
+    WORKFLOW_INVALID("The workflow has %s problem(s), listed in errors"),
     AI_AGENT_TEMPERATURE_OUT_OF_RANGE("temperature must be between 0 and 2, got %s"),
     AI_AGENT_MAX_OUTPUT_TOKENS_OUT_OF_RANGE("maxOutputTokens must be between 1 and 4096, got %s"),
     AI_AGENT_SYSTEM_PROMPT_TOO_LONG("systemPrompt is %s characters, the limit is %s"),
@@ -280,6 +281,9 @@ public enum ErrorCode {
     @Deprecated
     TARGET_SOURCE_RESPONSE_INVALID("target source did not answer with a JSON array of rows: %s"),
     TARGET_SOURCE_STEPS_REQUIRED("a chained target source needs at least one step"),
+    TARGET_SOURCE_TOOL_REQUIRED("a TOOL target source needs toolName"),
+    TARGET_SOURCE_TOOL_UNAVAILABLE("The integration has no tool '%s' switched on for this company"),
+    TARGET_SOURCE_TOOL_NOT_READ_ONLY("Tool '%s' changes data; a target source may only run a read-only tool"),
     /** @deprecated superseded by the TARGET_SOURCE_STEP_* codes; kept because the frontend may still translate it. */
     @Deprecated
     TARGET_SOURCE_STEP_INVALID("target source step %s is not usable: %s"),
@@ -375,6 +379,7 @@ public enum ErrorCode {
 
     // conflict
     CRM_NOT_CONNECTED("the company has no Uysot CRM connection"),
+    CRM_INTEGRATION_NOT_CONNECTED("the company has no CRM connection to check"),
     LIVEKIT_DISABLED("the company uses the LiveKit telephony engine, but LiveKit is not enabled on this server"),
     LIVEKIT_NOT_CONFIGURED("LiveKit is enabled, but %s is not set (or is shorter than 32 characters)"),
     LIVEKIT_MONITOR_MODE_UNSUPPORTED("the %s monitoring mode is not available on the LiveKit engine — listen or barge in instead"),

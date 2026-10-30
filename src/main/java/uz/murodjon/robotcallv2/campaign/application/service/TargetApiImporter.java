@@ -62,6 +62,17 @@ public class TargetApiImporter {
                                            List<CsvRowError> errors) {
         URI uri = requireCallableUri(source.url());
         String body = send(uri, source, authHeaderValue);
+        return parseTargets(body, source, errors, uri.getHost());
+    }
+
+    /**
+     * Reads the rows out of an answer already in hand, the way {@link #fetchTargets} does for one it
+     * fetched itself — the same {@code itemsPath} and field names, whoever made the request.
+     *
+     * @param origin where the answer came from, for the log
+     */
+    public List<ParsedTarget> parseTargets(String body, TargetSource source, List<CsvRowError> errors,
+                                           String origin) {
         JsonNode rows = readRows(body, source.itemsPath());
 
         List<ParsedTarget> targets = new ArrayList<>();
@@ -85,7 +96,7 @@ public class TargetApiImporter {
                     text(row, source.languageField()), facts(row, source)));
         }
         log.info("Target source {} returned {} row(s) for campaign {}: {} usable, {} rejected",
-                uri.getHost(), index, source.campaignId(), targets.size(), errors.size());
+                origin, index, source.campaignId(), targets.size(), errors.size());
         return targets;
     }
 

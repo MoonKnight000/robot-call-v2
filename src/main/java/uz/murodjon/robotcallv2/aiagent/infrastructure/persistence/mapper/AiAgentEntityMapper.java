@@ -33,6 +33,7 @@ public class AiAgentEntityMapper {
     private static final TypeReference<List<PronunciationRule>> PRONUNCIATION_RULES_TYPE = new TypeReference<>() {};
     private static final TypeReference<AgentGreeting> GREETING_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<PostCallAction>> POST_CALL_ACTIONS_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<WorkflowFunction>> WORKFLOW_FUNCTIONS_TYPE = new TypeReference<>() {};
     private static final TypeReference<Set<HandbookRule>> HANDBOOK_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Double>> SPEED_PER_LANGUAGE_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {};
@@ -128,6 +129,7 @@ public class AiAgentEntityMapper {
                 .greeting(read(entity.getGreeting(), GREETING_TYPE, AgentGreeting.DEFAULT))
                 .pronunciationRules(read(entity.getPronunciationRules(), PRONUNCIATION_RULES_TYPE, List.of()))
                 .postCallActions(read(entity.getPostCallActions(), POST_CALL_ACTIONS_TYPE, List.of()))
+                .preCallFunctions(read(entity.getPreCallFunctions(), WORKFLOW_FUNCTIONS_TYPE, List.of()))
                 .handbook(read(entity.getHandbook(), HANDBOOK_TYPE, Set.of()))
                 .timezone(entity.getTimezone())
                 .sipTrunkIds(entity.getSipTrunkIds())
@@ -168,6 +170,7 @@ public class AiAgentEntityMapper {
         entity.setGreeting(AgentGreeting.DEFAULT.equals(agent.greeting()) ? null : write(agent.greeting(), null));
         entity.setPronunciationRules(write(agent.pronunciationRules(), "[]"));
         entity.setPostCallActions(write(agent.postCallActions(), "[]"));
+        entity.setPreCallFunctions(write(agent.preCallFunctions(), "[]"));
         entity.setHandbook(write(agent.handbook(), "[]"));
         entity.setTimezone(agent.timezone());
         entity.setSipTrunks(sipTrunks);

@@ -98,6 +98,7 @@ public class LiveKitCallService {
     private final CrmUseCase crmUseCase;
     private final ClientMemoryUseCase clientMemoryUseCase;
     private final AgentWebhookUseCase agentWebhookUseCase;
+    private final PreCallWorkflowRunner preCallWorkflowRunner;
     private final RtpProperties rtpProperties;
     private final RtpPortAllocator portAllocator;
     private final EventLoopGroup rtpEventLoopGroup;
@@ -136,6 +137,7 @@ public class LiveKitCallService {
                        CrmUseCase crmUseCase,
                        ClientMemoryUseCase clientMemoryUseCase,
                        AgentWebhookUseCase agentWebhookUseCase,
+                       PreCallWorkflowRunner preCallWorkflowRunner,
                        RtpProperties rtpProperties,
                        RtpPortAllocator portAllocator,
                        EventLoopGroup rtpEventLoopGroup,
@@ -179,6 +181,7 @@ public class LiveKitCallService {
         this.crmUseCase = crmUseCase;
         this.clientMemoryUseCase = clientMemoryUseCase;
         this.agentWebhookUseCase = agentWebhookUseCase;
+        this.preCallWorkflowRunner = preCallWorkflowRunner;
         this.rtpProperties = rtpProperties;
         this.portAllocator = portAllocator;
         this.rtpEventLoopGroup = rtpEventLoopGroup;
@@ -726,6 +729,12 @@ public class LiveKitCallService {
             if (flowCall) {
                 runFlow(roomName, plan, endpoint, audioMonitor, attemptId);
                 return;
+            }
+
+            if (agent != null && !agent.preCallFunctions().isEmpty() && context != null) {
+                // Before the initiation webhook, so the webhook sees what the lookups found.
+                context = context.withMergedFacts(preCallWorkflowRunner.run(agent, plan.companyId(), roomName,
+                        attemptId, plan.language(), plan.phone(), context.facts()));
             }
 
             if (agent != null && agent.initiationWebhook() != null && agentWebhookUseCase != null) {

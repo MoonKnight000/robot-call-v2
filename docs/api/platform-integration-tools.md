@@ -146,6 +146,13 @@ kabi yoqib-o'chiradi. Agent uni qo'ng'iroqda **kompaniyaning o'z Uysot hisobi va
 - `definition.http.headers` va `definition.http.auth` **berilmaydi** (token sarlavhasi `X-Open-Api-Token`ni platforma o'zi qo'yadi).
 - Tanada/so'rovda qo'ng'iroq o'zgaruvchilari: `x-source: variable` bilan `phone`, `language`, `call_attempt_id`
   va qo'ng'iroq faktlari. `x-source: secret` bu yerda ishlamaydi (kompaniya sirlari o'qilmaydi).
+- Uysot vositalariga qo'shimcha o'zgaruvchilar (qo'ng'iroq boshida bir marta o'qiladi):
+  `phone_last9` — `phone` ning oxirgi 9 raqami (Uysot `search` mijozni shunday topadi);
+  kompaniyaning CRM sozlamalari (`PUT /api/settings/crm`) — `crm_ai_employee_id`, `crm_new_lead_status_id`,
+  `crm_meeting_booked_status_id`, `crm_promise_to_pay_status_id`, `crm_not_interested_status_id`,
+  `crm_callback_status_id`, `crm_task_type_id`. Kompaniya sozlamani saqlamagan bo'lsa, o'zgaruvchi yo'q
+  (`{{...}}` o'rni almashtirilmay qoladi, 0 bo'lib ketmaydi) — shunday vositaning so'rovi Uysot tomonidan
+  rad etilishi mumkin. Admin sinovida (`/test`) ular `variables` bilan qo'lda beriladi.
 - `effect: WRITE` bo'lsa, kompaniya vositasidagidek qo'ng'iroq paytida mijozdan tasdiq olinadi.
 - `defaultEnabled: true` bo'lsa `applyTo` majburiy: `ALL` — mavjud kompaniyalar ham oladi; `NEW_ONLY` —
   mavjudlarda o'chiq qotadi, keyin yaratilganlar oladi.
@@ -174,7 +181,9 @@ Audit: `INTEGRATION_TOOL_DELETE`.
 
 HTTP vositani **admin o'z kompaniyasining Uysot hisobi** bilan bir marta ishga tushiradi va modelga
 ko'rinadigan javobni qaytaradi. Tana: kompaniya vositasining testidagi kabi (`TestToolRequest`:
-`variables`, `args`; ixtiyoriy). **`WRITE` so'rov haqiqatan yuboriladi.**
+`variables`, `args`, `responseMapping`; hammasi ixtiyoriy). Javobda `result` bilan birga `raw` (Uysot javobi
+o'zgarishsiz) va `mapped` (yuborilgan `responseMapping` natijasi) bor — maydonlarni tanlash uchun
+([tools.md](tools.md) §4.1). **`WRITE` so'rov haqiqatan yuboriladi.**
 
 | HTTP | `messageCode` | Sabab |
 |---|---|---|
@@ -183,3 +192,28 @@ ko'rinadigan javobni qaytaradi. Tana: kompaniya vositasining testidagi kabi (`Te
 | 409 | `INTEGRATION_TOOL_TEST_NOT_CONNECTED` | admin kompaniyasi Uysot'ga ulanmagan |
 
 Audit: `INTEGRATION_TOOL_TEST`.
+
+## Uysot'ning tayyor HTTP vositalari (migratsiya `V19`)
+
+Oltita o'qish vositasi katalogda **tayyor HTTP ta'rifi** bilan keladi, hammasi `defaultEnabled=false`:
+
+| `key` | Model nomi | So'rov |
+|---|---|---|
+| `SEARCH_FLATS_LIVE` | `searchFlatsLive` | `POST v1/open-api/flat/filter` |
+| `LIST_COMPLEXES_LIVE` | `listComplexesLive` | `GET v1/open-api/house/all` |
+| `GET_BOOKING_STATUS_LIVE` | `getBookingLive` | `POST v1/open-api/booking/filter` (`search` = `phone_last9`) |
+| `GET_CONTRACT_BALANCE_LIVE` | `getContractLive` | `POST v1/open-api/contract/filter` (`search` — shartnoma raqami) |
+| `GET_DEBT_SUMMARY_LIVE` | `getDebtsLive` | `POST v1/open-api/contract/filter` (`search` = `phone_last9`) |
+| `GET_PAYMENT_SCHEDULE_LIVE` | `getPaymentsLive` | `GET v1/open-api/contract/{contractId}/monthly-payment` |
+
+- Ichki (`BUILT_IN`) vositalar **o'chirilmadi**: ichki `searchFlats` mijozning `roomsNeeded`/`budgetRange` ini
+  qo'ng'iroq natijasiga yozadi va taklif qilingan xonadonlarni mijoz xotirasiga saqlaydi — HTTP vosita buni
+  qilolmaydi. Shuning uchun HTTP versiyalar **yonida** turadi, nomlari boshqacha (ikki funksiya bir nom bilan
+  berilmaydi).
+- Uysot javobining o'rami (`data` / `data.data` / `data.content`) hujjatlashtirilmagan, shu sabab har bir
+  `responseMapping` uchala shaklni `||` bilan sinaydi. Admin "Sinash" da **Xom javob**ni ko'rib, kerak bo'lsa
+  xaritani aniqlashtiradi.
+- Almashtirish tartibi: sinab ko'rish → ichki vositani o'chirish → HTTP juftini yoqish.
+- Ichki holda qoldi: `CREATE_LEAD`, `ADD_LEAD_NOTE`, `CREATE_FOLLOW_UP_TASK`, `MOVE_LEAD_STAGE`,
+  `GET_CLIENT_PROFILE` (yozishdan oldin qidiruv kerak) va Uysot'ga tegmaydigan `REMEMBER_FLAT_INTEREST`,
+  `REQUEST_MANAGER_CALLBACK`.

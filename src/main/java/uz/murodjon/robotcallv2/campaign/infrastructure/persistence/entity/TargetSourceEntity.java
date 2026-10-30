@@ -69,6 +69,15 @@ public class TargetSourceEntity {
     @Column(columnDefinition = "jsonb")
     private String steps;
 
+    /** The TOOL provider's integration tool; null for every other one. */
+    @Column(name = "tool_name", length = 100)
+    private String toolName;
+
+    /** The arguments that tool is called with, as stored JSON. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "tool_arguments", columnDefinition = "jsonb")
+    private String toolArguments;
+
     @Column(name = "last_sync_at")
     private Instant lastSyncAt;
 
@@ -204,6 +213,22 @@ public class TargetSourceEntity {
 
     public void setSteps(String steps) {
         this.steps = steps;
+    }
+
+    public String getToolName() {
+        return toolName;
+    }
+
+    public void setToolName(String toolName) {
+        this.toolName = toolName;
+    }
+
+    public String getToolArguments() {
+        return toolArguments;
+    }
+
+    public void setToolArguments(String toolArguments) {
+        this.toolArguments = toolArguments;
     }
 
     public Instant getLastSyncAt() {

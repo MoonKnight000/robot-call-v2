@@ -117,6 +117,11 @@ TestToolRequest:
         type: object
         additionalProperties: true
       description: the call variables a `Dynamic Variable` parameter reads, the way a real call would have them (`phone`, `clientName`, ...)
+    responseMapping:
+      type: object
+      additionalProperties:
+        type: string
+      description: 'a mapping (name to JSONPath) to try on the answer before it is saved; the result is in `mapped` of the response'
 ToolAuth:
   type: object
   description: 'A tool''s own authentication (UNIVERSAL-OPERATOR-PLAN B.5). Names secrets, never holds them: the id and the secret stay in the company''s encrypted store and are read on each call.'
@@ -198,11 +203,20 @@ ToolHttpConfigDto:
       type: integer
       format: int32
       minimum: 0
-      maximum: 3
+      maximum: 5
+      description: 'retries after a 5xx, 408, 429 or network failure, with jittered exponential backoff'
     auth:
       allOf:
       - $ref: '#/ToolAuth'
       description: 'the tool''s own OAuth client; on an update null keeps it and {} removes it'
+    waitForResult:
+      type: boolean
+      description: 'true by default. false runs the request in the background: the model is told `status: 202` and carries on; the mapped fields and the status variable reach the call when the request finishes'
+    statusVariable:
+      type: string
+      maxLength: 64
+      pattern: '^([A-Za-z_][A-Za-z0-9_]{0,63})?$'
+      description: 'call outcome field set to `success` or `failure` when the request finishes; on an update "" removes it'
 ToolSpeechDto:
   type: object
   description: What the caller hears while a tool runs. On an update a null field keeps the tool's value.
@@ -361,6 +375,10 @@ ToolTestResponse:
         type: object
         additionalProperties: true
       description: 'exactly what the model would be handed: `status` and `data` — mapped by `responseMapping` when the tool has one, made prompt-safe, and `truncated: true` when it had to be cut'
+    raw:
+      description: 'the endpoint''s answer as it came, before any mapping: a JSON value, or text when it was not JSON; null when the request got no answer'
+    mapped:
+      description: 'what the request''s `responseMapping` picks out of `raw`, made prompt-safe; null when none was sent or `raw` is not JSON'
 UpdateToolRequest:
   type: object
   description: A partial edit — a null field, a null group or a null field inside a group keeps the tool's value.

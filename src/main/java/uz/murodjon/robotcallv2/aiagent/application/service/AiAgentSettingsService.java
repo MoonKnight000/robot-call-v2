@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.aiagent.application.mapper.AiAgentSettingsMapper;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentSettingsUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
+import uz.murodjon.robotcallv2.aiagent.domain.service.WorkflowValidator;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinitionBuilder;
@@ -199,5 +200,21 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
         drafts.update(companyId, agentId, updated);
         auditUseCase.record(companyId, "AI_AGENT_POST_CALL_ACTIONS_UPDATE", "ai_agent", String.valueOf(agentId), updated.name());
         return new AgentPostCallActionsDto(updated.postCallActions());
+    }
+
+    @Override
+    public AgentPreCallFunctionsDto findPreCallFunctions(long companyId, long agentId) {
+        AiAgent agent = drafts.requireAgent(companyId, agentId);
+        return new AgentPreCallFunctionsDto(agent.preCallFunctions());
+    }
+    @Override
+    @Transactional
+    public AgentPreCallFunctionsDto updatePreCallFunctions(long companyId, long agentId, AgentPreCallFunctionsDto request) {
+        AiAgent existing = drafts.requireAgent(companyId, agentId);
+        WorkflowValidator.validate(request.functionsOrEmpty());
+        AiAgent updated = existing.withPreCallFunctions(request.functionsOrEmpty());
+        drafts.update(companyId, agentId, updated);
+        auditUseCase.record(companyId, "AI_AGENT_PRE_CALL_FUNCTIONS_UPDATE", "ai_agent", String.valueOf(agentId), updated.name());
+        return new AgentPreCallFunctionsDto(updated.preCallFunctions());
     }
 }

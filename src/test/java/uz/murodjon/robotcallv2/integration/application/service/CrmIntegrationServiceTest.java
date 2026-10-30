@@ -9,11 +9,14 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.integration.application.dto.ConnectCrmAccountRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.ConnectIntegrationRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmGrant;
+import uz.murodjon.robotcallv2.integration.application.dto.CrmConnectionCheckResponse;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmIntegrationRow;
+import uz.murodjon.robotcallv2.integration.application.port.output.CrmAccountProbePort;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmIntegrationRepository;
 import uz.murodjon.robotcallv2.integration.application.port.output.OAuthStateStorePort;
 import uz.murodjon.robotcallv2.integration.application.port.output.UysotOAuthPort;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnectionCheck;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmIntegration;
 import uz.murodjon.robotcallv2.integration.domain.entity.OAuthTokenReply;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmIntegrationStatus;
@@ -56,6 +59,7 @@ class CrmIntegrationServiceTest {
     private OAuthStateStorePort stateStore;
     private UysotOAuthPort uysotOAuthPort;
     private AuditUseCase audit;
+    private CrmAccountProbePort probePort;
     private CrmIntegrationService service;
 
     @BeforeEach
@@ -65,10 +69,12 @@ class CrmIntegrationServiceTest {
         stateStore = mock(OAuthStateStorePort.class);
         uysotOAuthPort = mock(UysotOAuthPort.class);
         audit = mock(AuditUseCase.class);
+        probePort = mock(CrmAccountProbePort.class);
+        when(probePort.probe(any())).thenReturn(CrmConnectionCheck.accepted());
         when(cipher.available()).thenReturn(true);
         when(cipher.encrypt(anyString())).thenAnswer(invocation -> "enc:" + invocation.getArgument(0));
         when(cipher.decrypt(anyString())).thenAnswer(invocation -> invocation.<String>getArgument(0).substring(4));
-        service = new CrmIntegrationService(repository, cipher, UYSOT_OAUTH, stateStore, audit, mock(CompanyUseCase.class), uysotOAuthPort, new ObjectMapper());
+        service = new CrmIntegrationService(repository, cipher, UYSOT_OAUTH, stateStore, audit, mock(CompanyUseCase.class), uysotOAuthPort, probePort, new ObjectMapper());
     }
 
     @Test
@@ -345,6 +351,78 @@ class CrmIntegrationServiceTest {
     private static CrmIntegration connectedUysot(Instant tokenExpiresAt) {
         return new CrmIntegration(COMPANY_ID, CrmProvider.UYSOT, "Voice agent", GRANTS_JSON, "enc:access",
                 "enc:refresh", null, tokenExpiresAt, CrmIntegrationStatus.CONNECTED, Instant.now(), Instant.now());
+    }
+
+    @Test
+    void anAccountTheCrmRefusesIsSavedButShownAsAnError() {
+        when(repository.saveCredentials(eq(COMPANY_ID), any())).thenAnswer(invocation -> invocation.getArgument(1));
+        when(probePort.probe(any())).thenReturn(CrmConnectionCheck.refused("HTTP 401"));
+
+        CrmIntegrationRow row = service.connectAccount(COMPANY_ID,
+                new ConnectCrmAccountRequest(CrmProvider.AMOCRM, "https://203.0.113.10", "token"));
+
+        assertEquals(CrmIntegrationStatus.ERROR, row.status());
+        verify(repository).markError(COMPANY_ID);
+        verify(repository, never()).markConnected(anyLong());
+    }
+
+    @Test
+    void checkingAConnectionTheCrmAcceptsMarksItConnected() {
+        when(repository.find(COMPANY_ID)).thenReturn(Optional.of(connectedAmoCrm()));
+
+        CrmConnectionCheckResponse check = service.checkConnection(COMPANY_ID);
+
+        assertTrue(check.ok());
+        assertEquals(CrmIntegrationStatus.CONNECTED, check.status());
+        assertNull(check.reason());
+        verify(repository).markConnected(COMPANY_ID);
+    }
+
+    @Test
+    void checkingAConnectionTheCrmRefusesMarksItAnErrorWithTheReason() {
+        when(repository.find(COMPANY_ID)).thenReturn(Optional.of(connectedAmoCrm()));
+        when(probePort.probe(any())).thenReturn(CrmConnectionCheck.refused("HTTP 401"));
+
+        CrmConnectionCheckResponse check = service.checkConnection(COMPANY_ID);
+
+        assertFalse(check.ok());
+        assertEquals(CrmIntegrationStatus.ERROR, check.status());
+        assertEquals("HTTP 401", check.reason());
+        verify(repository).markError(COMPANY_ID);
+    }
+
+    @Test
+    void aConnectionAlreadyInErrorIsCheckedWithItsStoredCredentialSoItCanComeBack() {
+        CrmIntegration inError = new CrmIntegration(COMPANY_ID, CrmProvider.AMOCRM, null, null, "enc:token", null,
+                "enc:https://acme.amocrm.ru", null, CrmIntegrationStatus.ERROR, Instant.now(), Instant.now());
+        when(repository.find(COMPANY_ID)).thenReturn(Optional.of(inError));
+
+        service.checkConnection(COMPANY_ID);
+
+        verify(probePort).probe(new CrmConnection(CrmProvider.AMOCRM, "https://acme.amocrm.ru", "token"));
+        verify(repository).markConnected(COMPANY_ID);
+    }
+
+    @Test
+    void aUysotConnectionIsCheckedAtThePlatformAddress() {
+        CrmIntegration uysot = new CrmIntegration(COMPANY_ID, CrmProvider.UYSOT, "app", null, "enc:tok", null, null,
+                null, CrmIntegrationStatus.ERROR, Instant.now(), Instant.now());
+        when(repository.find(COMPANY_ID)).thenReturn(Optional.of(uysot));
+        when(probePort.findUysotBaseUrl()).thenReturn("https://api.uysot.example");
+
+        service.checkConnection(COMPANY_ID);
+
+        verify(probePort).probe(new CrmConnection(CrmProvider.UYSOT, "https://api.uysot.example", "tok"));
+    }
+
+    @Test
+    void thereIsNothingToCheckWithoutAConnection() {
+        when(repository.find(COMPANY_ID)).thenReturn(Optional.empty());
+
+        ConflictException refused = assertThrows(ConflictException.class, () -> service.checkConnection(COMPANY_ID));
+
+        assertEquals(ErrorCode.CRM_INTEGRATION_NOT_CONNECTED, refused.code());
+        verify(probePort, never()).probe(any());
     }
 
     private static CrmIntegration connectedAmoCrm() {

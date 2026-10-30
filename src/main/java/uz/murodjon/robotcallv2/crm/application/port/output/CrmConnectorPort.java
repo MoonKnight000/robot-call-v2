@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.crm.domain.entity.CreateCrmLeadRequest;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnectionCheck;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 
 /**
@@ -49,6 +50,12 @@ public interface CrmConnectorPort {
      * @return whether the status update was accepted
      */
     boolean updateLeadStage(CrmConnection connection, UpdateLeadStageRequest request);
+
+    /**
+     * One cheap authenticated read, to learn whether the saved address and credential still
+     * work. Unlike the calls above, a refusal is the answer, not an absence.
+     */
+    CrmConnectionCheck checkConnection(CrmConnection connection);
 
     /**
      * Opens a lead. Only Uysot does this for now; the others answer {@code null}.

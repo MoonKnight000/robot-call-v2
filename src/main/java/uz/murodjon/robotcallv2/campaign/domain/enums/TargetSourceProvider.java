@@ -29,5 +29,14 @@ public enum TargetSourceProvider {
      * from the company's Uysot OAuth connection rather than from a header typed into a
      * form.
      */
-    UYSOT_DEBTORS
+    UYSOT_DEBTORS,
+    /**
+     * One of the integration's tools, run for the company: the list is the tool's answer. The
+     * tool is defined once by the platform admin (and may be switched off per company), so a
+     * campaign names it instead of repeating a request: {@code toolName} and
+     * {@code toolArguments} say what to call, {@code itemsPath}/{@code phoneField}/… how to read
+     * the answer, as for {@link #GENERIC}. Only a read-only tool qualifies — importing a list
+     * must never change anything in the CRM.
+     */
+    TOOL
 }

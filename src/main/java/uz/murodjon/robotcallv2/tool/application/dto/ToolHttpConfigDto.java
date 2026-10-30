@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.tool.application.dto;
 
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
@@ -30,10 +31,14 @@ public record ToolHttpConfigDto(
         Map<String, Object> bodySchema,
         Integer responseTimeoutSecs,
         @Min(0) @Max(Tool.MAX_RETRY_ATTEMPTS) Integer retryAttempts,
-        ToolAuth auth
+        ToolAuth auth,
+        Boolean waitForResult,
+        @Pattern(regexp = "^([A-Za-z_][A-Za-z0-9_]{0,63})?$", message = "http.statusVariable must be a name of letters, digits and _")
+        String statusVariable
 ) {
     public static ToolHttpConfigDto of(ToolHttpConfig http) {
         return new ToolHttpConfigDto(http.url(), http.method(), http.headers(), http.body(), http.queryParams(),
-                http.pathParams(), http.bodySchema(), http.responseTimeoutSecs(), http.retryAttempts(), http.auth());
+                http.pathParams(), http.bodySchema(), http.responseTimeoutSecs(), http.retryAttempts(), http.auth(),
+                http.waitForResult(), http.statusVariable());
     }
 }

@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.integration.application.dto.UpdateCrmToolsRequest
 import uz.murodjon.robotcallv2.integration.application.dto.UpdateIntegrationToolRequest;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.application.port.input.IntegrationToolUseCase;
+import uz.murodjon.robotcallv2.integration.application.port.output.CrmAccountProbePort;
 import uz.murodjon.robotcallv2.integration.application.port.output.IntegrationToolRepository;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.entity.IntegrationTool;
@@ -30,6 +31,7 @@ import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
 import uz.murodjon.robotcallv2.tool.application.dto.TestToolRequest;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
+import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolHttpConfig;
@@ -63,14 +65,17 @@ public class IntegrationToolService implements IntegrationToolUseCase {
     private final CompanyUseCase companyUseCase;
     private final AuditUseCase audit;
     private final ToolUseCase toolUseCase;
+    private final CrmAccountProbePort crmAccountProbePort;
 
     public IntegrationToolService(IntegrationToolRepository repository, CrmIntegrationUseCase crmIntegrationUseCase,
-                                  CompanyUseCase companyUseCase, AuditUseCase audit, ToolUseCase toolUseCase) {
+                                  CompanyUseCase companyUseCase, AuditUseCase audit, ToolUseCase toolUseCase,
+                                  CrmAccountProbePort crmAccountProbePort) {
         this.repository = repository;
         this.crmIntegrationUseCase = crmIntegrationUseCase;
         this.companyUseCase = companyUseCase;
         this.audit = audit;
         this.toolUseCase = toolUseCase;
+        this.crmAccountProbePort = crmAccountProbePort;
     }
 
     @Override
@@ -140,6 +145,19 @@ public class IntegrationToolService implements IntegrationToolUseCase {
                 .toList();
     }
 
+    /** No transaction on purpose: the request goes out over the network. */
+    @Override
+    public ToolTestResponse runEnabledReadTool(long companyId, String toolName, Map<String, Object> arguments) {
+        Tool tool = findEnabledHttpTools(companyId).stream()
+                .filter(candidate -> candidate.name().equals(toolName))
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException(ErrorCode.TARGET_SOURCE_TOOL_UNAVAILABLE, toolName));
+        if (tool.effect() != ToolEffect.READ) {
+            throw new ValidationException(ErrorCode.TARGET_SOURCE_TOOL_NOT_READ_ONLY, toolName);
+        }
+        return toolUseCase.testResolvedTool(tool, new TestToolRequest(arguments, Map.of("company_id", companyId), null));
+    }
+
     @Override
     public Map<String, String> findBuiltInModelDescriptions() {
         Map<String, String> descriptions = new HashMap<>();
@@ -168,9 +186,18 @@ public class IntegrationToolService implements IntegrationToolUseCase {
         return toolUseCase.testResolvedTool(bind(tool.definition(), connection), request);
     }
 
+    /**
+     * The company's Uysot token at the platform's Uysot address. The connection use case leaves
+     * the address out for Uysot (it is platform configuration), so it is added here.
+     */
     private CrmConnection findUysotConnection(long companyId) {
+        String baseUrl = crmAccountProbePort.findUysotBaseUrl();
+        if (baseUrl == null) {
+            return null;
+        }
         return crmIntegrationUseCase.findConnection(companyId)
-                .filter(c -> c.provider() == PROVIDER && c.baseUrl() != null && c.accessToken() != null)
+                .filter(c -> c.provider() == PROVIDER && c.accessToken() != null)
+                .map(c -> new CrmConnection(PROVIDER, baseUrl, c.accessToken()))
                 .orElse(null);
     }
 
@@ -189,7 +216,8 @@ public class IntegrationToolService implements IntegrationToolUseCase {
                 new ToolKeyValuePair("Content-Type", "application/json", null, null));
         return new Tool(null, null, template.name(), template.description(),
                 new ToolHttpConfig(base + "/" + http.url(), http.method(), headers, http.body(), http.queryParams(),
-                        http.pathParams(), http.bodySchema(), http.responseTimeoutSecs(), http.retryAttempts(), null),
+                        http.pathParams(), http.bodySchema(), http.responseTimeoutSecs(), http.retryAttempts(), null,
+                        http.waitForResult(), http.statusVariable()),
                 template.dynamicVariables(), template.speech(), template.responseMapping(), template.maxCallsPerCall(),
                 template.effect(), template.requiresConfirmation(), template.readbackTemplate(),
                 template.createdAt(), template.updatedAt());

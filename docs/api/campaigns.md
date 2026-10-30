@@ -631,7 +631,9 @@ qarzdorlarga qo'ng'iroq qil" uchun hech kim fayl yuklamaydi.
 
 | Maydon | Majburiy | Izoh |
 |---|---|---|
-| `provider` | ❌ | `GENERIC` (standart) yoki `CHAINED`. Pastdagi bo'limga qarang |
+| `provider` | ❌ | `GENERIC` (standart), `CHAINED` yoki `TOOL`. Pastdagi bo'limga qarang |
+| `toolName` | `TOOL` uchun ✅ | Integratsiya vositasining nomi (kompaniya uchun yoqilgan va `effect: READ` bo'lishi shart) |
+| `toolArguments` | ❌ | `TOOL` uchun: vosita chaqiriladigan argumentlar (`{"status": "OVERDUE"}`) |
 | `url` | `GENERIC` uchun ✅ | `http`/`https`. Chaqirish paytida loopback va ichki tarmoq manzillariga qarshi tekshiriladi (SSRF himoyasi) — `400 TARGET_SOURCE_URL_INVALID` |
 | `steps` | `CHAINED` uchun ✅ | Ketma-ket so'rovlar. Pastdagi bo'limga qarang |
 | `method` | ❌ | `GET` (standart) yoki `POST` |
@@ -657,6 +659,7 @@ qo'shimcha: `provider`, `steps`, `lastSyncAt`, `lastSyncAdded`, `lastSyncError`.
 |---|---|---|
 | `GENERIC` | ✅ (standart) | `url` ga bitta so'rov; javob — telefonli qatorlar massivi |
 | `CHAINED` | ✅ | Bir nechta so'rov: birinchisi ro'yxat beradi, keyingilari **har bir qator uchun** chaqirilib, ro'yxatda yo'q ma'lumotni to'ldiradi |
+| `TOOL` | ✅ | Integratsiya vositasi (`toolName`): so'rov, manzil va token vositaning o'zida (platforma admini bir marta belgilagan), kampaniya faqat nomini aytadi. Ro'yxat vositaning **xom** javobidan `itemsPath`/`phoneField`/`clientIdField`/`languageField` bilan o'qiladi (`GENERIC` kabi). Faqat o'qiydigan (`READ`) vosita — import CRM'ni o'zgartirmasligi kerak |
 | `UYSOT_DEBTORS` | ❌ | Uysot qarzdorlari. `R__seed_data.sql` da beriladi; kredensiallarni Integratsiyalar bo'limidagi Uysot OAuth ulanishidan oladi, formadan emas |
 
 #### `CHAINED` — istalgan servis uchun ko'p bosqichli manba
@@ -742,6 +745,26 @@ Validatsiya (`400`): `TARGET_SOURCE_STEPS_REQUIRED` (`CHAINED`, lekin step yo'q)
 `TARGET_SOURCE_STEP_URL_MISSING` (step'da `url` yo'q), `TARGET_SOURCE_STEP_EXTRACTS_NOTHING` (`extract` bo'sh),
 `TARGET_SOURCE_STEP_PAGINATION_NOT_FIRST` (1-stepdan boshqasida
 `paginate`), `TARGET_SOURCE_URL_INVALID` (`GENERIC`, lekin `url` yo'q).
+
+#### `TOOL` — integratsiya vositasi manba sifatida
+
+```json
+{
+  "provider": "TOOL",
+  "toolName": "list_overdue_debtors",
+  "toolArguments": { "status": "OVERDUE" },
+  "itemsPath": "data.items",
+  "phoneField": "phone",
+  "clientIdField": "leadId",
+  "replaceTargets": true
+}
+```
+
+Sinxronlash (`POST .../sync` va takror ishga tushish) vositani kompaniya nomidan bir marta ishga tushiradi.
+Qatorning qolgan kalitlari nishon faktlari bo'ladi (`GENERIC` kabi). Xatolar: `404 TARGET_SOURCE_TOOL_UNAVAILABLE`
+(vosita kompaniyaga yoqilmagan yoki Uysot ulanmagan), `400 TARGET_SOURCE_TOOL_NOT_READ_ONLY` (vosita `WRITE`),
+`400 TARGET_SOURCE_TOOL_REQUIRED` (`toolName` yo'q). Vosita javobining shaklini (`itemsPath` uchun) platforma
+admin ekranidagi "Test" (`raw`) ko'rsatadi. `GET` javobiga `toolName` va `toolArguments` qo'shiladi.
 
 #### `UYSOT_DEBTORS`
 

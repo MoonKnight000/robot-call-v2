@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -33,6 +34,8 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Calls the REST endpoints a company configured as tools, on behalf of the model.
@@ -67,7 +70,7 @@ public class HttpToolExecutor {
      */
     private static final int MAX_RESPONSE_BYTES = 256 * 1024;
 
-    /** Pause before the first retry; the second waits twice as long. */
+    /** Longest pause before the first retry ({@link #backoffMillis}); each next one is twice as long. */
     private static final long RETRY_BACKOFF_MS = 300;
 
     /** Stands in for a conversation when a tool is run from the panel's "Test" button. */
@@ -143,11 +146,27 @@ public class HttpToolExecutor {
      * same address guard, same answer the model would get; there is simply no conversation
      * for the tool to act on, and no per-call limit to count against.
      */
-    public String executeForTest(Tool tool, Map<String, Object> callVariables, Map<String, Object> args) {
-        return execute(tool, DRY_RUN, callVariables != null ? callVariables : Map.of(), args != null ? args : Map.of());
+    public ToolTestRun executeForTest(Tool tool, Map<String, Object> callVariables, Map<String, Object> args) {
+        AtomicReference<String> rawBody = new AtomicReference<>();
+        String result = execute(tool, DRY_RUN, callVariables != null ? callVariables : Map.of(),
+                args != null ? args : Map.of(), rawBody);
+        return new ToolTestRun(result, rawBody.get());
+    }
+
+    /**
+     * What the given mapping would show the model out of {@code rawBody} — the Output tab's
+     * preview of a mapping not saved yet; null when the answer is not JSON.
+     */
+    public JsonNode previewMapping(String rawBody, Map<String, String> mapping) {
+        return toolResponseFormatter.previewMapping(rawBody, mapping);
     }
 
     public String execute(Tool tool, DialogOutcomeSink session, Map<String, Object> callVariables, Map<String, Object> args) {
+        return execute(tool, session, callVariables, args, null);
+    }
+
+    private String execute(Tool tool, DialogOutcomeSink session, Map<String, Object> callVariables,
+                           Map<String, Object> args, AtomicReference<String> rawBody) {
         String canonicalArgs = canonical(args);
         // A write the caller has not said yes to is not sent (UNIVERSAL-OPERATOR-PLAN B.3).
         // Held here rather than asked of the prompt: a stranger's voice writing into the
@@ -167,10 +186,30 @@ public class HttpToolExecutor {
                     session.channelId(), tool.name(), tool.maxCallsPerCall());
             return toolResponseFormatter.formatLimitReached(tool.maxCallsPerCall());
         }
-        if (tool.speech().forcePreToolSpeech() && tool.speech().preToolSpeech() != null && !tool.speech().preToolSpeech().isBlank()) {
+        // A background tool is not waited for, so there is no wait to fill with speech. The panel's
+        // test run always waits: the one pressing the button wants the answer.
+        boolean inBackground = !tool.http().waitForResult() && session != DRY_RUN;
+        if (!inBackground && tool.speech().forcePreToolSpeech() && tool.speech().preToolSpeech() != null
+                && !tool.speech().preToolSpeech().isBlank()) {
             session.addToolReply(tool.speech().preToolSpeech().trim());
         }
+        if (inBackground) {
+            // The request still runs to its end after the model has moved on; its mapped fields
+            // and status variable reach the call when it finishes.
+            Thread.startVirtualThread(() -> run(tool, session, callVariables, args, canonicalArgs, callNumber, null));
+            return toolResponseFormatter.formatStarted();
+        }
+        return run(tool, session, callVariables, args, canonicalArgs, callNumber, rawBody);
+    }
 
+    /**
+     * One run of the request: what {@link #execute} does once the call has been allowed to go out.
+     *
+     * @param rawBody receives the endpoint's answer as it came when not null (a test run)
+     */
+    private String run(Tool tool, DialogOutcomeSink session, Map<String, Object> callVariables,
+                       Map<String, Object> args, String canonicalArgs, int callNumber,
+                       AtomicReference<String> rawBody) {
         Map<String, String> secrets = tool.companyId() != null
                 ? secretUseCase.findDecryptedSecrets(tool.companyId())
                 : Map.of();
@@ -191,6 +230,7 @@ public class HttpToolExecutor {
             if (uri == null) {
                 log.warn("[{}] Tool '{}' was not called: its address is not publicly callable",
                         session.channelId(), tool.name());
+                recordStatus(tool, session, false);
                 return toolResponseFormatter.formatBlocked();
             }
             String method = (tool.http().method() != null ? tool.http().method().toUpperCase() : "POST");
@@ -241,6 +281,7 @@ public class HttpToolExecutor {
             PublicHttpResponse response = sendWithRetry(tool, session, request);
 
             log.info("[{}] Tool '{}' responded with status {}", session.channelId(), tool.name(), response.statusCode());
+            recordStatus(tool, session, response.statusCode() >= 200 && response.statusCode() < 300);
             if (response.statusCode() == 401 && tool.http().auth() != null && tool.companyId() != null) {
                 // Refused before it ran out — revoked or rotated. The next call asks for a new one.
                 oauthTokens.evictToken(tool.companyId(), tool.http().auth(), secrets);
@@ -248,6 +289,9 @@ public class HttpToolExecutor {
 
             // Already capped at MAX_RESPONSE_BYTES; the rest of the stream was never read.
             String responseBody = response.readBodyText();
+            if (rawBody != null) {
+                rawBody.set(responseBody);
+            }
             if (tool.companyId() != null) {
                 toolExecutionUseCase.recordExecution(ToolExecution.answered(tool.companyId(), tool.id(), callAttemptId,
                         tool.name(), response.statusCode(), elapsedMs(started), argsHash,
@@ -269,6 +313,7 @@ public class HttpToolExecutor {
             // model has no use for it and repeats what it is told out loud.
             String reason = SecretPlaceholders.redact(String.valueOf(e.getMessage()), secrets.values());
             log.error("[{}] Tool '{}' execution failed: {}", session.channelId(), tool.name(), reason);
+            recordStatus(tool, session, false);
             if (tool.companyId() != null) {
                 toolExecutionUseCase.recordExecution(ToolExecution.failed(tool.companyId(), tool.id(), callAttemptId,
                         tool.name(), elapsedMs(started), argsHash, reason));
@@ -282,9 +327,18 @@ public class HttpToolExecutor {
         }
     }
 
+    /** Sets the tool's status variable, when it has one, to how the request ended. */
+    private static void recordStatus(Tool tool, DialogOutcomeSink session, boolean succeeded) {
+        String variable = tool.http().statusVariable();
+        if (variable != null) {
+            session.recordOutcome(variable, succeeded ? "success" : "failure");
+        }
+    }
+
     /**
-     * Sends the request, and again after a 5xx or a network failure up to the tool's
-     * {@code retryAttempts}. A 4xx is never retried: the same request gets the same answer.
+     * Sends the request, and again after a 5xx, a 408, a 429 or a network failure up to the
+     * tool's {@code retryAttempts}. Any other 4xx is never retried: the same request gets the
+     * same answer.
      */
     private PublicHttpResponse sendWithRetry(Tool tool, DialogOutcomeSink session, PublicHttpRequest request)
             throws IOException, InterruptedException {
@@ -292,7 +346,7 @@ public class HttpToolExecutor {
         for (int attempt = 0; ; attempt++) {
             try {
                 PublicHttpResponse response = httpClient.send(request);
-                if (response.statusCode() < 500 || attempt >= retries) {
+                if (!isRetryable(response.statusCode()) || attempt >= retries) {
                     return response;
                 }
                 log.warn("[{}] Tool '{}' answered {}, retrying ({}/{})", session.channelId(), tool.name(),
@@ -304,8 +358,22 @@ public class HttpToolExecutor {
                 log.warn("[{}] Tool '{}' failed ({}), retrying ({}/{})", session.channelId(), tool.name(),
                         e.getClass().getSimpleName(), attempt + 1, retries);
             }
-            Thread.sleep(RETRY_BACKOFF_MS * (attempt + 1));
+            Thread.sleep(backoffMillis(attempt));
         }
+    }
+
+    /** Server trouble or "try again later" — a status the same request may not get twice. */
+    static boolean isRetryable(int status) {
+        return status >= 500 || status == 408 || status == 429;
+    }
+
+    /**
+     * Pause before retry {@code attempt + 1}: 300 ms, 600 ms, 1.2 s, … doubling, each randomly
+     * cut to between its half and its whole so a burst of calls does not retry in step.
+     */
+    static long backoffMillis(int attempt) {
+        long ceiling = RETRY_BACKOFF_MS << attempt;
+        return ceiling / 2 + ThreadLocalRandom.current().nextLong(ceiling / 2 + 1);
     }
 
     /** The arguments as canonical JSON: what a confirmation covers and what the log hashes. */

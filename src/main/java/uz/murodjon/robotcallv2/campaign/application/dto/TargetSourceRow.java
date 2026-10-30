@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A campaign's target source as the API returns it — the same fields the request takes,
@@ -14,7 +15,8 @@ import java.util.List;
  * only replaced.
  *
  * <p>Which fields are filled depends on {@code provider}: GENERIC uses the single-request
- * ones and no steps, CHAINED the reverse. UYSOT_DEBTORS fills neither — it is provisioned
+ * ones and no steps, CHAINED the reverse, TOOL only {@code toolName}/{@code toolArguments}
+ * and the fields that read the answer. UYSOT_DEBTORS fills neither — it is provisioned
  * rather than configured, and reads where to call from the platform's CRM settings.
  */
 public record TargetSourceRow(
@@ -33,6 +35,8 @@ public record TargetSourceRow(
         boolean syncOnRecurrence,
         boolean enabled,
         List<TargetSourceStep> steps,
+        String toolName,
+        Map<String, Object> toolArguments,
         Instant lastSyncAt,
         Integer lastSyncAdded,
         String lastSyncError) {
@@ -45,7 +49,8 @@ public record TargetSourceRow(
                 source.authHeaderValue() != null && !source.authHeaderValue().isBlank(),
                 source.itemsPath(), source.phoneFieldOrDefault(), source.clientIdField(),
                 source.languageField(), source.replaceTargets(), source.syncOnRecurrence(),
-                source.enabled(), source.steps(), source.lastSyncAt(), source.lastSyncAdded(),
+                source.enabled(), source.steps(), source.toolName(), source.toolArguments(),
+                source.lastSyncAt(), source.lastSyncAdded(),
                 source.lastSyncError());
     }
 }

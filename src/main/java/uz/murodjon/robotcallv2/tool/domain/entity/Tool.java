@@ -34,7 +34,7 @@ public record Tool(
         Instant updatedAt
 ) {
     /** Retries past this are a tool that is down, not one having a bad moment. */
-    public static final int MAX_RETRY_ATTEMPTS = 3;
+    public static final int MAX_RETRY_ATTEMPTS = 5;
     /** What a new tool gets: a lookup, a correction and a re-check. */
     public static final int DEFAULT_MAX_CALLS_PER_CALL = 3;
 
@@ -44,7 +44,7 @@ public record Tool(
     public static final String BODY_VALUE_KEY = "x-value";
 
     public Tool {
-        http = http != null ? http : new ToolHttpConfig(null, null, null, null, null, null, null, null, 0, null);
+        http = http != null ? http : new ToolHttpConfig(null, null, null, null, null, null, null, null, 0, null, null, null);
         speech = speech != null ? speech : new ToolSpeech(false, false, null);
         dynamicVariables = dynamicVariables == null ? List.of() : List.copyOf(dynamicVariables);
         responseMapping = responseMapping == null ? Map.of() : Map.copyOf(responseMapping);

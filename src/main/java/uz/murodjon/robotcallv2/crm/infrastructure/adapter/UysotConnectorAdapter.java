@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.CrmProperties;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnectionCheck;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 
@@ -63,6 +64,9 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
      */
     private static final Duration WRITE_TIMEOUT = Duration.ofSeconds(10);
 
+    /** A person pressing "check" is waiting on the answer, but not for long. */
+    private static final Duration CHECK_TIMEOUT = Duration.ofSeconds(5);
+
     /**
      * Bounds connection setup for every call. Short because an unreachable CRM must not be
      * discovered slowly — nothing here is worth waiting on.
@@ -102,6 +106,31 @@ public class UysotConnectorAdapter implements CrmConnectorPort {
     @Override
     public boolean isSupported(CrmProvider provider) {
         return provider == CrmProvider.UYSOT;
+    }
+
+    /**
+     * Reads the task types, the cheapest list the Open API has. A 403 still means the token is
+     * good — it is the grant for this one list that is missing — so only a 401 or a failure
+     * to reach Uysot is reported as the connection not working.
+     */
+    @Override
+    public CrmConnectionCheck checkConnection(CrmConnection connection) {
+        if (connection.baseUrl() == null || connection.baseUrl().isBlank()) {
+            return CrmConnectionCheck.refused("Uysot address is not configured");
+        }
+        if (connection.accessToken() == null || connection.accessToken().isBlank()) {
+            return CrmConnectionCheck.refused("no access token");
+        }
+        try {
+            int status = get(resolve(connection.baseUrl(), TASK_TYPES_PATH), connection.accessToken(), CHECK_TIMEOUT)
+                    .statusCode();
+            return status == 403 ? CrmConnectionCheck.accepted() : CrmConnectionCheck.ofStatus(status);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return CrmConnectionCheck.unreachable(e);
+        } catch (IOException | RuntimeException e) {
+            return CrmConnectionCheck.unreachable(e);
+        }
     }
 
     @Override

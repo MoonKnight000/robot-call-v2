@@ -11,10 +11,12 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
+import uz.murodjon.robotcallv2.integration.application.port.output.CrmAccountProbePort;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmIntegrationRepository;
 import uz.murodjon.robotcallv2.integration.application.port.output.OAuthStateStorePort;
 import uz.murodjon.robotcallv2.integration.application.port.output.UysotOAuthPort;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnectionCheck;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmIntegration;
 import uz.murodjon.robotcallv2.integration.domain.entity.OAuthTokenReply;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmAuthMethod;
@@ -57,12 +59,14 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     private final CompanyUseCase companyUseCase;
     private final ObjectMapper objectMapper;
     private final UysotOAuthPort uysotOAuthPort;
+    private final CrmAccountProbePort crmAccountProbePort;
 
     public CrmIntegrationService(CrmIntegrationRepository repository, SecretCipher cipher, UysotOAuthProperties uysotOAuthProperties,
                                  OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, CompanyUseCase companyUseCase,
-                                 UysotOAuthPort uysotOAuthPort,
+                                 UysotOAuthPort uysotOAuthPort, CrmAccountProbePort crmAccountProbePort,
                                  ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+        this.crmAccountProbePort = crmAccountProbePort;
         this.repository = repository;
         this.cipher = cipher;
         this.uysotOAuthProperties = uysotOAuthProperties;
@@ -133,7 +137,60 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         // The host only: for Bitrix24 the full address is the credential.
         audit.record(companyId, "CRM_INTEGRATION_CONNECT", "crm_integration", String.valueOf(companyId),
                 request.provider().name() + " " + address.getHost());
-        return CrmIntegrationRow.of(saved, List.of(), address.getHost());
+        // Saved either way — a failed check is shown as ERROR, so what the person typed is not lost
+        // to a CRM that happened to be slow.
+        CrmConnectionCheckResponse check = runCheck(companyId, saved);
+        return new CrmIntegrationRow(companyId, saved.provider(), saved.appName(), List.of(), check.status(),
+                saved.connectedAt(), address.getHost());
+    }
+
+    @Override
+    public CrmConnectionCheckResponse checkConnection(long companyId) {
+        CrmIntegration integration = repository.find(companyId)
+                .filter(c -> c.status() != CrmIntegrationStatus.NOT_CONNECTED)
+                .orElseThrow(() -> new ConflictException(ErrorCode.CRM_INTEGRATION_NOT_CONNECTED));
+        return runCheck(companyId, integration);
+    }
+
+    /** Probes the account, records the answer as the connection's status and audits it. */
+    private CrmConnectionCheckResponse runCheck(long companyId, CrmIntegration integration) {
+        CrmConnectionCheck check = crmAccountProbePort.probe(findConnectionToCheck(integration));
+        if (check.ok()) {
+            repository.markConnected(companyId);
+        } else {
+            repository.markError(companyId);
+        }
+        audit.record(companyId, "CRM_INTEGRATION_CHECK", "crm_integration", String.valueOf(companyId),
+                check.ok() ? "ok" : check.reason());
+        return new CrmConnectionCheckResponse(check.ok(),
+                check.ok() ? CrmIntegrationStatus.CONNECTED : CrmIntegrationStatus.ERROR, check.reason(), Instant.now());
+    }
+
+    /**
+     * The credential as stored, whatever the status says: a connection already marked ERROR must
+     * still be checkable, or it could never come back. Uysot's token is refreshed first while the
+     * connection is healthy; its address is the platform's, not the company's.
+     */
+    private CrmConnection findConnectionToCheck(CrmIntegration integration) {
+        boolean uysot = integration.provider() == CrmProvider.UYSOT;
+        String token = uysot && integration.status() == CrmIntegrationStatus.CONNECTED
+                ? findCurrentAccessToken(integration.companyId()).orElse(null)
+                : decryptOrNull(integration.accessTokenEnc());
+        String baseUrl = uysot ? crmAccountProbePort.findUysotBaseUrl() : decryptOrNull(integration.baseUrlEnc());
+        return new CrmConnection(integration.provider(), baseUrl, token);
+    }
+
+    /** Null for nothing stored or a secret that no longer decrypts — either way, nothing to check with. */
+    private String decryptOrNull(String encrypted) {
+        if (encrypted == null || !cipher.available()) {
+            return null;
+        }
+        try {
+            return cipher.decrypt(encrypted);
+        } catch (RuntimeException e) {
+            log.warn("A stored CRM credential could not be decrypted: {}", e.getClass().getSimpleName());
+            return null;
+        }
     }
 
     @Override

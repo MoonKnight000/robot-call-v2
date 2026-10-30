@@ -67,6 +67,7 @@ public record AiAgent(
         AgentWebhookConfig postCallWebhook,
         List<PronunciationRule> pronunciationRules,
         List<PostCallAction> postCallActions,
+        List<WorkflowFunction> preCallFunctions,
         Set<HandbookRule> handbook,
         String timezone,
         Set<Long> sipTrunkIds,
@@ -141,6 +142,7 @@ public record AiAgent(
         dataEvaluation = dataEvaluation == null ? List.of() : List.copyOf(dataEvaluation);
         pronunciationRules = pronunciationRules == null ? List.of() : List.copyOf(pronunciationRules);
         postCallActions = postCallActions == null ? List.of() : List.copyOf(postCallActions);
+        preCallFunctions = preCallFunctions == null ? List.of() : List.copyOf(preCallFunctions);
         // Enum order, not Set.copyOf's per-JVM order: the snapshot text and its fingerprint
         // have to come out the same for the same rules.
         handbook = handbook == null || handbook.isEmpty()
@@ -292,6 +294,10 @@ public record AiAgent(
 
     public AiAgent withPostCallActions(List<PostCallAction> actions) {
         return toBuilder().postCallActions(actions).build();
+    }
+
+    public AiAgent withPreCallFunctions(List<WorkflowFunction> functions) {
+        return toBuilder().preCallFunctions(functions).build();
     }
 
     private AiAgent withScript(AiAgentScript newScript) {

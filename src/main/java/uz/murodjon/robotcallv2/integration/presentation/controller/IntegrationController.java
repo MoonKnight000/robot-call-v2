@@ -69,6 +69,15 @@ public interface IntegrationController {
             @CurrentCompanyId long companyId,
             @Valid @RequestBody UpdateCrmToolsRequest request);
 
+    /**
+     * Asks the connected CRM account whether the saved address and credential still work. The status
+     * becomes {@code CONNECTED} or {@code ERROR} accordingly; {@code 409 CRM_INTEGRATION_NOT_CONNECTED}
+     * when there is no connection to check.
+     */
+    @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
+    @PostMapping("/check")
+    ResponseEntity<ResponseData<CrmConnectionCheckResponse>> checkConnection(@CurrentCompanyId long companyId);
+
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")
     @DeleteMapping("/uysot")
     ResponseEntity<ResponseData<Void>> disconnect(@CurrentCompanyId long companyId);

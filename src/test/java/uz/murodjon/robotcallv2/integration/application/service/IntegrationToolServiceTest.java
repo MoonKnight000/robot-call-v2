@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.integration.application.dto.CrmToolRow;
 import uz.murodjon.robotcallv2.integration.application.dto.UpdateCrmToolsRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.UpdateIntegrationToolRequest;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
+import uz.murodjon.robotcallv2.integration.application.port.output.CrmAccountProbePort;
 import uz.murodjon.robotcallv2.integration.application.port.output.IntegrationToolRepository;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.entity.IntegrationTool;
@@ -49,6 +50,7 @@ class IntegrationToolServiceTest {
     private IntegrationToolRepository repository;
     private CrmIntegrationUseCase crmIntegrationUseCase;
     private ToolUseCase toolUseCase;
+    private CrmAccountProbePort probePort;
     private IntegrationToolService service;
 
     private final IntegrationTool searchFlats = tool(1, "SEARCH_FLATS", CrmPermission.CONTRACT, CrmScopeLevel.READ, true);
@@ -59,8 +61,10 @@ class IntegrationToolServiceTest {
         repository = mock(IntegrationToolRepository.class);
         crmIntegrationUseCase = mock(CrmIntegrationUseCase.class);
         toolUseCase = mock(ToolUseCase.class);
+        probePort = mock(CrmAccountProbePort.class);
+        when(probePort.findUysotBaseUrl()).thenReturn("https://api.uysot.example/");
         service = new IntegrationToolService(repository, crmIntegrationUseCase, mock(CompanyUseCase.class),
-                mock(AuditUseCase.class), toolUseCase);
+                mock(AuditUseCase.class), toolUseCase, probePort);
         when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(searchFlats, createLead));
         when(repository.findChoices(COMPANY_ID)).thenReturn(Map.of());
         when(crmIntegrationUseCase.findGrants(COMPANY_ID)).thenReturn(List.of());
@@ -195,7 +199,7 @@ class IntegrationToolServiceTest {
     private static Tool template(String name, String url, List<ToolKeyValuePair> headers, ToolAuth auth, ToolEffect effect) {
         return new Tool(null, null, name, "Looks something up.",
                 new ToolHttpConfig(url, effect == ToolEffect.READ ? "GET" : "POST", headers, null, null, null, null,
-                        null, 0, auth),
+                        null, 0, auth, null, null),
                 null, null, null, 3, effect, null, null, null, null);
     }
 
@@ -318,7 +322,7 @@ class IntegrationToolServiceTest {
                 .build();
         when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(searchFlats, http));
         when(crmIntegrationUseCase.findConnection(COMPANY_ID))
-                .thenReturn(Optional.of(new CrmConnection(CrmProvider.UYSOT, "https://api.uysot.example/", "tok")));
+                .thenReturn(Optional.of(new CrmConnection(CrmProvider.UYSOT, null, "tok")));
 
         List<Tool> tools = service.findEnabledHttpTools(COMPANY_ID);
 
@@ -339,6 +343,20 @@ class IntegrationToolServiceTest {
                 .build();
         when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(http));
         when(crmIntegrationUseCase.findConnection(COMPANY_ID)).thenReturn(Optional.empty());
+
+        assertTrue(service.findEnabledHttpTools(COMPANY_ID).isEmpty());
+    }
+
+    @Test
+    void noHttpToolIsOfferedWhenThePlatformHasNoUysotAddress() {
+        IntegrationTool http = tool(9, "LOOKUP_DEBT", null, null, true).toBuilder()
+                .kind(IntegrationToolKind.HTTP)
+                .definition(template("lookupDebt", "v1/open-api/debt/filter", null, null, ToolEffect.READ))
+                .build();
+        when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(http));
+        when(crmIntegrationUseCase.findConnection(COMPANY_ID))
+                .thenReturn(Optional.of(new CrmConnection(CrmProvider.UYSOT, null, "tok")));
+        when(probePort.findUysotBaseUrl()).thenReturn(null);
 
         assertTrue(service.findEnabledHttpTools(COMPANY_ID).isEmpty());
     }

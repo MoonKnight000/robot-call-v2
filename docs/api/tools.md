@@ -126,8 +126,10 @@ Tizimda AI Agentlar uchun mustaqil **Tools** mexanizmi joriy qilindi. Agent qo'n
 | `speech.disableInterruptions` | bool| Standart: false| Tool javobi kutilayotganda mijoz gapini to'xtatmaslik (barge-in block) |
 | `speech.forcePreToolSpeech` | bool | Standart: `true` | API chaqirishdan oldin `preToolSpeech` aytilishini majburiy qilish |
 | `speech.preToolSpeech` | string| Ixtiyoriy | Chaqiruv boshlanishida robot o'qiydigan jumla ("Bir daqiqa...") |
-| `responseMapping` | object | Ixtiyoriy | Nom → JSONPath (`$.data.status`, `$.items[0].eta`). Berilsa modelga **faqat shu maydonlar** boradi (`{"order_status": "shipped"}`), butun javob emas. Javobda yo'q yo'l tushib qoladi. `$` bilan boshlanmagan yo'l — `400 TOOL_RESPONSE_MAPPING_INVALID`. Bo'sh — butun javob (4000 belgigacha). 2xx javobda mapping maydonlari qo'ng'iroq natijasiga ham shu nomlar bilan yoziladi — ssenariyning `goal` maydoni shu nomda bo'lsa, qo'ng'iroq `GOAL_REACHED` bilan tugaydi ([scenarios.md](scenarios.md)). 2xx javobda modelga borgan raqamlar (narx, jami, buyurtma raqami) agent ovoz chiqarib aytishi mumkin bo'lgan raqamlarga qo'shiladi — fact guard ularni to'qilgan deb bloklamaydi |
-| `http.retryAttempts` | int | Standart: 0 | 5xx yoki tarmoq xatosidan keyin qayta urinishlar soni (0–3), kutish 300 ms, 600 ms, … 4xx qayta yuborilmaydi. Standart 0: yarim bajarilgan `POST` so'ralmasdan ikki marta ketmasin |
+| `responseMapping` | object | Ixtiyoriy | Nom → JSONPath (`$.data.status`, `$.items[0].eta`). Berilsa modelga **faqat shu maydonlar** boradi (`{"order_status": "shipped"}`), butun javob emas. Javobda yo'q yo'l tushib qoladi. Ro'yxat uchun `[*]`: `$.data[*]` — ro'yxatning o'zi; `$.data[*].price` — har elementning `price`i (ro'yxat); `$.data[*]{number,rooms,house.name}` — har element faqat shu maydonlargacha qisqartirilgan (kalit — oxirgi bo'lak: `house.name` → `name`); elementda bo'lmagan maydon tushib qoladi. Ro'yxat bo'lmagan joyda yoki ikkinchi `[*]` da hech narsa tanlanmaydi. Bir nechta yo'l `||` bilan berilsa (`$.data[*] || $.data.content[*]`), tanlov bo'sh bo'lmagan birinchi topilgan yo'ldan olinadi (bo'sh ro'yxat ham "topildi" hisoblanadi) — javob ro'yxati turli endpointlarda turlicha o'ralgan bo'lsa. `$` bilan boshlanmagan yo'l — `400 TOOL_RESPONSE_MAPPING_INVALID`. Bo'sh — butun javob (4000 belgigacha). 2xx javobda mapping maydonlari qo'ng'iroq natijasiga ham shu nomlar bilan yoziladi — ssenariyning `goal` maydoni shu nomda bo'lsa, qo'ng'iroq `GOAL_REACHED` bilan tugaydi ([scenarios.md](scenarios.md)). 2xx javobda modelga borgan raqamlar (narx, jami, buyurtma raqami) agent ovoz chiqarib aytishi mumkin bo'lgan raqamlarga qo'shiladi — fact guard ularni to'qilgan deb bloklamaydi |
+| `http.retryAttempts` | int | Standart: 0 | 5xx, `408`, `429` yoki tarmoq xatosidan keyin qayta urinishlar soni (0–5). Kutish eksponensial va tasodifiy tebranish bilan: ~300 ms, ~600 ms, ~1.2 s, … (har biri o'z chegarasining yarmi va to'liq qiymati orasida). Boshqa 4xx qayta yuborilmaydi. Standart 0: yarim bajarilgan `POST` so'ralmasdan ikki marta ketmasin |
+| `http.waitForResult` | bool | Standart: `true` | `true` — model javobni kutadi. `false` — so'rov fonda ishlaydi, modelga darhol `{"status": 202, ...}` ("fonda boshlandi, natija hali yo'q") deyiladi va gap davom etadi; kutish yo'q, shuning uchun `speech.preToolSpeech` aytilmaydi. So'rov oxirigacha ishlaydi: tugagach `responseMapping` maydonlari va `http.statusVariable` qo'ng'iroq natijasiga yoziladi. Panelning "Test" tugmasi (§4.1) har doim kutadi |
+| `http.statusVariable` | string | Ixtiyoriy (harf/raqam/`_`, ≤64) | So'rov tugagach qo'ng'iroq natijasiga shu nom bilan `success` (2xx) yoki `failure` (boshqa status, tarmoq xatosi, manzil bloklangan) yoziladi — ssenariyda `branches` shu maydon bo'yicha yo'naltira oladi. `PUT` da `""` — olib tashlaydi |
 | `maxCallsPerCall` | int | Standart: 3 | Bitta qo'ng'iroqda tool necha marta chaqirilishi mumkin; oshsa so'rov yuborilmaydi va modelga `status: 429` bilan "qayta chaqirmang" deyiladi. `0` — cheklovsiz |
 | `http.bodySchema` | object | Ixtiyoriy | Ichma-ich body uchun JSON Schema (`{"type": "object", "properties": {...}}`) — §3.1. `http.body` bilan birga berilsa `400 TOOL_BODY_AMBIGUOUS` |
 | `effect` | string | Standart: `GET` → `READ`, boshqasi → `WRITE` | `READ` / `WRITE` / `DESTRUCTIVE` — §3.2. `DESTRUCTIVE` modelga hech qachon berilmaydi |
@@ -377,21 +379,31 @@ qo'llangan holda. Manzil tekshiruvi (§6.1) va retry ham xuddi qo'ng'iroqdagidek
 ```json
 {
   "args": { "order_id": "481516" },
-  "variables": { "phone": "+998901234567" }
+  "variables": { "phone": "+998901234567" },
+  "responseMapping": { "order_status": "$.data.status" }
 }
 ```
 
 `args` — `LLM Prompt` parametrlari (model nima yuborardi), `variables` — `Dynamic Variable` parametrlari
-o'qiydigan qo'ng'iroq o'zgaruvchilari. Body ixtiyoriy.
+o'qiydigan qo'ng'iroq o'zgaruvchilari. `responseMapping` — hali saqlanmagan mappingni sinash uchun
+(§3 dagi qoidalar, noto'g'ri yo'l — `400 TOOL_RESPONSE_MAPPING_INVALID`). Body ixtiyoriy.
 
 ```json
 {
   "accept": true,
   "data": {
-    "result": { "status": 200, "data": { "order_status": "shipped", "eta": "2026-09-15" } }
+    "result": { "status": 200, "data": { "order_status": "shipped", "eta": "2026-09-15" } },
+    "raw": { "data": { "status": "shipped", "eta": "2026-09-15", "internal_id": 7 } },
+    "mapped": { "order_status": "shipped" }
   }
 }
 ```
+
+- `result` — modelga aynan nima borishi (tool saqlangan `responseMapping` bilan).
+- `raw` — endpoint javobi o'zgarishsiz (JSON, JSON bo'lmasa matn; javob umuman kelmasa `null`). Odam shu yerdan
+  modelga ko'rinishi kerak maydonlarni tanlaydi.
+- `mapped` — so'rovdagi `responseMapping` `raw` ichidan nimani tanlashi (tozalangan holda); `responseMapping`
+  yuborilmasa yoki `raw` JSON bo'lmasa `null`.
 
 Topilmasa `404 TOOL_NOT_FOUND`. Endpoint xato qaytsa ham `200` — `result.status` endpoint javobi.
 So'rovning o'zi yetib bormasa (ulanib bo'lmadi, timeout, noto'g'ri manzil) — `502 TOOL_EXECUTION_FAILED`,

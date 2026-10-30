@@ -101,6 +101,7 @@ class CallSetupService {
     private final DialogRouter dialogRouter;
     private final ActiveCallService activeCallService;
     private final AgentWebhookUseCase agentWebhookUseCase;
+    private final PreCallWorkflowRunner preCallWorkflowRunner;
     private final OperatorTransferService operatorTransferService;
     private final UnansweredCallSettler unansweredCallSettler;
     private final ObjectMapper objectMapper;
@@ -136,6 +137,7 @@ class CallSetupService {
                      DialogRouter dialogRouter,
                      ActiveCallService activeCallService,
                      AgentWebhookUseCase agentWebhookUseCase,
+                     PreCallWorkflowRunner preCallWorkflowRunner,
                      OperatorTransferService operatorTransferService,
                      UnansweredCallSettler unansweredCallSettler,
                      ObjectMapper objectMapper,
@@ -173,6 +175,7 @@ class CallSetupService {
         this.dialogRouter = dialogRouter;
         this.activeCallService = activeCallService;
         this.agentWebhookUseCase = agentWebhookUseCase;
+        this.preCallWorkflowRunner = preCallWorkflowRunner;
         this.operatorTransferService = operatorTransferService;
         this.unansweredCallSettler = unansweredCallSettler;
     }
@@ -465,6 +468,13 @@ class CallSetupService {
             String testFile = rtpProperties.testPlaybackFile();
             if (testFile != null && !testFile.isBlank()) {
                 activeCallService.play(channelId, Path.of(testFile));
+            }
+
+            if (agent != null && !agent.preCallFunctions().isEmpty() && context != null) {
+                // Before the initiation webhook, so the webhook sees what the lookups found.
+                String preCallPhone = outbound != null ? outbound.phone() : ChannelNames.extractCallerNumber(channel);
+                context = context.withMergedFacts(preCallWorkflowRunner.run(agent, companyId, channelId, attemptId,
+                        language, preCallPhone, context.facts()));
             }
 
             if (agent != null && agent.initiationWebhook() != null && agentWebhookUseCase != null) {

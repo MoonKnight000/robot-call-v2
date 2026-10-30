@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.crm.application.port.output.CrmConnectorPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmCallHistoryEntry;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
+import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnectionCheck;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.http.PublicHttpClient;
 import uz.murodjon.robotcallv2.shared.http.PublicHttpRequest;
@@ -48,6 +49,8 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
     /** Writes happen after the call has ended; what does not land the outbox re-posts. */
     private static final Duration WRITE_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
+    /** A person pressing "check" is waiting on the answer, but not for long. */
+    private static final Duration CHECK_TIMEOUT = Duration.ofSeconds(5);
 
     /** amoCRM {@code call_status}: 4 — the conversation took place, 6 — did not get through. */
     private static final int CALL_STATUS_TALKED = 4;
@@ -73,6 +76,24 @@ public class AmoCrmConnectorAdapter implements CrmConnectorPort {
     @Override
     public boolean isSupported(CrmProvider provider) {
         return provider == CrmProvider.AMOCRM || provider == CrmProvider.KOMMO;
+    }
+
+    /** Reads the account itself ({@code /api/v4/account}): any 2xx means the token is accepted. */
+    @Override
+    public CrmConnectionCheck checkConnection(CrmConnection connection) {
+        URI account = screen(connection);
+        if (account == null) {
+            return CrmConnectionCheck.refused("address or access token missing, or the address is not public");
+        }
+        try {
+            return CrmConnectionCheck.ofStatus(httpClient.send(
+                    request("GET", account, "/api/v4/account", connection, CHECK_TIMEOUT)).statusCode());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return CrmConnectionCheck.unreachable(e);
+        } catch (IOException | RuntimeException e) {
+            return CrmConnectionCheck.unreachable(e);
+        }
     }
 
     /**

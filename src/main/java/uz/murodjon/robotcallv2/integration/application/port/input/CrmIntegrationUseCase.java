@@ -45,6 +45,13 @@ public interface CrmIntegrationUseCase {
      */
     Optional<CrmConnection> findConnection(long companyId);
 
+    /**
+     * Asks the connected CRM account whether the saved address and credential still work, and
+     * records the answer: {@code CONNECTED} when it does, {@code ERROR} when it does not.
+     * {@code connectAccount} runs the same check once it has saved the credential.
+     */
+    CrmConnectionCheckResponse checkConnection(long companyId);
+
     void disconnect(long companyId);
 
     /** The Uysot grants the company asked for; empty when it has none on record (the platform's own token). */

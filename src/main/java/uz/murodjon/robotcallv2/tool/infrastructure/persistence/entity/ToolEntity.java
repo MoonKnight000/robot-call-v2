@@ -75,6 +75,12 @@ public class ToolEntity {
     @Column(name = "retry_attempts", nullable = false)
     private int retryAttempts;
 
+    @Column(name = "wait_for_result", nullable = false)
+    private boolean waitForResult = true;
+
+    @Column(name = "status_variable", length = 64)
+    private String statusVariable;
+
     @Column(name = "max_calls_per_call", nullable = false)
     private int maxCallsPerCall;
 
@@ -240,6 +246,22 @@ public class ToolEntity {
 
     public void setRetryAttempts(int retryAttempts) {
         this.retryAttempts = retryAttempts;
+    }
+
+    public boolean isWaitForResult() {
+        return waitForResult;
+    }
+
+    public void setWaitForResult(boolean waitForResult) {
+        this.waitForResult = waitForResult;
+    }
+
+    public String getStatusVariable() {
+        return statusVariable;
+    }
+
+    public void setStatusVariable(String statusVariable) {
+        this.statusVariable = statusVariable;
     }
 
     public int getMaxCallsPerCall() {

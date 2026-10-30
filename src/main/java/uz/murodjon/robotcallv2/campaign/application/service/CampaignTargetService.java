@@ -60,6 +60,7 @@ public class CampaignTargetService implements CampaignTargetUseCase {
     private final NotificationUseCase notificationUseCase;
     private final TargetApiImporter targetApiImporter;
     private final ChainedTargetImporter chainedTargetImporter;
+    private final ToolTargetImporter toolTargetImporter;
     private final DebtorSourcePort debtorSource;
     private final CampaignValidator campaignValidator;
     private final SecretCipher secretCipher;
@@ -71,7 +72,7 @@ public class CampaignTargetService implements CampaignTargetUseCase {
                                  TargetSourceRepository targetSourceRepository, DoNotCallUseCase doNotCallUseCase,
                                  AuditUseCase auditUseCase, NotificationUseCase notificationUseCase,
                                  TargetApiImporter targetApiImporter, ChainedTargetImporter chainedTargetImporter,
-                                 DebtorSourcePort debtorSource, CampaignValidator campaignValidator,
+                                 ToolTargetImporter toolTargetImporter, DebtorSourcePort debtorSource, CampaignValidator campaignValidator,
                                  SecretCipher secretCipher, CampaignOutcomeService campaignOutcomeService, Clock clock,
                                  ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -83,6 +84,7 @@ public class CampaignTargetService implements CampaignTargetUseCase {
         this.notificationUseCase = notificationUseCase;
         this.targetApiImporter = targetApiImporter;
         this.chainedTargetImporter = chainedTargetImporter;
+        this.toolTargetImporter = toolTargetImporter;
         this.debtorSource = debtorSource;
         this.campaignValidator = campaignValidator;
         this.secretCipher = secretCipher;
@@ -242,10 +244,12 @@ public class CampaignTargetService implements CampaignTargetUseCase {
         // UYSOT_DEBTORS is not offered here: it is provisioned, reads its credentials from
         // the company's CRM connection rather than from this form, and would otherwise be
         // settable on a campaign whose company has no such connection.
-        TargetSourceProvider provider = request.providerOrDefault() == TargetSourceProvider.CHAINED
-                ? TargetSourceProvider.CHAINED
-                : TargetSourceProvider.GENERIC;
-        campaignValidator.validateTargetSource(provider, request.url(), request.steps());
+        TargetSourceProvider provider = switch (request.providerOrDefault()) {
+            case CHAINED -> TargetSourceProvider.CHAINED;
+            case TOOL -> TargetSourceProvider.TOOL;
+            default -> TargetSourceProvider.GENERIC;
+        };
+        campaignValidator.validateTargetSource(provider, request.url(), request.steps(), request.toolName());
         TargetSource saved = targetSourceRepository.upsert(campaignId, new TargetSource(
                 campaignId,
                 provider,
@@ -262,13 +266,17 @@ public class CampaignTargetService implements CampaignTargetUseCase {
                 request.syncOnRecurrence() == null || request.syncOnRecurrence(),
                 request.enabled() == null || request.enabled(),
                 request.steps(),
+                provider == TargetSourceProvider.TOOL ? request.toolName().trim() : null,
+                provider == TargetSourceProvider.TOOL ? request.toolArguments() : null,
                 existing != null ? existing.lastSyncAt() : null,
                 existing != null ? existing.lastSyncAdded() : null,
                 existing != null ? existing.lastSyncError() : null));
         auditUseCase.record(companyId, "TARGET_SOURCE_UPDATE", "campaign", String.valueOf(campaignId),
-                provider == TargetSourceProvider.CHAINED
-                        ? provider + " (" + saved.steps().size() + " step(s))"
-                        : saved.url());
+                switch (provider) {
+                    case CHAINED -> provider + " (" + saved.steps().size() + " step(s))";
+                    case TOOL -> provider + " (" + saved.toolName() + ")";
+                    default -> saved.url();
+                });
         return TargetSourceRow.of(saved);
     }
 
@@ -331,6 +339,7 @@ public class CampaignTargetService implements CampaignTargetUseCase {
                 case UYSOT_DEBTORS -> fetchDebtors(companyId);
                 case CHAINED -> chainedTargetImporter.fetchTargets(
                         source, decryptSecret(source.authHeaderValue()), errors);
+                case TOOL -> toolTargetImporter.fetchTargets(companyId, source, errors);
                 case GENERIC -> targetApiImporter.fetchTargets(
                         source, decryptSecret(source.authHeaderValue()), errors);
             };

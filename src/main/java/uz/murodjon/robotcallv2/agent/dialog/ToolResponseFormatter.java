@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.MissingNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
@@ -35,6 +36,9 @@ final class ToolResponseFormatter {
      * for and cannot use; a tool that needs more than this is answering the wrong question.
      */
     private static final int MAX_RESPONSE_CHARS_FOR_MODEL = 4000;
+
+    /** In a mapping path, "every element of this list" ({@link #select}). */
+    private static final String WILDCARD = "[*]";
 
     ToolResponseFormatter(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -79,6 +83,24 @@ final class ToolResponseFormatter {
         truncatedNode.put("data", dataText.substring(0, Math.min(dataText.length(), MAX_RESPONSE_CHARS_FOR_MODEL)));
         truncatedNode.put("truncated", true);
         return objectMapper.writeValueAsString(truncatedNode);
+    }
+
+    /** The mapped fields as the model would see them, made prompt-safe; null when {@code rawBody} is not JSON. */
+    JsonNode previewMapping(String rawBody, Map<String, String> mapping) {
+        try {
+            JsonNode root = objectMapper.readTree(rawBody);
+            return root == null || root.isMissingNode() ? null : sanitizeForPrompt(applyMapping(root, mapping));
+        } catch (IOException notJson) {
+            return null;
+        }
+    }
+
+    /** What the model is told when the tool runs in the background: there is no answer to read yet. */
+    String formatStarted() {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("status", 202);
+        node.put("data", "Started in the background; there is no result yet. Carry on the conversation.");
+        return node.toString();
     }
 
     /** What the model is told once a tool has been called as often as one call allows. */
@@ -145,7 +167,7 @@ final class ToolResponseFormatter {
     JsonNode applyMapping(JsonNode root, Map<String, String> mapping) {
         ObjectNode mapped = objectMapper.createObjectNode();
         mapping.forEach((name, path) -> {
-            JsonNode value = root.at(toPointer(path));
+            JsonNode value = select(root, path);
             if (!value.isMissingNode()) {
                 mapped.set(name, value);
             }
@@ -154,9 +176,76 @@ final class ToolResponseFormatter {
     }
 
     /**
+     * What one mapping path picks out of the answer: a single value, or — when the path crosses a
+     * list with {@code [*]} — a list. After {@code [*]} the path may be
+     * <ul>
+     *   <li>nothing: {@code $.data[*]} is the list as it is;</li>
+     *   <li>a path: {@code $.data[*].price} is the list of every element's price;</li>
+     *   <li>fields in braces: {@code $.data[*]{number,rooms,house.name}} is the list of elements cut
+     *       down to those fields, each under its last name segment ({@code name} for {@code house.name}).</li>
+     * </ul>
+     * A path that is not in the answer, or a second {@code [*]}, selects nothing.
+     *
+     * <p>Several paths may be given with {@code ||}: the first that selects something is used. It
+     * is for an answer that wraps its list differently from one endpoint to another
+     * ({@code $.data[*] || $.data.data[*] || $.data.content[*]}); an empty list still counts as found.
+     */
+    private JsonNode select(JsonNode root, String path) {
+        for (String alternative : path.split("\\|\\|")) {
+            JsonNode selected = selectOne(root, alternative.trim());
+            if (!selected.isMissingNode()) {
+                return selected;
+            }
+        }
+        return MissingNode.getInstance();
+    }
+
+    private JsonNode selectOne(JsonNode root, String path) {
+        int wildcard = path.indexOf(WILDCARD);
+        if (wildcard < 0) {
+            return root.at(toPointer(path));
+        }
+        JsonNode list = root.at(toPointer(path.substring(0, wildcard)));
+        String rest = path.substring(wildcard + WILDCARD.length()).trim();
+        if (!list.isArray() || rest.contains(WILDCARD)) {
+            return MissingNode.getInstance();
+        }
+        ArrayNode selected = objectMapper.createArrayNode();
+        for (JsonNode element : list) {
+            if (rest.isEmpty()) {
+                selected.add(element);
+            } else if (rest.startsWith("{") && rest.endsWith("}")) {
+                selected.add(pickFields(element, rest.substring(1, rest.length() - 1)));
+            } else {
+                JsonNode value = element.at(toPointer(rest));
+                if (!value.isMissingNode()) {
+                    selected.add(value);
+                }
+            }
+        }
+        return selected;
+    }
+
+    /** The element cut down to the comma-separated fields; one that is not in it is left out. */
+    private ObjectNode pickFields(JsonNode element, String fields) {
+        ObjectNode picked = objectMapper.createObjectNode();
+        for (String field : fields.split(",")) {
+            String trimmed = field.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            JsonNode value = element.at(toPointer(trimmed));
+            if (!value.isMissingNode()) {
+                picked.set(trimmed.substring(trimmed.lastIndexOf('.') + 1), value);
+            }
+        }
+        return picked;
+    }
+
+    /**
      * A dotted JSONPath ({@code $.data.items[0].status}) as the JSON Pointer Jackson reads
      * ({@code /data/items/0/status}). {@code $} alone is the whole answer. Bracketed names
-     * and wildcards are not supported — a mapping names one value.
+     * are not supported, and {@code [*]} is handled by {@link #select} before this is called.
      */
     String toPointer(String path) {
         String trimmed = path.trim();

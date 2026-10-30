@@ -232,6 +232,15 @@ public class AiAgentControllerImpl implements AiAgentController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<AgentPreCallFunctionsDto>> getPreCallFunctions(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentSettingsUseCase.findPreCallFunctions(companyId, id)));
+    }
+    @Override
+    public ResponseEntity<ResponseData<AgentPreCallFunctionsDto>> updatePreCallFunctions(long companyId, long id, AgentPreCallFunctionsDto request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentSettingsUseCase.updatePreCallFunctions(companyId, id, request)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<List<ToolRow>>> getTools(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(toolUseCase.findAgentTools(companyId, id)));
     }

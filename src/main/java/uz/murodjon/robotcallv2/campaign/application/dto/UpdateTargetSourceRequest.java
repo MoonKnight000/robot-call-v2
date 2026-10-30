@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceMethod;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Configures where a campaign fetches its call list from
@@ -38,6 +39,9 @@ import java.util.List;
  * @param syncOnRecurrence fetch automatically on every recurrence run (default true)
  * @param steps           CHAINED only: the requests to run, in order. The first lists rows;
  *                        each later one is called once per row
+ * @param toolName        TOOL only: the integration tool to run (it must be on for the company and
+ *                        read-only); its answer is read with {@code itemsPath}/{@code phoneField}/…
+ * @param toolArguments   TOOL only: the arguments it is called with
  */
 public record UpdateTargetSourceRequest(
         TargetSourceProvider provider,
@@ -53,7 +57,9 @@ public record UpdateTargetSourceRequest(
         Boolean replaceTargets,
         Boolean syncOnRecurrence,
         Boolean enabled,
-        List<TargetSourceStep> steps) {
+        List<TargetSourceStep> steps,
+        @Size(max = 100) String toolName,
+        Map<String, Object> toolArguments) {
 
     /**
      * GENERIC unless asked otherwise, so a client written against the single-request shape

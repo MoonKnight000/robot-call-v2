@@ -99,6 +99,24 @@ CrmGrant:
   required:
   - permission
   - scope
+CrmConnectionCheckResponse:
+  type: object
+  description: 'POST /api/settings/integrations/check answer: whether the saved address and credential still work, and the status the connection now has.'
+  properties:
+    ok:
+      type: boolean
+      description: whether the CRM accepted the credential
+    status:
+      $ref: '#/CrmIntegrationStatus'
+    reason:
+      type: string
+      description: 'why it did not, in a few words (`HTTP 401`, `unreachable (...)`); `null` when `ok`'
+    checkedAt:
+      type: string
+      format: date-time
+  required:
+  - ok
+  - status
 CrmIntegrationRow:
   type: object
   description: GET /api/settings/integrations row (§11).

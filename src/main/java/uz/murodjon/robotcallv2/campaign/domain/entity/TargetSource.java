@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Where a campaign's call list comes from, when it is not a CSV somebody uploads.
@@ -32,6 +33,8 @@ import java.util.List;
  * @param steps          the requests a CHAINED source runs, in order: the first lists rows,
  *                       each later one is called per row to add what the list did not carry.
  *                       Empty for every other provider
+ * @param toolName       the integration tool a TOOL source runs; null for every other provider
+ * @param toolArguments  the arguments it is called with (empty when it takes none)
  * @param lastSyncError  why the last run fetched nothing, or null when it worked. Kept so
  *                       the failure is visible on the campaign page instead of only in a log
  */
@@ -51,6 +54,8 @@ public record TargetSource(
         boolean syncOnRecurrence,
         boolean enabled,
         List<TargetSourceStep> steps,
+        String toolName,
+        Map<String, Object> toolArguments,
         Instant lastSyncAt,
         Integer lastSyncAdded,
         String lastSyncError
@@ -58,6 +63,7 @@ public record TargetSource(
 
     public TargetSource {
         steps = steps == null ? List.of() : List.copyOf(steps);
+        toolArguments = toolArguments == null ? Map.of() : Map.copyOf(toolArguments);
     }
 
     public TargetSourceProvider providerOrDefault() {

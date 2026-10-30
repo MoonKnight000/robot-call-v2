@@ -45,6 +45,7 @@ public class AiAgentBuilder {
     private AgentWebhookConfig postCallWebhook;
     private List<PronunciationRule> pronunciationRules;
     private List<PostCallAction> postCallActions;
+    private List<WorkflowFunction> preCallFunctions;
     private Set<HandbookRule> handbook;
     private String timezone;
     private Set<Long> sipTrunkIds;
@@ -86,6 +87,7 @@ public class AiAgentBuilder {
         this.postCallWebhook = source.postCallWebhook();
         this.pronunciationRules = source.pronunciationRules();
         this.postCallActions = source.postCallActions();
+        this.preCallFunctions = source.preCallFunctions();
         this.handbook = source.handbook();
         this.timezone = source.timezone();
         this.sipTrunkIds = source.sipTrunkIds();
@@ -239,6 +241,11 @@ public class AiAgentBuilder {
         return this;
     }
 
+    public AiAgentBuilder preCallFunctions(List<WorkflowFunction> preCallFunctions) {
+        this.preCallFunctions = preCallFunctions;
+        return this;
+    }
+
     public AiAgentBuilder handbook(Set<HandbookRule> handbook) {
         this.handbook = handbook;
         return this;
@@ -309,6 +316,7 @@ public class AiAgentBuilder {
                 postCallWebhook,
                 pronunciationRules,
                 postCallActions,
+                preCallFunctions,
                 handbook,
                 timezone,
                 sipTrunkIds,

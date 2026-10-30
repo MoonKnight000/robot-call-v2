@@ -475,9 +475,11 @@ nima bo'lganini aytadi.
 
 ### `PUT /api/settings/integrations/account` — amoCRM / Kommo / Bitrix24 ulash
 
-`INTEGRATION_EDIT`. Kompaniyaning joriy ulanishini (Uysot bo'lsa ham) almashtiradi va
-darhol `CONNECTED` qiladi — rozilik ekrani yo'q. Keyingi qo'ng'iroqdan boshlab quvur shu
-CRM bilan ishlaydi.
+`INTEGRATION_EDIT`. Kompaniyaning joriy ulanishini (Uysot bo'lsa ham) almashtiradi — rozilik
+ekrani yo'q. Saqlagach darhol **tekshiradi** (`POST /api/settings/integrations/check` bilan bir xil):
+CRM qabul qilsa `CONNECTED`, rad etsa yoki javob bermasa `ERROR`. Ikkala holatda ham ma'lumot
+saqlanadi — CRM bir lahza sekin javob bergani uchun odam kiritganini qayta yozmasin. Keyingi
+qo'ng'iroqdan boshlab quvur shu CRM bilan ishlaydi.
 
 **Request** (`ConnectCrmAccountRequest`):
 
@@ -494,8 +496,8 @@ CRM bilan ishlaydi.
 Manzil ham, token ham `SecretCipher` bilan shifrlangan holda saqlanadi va hech qachon
 qaytarilmaydi — javobda faqat `accountHost`.
 
-**Response** — `CrmIntegrationRow`: `provider`, `status: "CONNECTED"`, `accountHost`;
-`appName` — `null`, `grants` — `[]`.
+**Response** — `CrmIntegrationRow`: `provider`, `status: "CONNECTED"` yoki `"ERROR"` (tekshiruv
+natijasi; sababini bilish uchun `POST /check`), `accountHost`; `appName` — `null`, `grants` — `[]`.
 
 **Xatolar:**
 
@@ -509,6 +511,32 @@ qaytarilmaydi — javobda faqat `accountHost`.
 
 Manzil saqlashda ham, har bir so'rovdan oldin ham tekshiriladi (host keyinroq boshqa IP'ga
 qarab qolishi mumkin); redirect'lar kuzatilmaydi. Loglarga faqat host yoziladi.
+
+### `POST /api/settings/integrations/check` — Ulanishni tekshirish
+
+`INTEGRATION_EDIT`. Tana yo'q. Ulangan CRM hisobiga bitta arzon o'qish so'rovi yuboradi: saqlangan
+manzil va kalit hali ishlayaptimi. Natija ulanish holatiga yoziladi — `CONNECTED` (CRM qabul qildi)
+yoki `ERROR`; shu sababli `ERROR` holatidagi ulanish ham tekshiriladi va kalit tiklangan bo'lsa
+qaytadan `CONNECTED` bo'ladi. Auditga `CRM_INTEGRATION_CHECK` yoziladi.
+
+```json
+{ "ok": false, "status": "ERROR", "reason": "HTTP 401", "checkedAt": "2026-10-30T12:00:00Z" }
+```
+
+| Maydon | Izoh |
+|---|---|
+| `ok` | CRM kalitni qabul qildimi |
+| `status` | `CONNECTED` yoki `ERROR` — ulanishning endi shu holati |
+| `reason` | qabul qilinmasa — bir necha so'z: `HTTP 401`, `unreachable (SocketTimeoutException)`, `no access token`. CRM'ning o'z xabari **hech qachon** qaytarilmaydi: u manzil yoki kalitni keltirishi mumkin. `ok` bo'lsa `null` |
+| `checkedAt` | tekshiruv vaqti |
+
+Provayder bo'yicha nima o'qiladi: Uysot — vazifa turlari ro'yxati (`403` — kalit yaroqli, shu ro'yxatga
+ruxsat yo'q, ya'ni `ok`; `401` — rad etildi); amoCRM/Kommo — `/api/v4/account`; Bitrix24 —
+webhook'ning `profile` metodi. Kutish — 5 soniyagacha.
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 409 | `CRM_INTEGRATION_NOT_CONNECTED` | kompaniyada tekshiriladigan ulanish yo'q |
 
 ### `DELETE /api/settings/integrations/uysot` — Integratsiyani uzish
 Qaysi provayder ulangan bo'lishidan qat'i nazar, saqlangan token, manzil va ruxsatlarni
@@ -551,6 +579,7 @@ sukut o'zgarsa u ham o'zgaradi; kompaniya o'zi tanlagan holat esa hech qachon bo
 | `writes` | vosita CRM'da nimadir o'zgartiradi (lid, izoh, vazifa, bosqich) |
 | `enabled` | kalit shuni ko'rsatadi: kompaniyaning o'z tanlovi, tanlamagan bo'lsa platforma sukuti |
 | `inherited` | kompaniya hali tanlamagan — `enabled` sukut holati va u o'zgarsa birga o'zgaradi |
+| `toolName` | HTTP vositaning modelga ko'rinadigan nomi — pre-call funksiya (`toolName`) va kampaniya `TOOL` manbai shunga ishora qiladi; ichki vositada `null` |
 | `granted` | kompaniyaning Uysot ruxsatlari vositani qoplaydi. `false` bo'lsa agentga vosita **berilmaydi** (`enabled` ga qaramay) — «Ulash» tabida ruxsat berib, qayta ulash kerak |
 
 | `tool` | Guruh | Ruxsat | Nima qiladi |

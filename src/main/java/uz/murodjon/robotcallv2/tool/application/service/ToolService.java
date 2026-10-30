@@ -8,6 +8,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.dialog.HttpToolExecutor;
+import uz.murodjon.robotcallv2.agent.dialog.ToolTestRun;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.event.AiAgentClonedEvent;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -39,7 +40,7 @@ public class ToolService implements ToolUseCase {
     private static final TypeReference<Map<String, Object>> RESULT_TYPE = new TypeReference<>() {};
     /** An update that leaves a whole group out changes nothing in it. */
     private static final ToolHttpConfigDto NO_HTTP =
-            new ToolHttpConfigDto(null, null, null, null, null, null, null, null, null, null);
+            new ToolHttpConfigDto(null, null, null, null, null, null, null, null, null, null, null, null);
     private static final ToolSpeechDto NO_SPEECH = new ToolSpeechDto(null, null, null);
 
     private final ToolRepository toolRepository;
@@ -111,7 +112,9 @@ public class ToolService implements ToolUseCase {
                         http.bodySchema() != null ? http.bodySchema() : existingHttp.bodySchema(),
                         http.responseTimeoutSecs() != null ? http.responseTimeoutSecs() : existingHttp.responseTimeoutSecs(),
                         http.retryAttempts() != null ? http.retryAttempts() : existingHttp.retryAttempts(),
-                        http.auth() == null ? existingHttp.auth() : http.auth().type() == null ? null : http.auth()),
+                        http.auth() == null ? existingHttp.auth() : http.auth().type() == null ? null : http.auth(),
+                        http.waitForResult() != null ? http.waitForResult() : existingHttp.waitForResult(),
+                        http.statusVariable() != null ? http.statusVariable() : existingHttp.statusVariable()),
                 request.dynamicVariables() != null ? request.dynamicVariables() : existing.dynamicVariables(),
                 new ToolSpeech(
                         speech.disableInterruptions() != null ? speech.disableInterruptions() : existingSpeech.disableInterruptions(),
@@ -184,12 +187,30 @@ public class ToolService implements ToolUseCase {
 
     @Override
     public ToolTestResponse testResolvedTool(Tool tool, TestToolRequest request) {
-        String result = httpToolExecutor.executeForTest(tool,
+        Map<String, String> mapping = request != null ? request.responseMapping() : null;
+        requireValidMapping(mapping);
+        ToolTestRun run = httpToolExecutor.executeForTest(tool,
                 request != null ? request.variables() : null, request != null ? request.args() : null);
+        Object raw = readRaw(run.rawBody());
+        Object mapped = mapping != null && run.rawBody() != null
+                ? objectMapper.convertValue(httpToolExecutor.previewMapping(run.rawBody(), mapping), Object.class)
+                : null;
         try {
-            return new ToolTestResponse(objectMapper.readValue(result, RESULT_TYPE));
+            return new ToolTestResponse(objectMapper.readValue(run.result(), RESULT_TYPE), raw, mapped);
         } catch (Exception e) {
-            return new ToolTestResponse(Map.of("raw", result));
+            return new ToolTestResponse(Map.of("raw", run.result()), raw, mapped);
+        }
+    }
+
+    /** The answer as a JSON value, or as the text it was when it is not JSON. */
+    private Object readRaw(String rawBody) {
+        if (rawBody == null) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(rawBody, Object.class);
+        } catch (Exception notJson) {
+            return rawBody;
         }
     }
 

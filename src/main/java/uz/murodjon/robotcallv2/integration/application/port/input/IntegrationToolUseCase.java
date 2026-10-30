@@ -41,6 +41,16 @@ public interface IntegrationToolUseCase {
     List<Tool> findEnabledHttpTools(long companyId);
 
     /**
+     * Runs one of {@link #findEnabledHttpTools} once for this company, outside any call, and returns what the
+     * integration answered (the tool's {@code raw} body). Only a read-only tool runs: this is how a campaign
+     * reads a list, and reading must not change the CRM. No transaction: the request goes out over the network.
+     *
+     * @throws uz.murodjon.robotcallv2.shared.exception.NotFoundException when the company has no such tool on
+     * @throws uz.murodjon.robotcallv2.shared.exception.ValidationException when the tool is not read-only
+     */
+    ToolTestResponse runEnabledReadTool(long companyId, String toolName, Map<String, Object> arguments);
+
+    /**
      * The model-facing text the platform admin set for built-in tools, by the name the model knows each by
      * ({@code CrmTool#toolName}). A tool left on the text in code is absent. The same for every company.
      */

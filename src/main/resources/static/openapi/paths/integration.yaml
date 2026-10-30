@@ -57,6 +57,34 @@
         $ref: ../common.yaml#/responses/Unauthorized
       '403':
         $ref: ../common.yaml#/responses/Forbidden
+/api/settings/integrations/check:
+  post:
+    tags:
+    - CRM Integrations
+    summary: Ulanishni tekshirish
+    description: |-
+      Asks the connected CRM account whether the saved address and credential still work, and records the answer: the status becomes `CONNECTED` or `ERROR`. `409 CRM_INTEGRATION_NOT_CONNECTED` when there is no connection to check.
+
+      **Huquq:** `INTEGRATION_EDIT`
+    operationId: integration_checkConnection
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/integration.yaml#/CrmConnectionCheckResponse
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '409':
+        $ref: ../common.yaml#/responses/Conflict
 /api/settings/integrations/catalog:
   get:
     tags:

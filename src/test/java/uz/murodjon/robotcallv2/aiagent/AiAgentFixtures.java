@@ -48,6 +48,7 @@ public final class AiAgentFixtures {
                 null,
                 List.of(),
                 List.of(),
+                List.of(),
                 Set.of(),
                 null,
                 Set.of(),

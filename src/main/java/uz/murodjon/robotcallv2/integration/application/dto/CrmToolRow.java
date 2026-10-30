@@ -15,6 +15,8 @@ import uz.murodjon.robotcallv2.integration.domain.enums.CrmToolGroup;
  * @param inherited  the company never chose, so {@code enabled} is the platform default and follows it
  * @param granted    whether the company's CRM grants cover the tool; when {@code false} the agent is
  *                   not offered the tool whatever {@code enabled} says, until the grant is given
+ * @param toolName   the name the model calls an HTTP tool by — what a pre-call function or a campaign target
+ *                   source names it; {@code null} for a built-in tool
  */
 public record CrmToolRow(
         String tool,
@@ -26,10 +28,12 @@ public record CrmToolRow(
         boolean writes,
         boolean enabled,
         boolean inherited,
-        boolean granted
+        boolean granted,
+        String toolName
 ) {
     public static CrmToolRow of(IntegrationTool tool, boolean enabled, boolean inherited, boolean granted) {
         return new CrmToolRow(tool.key(), tool.group(), tool.label(), tool.description(), tool.permission(),
-                tool.scope(), tool.writes(), enabled, inherited, granted);
+                tool.scope(), tool.writes(), enabled, inherited, granted,
+                tool.definition() != null ? tool.definition().name() : null);
     }
 }

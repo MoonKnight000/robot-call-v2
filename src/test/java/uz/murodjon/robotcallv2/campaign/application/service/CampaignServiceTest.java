@@ -93,7 +93,7 @@ class CampaignServiceTest {
                 retryProperties, audit, notifications, mock(SmsUseCase.class), new ObjectMapper(), clock);
         targetService = new CampaignTargetService(campaigns, targets, targetSources, doNotCallUseCase, audit,
                 notifications, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
-                mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), outcomeService, clock, new ObjectMapper());
+                mock(ToolTargetImporter.class), mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), outcomeService, clock, new ObjectMapper());
         service = new CampaignService(campaigns, targets, targetSources, aiAgents, users, companyConfig, audit,
                 notifications, ttsWarmup, targetService, outcomeService, new CampaignValidator(), callQueues, clock);
     }

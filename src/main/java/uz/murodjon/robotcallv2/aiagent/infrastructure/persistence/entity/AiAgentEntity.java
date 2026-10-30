@@ -156,6 +156,10 @@ public class AiAgentEntity {
     private String postCallActions = "[]";
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "pre_call_functions", columnDefinition = "jsonb")
+    private String preCallFunctions = "[]";
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "handbook", columnDefinition = "jsonb")
     private String handbook = "[]";
 
@@ -415,6 +419,14 @@ public class AiAgentEntity {
 
     public void setPostCallActions(String postCallActions) {
         this.postCallActions = postCallActions;
+    }
+
+    public String getPreCallFunctions() {
+        return preCallFunctions;
+    }
+
+    public void setPreCallFunctions(String preCallFunctions) {
+        this.preCallFunctions = preCallFunctions;
     }
 
     public String getHandbook() {
