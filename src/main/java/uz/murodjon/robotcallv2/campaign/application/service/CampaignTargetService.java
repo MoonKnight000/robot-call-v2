@@ -12,11 +12,16 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUse
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.DebtorSourcePort;
+import uz.murodjon.robotcallv2.campaign.application.port.output.SpreadsheetReaderPort;
 import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
+import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.SpreadsheetCsv;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetScore;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSource;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignKind;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
@@ -27,11 +32,13 @@ import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 import uz.murodjon.robotcallv2.shared.csv.CsvRowError;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 
@@ -48,9 +55,12 @@ import java.util.*;
 public class CampaignTargetService implements CampaignTargetUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(CampaignTargetService.class);
+    /** Data rows read from one .xlsx sheet — about what the 5 MB upload limit holds. */
+    static final int MAX_SPREADSHEET_ROWS = 100_000;
 
     /** Only used to build a target's {@code context_data}; no configuration of its own. */
     private final ObjectMapper objectMapper;
+    private final SpreadsheetReaderPort spreadsheetReader;
 
     private final CampaignRepository campaignRepository;
     private final CampaignTargetRepository campaignTargetRepository;
@@ -74,7 +84,8 @@ public class CampaignTargetService implements CampaignTargetUseCase {
                                  TargetApiImporter targetApiImporter, ChainedTargetImporter chainedTargetImporter,
                                  ToolTargetImporter toolTargetImporter, DebtorSourcePort debtorSource, CampaignValidator campaignValidator,
                                  SecretCipher secretCipher, CampaignOutcomeService campaignOutcomeService, Clock clock,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper, SpreadsheetReaderPort spreadsheetReader) {
+        this.spreadsheetReader = spreadsheetReader;
         this.objectMapper = objectMapper;
         this.campaignRepository = campaignRepository;
         this.campaignTargetRepository = campaignTargetRepository;
@@ -147,8 +158,13 @@ public class CampaignTargetService implements CampaignTargetUseCase {
 
     @Override
     public TargetImportResult importTargetsCsv(long companyId, long campaignId, String csv) {
-        requireCampaignExists(companyId, campaignId);
-        TargetCsvParseResult parsed = TargetCsvImporter.parse(csv);
+        return importTargets(companyId, campaignId, new TargetImportRequest(csv, Map.of()));
+    }
+
+    @Override
+    public TargetImportResult importTargets(long companyId, long campaignId, TargetImportRequest request) {
+        requireNoContactFilter(companyId, campaignId);
+        TargetCsvParseResult parsed = TargetCsvImporter.parse(request.csv(), request.columns());
         TargetIntake intake = new TargetIntake(companyId, campaignId);
         List<CsvRowError> errors = new ArrayList<>(parsed.errors());
         for (ParsedTarget t : parsed.targets()) {
@@ -239,11 +255,41 @@ public class CampaignTargetService implements CampaignTargetUseCase {
 
     @Override
     public TargetCsvPreview previewTargetsCsv(long companyId, long campaignId, String csv) {
-        requireCampaignExists(companyId, campaignId);
-        List<CsvColumnMapping> columns = TargetCsvImporter.mapColumns(csv);
-        TargetCsvParseResult parsed = TargetCsvImporter.parse(csv);
+        return previewTargets(companyId, campaignId, new TargetImportRequest(csv, Map.of()));
+    }
+
+    @Override
+    public TargetCsvPreview previewTargets(long companyId, long campaignId, TargetImportRequest request) {
+        requireNoContactFilter(companyId, campaignId);
+        List<CsvColumnMapping> columns = TargetCsvImporter.mapColumns(request.csv(), request.columns());
+        TargetCsvParseResult parsed;
+        try {
+            parsed = TargetCsvImporter.parse(request.csv(), request.columns());
+        } catch (ValidationException e) {
+            // No phone column yet, or two columns on one field: the mapping step still needs the columns to fix it,
+            // so the problem comes back as an error on the header row rather than as a failed request.
+            return new TargetCsvPreview(columns, List.of(), 0, List.of(new CsvRowError(1, e.getMessage())), List.of(),
+                    TargetCsvImporter.knownFields());
+        }
         List<ParsedTarget> sample = parsed.targets().stream().limit(10).toList();
-        return new TargetCsvPreview(columns, sample, parsed.targets().size(), parsed.errors(), parsed.unknownColumns());
+        return new TargetCsvPreview(columns, sample, parsed.targets().size(), parsed.errors(), parsed.unknownColumns(),
+                TargetCsvImporter.knownFields());
+    }
+
+    @Override
+    public SpreadsheetCsv readTargetsXlsx(long companyId, long campaignId, UploadedFile file, int sheet) {
+        requireNoContactFilter(companyId, campaignId);
+        if (file == null || file.isEmpty()) {
+            throw new ValidationException(ErrorCode.SPREADSHEET_UNREADABLE);
+        }
+        SpreadsheetCsv read = spreadsheetReader.readSheet(file.bytes(), sheet, MAX_SPREADSHEET_ROWS);
+        if (read == null) {
+            throw new ValidationException(ErrorCode.SPREADSHEET_UNREADABLE);
+        }
+        if (read.rows() > MAX_SPREADSHEET_ROWS) {
+            throw new ValidationException(ErrorCode.SPREADSHEET_TOO_MANY_ROWS, MAX_SPREADSHEET_ROWS);
+        }
+        return read;
     }
 
     @Override
@@ -575,5 +621,32 @@ public class CampaignTargetService implements CampaignTargetUseCase {
         if (campaignRepository.find(companyId, campaignId) == null) {
             throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, campaignId);
         }
+    }
+
+    /** A STANDARD campaign takes its contacts from a filter or from a file, never both (Retell). */
+    private void requireNoContactFilter(long companyId, long campaignId) {
+        Campaign campaign = campaignRepository.find(companyId, campaignId);
+        if (campaign == null) {
+            throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, campaignId);
+        }
+        if (campaign.kind() == CampaignKind.STANDARD && !campaign.autoEnroll().hasNoRules()) {
+            throw new ConflictException(ErrorCode.CAMPAIGN_CONTACT_FILTER_SET, campaignId);
+        }
+    }
+
+    @Override
+    public int clearUploadedTargets(long companyId, long campaignId) {
+        Campaign campaign = campaignRepository.find(companyId, campaignId);
+        if (campaign == null) {
+            throw new NotFoundException(ErrorCode.CAMPAIGN_NOT_FOUND, campaignId);
+        }
+        // Before launch nothing has been dialled, so this empties the list; a launched campaign keeps its targets.
+        if (campaign.status() != CampaignStatus.DRAFT) {
+            throw new ConflictException(ErrorCode.CAMPAIGN_CONTACTS_LOCKED, campaignId);
+        }
+        int removed = campaignTargetRepository.deleteUndialedByCampaignId(companyId, campaignId);
+        auditUseCase.record(companyId, "CAMPAIGN_TARGETS_CLEARED", "campaign", String.valueOf(campaignId),
+                removed + " targets removed");
+        return removed;
     }
 }

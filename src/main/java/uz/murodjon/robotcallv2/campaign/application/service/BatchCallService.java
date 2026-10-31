@@ -32,7 +32,7 @@ public class BatchCallService implements BatchCallUseCase {
     public BatchCallResponse startBatchCall(long companyId, BatchCallRequest request) {
         long campaignId = campaignUseCase.createCampaign(companyId, new CreateCampaignRequest(
                 request.name(), request.aiAgentId(), null, request.schedule(),
-                request.retry(), request.limits(), null, null)).id();
+                request.retry(), request.limits(), null, null, null, null, null, null)).id();
 
         TargetImportResult imported;
         if (request.csv() != null && !request.csv().isBlank()) {
@@ -44,14 +44,19 @@ public class BatchCallService implements BatchCallUseCase {
                     ts.itemsPath(), ts.phoneField(), ts.clientIdField(), ts.languageField(),
                     false, true, true, null, ts.toolName(), ts.toolArguments()));
             TargetSyncResult sync = campaignTargetUseCase.syncTargetsFromSource(companyId, campaignId);
-            imported = new TargetImportResult(sync.added(), 0, sync.doNotCall(), List.of());
+            imported = new TargetImportResult(campaignId, sync.added(), List.of(), sync.skippedDuplicates(),
+                    sync.skippedDoNotCall(), sync.errors(), List.of());
         } else if (request.targets() != null && !request.targets().isEmpty()) {
             AddTargetsResponse res = campaignTargetUseCase.addBatchTargets(companyId, campaignId, request.targets());
-            imported = new TargetImportResult(res.added(), 0, res.doNotCall(), List.of());
+            imported = new TargetImportResult(campaignId, res.added(), res.targetIds(), res.skippedDuplicates(),
+                    res.skippedDoNotCall(), List.of(), List.of());
         } else {
             throw new ValidationException(ErrorCode.CSV_EMPTY);
         }
 
+        if (request.consentConfirmed()) {
+            campaignUseCase.acceptConsent(companyId, campaignId);
+        }
         CampaignStatusResponse started = campaignUseCase.start(companyId, campaignId, request.immediate());
         return new BatchCallResponse(campaignId, imported, started.status());
     }

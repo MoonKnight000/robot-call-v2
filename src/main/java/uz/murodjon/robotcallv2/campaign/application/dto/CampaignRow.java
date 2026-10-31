@@ -1,7 +1,11 @@
 package uz.murodjon.robotcallv2.campaign.application.dto;
 
+import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignNumbers;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignKind;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 
 import java.time.Instant;
@@ -27,8 +31,13 @@ public record CampaignRow(
         CampaignLimitsDto limits,
         CampaignRecurrenceDto recurrence,
         CampaignDialingDto dialing,
+        CampaignNumbers numbers,
+        CampaignKind kind,
+        CampaignSequence sequence,
+        AutoEnrollment autoEnroll,
         CampaignTargetStats stats,
         Instant lastRunAt,
+        Instant consentConfirmedAt,
         long version
 ) {
 
@@ -47,8 +56,13 @@ public record CampaignRow(
                 CampaignLimitsDto.of(c.limits()),
                 CampaignRecurrenceDto.of(c.recurrence()),
                 CampaignDialingDto.of(c.dialing()),
+                c.numbers(),
+                c.kind(),
+                c.sequence(),
+                c.autoEnroll(),
                 stats != null ? stats : CampaignTargetStats.ZERO,
                 c.lastRunAt(),
+                c.consentConfirmedAt(),
                 c.version());
     }
 }

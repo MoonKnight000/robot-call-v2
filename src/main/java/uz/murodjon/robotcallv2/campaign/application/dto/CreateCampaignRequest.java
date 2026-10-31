@@ -4,7 +4,11 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignNumbers;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignKind;
 
 /**
  * A new calling job ({@code POST /api/campaigns}). Each group may be left out as a whole; its
@@ -25,7 +29,11 @@ public record CreateCampaignRequest(
         @Valid CampaignRetryDto retry,
         @Valid CampaignLimitsDto limits,
         @Valid CampaignRecurrenceDto recurrence,
-        @Valid CampaignDialingDto dialing) {
+        @Valid CampaignDialingDto dialing,
+        CampaignNumbers numbers,
+        CampaignKind kind,
+        CampaignSequence sequence,
+        AutoEnrollment autoEnroll) {
 
     public int priorityOrDefault() {
         return priority != null ? priority : Campaign.DEFAULT_PRIORITY;

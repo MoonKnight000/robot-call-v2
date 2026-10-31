@@ -60,6 +60,12 @@ public class CampaignTargetEntity {
 
     @Column(name = "best_call_hour", insertable = false, updatable = false)
     private Integer bestCallHour;
+    /** Written only by the claim and the sequence advance, never by a save. */
+    @Column(name = "step_id", insertable = false, updatable = false)
+    private String stepId;
+
+    @Column(name = "step_attempts", insertable = false, updatable = false)
+    private int stepAttempts;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id", nullable = false)
@@ -163,6 +169,14 @@ public class CampaignTargetEntity {
 
     public Integer getScore() {
         return score;
+    }
+
+    public String getStepId() {
+        return stepId;
+    }
+
+    public int getStepAttempts() {
+        return stepAttempts;
     }
 
     public Integer getBestCallHour() {

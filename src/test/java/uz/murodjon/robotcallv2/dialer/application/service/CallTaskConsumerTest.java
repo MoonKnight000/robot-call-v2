@@ -91,7 +91,8 @@ class CallTaskConsumerTest {
                 audit, dialerState, doNotCallUseCase, callRecordService,
                 new OutboundCallPreparer(crmClient, clientMemoryService, mock(FactWebhookUseCase.class), aiAgents,
                         new ObjectMapper()),
-                mock(CallBillingUseCase.class), dialerService, CompanyFixtures.openCompanyUseCase(), portAllocator
+                mock(CallBillingUseCase.class), dialerService, CompanyFixtures.openCompanyUseCase(), portAllocator,
+                mock(CampaignCallPacer.class)
         );
     }
 
@@ -120,7 +121,7 @@ class CallTaskConsumerTest {
                 .status(CampaignStatus.PAUSED)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
                 .retry(new CampaignRetry(3, 24, null))
-                .limits(new CampaignLimits(5, 0, null, null))
+                .limits(new CampaignLimits(5, 0, null, null, null))
                 .aiAgentId(7L)
                 .companyId(1L)
                 .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
@@ -223,7 +224,7 @@ class CallTaskConsumerTest {
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
                 .retry(new CampaignRetry(3, 24, null))
-                .limits(new CampaignLimits(5, 0, null, null))
+                .limits(new CampaignLimits(5, 0, null, null, null))
                 .aiAgentId(7L)
                 .companyId(1L)
                 .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))

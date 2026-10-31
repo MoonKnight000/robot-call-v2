@@ -67,11 +67,14 @@ final class ScenarioFixtures {
                 ))
                 .tools(List.of(
                         new ToolDef("recordPaymentPromise", "Mijoz to'lov sanasini va'da qilganda chaqiring", List.of(
-                                new ToolParamDef("date", "date", true, "kelajakda bo'lishi shart"),
-                                new ToolParamDef("amount", "number", false, null),
-                                new ToolParamDef("note", "string", false, null))),
+                                new ToolParamDef("promisedDate", "futureDate", true, "kelajakda bo'lishi shart"),
+                                new ToolParamDef("promisedAmount", "number", false, null),
+                                new ToolParamDef("paymentChannel", "string", false, null),
+                                new ToolParamDef("note", "string", false, null)),
+                                null, "PROMISE_TO_PAY"),
                         new ToolDef("recordRefusalReason", "Mijoz to'lovni rad etganda sababini yozib oling", List.of(
-                                new ToolParamDef("reason", "string", true, null)))
+                                new ToolParamDef("reasonCode", "string", true, null)),
+                                null, "REFUSED")
                 ))
                 .outcomeSchema(List.of(
                         new OutcomeField("promisedDate", "date", "Mijoz va'da qilgan to'lov sanasi"),

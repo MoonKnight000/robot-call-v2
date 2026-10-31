@@ -64,6 +64,12 @@ public interface CampaignTargetRepository {
     void updateStatus(long id, TargetStatus status, Instant nextAttemptAt);
 
     /**
+     * Puts the target back to PENDING on sequence step {@code stepId} with no attempt spent on
+     * it; due at {@code nextAttemptAt}, or at once when null.
+     */
+    void moveToStep(long id, String stepId, Instant nextAttemptAt);
+
+    /**
      * Undo a claim without spending the attempt: back to PENDING at {@code nextAttemptAt},
      * with the attempt {@code claimDue} counted taken back. For a target the dialer claimed
      * and then decided not to dial — nothing was placed, so nothing may be counted.

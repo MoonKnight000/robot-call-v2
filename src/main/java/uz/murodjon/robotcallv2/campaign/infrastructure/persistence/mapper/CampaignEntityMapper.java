@@ -7,11 +7,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
+import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialing;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignNumbers;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
@@ -53,11 +56,16 @@ public class CampaignEntityMapper {
                 .retry(new CampaignRetry(entity.getMaxAttempts(), entity.getRetryIntervalMinutes(),
                         toRetryPolicy(entity.getRetryPolicy())))
                 .limits(new CampaignLimits(entity.getMaxConcurrentCalls(), entity.getDailyCallCap(),
-                        entity.getBudgetUzs(), entity.getDailyBudgetUzs()))
+                        entity.getBudgetUzs(), entity.getDailyBudgetUzs(), entity.getMaxCps()))
                 .recurrence(new CampaignRecurrence(entity.getRecurrenceType(), entity.getRecurringDayOfMonth(),
                         entity.getCronExpression(), entity.isAutoResetTargets()))
                 .dialing(new CampaignDialing(entity.getDialMode(), entity.getCallQueueId(),
                         entity.getMaxAiOverflowPercent(), entity.getTargetOrdering()))
+                .numbers(new CampaignNumbers(entity.getCallerIdPoolId(), entity.isLocalPresence()))
+                .kind(entity.getKind())
+                .sequence(toSequence(entity.getSequence()))
+                .autoEnroll(toAutoEnrollment(entity.getAutoEnroll()))
+                .consentConfirmedAt(entity.getConsentConfirmedAt())
                 .lastRunAt(entity.getLastRunAt())
                 .version(entity.getVersion())
                 .build();
@@ -73,6 +81,7 @@ public class CampaignEntityMapper {
         entity.setType(entity.getType() != null ? entity.getType() : "OUTBOUND");
         entity.setStatus(campaign.status());
         entity.setDialMode(campaign.dialing().mode());
+        entity.setKind(campaign.kind());
         entity.setCompany(company);
         entity.setCreatedBy(createdBy);
         entity.setLastRunAt(campaign.lastRunAt());
@@ -94,12 +103,17 @@ public class CampaignEntityMapper {
         entity.setRetryIntervalMinutes(campaign.retry().intervalMinutes());
         entity.setMaxConcurrentCalls(campaign.limits().maxConcurrentCalls());
         entity.setDailyCallCap(campaign.limits().dailyCallCap());
+        entity.setMaxCps(campaign.limits().maxCps());
         entity.setRecurrenceType(campaign.recurrence().type());
         entity.setRecurringDayOfMonth(campaign.recurrence().dayOfMonth());
         entity.setCronExpression(campaign.recurrence().cronExpression());
         entity.setAutoResetTargets(campaign.recurrence().autoResetTargets());
         entity.setPriority(campaign.priority());
         entity.setRetryPolicy(toJson(campaign.retry().policy()));
+        entity.setSequence(toJson(campaign.sequence()));
+        entity.setAutoEnroll(campaign.autoEnroll().hasNoRules() ? null : toJson(campaign.autoEnroll()));
+        entity.setCallerIdPoolId(campaign.numbers().callerIdPoolId());
+        entity.setLocalPresence(campaign.numbers().localPresence());
         entity.setStartAt(campaign.schedule().startAt());
         entity.setEndAt(campaign.schedule().endAt());
         entity.setBudgetUzs(campaign.limits().budgetUzs());
@@ -116,6 +130,53 @@ public class CampaignEntityMapper {
             // A corrupted column must not take the campaign down with it: the defaults apply.
             log.warn("campaign.retry_policy could not be read, using defaults: {}", e.getMessage());
             return RetryPolicy.NONE;
+        }
+    }
+
+    private CampaignSequence toSequence(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(json, CampaignSequence.class);
+        } catch (Exception e) {
+            // Read as a campaign from before sequences rather than failing every listing.
+            log.warn("campaign.sequence could not be read, treating as none: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private AutoEnrollment toAutoEnrollment(String json) {
+        if (json == null || json.isBlank()) {
+            return AutoEnrollment.NONE;
+        }
+        try {
+            return objectMapper.readValue(json, AutoEnrollment.class);
+        } catch (Exception e) {
+            // Enrolls nobody rather than failing every listing.
+            log.warn("campaign.auto_enroll could not be read, treating as none: {}", e.getMessage());
+            return AutoEnrollment.NONE;
+        }
+    }
+
+    private String toJson(AutoEnrollment autoEnroll) {
+        try {
+            return objectMapper.writeValueAsString(autoEnroll);
+        } catch (Exception e) {
+            // A tree of plain records always serialises; reaching this is a bug, not an input error.
+            throw new IllegalStateException("campaign auto-enroll rules could not be serialised", e);
+        }
+    }
+
+    private String toJson(CampaignSequence sequence) {
+        if (sequence == null) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(sequence);
+        } catch (Exception e) {
+            // A tree of plain records always serialises; reaching this is a bug, not an input error.
+            throw new IllegalStateException("campaign sequence could not be serialised", e);
         }
     }
 

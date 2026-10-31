@@ -24,6 +24,15 @@ import java.util.Set;
  *                  for {@link DialMode#AI}, optional for the operator modes
  * @param priority  1 (low) … 5 (urgent): the dialer splits each tick's batch between the
  *                  active campaigns in proportion to it
+ * @param kind      how contacts get into the campaign; fixed at creation
+ * @param sequence  the steps a contact goes through; null for a campaign created before
+ *                  sequences, which behaves as one conversation step run by {@code aiAgentId}
+ * @param autoEnroll the rules an AUTO_ENROLL campaign adds contacts by; never null, empty for a
+ *                  STANDARD campaign
+ * @param consentConfirmedAt when the legal consent for the contacts it calls was confirmed; null
+ *                  until then, and a DRAFT campaign cannot be launched without it
+ * @param numbers   the caller ID pool its calls present numbers from, and whether the one closest
+ *                  to the callee's own is picked
  * @param version   the optimistic-lock counter the row had when read; an edit is written only
  *                  while the row still has it (0 for a campaign not saved yet)
  */
@@ -40,7 +49,12 @@ public record Campaign(
         CampaignLimits limits,
         CampaignRecurrence recurrence,
         CampaignDialing dialing,
+        CampaignNumbers numbers,
         Instant lastRunAt,
+        CampaignKind kind,
+        CampaignSequence sequence,
+        AutoEnrollment autoEnroll,
+        Instant consentConfirmedAt,
         long version
 ) {
 
@@ -50,6 +64,7 @@ public record Campaign(
     public static final int DEFAULT_MAX_AI_OVERFLOW_PERCENT = 20;
 
     public Campaign {
+        kind = kind == null ? CampaignKind.STANDARD : kind;
         priority = priority < MIN_PRIORITY || priority > MAX_PRIORITY ? DEFAULT_PRIORITY : priority;
         if (schedule == null) {
             schedule = new CampaignSchedule(null, null, null, null, null);
@@ -58,13 +73,19 @@ public record Campaign(
             retry = new CampaignRetry(0, 0, null);
         }
         if (limits == null) {
-            limits = new CampaignLimits(0, 0, null, null);
+            limits = new CampaignLimits(0, 0, null, null, null);
         }
         if (recurrence == null) {
             recurrence = new CampaignRecurrence(null, null, null, false);
         }
         if (dialing == null) {
             dialing = new CampaignDialing(null, null, DEFAULT_MAX_AI_OVERFLOW_PERCENT, null);
+        }
+        if (numbers == null) {
+            numbers = new CampaignNumbers(null, false);
+        }
+        if (autoEnroll == null) {
+            autoEnroll = AutoEnrollment.NONE;
         }
     }
 
@@ -90,8 +111,8 @@ public record Campaign(
         this(id, name, status, aiAgentId, companyId, createdBy, DEFAULT_PRIORITY,
                 new CampaignSchedule(null, null, dialWindowStart, dialWindowEnd, dialDays),
                 new CampaignRetry(maxAttempts, retryIntervalMinutes, RetryPolicy.NONE),
-                new CampaignLimits(maxConcurrentCalls, dailyCallCap, null, null),
+                new CampaignLimits(maxConcurrentCalls, dailyCallCap, null, null, null),
                 new CampaignRecurrence(recurrenceType, recurringDayOfMonth, cronExpression, autoResetTargets),
-                null, lastRunAt, 0L);
+                null, null, lastRunAt, null, null, null, null, 0L);
     }
 }

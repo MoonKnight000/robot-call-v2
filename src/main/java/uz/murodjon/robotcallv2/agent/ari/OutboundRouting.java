@@ -117,7 +117,9 @@ class OutboundRouting {
             CallerIdPoolUseCase poolUseCase = callerIdPoolUseCaseProvider.getIfAvailable();
             if (poolUseCase != null) {
                 try {
-                    return poolUseCase.acquireCallerId(companyId, outboundCall.callerIdPoolId());
+                    return outboundCall.localPresence()
+                            ? poolUseCase.acquireLocalCallerId(companyId, outboundCall.callerIdPoolId(), outboundCall.phone())
+                            : poolUseCase.acquireCallerId(companyId, outboundCall.callerIdPoolId());
                 } catch (RuntimeException e) {
                     log.warn("Failed to acquire caller ID from pool {}: {}", outboundCall.callerIdPoolId(), e.getMessage());
                 }

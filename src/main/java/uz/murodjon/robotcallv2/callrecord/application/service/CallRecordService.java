@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.callrecord.application.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
@@ -14,7 +13,6 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseC
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.*;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.*;
-import uz.murodjon.robotcallv2.callrecord.domain.event.PaymentPromisedEvent;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
@@ -42,8 +40,6 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
 
     private static final Logger log = LoggerFactory.getLogger(CallRecordService.class);
     private final ObjectMapper objectMapper;
-    /** Tells the promise feature a call recorded a promise to pay (PaymentPromisedEvent). */
-    private final ApplicationEventPublisher eventPublisher;
 
     private final CallAttemptRepository callAttemptRepository;
     private final CallTranscriptRepository callTranscriptRepository;
@@ -64,10 +60,8 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
                              CallTalkMetricsRepository callTalkMetricsRepository,
                              CompanyProperties companyProperties,
                              OutboxMessageRepository outboxMessageRepository,
-                             ObjectMapper objectMapper,
-                             ApplicationEventPublisher eventPublisher) {
+                             ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
-        this.eventPublisher = eventPublisher;
         this.callAttemptRepository = callAttemptRepository;
         this.callTranscriptRepository = callTranscriptRepository;
         this.callResultRepository = callResultRepository;
@@ -548,14 +542,12 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         if (callId == 0 || s == null) {
             return List.of();
         }
-        LocalDate promisedDate = asDate(s.outcome().get("promisedDate"));
-        BigDecimal promisedAmount = asAmount(s.outcome().get("promisedAmount"));
         callResultRepository.insertIgnoringConflict(CallResult.summaryOf(
                 callId,
                 s.summary() != null ? s.summary() : "",
                 asReasonCode(s.outcome().get("reasonCode")),
-                promisedDate,
-                promisedAmount,
+                asDate(s.outcome().get("promisedDate")),
+                asAmount(s.outcome().get("promisedAmount")),
                 s.sentiment(),
                 s.needsFollowUp(),
                 s.followUpNote(),
@@ -563,9 +555,6 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
                 null,
                 toJson(s.outcome())));
         log.info("call_result written for call {} (disposition-escalated={})", callId, escalated);
-        if (promisedDate != null) {
-            publishPromise(companyId, callId, promisedDate, promisedAmount);
-        }
         List<Long> messageIds = new java.util.ArrayList<>();
         for (OutboxMessage message : outboxMessages) {
             Long messageId = outboxMessageRepository.enqueue(companyId, message);
@@ -574,21 +563,6 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
             }
         }
         return List.copyOf(messageIds);
-    }
-
-    /**
-     * Inside the result's transaction, like every listener here: a promise is kept exactly when
-     * its result is. The number and target are read off the attempt, so the listener needs no
-     * second trip into this feature.
-     */
-    private void publishPromise(long companyId, long callId, LocalDate promisedDate, BigDecimal promisedAmount) {
-        CallAttempt attempt = callAttemptRepository.findByCompanyIdAndId(companyId, callId);
-        if (attempt == null || attempt.phone() == null) {
-            return;
-        }
-        Long targetId = attempt.targetId() != CallAttempt.NO_TARGET ? attempt.targetId() : null;
-        eventPublisher.publishEvent(new PaymentPromisedEvent(companyId, callId, targetId, attempt.phone(),
-                promisedDate, promisedAmount));
     }
 
     /**

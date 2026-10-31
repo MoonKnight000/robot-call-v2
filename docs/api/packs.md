@@ -492,12 +492,11 @@ tasdiqlash — begonaga qarz haqida hech narsa aytilmaydi, `recordWrongPerson`) 
 
 | Ssenariy tool'i | Natija |
 |---|---|
-| `recordPaymentPromise(promisedDate, amount, paymentChannel, note)` | `PROMISE_TO_PAY` — nishon yopiladi |
+| `recordPaymentPromise(promisedDate, promisedAmount, paymentChannel, note)` | `PROMISE_TO_PAY` — nishon yopiladi; `promisedDate` bugun yoki kelajakda bo'lishi shart (`futureDate`) |
 | `recordPaymentClaim(paidDate, paymentChannel)` | `PAYMENT_CLAIMED` — nishon 3 kunga muzlatiladi ([calls.md](calls.md)) |
-| `recordRefusalReason(reason, detail)` | `REFUSED` |
-| `requestPaymentExtension(extensionDays, reason)` | faqat natijaga yoziladi |
-| `scheduleCallback(callbackTime, reason)` | `CALLBACK_REQUESTED` |
-| `sendSmsPaymentLink(note)` | `paymentLink` fakti bo'lsa SMS ketadi ([webhooks.md](webhooks.md)) |
+| `recordRefusalReason(reasonCode, reasonDetail)` | `REFUSED` |
+| `requestPaymentExtension(extensionRequestedDays, extensionReason)` | faqat natijaga yoziladi |
+| `scheduleCallback(callbackTime, callbackReason)` | `CALLBACK_REQUESTED` |
 
 `paymentChannel` qiymatlari: `CLICK`, `PAYME`, `UZUM`, `BANK_BRANCH`, `TERMINAL`, `OTHER`.
 

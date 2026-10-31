@@ -45,6 +45,15 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     @Query("SELECT count(t) FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.status IN :statuses")
     long countByCampaignIdAndStatusIn(@Param("campaignId") long campaignId, @Param("statuses") List<TargetStatus> statuses);
 
+    /** Rows of {@code [campaign id, targets]}: targets with a call that ended in one of {@code dispositions}. */
+    @Query(value = "SELECT t.campaign_id, COUNT(DISTINCT t.id) FROM campaign_target t "
+            + "JOIN call_attempt a ON a.target_id = t.id "
+            + "WHERE t.campaign_id IN (:campaignIds) AND t.company_id = :companyId AND a.disposition IN (:dispositions) "
+            + "GROUP BY t.campaign_id", nativeQuery = true)
+    List<Object[]> countSuccessfulByCampaignIds(@Param("campaignIds") Collection<Long> campaignIds,
+                                                @Param("companyId") long companyId,
+                                                @Param("dispositions") Collection<String> dispositions);
+
     @Query("SELECT t.campaign.id AS campaignId, "
             + "COUNT(t) AS totalTargets, "
             + "COALESCE(SUM(CASE WHEN t.attempts > 0 OR t.status != uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING THEN 1L ELSE 0L END), 0L) AS calledTargets, "
@@ -69,7 +78,7 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
             @Param("campaignId") long campaignId,
             @Param("companyId") long companyId);
 
-    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, next_attempt_at = now() + INTERVAL '5 minute' "
+    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, step_attempts = step_attempts + 1, next_attempt_at = now() + INTERVAL '5 minute' "
             + "WHERE id IN ("
             + "  SELECT t.id FROM campaign_target t"
             + "  WHERE t.campaign_id = :campaignId AND t.status = 'PENDING' AND t.do_not_call = false"
@@ -86,7 +95,7 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
      * {@link #claimDue} for a SCORE campaign: the most likely payers first, a target whose best
      * hour is {@code hour} lifted by {@code hourBonus}, an unscored one counted as {@code neutralScore}.
      */
-    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, next_attempt_at = now() + INTERVAL '5 minute' "
+    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, step_attempts = step_attempts + 1, next_attempt_at = now() + INTERVAL '5 minute' "
             + "WHERE id IN ("
             + "  SELECT t.id FROM campaign_target t"
             + "  WHERE t.campaign_id = :campaignId AND t.status = 'PENDING' AND t.do_not_call = false"
@@ -122,7 +131,7 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
      * holds it, on a lease long enough for the card to be read, dialled, talked through and
      * wrapped up before the expired-claim sweep may take it back.
      */
-    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, "
+    @Query(value = "UPDATE campaign_target SET status = 'IN_PROGRESS', attempts = attempts + 1, step_attempts = step_attempts + 1, "
             + "next_attempt_at = now() + make_interval(mins => :leaseMinutes), claimed_by_user_id = :userId "
             + "WHERE id IN ("
             + "  SELECT t.id FROM campaign_target t"
@@ -146,7 +155,7 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     @Modifying
     @Transactional
     @Query(value = "UPDATE campaign_target SET status = 'PENDING', next_attempt_at = :nextAttemptAt, "
-            + "attempts = GREATEST(attempts - 1, 0) WHERE id = :id", nativeQuery = true)
+            + "attempts = GREATEST(attempts - 1, 0), step_attempts = GREATEST(step_attempts - 1, 0) WHERE id = :id", nativeQuery = true)
     void releaseClaim(@Param("id") long id, @Param("nextAttemptAt") Instant nextAttemptAt);
 
     @Modifying
@@ -163,8 +172,17 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
 
     @Modifying
     @Transactional
-    @Query("UPDATE CampaignTargetEntity t SET t.status = uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus.PENDING, t.attempts = 0, t.nextAttemptAt = null WHERE t.campaign.id = :campaignId AND t.doNotCall = false")
+    @Query(value = "UPDATE campaign_target SET status = 'PENDING', attempts = 0, step_id = NULL, step_attempts = 0, "
+            + "next_attempt_at = NULL WHERE campaign_id = :campaignId AND do_not_call = false", nativeQuery = true)
     void resetTargetsForRecurrence(@Param("campaignId") long campaignId);
+
+    /** A target moves to {@code stepId} and waits there with no attempt spent on it yet. */
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE campaign_target SET status = 'PENDING', step_id = :stepId, step_attempts = 0, "
+            + "next_attempt_at = :nextAttemptAt WHERE id = :id", nativeQuery = true)
+    void moveToStep(@Param("id") long id, @Param("stepId") String stepId,
+                    @Param("nextAttemptAt") Instant nextAttemptAt);
 
     /** Targets never dialled — PENDING with no attempt spent; nothing points at them yet. */
     @Modifying

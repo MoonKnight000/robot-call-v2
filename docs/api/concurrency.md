@@ -101,3 +101,45 @@ egallaydi, bunday trunkda provayder hisoblangandan ertaroq rad etishi mumkin.
 UI: `suggestedMaxChannels` bor va `maxChannels` undan farq qilsa — "Bu trunk taxminan N kanalli
 ko'rinadi. Limitni N ga qo'yaymi?" tavsiyasi, tasdiqlansa `PUT /api/sip-trunks/{id}` bilan
 `maxChannels` yoziladi.
+
+---
+
+## `GET /api/concurrency/campaigns/{campaignId}` — kampaniya dialing capacity
+
+Huquq: **CAMPAIGN_READ**. Kampaniya sahifasining "Raqamlar" tabi (Retell "Dialing capacity") uchun:
+kompaniya limitidan kampaniya va boshqa ishlayotgan kampaniyalar qancha oladi, trunklar soniyasiga
+nechta qo'ng'iroq boshlay oladi. Boshqa kompaniyaning yoki mavjud bo'lmagan kampaniya —
+`404 CAMPAIGN_NOT_FOUND`.
+
+**Response** (`CampaignCapacityResponse`):
+
+```json
+{
+  "accept": true,
+  "data": {
+    "companyLimit": 20,
+    "campaignLimit": 10,
+    "otherCampaigns": 10,
+    "companyCps": 3,
+    "campaignMaxCps": null,
+    "trunks": [
+      { "sipTrunkId": 3, "name": "Uzmobile", "maxCps": 2, "platformDefault": false },
+      { "sipTrunkId": 4, "name": "Beeline", "maxCps": 1, "platformDefault": true }
+    ]
+  }
+}
+```
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `companyLimit` | `number` | Kompaniya bir vaqtda ushlab turadigan dialer qo'ng'iroqlari (`GET /api/concurrency` dagi `limit`) |
+| `campaignLimit` | `number` | Kampaniyaning `limits.maxConcurrentCalls` i; `0` — o'z chegarasi yo'q, faqat kompaniyaniki |
+| `otherCampaigns` | `number` | Kompaniyaning boshqa `ACTIVE` kampaniyalari `maxConcurrentCalls` lari yig'indisi — ular ham `companyLimit` dan oladi |
+| `companyCps` | `number` | Kompaniyaning barcha yoqilgan trunklari CPS yig'indisi |
+| `campaignMaxCps` | `number \| null` | Kampaniyaning `limits.maxCps` i; `null` — `companyCps` to'liq |
+| `trunks[].maxCps` | `number` | Trunk orqali soniyasiga boshlanadigan qo'ng'iroqlar |
+| `trunks[].platformDefault` | `boolean` | Trunkda `maxCps` yo'q — `voice-agent.dialer.default-trunk-cps` ishlaydi |
+
+Kampaniyaning concurrency va CPS chegaralarini o'zgartirish — `PUT /api/campaigns/{id}` dagi
+`limits.maxConcurrentCalls` / `limits.maxCps` ([campaigns.md](campaigns.md)). Kiruvchi qo'ng'iroqlar
+kompaniya limitiga kirmagani uchun (yuqorida) Retell'dagi "inbound reserve" bu yerda yo'q.

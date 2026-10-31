@@ -180,7 +180,7 @@ class ProgressiveDialServiceTest {
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
                 .retry(new CampaignRetry(3, 24, null))
-                .limits(new CampaignLimits(5, 0, null, null))
+                .limits(new CampaignLimits(5, 0, null, null, null))
                 .companyId(COMPANY_ID)
                 .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
                 .dialing(new CampaignDialing(dialMode, QUEUE_ID, Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT, null))

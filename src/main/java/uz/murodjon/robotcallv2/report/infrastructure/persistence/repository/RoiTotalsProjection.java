@@ -7,8 +7,6 @@ public interface RoiTotalsProjection {
     long getSpentUzs();
     long getPromises();
     long getPromisedAmount();
-    long getKeptPromises();
-    long getKeptAmount();
     long getConversions();
     long getConversionValue();
 }

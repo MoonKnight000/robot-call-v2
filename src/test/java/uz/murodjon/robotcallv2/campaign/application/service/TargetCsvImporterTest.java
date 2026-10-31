@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.campaign.application.dto.TargetCsvParseResult;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -86,5 +87,54 @@ class TargetCsvImporterTest {
         ParsedTarget target = result.targets().get(0);
         assertThat(target.clientId()).isZero();
         assertThat(target.contextJson()).contains("\"clientId\":\"C-1001\"");
+    }
+
+    @Test
+    void aColumnMappedByHandLoadsIntoTheChosenFieldEvenWithAnUnknownHeader() {
+        String csv = """
+                Mijoz raqami,Ismi,Izoh
+                +998901234567,Aziz,eski mijoz
+                """;
+
+        TargetCsvParseResult result = TargetCsvImporter.parse(csv,
+                Map.of("Mijoz raqami", "phone", "Ismi", "clientName", "Izoh", ""));
+
+        assertThat(result.targets()).hasSize(1);
+        assertThat(result.targets().get(0).phone()).isEqualTo("+998901234567");
+        assertThat(result.targets().get(0).contextJson()).contains("\"clientName\":\"Aziz\"").doesNotContain("eski mijoz");
+    }
+
+    @Test
+    void aColumnCanBeLoadedAsANewlyNamedFact() {
+        String csv = """
+                phone,Filial
+                +998901234567,Chilonzor
+                """;
+
+        TargetCsvParseResult result = TargetCsvImporter.parse(csv, Map.of("Filial", "branchName"));
+
+        assertThat(result.targets().get(0).contextJson()).contains("\"branchName\":\"Chilonzor\"");
+    }
+
+    @Test
+    void twoColumnsMappedByHandToOneFieldAreRejected() {
+        String csv = """
+                tel1,tel2
+                +998901234567,+998901111111
+                """;
+
+        assertThatThrownBy(() -> TargetCsvImporter.parse(csv, Map.of("tel1", "phone", "tel2", "phone")))
+                .isInstanceOf(ValidationException.class);
+        assertThatThrownBy(() -> TargetCsvImporter.parse(csv, Map.of("tel1", "phone", "tel2", "bad name!")))
+                .isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void theMappingPreviewShowsTheChosenFieldAndALeftOutColumnAsBlank() {
+        String csv = "Raqam,Eslatma\n+998901234567,x\n";
+
+        List<CsvColumnMapping> columns = TargetCsvImporter.mapColumns(csv, Map.of("Raqam", "phone", "Eslatma", ""));
+
+        assertThat(columns).containsExactly(new CsvColumnMapping("Raqam", "phone"), new CsvColumnMapping("Eslatma", ""));
     }
 }

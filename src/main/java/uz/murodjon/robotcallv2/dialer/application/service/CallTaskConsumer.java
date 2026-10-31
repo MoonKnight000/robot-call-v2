@@ -56,6 +56,8 @@ public class CallTaskConsumer {
     /** This instance's media ports — what a call answered here will need one of. */
     private final RtpPortAllocator portAllocator;
     private final PhoneNumberScrubberPort phoneNumberScrubber;
+    /** The campaign's own calls-per-second cap, waited on just before the originate. */
+    private final CampaignCallPacer campaignCallPacer;
 
     public CallTaskConsumer(AriService ariService, OutboundCallRegistry registry,
                             CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
@@ -63,10 +65,11 @@ public class CallTaskConsumer {
                             DoNotCallUseCase doNotCallUseCase, CallAttemptUseCase callAttemptUseCase,
                             OutboundCallPreparer outboundCallPreparer, CallBillingUseCase callBilling,
                             DialerService dialerService, CompanyUseCase companyUseCase,
-                            RtpPortAllocator portAllocator) {
+                            RtpPortAllocator portAllocator, CampaignCallPacer campaignCallPacer) {
         this(ariService, registry, campaignUseCase, campaignTargetUseCase, audit, dialerState,
                 doNotCallUseCase, callAttemptUseCase, outboundCallPreparer, callBilling, dialerService,
-                companyUseCase, portAllocator, new uz.murodjon.robotcallv2.dialer.domain.service.PhoneNumberScrubber()::scrub);
+                companyUseCase, portAllocator, new uz.murodjon.robotcallv2.dialer.domain.service.PhoneNumberScrubber()::scrub,
+                campaignCallPacer);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -77,7 +80,9 @@ public class CallTaskConsumer {
                             OutboundCallPreparer outboundCallPreparer, CallBillingUseCase callBilling,
                             DialerService dialerService, CompanyUseCase companyUseCase,
                             RtpPortAllocator portAllocator,
-                            PhoneNumberScrubberPort phoneNumberScrubber) {
+                            PhoneNumberScrubberPort phoneNumberScrubber,
+                            CampaignCallPacer campaignCallPacer) {
+        this.campaignCallPacer = campaignCallPacer;
         this.dialerService = dialerService;
         this.companyUseCase = companyUseCase;
         this.ariService = ariService;
@@ -192,6 +197,10 @@ public class CallTaskConsumer {
             }
 
             OutboundCall outboundCall = outboundCallPreparer.prepare(task);
+
+            if (campaign != null) {
+                campaignCallPacer.awaitSlot(campaign);
+            }
 
             // Originate with atomic registry pre-arming to eliminate StasisStart race condition
             originateReached = true;

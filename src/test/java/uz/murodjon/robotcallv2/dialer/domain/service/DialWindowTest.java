@@ -28,7 +28,7 @@ class DialWindowTest {
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, start, end, Set.of()))
                 .retry(new CampaignRetry(3, 24, null))
-                .limits(new CampaignLimits(5, 0, null, null))
+                .limits(new CampaignLimits(5, 0, null, null, null))
                 .aiAgentId(7L)
                 .companyId(1L)
                 .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))

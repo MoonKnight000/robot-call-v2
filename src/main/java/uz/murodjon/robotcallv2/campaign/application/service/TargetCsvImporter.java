@@ -71,10 +71,28 @@ public final class TargetCsvImporter {
         List.of("goal", "maqsad", "cel").forEach(k -> KNOWN_ALIASES.put(k, "goal"));
     }
 
+    /** The fields a column can be loaded into, in the order the mapping list offers them. */
+    private static final List<String> KNOWN_FIELDS = List.of(COL_PHONE, COL_CLIENT_ID, COL_LANGUAGE, "clientName",
+            "debtAmount", "debtDay", "dueDate", "contractNumber", "penaltyAmount", "contractCancelDays", "currency", "goal");
+    /** A field the person names in the mapping (Retell: "create a field") — a fact key the scenario can read. */
+    private static final String FIELD_NAME = "[A-Za-z][A-Za-z0-9_]{0,63}";
+
     private TargetCsvImporter() {
     }
 
+    public static List<String> knownFields() {
+        return KNOWN_FIELDS;
+    }
+
     public static List<CsvColumnMapping> mapColumns(String csv) {
+        return mapColumns(csv, Map.of());
+    }
+
+    /**
+     * @param columns the person's mapping, header → field; a header it names takes that field ("" leaves the column
+     *                out), any other header its alias, or stays a fact under its own name
+     */
+    public static List<CsvColumnMapping> mapColumns(String csv, Map<String, String> columns) {
         List<String> lines = splitLines(csv);
         if (lines.isEmpty()) {
             throw new ValidationException(ErrorCode.CSV_EMPTY);
@@ -83,14 +101,26 @@ public final class TargetCsvImporter {
         List<String> header = splitRow(lines.get(0), delimiter);
         List<CsvColumnMapping> mapping = new ArrayList<>();
         for (String h : header) {
-            String norm = normalize(h);
-            String mapped = KNOWN_ALIASES.get(norm);
-            mapping.add(new CsvColumnMapping(h.trim(), mapped));
+            mapping.add(new CsvColumnMapping(h.trim(), fieldFor(h.trim(), columns)));
         }
         return mapping;
     }
 
     public static TargetCsvParseResult parse(String csv) {
+        return parse(csv, Map.of());
+    }
+
+    /** The field a header loads into: the person's choice when the mapping names it, otherwise its alias (or null). */
+    private static String fieldFor(String rawHeader, Map<String, String> columns) {
+        if (columns.containsKey(rawHeader)) {
+            String chosen = columns.get(rawHeader);
+            return chosen == null ? "" : chosen.trim();
+        }
+        return KNOWN_ALIASES.get(normalize(rawHeader));
+    }
+
+    /** As {@link #parse(String)}, with the person's column mapping applied — see {@link #mapColumns(String, Map)}. */
+    public static TargetCsvParseResult parse(String csv, Map<String, String> columns) {
         List<String> lines = splitLines(csv);
         if (lines.isEmpty()) {
             throw new ValidationException(ErrorCode.CSV_EMPTY);
@@ -104,17 +134,36 @@ public final class TargetCsvImporter {
         Map<String, Integer> dynamicHeaders = new LinkedHashMap<>();
         List<String> dynamicHeaderNames = new ArrayList<>();
 
+        // Fields the person mapped a column to, and from which header — two columns on one field is their mistake to
+        // fix, unlike two headers that merely look alike, where the later one wins as it always has.
+        Map<String, String> mappedFrom = new HashMap<>();
         for (int i = 0; i < header.size(); i++) {
             String rawHeader = header.get(i).trim();
-            String norm = normalize(rawHeader);
-            if (norm.isEmpty()) {
+            if (normalize(rawHeader).isEmpty()) {
                 continue;
             }
-            if (KNOWN_ALIASES.containsKey(norm)) {
-                fieldToIndex.put(KNOWN_ALIASES.get(norm), i);
-            } else {
+            String field = fieldFor(rawHeader, columns);
+            if (field == null) {
                 dynamicHeaders.put(rawHeader, i);
                 dynamicHeaderNames.add(rawHeader);
+                continue;
+            }
+            if (field.isEmpty()) {
+                continue; // left out by the person
+            }
+            if (columns.containsKey(rawHeader)) {
+                if (!KNOWN_FIELDS.contains(field) && !field.matches(FIELD_NAME)) {
+                    throw new ValidationException(ErrorCode.CSV_COLUMN_FIELD_INVALID, field);
+                }
+                String earlier = mappedFrom.putIfAbsent(field, rawHeader);
+                if (earlier != null) {
+                    throw new ValidationException(ErrorCode.CSV_COLUMN_MAPPED_TWICE, earlier, rawHeader, field);
+                }
+            }
+            if (KNOWN_FIELDS.contains(field)) {
+                fieldToIndex.put(field, i);
+            } else {
+                dynamicHeaders.put(field, i); // a field the person named: a fact under that name
             }
         }
 

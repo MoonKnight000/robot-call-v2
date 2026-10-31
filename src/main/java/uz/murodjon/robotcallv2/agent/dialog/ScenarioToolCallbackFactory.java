@@ -10,21 +10,23 @@ import org.springframework.ai.tool.function.FunctionToolCallback;
 
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolParamDef;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Turns a scenario-declared {@link ToolDef} into a callable {@link ToolCallback}
- * (ROADMAP A.3) — the generic counterpart to {@link DialogTools}' two hardcoded
- * methods (which stay hardcoded because they carry real code guardrails: rejecting a
- * past promised date). Every other scenario tool (e.g. {@code recordInterest},
- * {@code recordAnswer}) is built here at runtime: its {@code params} become a JSON
- * Schema {@link FunctionToolCallback#builder} understands, and a call simply coerces
- * each argument to its declared type and records it on the session's outcome map —
- * there is no Java method to write per scenario.
+ * (ROADMAP A.3). Every outcome tool a scenario has (e.g. {@code recordPaymentPromise},
+ * {@code recordInterest}) is built here at runtime: its {@code params} become a JSON
+ * Schema {@link FunctionToolCallback#builder} understands, and a call coerces each
+ * argument to its declared type, records it on the session's outcome map and, when the
+ * tool names a {@link ToolDef#disposition()}, gives the call that disposition — there is
+ * no Java method to write per scenario. {@link DialogTools} keeps only the tools that
+ * steer the call itself (transfer, hang up, language).
  */
 final class ScenarioToolCallbackFactory {
 
@@ -43,27 +45,73 @@ final class ScenarioToolCallbackFactory {
     }
 
     private static String execute(ToolDef toolDef, DialogOutcomeSink session, Map<String, Object> args) {
-        Object reply = args == null ? null : args.get(DialogTools.REPLY_PARAM);
-        session.addToolReply(reply == null ? null : reply.toString());
         List<ToolParamDef> params = toolDef.params();
+        // Every argument is checked before any is recorded: a refused date must not leave
+        // the amount that came with it behind as half an outcome.
+        Map<String, Object> accepted = new LinkedHashMap<>();
         if (params != null) {
             for (ToolParamDef p : params) {
                 Object raw = args == null ? null : args.get(p.name());
                 if (p.required() && (raw == null || raw.toString().isBlank())) {
                     return "ERROR: " + p.name() + " is required but was not given";
                 }
-                if (raw == null) {
+                if (raw == null || raw.toString().isBlank()) {
                     continue;
                 }
                 Object coerced = coerce(p.type(), raw);
                 if (coerced == null) {
                     return "ERROR: could not understand the value of " + p.name() + ": " + raw;
                 }
-                session.recordOutcome(p.name(), coerced);
+                String refusal = checkDateRange(p, coerced);
+                if (refusal != null) {
+                    return refusal;
+                }
+                accepted.put(p.name(), coerced);
             }
+        }
+        // Only now: the line confirms what was just recorded, so a refused call must not speak it.
+        Object reply = args == null ? null : args.get(DialogTools.REPLY_PARAM);
+        session.addToolReply(reply == null ? null : reply.toString());
+        accepted.forEach(session::recordOutcome);
+        Disposition disposition = findDisposition(toolDef);
+        if (disposition != null) {
+            session.setDisposition(disposition);
         }
         log.info("[{}] scenario tool {}({}) recorded", session.channelId(), toolDef.name(), args);
         return "Yozib olindi.";
+    }
+
+    /** The disposition a tool gives the call, or null when it names none — or one this build does not know. */
+    private static Disposition findDisposition(ToolDef toolDef) {
+        if (toolDef.disposition() == null || toolDef.disposition().isBlank()) {
+            return null;
+        }
+        try {
+            return Disposition.valueOf(toolDef.disposition().trim());
+        } catch (IllegalArgumentException e) {
+            log.warn("scenario tool {} names an unknown disposition '{}'", toolDef.name(), toolDef.disposition());
+            return null;
+        }
+    }
+
+    /**
+     * The refusal for a {@code futureDate} in the past or a {@code pastDate} in the future,
+     * worded so the model can work the right date out and call again; null when the date is fine.
+     */
+    private static String checkDateRange(ToolParamDef param, Object value) {
+        if (!(value instanceof LocalDate date)) {
+            return null;
+        }
+        LocalDate today = LocalDate.now();
+        if ("futureDate".equals(param.type()) && date.isBefore(today)) {
+            return "ERROR: " + date + " is in the past. Today is " + today
+                    + ". Work the date out from today and send it again, or ask the client for the exact date.";
+        }
+        if ("pastDate".equals(param.type()) && date.isAfter(today)) {
+            return "ERROR: " + date + " is in the future. Today is " + today
+                    + ". Clarify the date with the client.";
+        }
+        return null;
     }
 
     /** {@code null} means the raw value could not be read as the declared type. */
@@ -71,7 +119,8 @@ final class ScenarioToolCallbackFactory {
         try {
             return switch (type) {
                 case "number" -> raw instanceof Number n ? n : new BigDecimal(raw.toString().trim());
-                case "date" -> raw instanceof LocalDate d ? d : LocalDate.parse(raw.toString().trim());
+                case "date", "futureDate", "pastDate" ->
+                        raw instanceof LocalDate d ? d : LocalDate.parse(raw.toString().trim());
                 case "boolean" -> raw instanceof Boolean b ? b : Boolean.parseBoolean(raw.toString().trim());
                 default -> raw.toString();
             };
@@ -97,8 +146,9 @@ final class ScenarioToolCallbackFactory {
             for (ToolParamDef p : params) {
                 ObjectNode prop = properties.putObject(p.name());
                 prop.put("type", jsonSchemaType(p.type()));
-                if (p.constraint() != null && !p.constraint().isBlank()) {
-                    prop.put("description", p.constraint());
+                String description = describe(p);
+                if (description != null) {
+                    prop.put("description", description);
                 }
                 if (p.required()) {
                     required.add(p.name());
@@ -108,12 +158,23 @@ final class ScenarioToolCallbackFactory {
         return schema.toString();
     }
 
-    /** {@code "date"} stays a plain string — its format is only ever conveyed in prose (see {@link ToolParamDef}). */
+    /** The date types stay plain strings — their format is only ever conveyed in prose (see {@link ToolParamDef}). */
     private static String jsonSchemaType(String type) {
         return switch (type) {
             case "number" -> "number";
             case "boolean" -> "boolean";
             default -> "string";
         };
+    }
+
+    /** The parameter's own constraint text, led by the date format a date type is read in. */
+    private static String describe(ToolParamDef param) {
+        boolean date = "date".equals(param.type()) || "futureDate".equals(param.type())
+                || "pastDate".equals(param.type());
+        String constraint = param.constraint() == null || param.constraint().isBlank() ? null : param.constraint();
+        if (!date) {
+            return constraint;
+        }
+        return constraint == null ? "format yyyy-MM-dd" : "format yyyy-MM-dd; " + constraint;
     }
 }

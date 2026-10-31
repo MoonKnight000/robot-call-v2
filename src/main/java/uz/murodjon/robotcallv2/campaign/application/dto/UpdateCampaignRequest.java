@@ -4,7 +4,10 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignNumbers;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
 
 /**
  * Full edit of a campaign ({@code PUT /api/campaigns/{id}}) — the same groups as
@@ -26,6 +29,9 @@ public record UpdateCampaignRequest(
         @Valid CampaignLimitsDto limits,
         @Valid CampaignRecurrenceDto recurrence,
         @Valid CampaignDialingDto dialing,
+        CampaignNumbers numbers,
+        CampaignSequence sequence,
+        AutoEnrollment autoEnroll,
         Long version) {
 
     public int priorityOrDefault() {

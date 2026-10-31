@@ -39,7 +39,8 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
     "maxConcurrentCalls": 20,
     "dailyCallCap": 0,
     "budgetUzs": null,
-    "dailyBudgetUzs": null
+    "dailyBudgetUzs": null,
+    "maxCps": null
   },
   "recurrence": {
     "type": "CRON",
@@ -52,7 +53,10 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
     "callQueueId": null,
     "maxAiOverflowPercent": 20,
     "targetOrdering": "FIFO"
-  }
+  },
+  "numbers": { "callerIdPoolId": 4, "localPresence": true },
+  "kind": "STANDARD",
+  "sequence": null
 }
 ```
 
@@ -67,6 +71,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 > `recurrence.dayOfMonth`, `cronExpression`, `autoResetTargets` → `recurrence.*`; `dialMode` →
 > `dialing.mode`, `callQueueId`, `maxAiOverflowPercent`, `targetOrdering` → `dialing.*`. Javobdagi
 > `totalTargets`, `calledTargets`, `pendingTargets`, `completedTargets` → `stats.*`.
+> `stats.successfulTargets` — kamida bitta qo'ng'irog'i maqsadga yetgan (`PROMISE_TO_PAY`, `COMPLETED`, `GOAL_REACHED`) nishonlar: ro'yxatdagi "Successful / Total" ning birinchi qismi.
 > Yuqori darajada: `name`, `type`, `aiAgentId`, `priority` (`PUT` da yana `version`).
 
 | Maydon | Turi | Majburiymi | Izoh |
@@ -74,7 +79,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `name` | `string` | ✅ (`@NotBlank`) | Kampaniya nomi |
 | `type` | `CampaignType` | ✅ (`@NotNull`) | `DEBT_COLLECTION` yoki `SURVEY`. **Majburiy** — berilmasa `400` (avval jimgina `DEBT_COLLECTION` ga tushardi) |
 | `dialing.mode` | `DialMode` | ❌ | Mijoz bilan kim gaplashadi: `AI` (standart) — kampaniya agenti; `PREVIEW` — operator mijoz kartasini ko'rib o'zi teradi; `PROGRESSIVE` — har bo'sh operatorga bitta qo'ng'iroq; `PREDICTIVE` — bo'sh operatorlardan ko'proq qo'ng'iroq, operator yetmasa mijozni AI agent qabul qiladi. **Yaratilgandan keyin o'zgarmaydi.** `AI` kampaniyalarni dialer teradi, `PREVIEW` ni operatorlar ([preview-dialing.md](preview-dialing.md)), `PROGRESSIVE` ni dialer navbatning bo'sh operatorlari uchun ([pastda](#progressive-kampaniya-qanday-teriladi)); `PREDICTIVE` ni dialer javob ulushiga qarab oldindan ([pastda](#predictive-kampaniya-qanday-teriladi)) |
-| `aiAgentId` | `number` | `AI` da ✅ | [`GET /api/ai-agents`](ai-agents.md) dagi agent. **Senariy, ovoz, persona, LLM model va SIP trunklar shu agentdan olinadi.** Keyin `PUT` bilan boshqa agentga o'tkazsa bo'ladi. `dialMode=AI` da berilmasa — `400 CAMPAIGN_AI_AGENT_REQUIRED`; operator rejimlarida ixtiyoriy |
+| `aiAgentId` | `number` | `AI` da ✅ | [`GET /api/ai-agents`](ai-agents.md) dagi agent. **Senariy, ovoz, persona, LLM model va SIP trunklar shu agentdan olinadi.** Keyin `PUT` bilan boshqa agentga o'tkazsa bo'ladi. **DRAFT'ni agentsiz saqlash mumkin** (Retell'dagidek "No agent selected"), lekin `start` da `dialMode` `AI`/`PREDICTIVE` bo'lsa agent shart — `400 CAMPAIGN_AI_AGENT_REQUIRED`; operator rejimlarida ixtiyoriy |
 | `dialing.callQueueId` | `number` | `AI` dan boshqasida ✅ | Qo'ng'iroqlarni oladigan operatorlar navbati ([call-queues.md](call-queues.md)). `dialMode` `AI` bo'lmasa va berilmasa — `400 CAMPAIGN_CALL_QUEUE_REQUIRED`; boshqa kompaniyaning yoki mavjud bo'lmagan navbat — `404 CALL_QUEUE_NOT_FOUND`. Navbat o'chirilsa, maydon `null` bo'lib qoladi |
 | `schedule.dialWindowStart` / `schedule.dialWindowEnd` | `string` (`HH:mm:ss`) | ❌ | Kunlik qo'ng'iroq oynasi. **Berilmasa — kompaniyaning ish soatlari** (`company_config.dialWindowStart/End`, yaratish paytidagi qiymati nusxalanadi; kompaniyada sozlama bo'lmasa 09:00–20:00). `PUT` da berilmasa — kampaniyaning mavjud oynasi qoladi. UI bu maydonni "Kompaniya ish soatlari" (default) / "Boshqa vaqt" tanlovi sifatida ko'rsatishi mumkin. Kompaniyaning `company_config` oynasidan **tashqariga chiqa olmaydi** ([companies.md](companies.md)). Shuningdek, `DialerService` har bir qabul qiluvchining mahalliy vaqt zonasini (quiet hours / TCPA: 08:00–20:00) hisobga oladi — uning mahalliy vaqtida tun bo'lsa, nishon avtomatik +30 daqiqaga kechiktiriladi |
 | `schedule.dialDays` | `array<DayOfWeek>` | ❌ | `["MONDAY", ...]`. Bo'sh/berilmasa — barcha kunlar |
@@ -82,6 +87,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `retry.intervalMinutes` | `number` | ❌ | Javob bo'lmagan nishonni qayta terishgacha daqiqa. `0` — disposition bo'yicha standartlar (avtootvetchikdan keyin uzoqroq, bandlikdan keyin qisqaroq) |
 | `limits.maxConcurrentCalls` | `number` | ❌ | Parallel kanallar chegarasi |
 | `limits.dailyCallCap` | `number` | ❌ | Kunlik qo'ng'iroq chegarasi; `0` — cheksiz. Sarf shifti: har bir qo'ng'iroq STT/LLM/TTS va trunk daqiqasini yeydi |
+| `limits.maxCps` | `number` (1–100) | ❌ | Kampaniya bir soniyada boshlaydigan yangi qo'ng'iroqlar chegarasi (Retell "Calls per second"). Har trunkning o'z `maxCps` i ustiga qo'shimcha cheklov — dialer ikkalasiga ham bo'ysunadi; chegaradan oshgan qo'ng'iroq urinish sarflamasdan keyingi soniyani kutadi. `null` — trunklarning to'liq CPS i ([concurrency.md](concurrency.md#get-apiconcurrencycampaignscampaignid--kampaniya-dialing-capacity)). `PUT` da berilmasa — `null` bo'ladi |
 | `recurrence.type` | `RecurrenceType` | ❌ | `ONCE` (standart), `DAILY`, `WEEKLY`, `MONTHLY`, `CRON` |
 | `recurrence.dayOfMonth` | `number` (1–31) | ❌ | `MONTHLY` uchun oyning kuni |
 | `recurrence.cronExpression` | `string` | ❌ | `CRON` uchun Spring/Quartz cron ifodasi |
@@ -94,6 +100,11 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `limits.dailyBudgetUzs` | `number` | ❌ | Xuddi shu, lekin kompaniya vaqt zonasidagi bir kun uchun (yarim tundan boshlab) |
 | `dialing.maxAiOverflowPercent` | `number` (0–100) | ❌ | Faqat `PREDICTIVE`: so'nggi 30 daqiqada javob berilgan qo'ng'iroqlarning necha foizini AI agent olishi mumkin. Shunga yetganda dialer har bo'sh operatorga bittadan teradi (PROGRESSIVE tezligi); 75% iga yetganda oldindan terish yarimga tushadi. `0` — hech qachon oldindan termaydi. Standart `20`. `PUT` da berilmasa — avvalgi qiymat qoladi |
 | `dialing.targetOrdering` | `string` | ❌ | Kutayotgan nishonlardan qaysilari birinchi teriladi: `FIFO` (standart — navbatga eng oldin tushgani) yoki `SCORE` (to'lash ehtimoli yuqorisi birinchi, raqam odatda gaplashadigan soatda bonus bilan) — [SCORE tartibi](#score-tartibi--nishonlar-qaysi-tartibda-teriladi). `AI` va `PREDICTIVE` kampaniyalarda ishlaydi. `PUT` da berilmasa — avvalgi qiymat qoladi |
+| `numbers.callerIdPoolId` | `number` | ❌ | Qo'ng'iroqlar qaysi raqamdan chiqishi: [Caller ID pul](caller-id-pools.md) (`GET /api/caller-id-pools`). Kompaniyaning o'z puli bo'lishi shart (`404 CALLER_ID_POOL_NOT_FOUND`). `null` — trunkning o'z caller ID'si. `PUT` da `numbers` berilmasa — avvalgisi qoladi |
+| `numbers.localPresence` | `boolean` | ❌ | Local presence dialing: puldan **chaqirilayotgan raqamga eng yaqin** raqam tanlanadi — [Raqamlar](#raqamlar--qaysi-raqamdan-qo'ng'iroq-qilinadi). `callerIdPoolId`siz `400 CAMPAIGN_LOCAL_PRESENCE_NEEDS_POOL` |
+| `kind` | `CampaignKind` | ❌ | Kontaktlar kampaniyaga qanday tushadi: `STANDARD` (standart — ro'yxat qo'lda: kontaktlar, CSV yoki target source) yoki `AUTO_ENROLL` (qoidaga mos kontaktlar o'zi qo'shiladi — [Auto-enroll](#auto-enroll--kontaktlar-qoida-bilan-qo'shiladi)). **Faqat yaratishda** beriladi; `PUT` da e'tiborga olinmaydi |
+| `sequence` | `object` | ❌ | Kontakt kampaniyaga tushgach o'tadigan qadamlar — [Sequence](#sequence--kontakt-qaysi-qadamlardan-o'tadi). `null` — Sequence'dan oldin yaratilgan kampaniya (bitta Conversation qadami, `aiAgentId` agenti). `PUT` da berilmasa — avvalgisi qoladi |
+| `autoEnroll` | `object` | ❌ | Kontaktlar qaysi shart bilan olinadi: `{ "matchAll": true, "rules": [{ "field": "TAG", "operator": "EQUALS", "value": "qarzdor" }] }`. `AUTO_ENROLL` da — doimiy trigger ([Auto-enroll](#auto-enroll--kontaktlar-qoida-bilan-qo'shiladi)); `STANDARD` da — "Filter contacts", ishga tushirishda bir marta olinadi ([pastda](#standard--filter-contacts)), qo'shimcha `excludedContactIds` (ro'yxatda belgisi olingan kontaktlar; `AUTO_ENROLL` da bo'sh bo'lishi shart — `400 CAMPAIGN_AUTO_ENROLL_INVALID`). `PUT` da berilmasa — avvalgisi qoladi |
 
 > ⚠️ **Muhim o'zgarish.** Kampaniya endi faqat *kimga va qachon* qo'ng'iroq qilishni
 > ushlaydi. `scenarioId`, `defaultLanguage`, `ttsVoice`, `languageVoices`, `agentPersona`,
@@ -177,7 +188,8 @@ dialer tufayli `409` olmaydi (tahrir bu ustunlarni yozmaydi ham).
       "maxConcurrentCalls": 20,
       "dailyCallCap": 0,
       "budgetUzs": 5000000,
-      "dailyBudgetUzs": null
+      "dailyBudgetUzs": null,
+      "maxCps": null
     },
     "recurrence": {
       "type": "CRON",
@@ -191,13 +203,18 @@ dialer tufayli `409` olmaydi (tahrir bu ustunlarni yozmaydi ham).
       "maxAiOverflowPercent": 20,
       "targetOrdering": "FIFO"
     },
+    "numbers": { "callerIdPoolId": 4, "localPresence": true },
+    "kind": "STANDARD",
+    "sequence": null,
     "stats": {
       "totalTargets": 1200,
       "calledTargets": 750,
       "pendingTargets": 450,
-      "completedTargets": 700
+      "completedTargets": 700,
+      "successfulTargets": 310
     },
     "lastRunAt": "2026-03-05T09:00:00Z",
+    "consentConfirmedAt": "2026-03-01T08:30:00Z",
     "version": 4
   },
   "message": null,
@@ -301,6 +318,7 @@ ketma-ket bajariladi: `POST /api/campaigns` → `POST /api/campaigns/{id}/target
 | `csv` | ha | CSV fayl matni — `targets/csv` bilan bir xil format, JSON satr sifatida (`\n` bilan); ko'pi bilan 5 000 000 belgi |
 | `schedule` | yo'q | `POST /api/campaigns` dagi `schedule` guruhi; berilmasa kompaniya oynasi, har kuni |
 | `immediate` | yo'q | `start?immediate=` bilan bir xil; standart `false` |
+| `consentConfirmed` | ha, `true` | `POST /campaigns/{id}/consent` bilan bir xil tasdiq; `false` bo'lsa `400 CAMPAIGN_CONSENT_REQUIRED` |
 
 Qolgan hamma sozlama `POST /api/campaigns` standartida: 3 urinish, 20 parallel qo'ng'iroq,
 `priority` 3, `recurrence` `ONCE`. Ularni keyin `PUT /api/campaigns/{id}` bilan o'zgartirish mumkin.
@@ -394,6 +412,183 @@ mijoz teriladi (30 s)
 - Qo'ng'iroqlar AI agentning SIP trunklari orqali emas, kompaniyaning standart trunki orqali ketadi.
 - Natijalar: [`GET /api/reports/campaigns/{id}/predictive`](reports.md#get-apireportscampaignscampaignidpredictive--predictive-kampaniya-terish-natijalari).
 
+### Sequence — kontakt qaysi qadamlardan o'tadi
+
+`sequence` — kontakt kampaniyaga tushgach o'tadigan qadamlar grafi (Retell "Sequence" kabi).
+`POST`/`PUT /api/campaigns` qabul qiladi, `GET`/ro'yxat javobida qaytaradi.
+
+> **`sequence` bo'lgan kampaniyada dialer shu bo'yicha yuradi** (`sequence: null` — eskicha:
+> `aiAgentId` va `retry`). `aiAgentId` berilmasa, AI kampaniyada u birinchi `CONVERSATION`
+> qadamining agentidan olinadi; trunklar, TTS isitish va "agent yoqilganmi" tekshiruvi shu
+> kampaniya agentiniki bo'lib qoladi.
+>
+> **Qanday yuriladi.** Nishon sequence'ning `startStepId` qadamida boshlanadi (start qadam
+> doim `CONVERSATION`). Har qo'ng'iroq shu qadamning `conversation.aiAgentId` agenti bilan
+> teriladi (A/B variant agenti yoki ovozi bo'lsa — u ustun). Qo'ng'iroq tugagach:
+>
+> 1. **Hal qiluvchi natija** (`PROMISE_TO_PAY`, `REFUSED`, `TRANSFERRED`, `WRONG_NUMBER`,
+>    `COMPLETED`, `GOAL_REACHED`, `GOAL_NOT_REACHED`, `DO_NOT_CALL`) — darhol yo'naladi.
+> 2. **Boshqa natija** (javob yo'q, avtootvetchik, uzildi, xato, qayta qo'ng'iroq) — qadam ichida
+>    qayta teriladi: `conversation.maxAttempts` gacha, kechikish `retryDelayMinutes` (0 bo'lsa
+>    `retry.intervalMinutes` va disposition standartlari). Urinishlar tugagach yo'naladi.
+> 3. **Yo'nalish.** Disposition → `SequenceOutcome`: `PROMISE_TO_PAY`/`COMPLETED`/`GOAL_REACHED` →
+>    `SUCCESS`; `REFUSED`/`GOAL_NOT_REACHED` → `NOT_INTERESTED`; `DO_NOT_CALL` → `DO_NOT_CALL`;
+>    `NO_ANSWER`/`CARRIER_REJECTED`/`HUNG_UP`/`VOICEMAIL`/`FAILED` → `NO_RESPONSE`;
+>    `TRANSFERRED`/`WRONG_NUMBER`/`CALLBACK_REQUESTED`/`PAYMENT_CLAIMED` → `OTHER`. `routes` da
+>    shu natija bo'lmasa nishon tugaydi (`DONE` — hal qiluvchi natijada, `EXHAUSTED` — urinishlar
+>    tugab). `DO_NOT_CALL` va `WRONG_NUMBER` har doim tugatadi, `routes` nima desa ham.
+> 4. **SMS qadami** yo'lda yuboriladi (raqam `doNotCall` bo'lsa yuborilmaydi), **WAIT qadami**
+>    keyingi qadamning birinchi qo'ng'irog'ini kechiktiradi (dial oynasi va bayramlar hisobga
+>    olinadi); nishon doim keyingi `CONVERSATION` qadamiga tushadi. Zanjir `CONVERSATION` ga
+>    yetmasa, nishon `DONE` bo'ladi.
+>
+> `retry.policy` qoidalari (jumladan `smsText`) sequence kampaniyasida ham ishlaydi, `maxAttempts`i
+> qadamning urinishlarini kamaytirishi mumkin, oshirolmaydi. Agent qadamda o'chirilgan yoki
+> e'lon qilinmagan bo'lsa, nishon 30 daqiqaga ushlab turiladi. Takroriy (recurrence) ishga
+> tushishda nishonlar start qadamga qaytadi.
+
+```json
+{
+  "startStepId": "s1",
+  "steps": [
+    {
+      "id": "s1", "type": "CONVERSATION", "name": "Conversation 1",
+      "conversation": { "aiAgentId": 12, "maxAttempts": 4, "retryDelayMinutes": 0 },
+      "routes": { "NO_RESPONSE": "s2", "NOT_INTERESTED": "s3" },
+      "position": { "x": 0, "y": 120 }
+    },
+    { "id": "s2", "type": "SMS", "name": "SMS", "smsText": "Salom! Sizga qo'ng'iroq qildik.", "next": "s3" },
+    { "id": "s3", "type": "WAIT", "name": "Wait", "waitMinutes": 1440 }
+  ]
+}
+```
+
+| Maydon | Tur | Izoh |
+|---|---|---|
+| `startStepId` | `string` | Kontakt boshlaydigan qadam; `steps` ichidagi `id` bo'lishi shart |
+| `steps[].id` | `string` | Sequence ichida noyob; yo'nalishlar shunga ishora qiladi |
+| `steps[].type` | `SequenceStepType` | `CONVERSATION` (agent qo'ng'iroq qiladi), `SMS`, `WAIT` |
+| `steps[].conversation` | `object` | Faqat `CONVERSATION`: `aiAgentId`, `maxAttempts` (1–10, berilmasa 3), `retryDelayMinutes` (0 — standart kechikishlar). Draft'da `aiAgentId` bo'sh bo'lishi mumkin |
+| `steps[].smsText` | `string` | Faqat `SMS`, ko'pi bilan 459 belgi; `{{fakt}}` / `{{fakt \| zaxira}}` shablonlari |
+| `steps[].waitMinutes` | `number` | Faqat `WAIT`: 1 … 43200 (30 kun) |
+| `steps[].routes` | `object` | Faqat `CONVERSATION`: `SequenceOutcome` → keyingi qadam `id`si. Yozuvi yo'q natija kontaktning sequence'ini **tugatadi** |
+| `steps[].next` | `string` | Faqat `SMS` va `WAIT`: keyingi qadam; `null` — tugaydi |
+| `steps[].position` | `{x, y}` | Canvas'dagi joyi; dialer o'qimaydi |
+
+`SequenceOutcome`: `SUCCESS`, `NOT_INTERESTED`, `DO_NOT_CALL`, `NO_RESPONSE`, `OTHER`.
+
+**Qoidalar** (`400 CAMPAIGN_SEQUENCE_INVALID`, har bir muammo `errors` ro'yxatida):
+`steps` bo'sh emas va ko'pi bilan 20 ta; `id` lar noyob; `startStepId` mavjud **`CONVERSATION`** qadamga ishora qiladi;
+barcha yo'nalishlar mavjud qadamga olib boradi; `routes` faqat `CONVERSATION` da, `next` faqat
+`SMS`/`WAIT` da; **`DO_NOT_CALL` yo'nalishi bo'lmaydi** — qo'ng'iroq qilmaslikni so'ragan kontakt
+boshqa qadamga o'tmaydi; yo'nalishlar qaytib kelmaydi (sikl yo'q). Hech narsa olib kelmaydigan
+qadam xato emas (draft tugun). `conversation.aiAgentId` kompaniyaning o'z agenti bo'lishi kerak
+(boshqasiniki — `404`).
+
+### Auto-enroll — kontaktlar qoida bilan qo'shiladi
+
+`kind: "AUTO_ENROLL"` kampaniya qo'lda ro'yxat yig'maydi: `ACTIVE` bo'lganda har daqiqada
+(`voice-agent.campaign.auto-enroll-check-ms`, o'chirish: `auto-enroll-enabled=false`) kompaniyaning
+[kontaktlari](contacts.md) `autoEnroll` qoidalari bo'yicha tekshiriladi va mos kelganlari
+nishon bo'lib qo'shiladi. Yangi yaratilgan yoki tahrirlanib mos kelib qolgan kontakt ham,
+kampaniya ishga tushirilganda allaqachon bor kontaktlar ham shu tarzda olinadi. Bir sweep'da
+kampaniyaga ko'pi bilan 500 kontakt tushadi, qolgani keyingi sweep'larda.
+
+```json
+{
+  "matchAll": true,
+  "rules": [
+    { "field": "TAG", "operator": "EQUALS", "value": "qarzdor" },
+    { "field": "PHONE", "operator": "STARTS_WITH", "value": "99890" }
+  ]
+}
+```
+
+| Maydon | Qiymatlar | Izoh |
+|---|---|---|
+| `matchAll` | `boolean` | `true` — kontakt **barcha** qoidaga mos kelsin (standart), `false` — bittasi yetadi |
+| `rules[].field` | `TAG`, `NAME`, `PHONE`, `ADDRESS`, `NOTES`, `DO_NOT_CALL` | `TAG` — kontaktning vergul bilan ajratilgan teglaridan biri; `PHONE` faqat raqamlar bo'yicha solishtiriladi (`+998 71…` = `99871…`). `DO_NOT_CALL` — raqam kompaniyaning DNC ro'yxatida bormi: faqat `EQUALS` `true`/`false`. Retell kabi `PHONE`, `DO_NOT_CALL` va `TAG` — har biri **bitta qator**, matn maydonlari bir nechta |
+| `rules[].operator` | `EQUALS`, `NOT_EQUALS`, `CONTAINS`, `NOT_CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `IS_ANY_OF` | Katta-kichik harf farqsiz. `TAG` + `EQUALS` — butun teg; `TAG` + `STARTS_WITH` — biror teg shu bilan boshlansin. `IS_ANY_OF` — faqat `TAG`: qiymat vergul bilan ajratilgan teglar, ulardan **biri** butun teg sifatida mos kelsa yetadi (`"qarzdor, vip"`) |
+| `rules[].value` | `string` (1–200) | `PHONE` da kamida bitta raqam |
+
+Ko'pi bilan 10 ta qoida. **Qoidasiz auto-enroll kampaniya hech kimni qo'shmaydi** (hammani emas);
+draft holatida qoidasiz saqlash mumkin, ishga tushirish uchun esa qoida (yoki nishon) kerak.
+
+**Ishga tushgandan keyin qoidalar qulflanadi** (Retell kabi): `DRAFT` bo'lmagan kampaniyaning `PUT` ida
+boshqa `autoEnroll` — `409 CAMPAIGN_AUTO_ENROLL_LOCKED`. O'zgartirish uchun kampaniyani nusxalab, nusxaning
+qoidalarini tahrirlang. Shu `autoEnroll` ni qayta yuborish (yoki umuman yubormaslik) ruxsat.
+
+**Qanday nishon bo'ladi.** Raqam kontaktniki, `clientId = 0`, faktlar: `clientName` (kontakt
+nomi), `address`, `tags` — `notes` o'tmaydi. Raqami kampaniyada **istalgan holatda** nishon bo'lgan
+kontakt qayta qo'shilmaydi (qo'ng'irog'i tugagan kontakt ham). DNC ro'yxatidagi raqam
+odatdagidek belgilab saqlanadi va terilmaydi.
+
+**Tugamaydi.** Auto-enroll kampaniya nishonlari qolmasa ham `COMPLETED` bo'lmaydi — yangi
+kontaktlarni kutadi; faqat `schedule.endAt` yoki qo'lda to'xtatish uni yopadi.
+
+#### `POST /api/campaigns/{id}/auto-enroll/preview` — hozir kimlar mos keladi
+
+Huquq: `CAMPAIGN_READ`. Hech kimni qo'shmaydi. Ikkala tur uchun: `AUTO_ENROLL` triggeri va `STANDARD`
+kampaniyaning "Filter contacts" ro'yxati. Query: `page` (1 dan, standart `1`), `size` (1–100, standart `10`).
+
+**Body ixtiyoriy.** Berilmasa — saqlangan qoidalar. Berilsa (`{ "matchAll": true, "rules": [...] }`) — hali
+saqlanmagan, tahrirlanayotgan qoidalar hisoblanadi (Retell "Enrollment" jonli soni); to'liq to'ldirilmagan
+qatorlar (maydon, operator yoki qiymatsiz) hisobga olinmaydi, xato bermaydi.
+
+```json
+{
+  "success": true,
+  "data": {
+    "total": 42,
+    "sample": [
+      { "contactId": 7, "name": "Aziza opa", "phone": "+998901112233", "address": "Toshkent", "tags": "qarzdor, vip" }
+    ]
+  }
+}
+```
+
+`total` — qoidalarga mos barcha kontaktlar (kampaniyada bor-yo'qligidan qat'i nazar; `excludedContactIds`
+ham sanaladi va ro'yxatda chiqadi — belgini qaytarish shu yerda), `sample` — `page`-sahifa, eng eskilari birinchi.
+
+### Standard — Filter contacts
+
+`STANDARD` kampaniya kontaktlarni ikki manbadan **birini** oladi (Retell kabi, ikkalasi birga emas):
+
+- **Filter contacts** — kompaniya [kontaktlari](contacts.md) `autoEnroll.rules` bo'yicha (yuqoridagi jadval,
+  doim AND). Ro'yxat ishga tushguncha jonli: `POST /api/campaigns/{id}/auto-enroll/preview?page=N&size=20`.
+  Belgisi olingan kontaktlar `autoEnroll.excludedContactIds` da (`PUT /api/campaigns/{id}`), "Chiqarilganlarni
+  tiklash" — bo'sh ro'yxat. **Ishga tushirishda snapshot**: `start` (DRAFT dan) mos kontaktlarni (istisnolarsiz)
+  nishon qiladi — rejalashtirilgan kampaniyada ham `start` paytida, `startAt` da emas; keyin mos kelganlar
+  qo'shilmaydi. Ko'pi bilan 100 000 kontakt. Filtr hech kimga mos kelmasa `409 CAMPAIGN_HAS_NO_TARGETS`.
+- **Fayl** — `POST /api/campaigns/{id}/targets/csv`. Filtr qatori bor kampaniyada `409 CAMPAIGN_CONTACT_FILTER_SET`;
+  yuklangan nishonlari bor DRAFT'ga filtr qo'yish — `409 CAMPAIGN_CONTACTS_UPLOADED` (avval ro'yxatni tozalang).
+
+Ishga tushgandan keyin filtr va istisnolar qulflanadi — `409 CAMPAIGN_AUTO_ENROLL_LOCKED`.
+
+#### `DELETE /api/campaigns/{id}/targets` — yuklangan ro'yxatni tozalash
+
+Huquq: `CAMPAIGN_EDIT`. Faqat `DRAFT` (aks holda `409 CAMPAIGN_CONTACTS_LOCKED`): faylni almashtirish yoki filtrga
+o'tish uchun. Javob — o'chirilgan nishonlar soni (`data: 120`).
+
+### Raqamlar — qaysi raqamdan qo'ng'iroq qilinadi
+
+Kampaniya `numbers.callerIdPoolId` orqali caller ID pulini tanlaydi; har qo'ng'iroqda raqam
+pulning strategiyasi bo'yicha olinadi (`ROUND_ROBIN`, `RANDOM`, `LEAST_USED`,
+`HIGHEST_ANSWER_RATE`; dam olayotgan va o'chirilgan raqamlar o'tkazib yuboriladi). Pul bo'sh
+bo'lsa yoki olib bo'lmasa, qo'ng'iroq trunkning o'z caller ID'si bilan ketadi.
+
+**`numbers.localPresence: true`.** Strategiyadan oldin pul raqamlari chaqirilayotgan raqamga
+yaqinligi bo'yicha toraytiriladi: raqamlarning **boshidan eng ko'p mos tushadigan** raqamlari
+qoladi, kamida **5 raqam** (davlat kodi + 2 xonali hudud/operator kodi, masalan `99871` —
+Toshkent) mos kelsa. Qolganlar orasidan strategiya tanlaydi. 5 raqamdan kam mos kelsa —
+chaqirilayotgan hudud pulda yo'q — butun pul ishlatiladi, ya'ni qo'ng'iroq baribir ketadi.
+AQSh/NANP (`1415…`) kabi 3 xonali hudud kodlari uchun 5 raqam yetarli darajada qat'iy
+emas — bu hozircha O'zbekiston raqamlariga moslangan.
+
+Javob olingan raqam pul statistikasiga (`answerRate`) o'sha qo'ng'iroqda ishlatilgan raqam
+bo'yicha yoziladi. PREDICTIVE kampaniyada AI overflow qo'ng'iroqlari ham shu pulni ishlatadi;
+operator rejimlari (PREVIEW/PROGRESSIVE) hozircha trunkning o'z caller ID'sini ishlatadi.
+
 ### SCORE tartibi — nishonlar qaysi tartibda teriladi
 
 `targetOrdering: "SCORE"` bo'lgan `ACTIVE` kampaniyaning kutayotgan (`PENDING`) nishonlari har 10 daqiqada
@@ -405,8 +600,6 @@ oldin baholanganlar). Ball kompaniyaning shu raqam bilan **so'nggi 180 kunlik** 
 | Tarix yo'q | `50` (neytral) |
 | Gaplashish ulushi — `(gaplashilgan + 1) ÷ (terilgan + 2)` | ±20 (50% atrofida) |
 | Har `REFUSED` qo'ng'iroq | −5, ko'pi bilan −15 |
-| Har bajarilgan (`KEPT`) to'lov va'dasi | +15, ko'pi bilan +30 |
-| Har buzilgan (`BROKEN`) va'da | −15, ko'pi bilan −30 |
 
 Natija `0–100`. "Terilgan" — trunk'ka chiqqan chiquvchi qo'ng'iroq; "gaplashilgan" — ulardan
 ko'tarilgan va natijasi `VOICEMAIL`, `NO_ANSWER`, `CARRIER_REJECTED`, `FAILED`, `WRONG_NUMBER` bo'lmagani.
@@ -420,8 +613,8 @@ qiladi. DNC, kontakt chastotasi siyosati, dial oynasi va retry qoidalari o'zgarm
 `PROGRESSIVE` kampaniyalarda operator kartasi hali ham `FIFO` tartibida beriladi.
 
 **A/B solishtirish:** ro'yxatni ikki kampaniyaga bo'ling (biri `FIFO`, biri `SCORE`; bir xil agent va
-`dailyCallCap`), so'ng undirishni [conversion](conversions.md) va [to'lov va'dalari](payment-promises.md)
-hisobotlarida kampaniya bo'yicha solishtiring.
+`dailyCallCap`), so'ng undirishni [conversion](conversions.md)
+hisobotida kampaniya bo'yicha solishtiring.
 
 ---
 
@@ -530,7 +723,42 @@ Xuddi shu body, lekin **hech narsa yozilmaydi** — fayl qanday o'qilishini qayt
 ```
 
 `mappedField: null` — ustun tanilmadi, ya'ni u `contextData` ga o'z sarlavhasi bilan
-tushadi.
+tushadi. `mappedField: ""` — ustun qo'lda chiqarib tashlangan (pastda). Javobda yana `knownFields` —
+qo'lda tanlash mumkin bo'lgan maydonlar (`["phone","clientId","language","clientName","debtAmount",…]`).
+
+### Ustunlarni qo'lda moslash va XLSX (Retell "Map the columns")
+
+Huquq: `CAMPAIGN_EDIT`. Filtr qatori bor `STANDARD` kampaniyada — `409 CAMPAIGN_CONTACT_FILTER_SET`.
+
+#### `POST /api/campaigns/{id}/targets/xlsx` — Excel varag'ini CSV ga o'girish
+
+`multipart/form-data`: `file` (.xlsx, ko'pi bilan 5 MB), query `sheet` (0 dan, standart `0`; yo'q varaq — birinchisi).
+Hech narsa import qilinmaydi. Kataklar Excel'da ko'ringanidek (sana — sana bo'lib) yoziladi, birinchi bo'sh
+bo'lmagan qator — sarlavha, bo'sh qatorlar tashlanadi.
+
+```json
+{ "accept": true, "data": { "sheetNames": ["Qarzdorlar", "Arxiv"], "sheet": 0, "csv": "Telefon,Ism\n+998901234567,Aziz\n", "rows": 1 } }
+```
+
+Xatolar: `400 SPREADSHEET_UNREADABLE` (fayl .xlsx emas yoki buzilgan), `400 SPREADSHEET_TOO_MANY_ROWS`
+(100 000 qatordan ko'p). Qaytgan `csv` pastdagi ikki endpoint'ga beriladi.
+
+#### `POST /api/campaigns/{id}/targets/import/preview` va `POST /api/campaigns/{id}/targets/import`
+
+```json
+{ "csv": "Mijoz raqami,Ismi,Filial,Izoh\n+998901234567,Aziz,Chilonzor,x\n",
+  "columns": { "Mijoz raqami": "phone", "Ismi": "clientName", "Filial": "branchName", "Izoh": "" } }
+```
+
+`columns` — sarlavha → maydon: `knownFields` dan biri, yangi fakt nomi (harf bilan boshlanadi, harf/raqam/`_`,
+≤ 64; `contextData` ga shu nom bilan tushadi) yoki `""` — ustun yuklanmaydi. `columns` da yo'q sarlavha oddiy
+CSV importdagidek avto-moslanadi. Ikki ustunni bitta maydonga qo'lda qo'yish — `400 CSV_COLUMN_MAPPED_TWICE`,
+yaroqsiz nom — `400 CSV_COLUMN_FIELD_INVALID`.
+
+- `.../import/preview` — `TargetCsvPreview` (yuqoridagi kabi), hech narsa yozilmaydi. Telefon ustuni hali
+  tanlanmagan yoki moslash xato bo'lsa so'rov yiqilmaydi: `totalRows: 0` va `errors: [{ "line": 1, "message": … }]`
+  — moslash oynasi ustunlarni ko'rsatishda davom etadi.
+- `.../import` — `TargetImportResult`, `targets/csv` bilan bir xil (DNC, takror raqamlar, qator xatolari).
 
 ### 🪄 Aqlli Ko'p Tilli CSV Avto-Moslashuvi
 
@@ -868,6 +1096,55 @@ Uchalasi ham `CampaignStatusResponse` (`{ "campaignId": 12, "status": "ACTIVE" }
 qaytaradi. Ruxsat etilmagan o'tish — `409 CAMPAIGN_INVALID_TRANSITION` (yuqoridagi holat
 mashinasi); `start` nishonsiz va target source'siz — `409 CAMPAIGN_HAS_NO_TARGETS`, agenti o'chirilgan (`enabled=false`) kampaniyada — `409 AI_AGENT_DISABLED` (dialer bunday kampaniyani har tick'da o'tkazib yuboradi).
 
+
+### Ishga tushirish: consent, tekshiruv, Overview
+
+**Consent.** `DRAFT` kampaniya birinchi marta ishga tushirilishidan oldin kompaniya raqamlarining
+qonuniy yig'ilganini (rozilik, DNC qonunlari, opt-in) tasdiqlaydi — Retell'dagi "I confirm this
+campaign respects all applicable legal and consent requirements" belgisi:
+
+`POST /api/campaigns/{id}/consent` — ruxsat `CAMPAIGN_EDIT`; javob `CampaignRow`
+(`consentConfirmedAt` to'ldiriladi). Qayta chaqirish hech narsani o'zgartirmaydi. Tasdiq
+audit logga yoziladi (kim va qachon).
+
+`start` `DRAFT` kampaniyada tasdiqsiz — `400 CAMPAIGN_CONSENT_REQUIRED`. Allaqachon ishga
+tushgan (`PAUSED`, `COMPLETED`, `SCHEDULED`) kampaniya qayta so'ralmaydi. Nusxa (`clone`) yangi
+`DRAFT`, shuning uchun tasdiqni qayta oladi.
+
+**Start now / Schedule for later** — `schedule.startAt` va `start` orqali: `startAt` kelajakda
+bo'lsa kampaniya `SCHEDULED` bo'lib turadi, aks holda (yoki `?immediate=true`) darhol `ACTIVE`.
+
+**Ishga tushirish shartlari** (`start` ham, Overview ham bir xil tekshiradi; birinchi to'sqinlik
+qaytadi):
+
+| Shart | Xato |
+|---|---|
+| `AI`/`PREDICTIVE` da `aiAgentId` bor | `400 CAMPAIGN_AI_AGENT_REQUIRED` |
+| Sequence'ning har `CONVERSATION` qadamida agent bor | `400 CAMPAIGN_SEQUENCE_INVALID` |
+| Kampaniya va barcha qadam agentlari yoqilgan | `409 AI_AGENT_DISABLED` |
+| Nishon, target source yoki auto-enroll qoidasi bor | `409 CAMPAIGN_HAS_NO_TARGETS` |
+| `schedule.endAt` o'tib ketmagan | `409 CAMPAIGN_END_PASSED` |
+
+#### `GET /api/campaigns/{id}/overview` — Overview tab
+
+Ruxsat `CAMPAIGN_READ`. Hech narsani o'zgartirmaydi.
+
+```json
+{
+  "success": true,
+  "data": {
+    "campaign": { "...": "CampaignRow, GET /api/campaigns/{id} dagidek" },
+    "callerIdPoolName": "Toshkent mijozlari puli",
+    "callerIdNumberCount": 4,
+    "launchBlocker": { "code": "CAMPAIGN_AI_AGENT_REQUIRED", "message": "dialMode AI and PREDICTIVE need aiAgentId — ..." }
+  }
+}
+```
+
+`launchBlocker` — yuqoridagi jadvaldan birinchi to'sqinlik, hech narsa to'smasa `null`. Consent
+to'sqinlik emas: u ishga tushirish paytida so'raladi (`campaign.consentConfirmedAt` bilan
+tekshiring). Contacts soni — `campaign.stats.totalTargets`, "Successful / Total" —
+`stats.successfulTargets` / `stats.totalTargets`.
 `maxConcurrentCalls` endi haqiqatan ishlaydi: dialer kampaniya kesimida ham hisoblaydi
 (`dialer:active:campaign:{id}`) va shu chegaraga yetganda kampaniyaga yangi qo'ng'iroq
 bermaydi (kompaniya va platforma chegaralari o'z kuchida qoladi).

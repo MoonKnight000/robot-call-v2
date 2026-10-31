@@ -112,7 +112,7 @@ class DialerServiceTest {
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays))
                 .retry(new CampaignRetry(3, 24, null))
-                .limits(new CampaignLimits(5, dailyCallCap, null, null))
+                .limits(new CampaignLimits(5, dailyCallCap, null, null, null))
                 .aiAgentId(AI_AGENT_ID)
                 .companyId(1L)
                 .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
@@ -216,7 +216,7 @@ class DialerServiceTest {
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0),
                         Set.of(DayOfWeek.WEDNESDAY)))
                 .retry(new CampaignRetry(3, 24, null))
-                .limits(new CampaignLimits(5, 0, null, null))
+                .limits(new CampaignLimits(5, 0, null, null, null))
                 .aiAgentId(AI_AGENT_ID)
                 .companyId(1L)
                 .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))

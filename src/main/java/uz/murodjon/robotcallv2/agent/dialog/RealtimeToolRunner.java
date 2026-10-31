@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRet
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -299,7 +300,7 @@ class RealtimeToolRunner {
         // spoken — on the recorded call that turned the caller's "alo" into a
         // 1 500 000 so'm promise for today, and PROMISE_TO_PAY into the CRM. Refusing is
         // recoverable: the model can confirm the date aloud and call again next turn.
-        if ("recordPaymentPromise".equals(name) && s.stageJustEntered()) {
+        if (givesPromiseToPay(s, name) && s.stageJustEntered()) {
             return "ERROR: you have only just entered this stage — the client has not named a date yet. "
                     + "First say this stage's line and ask the client for the exact day.";
         }
@@ -334,6 +335,15 @@ class RealtimeToolRunner {
         return "ERROR: " + name + " cannot be called in stage " + s.state()
                 + (allowed.isEmpty() ? "" : " — only " + String.join(", ", allowed) + " can be called here")
                 + ".";
+    }
+
+    /** Whether {@code name} is a scenario tool whose call files a promise to pay. */
+    private static boolean givesPromiseToPay(RealtimeDialogSession s, String name) {
+        if (s.scenario() == null || s.scenario().tools() == null) {
+            return false;
+        }
+        return s.scenario().tools().stream().anyMatch(tool -> name.equals(tool.name())
+                && Disposition.PROMISE_TO_PAY.name().equals(tool.disposition()));
     }
 
     /** Whether this call's scenario is the thing that put {@code name} on the table. */

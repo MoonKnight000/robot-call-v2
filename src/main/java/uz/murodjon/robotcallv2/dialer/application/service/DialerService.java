@@ -18,8 +18,10 @@ import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUse
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
+import uz.murodjon.robotcallv2.campaign.domain.entity.SequenceStep;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
@@ -304,6 +306,7 @@ public class DialerService {
 
             AtomicInteger counter = campaignTrunkCounters.computeIfAbsent(campaign.id(), k -> new AtomicInteger(0));
             CompanyConfig contactPolicy = companyConfigUseCase.find(campaign.companyId());
+            Map<Long, AiAgent> stepAgents = new HashMap<>();
 
             for (CampaignTarget t : due) {
                 // Before the money and the slot: a number the company's contact policy
@@ -321,6 +324,15 @@ public class DialerService {
                     campaignTargetUseCase.releaseClaim(t.id(), Instant.now(clock).plus(Duration.ofMinutes(30)));
                     log.info("Target {} ({}) of campaign {} held: outside recipient local dial window",
                             t.id(), PhoneMasker.mask(t.phone()), campaign.id());
+                    continue;
+                }
+                // The agent of the step this target is on; the campaign's own when it has no sequence.
+                // Left to a later tick, like a held number, when that agent cannot speak now.
+                AiAgent stepAgent = findStepAgent(campaign, t, agent, stepAgents);
+                if (stepAgent == null || !stepAgent.enabled()) {
+                    campaignTargetUseCase.releaseClaim(t.id(), Instant.now(clock).plus(Duration.ofMinutes(30)));
+                    log.warn("Target {} of campaign {} held: the agent of its sequence step is unavailable",
+                            t.id(), campaign.id());
                     continue;
                 }
                 // The money before the slot: a hold that cannot be taken means this number
@@ -349,7 +361,7 @@ public class DialerService {
                 }
                 state.reserve(campaign.companyId(), campaign.id());
                 state.countDispatch(campaign.id(), today);
-                String language = t.language() != null ? t.language() : agent.language();
+                String language = t.language() != null ? t.language() : stepAgent.language();
 
                 // Never null while there are trunks: the batch was capped at their free channels.
                 Long selectedTrunkId = selectTrunk(candidateTrunks, counter, freeByTrunk);
@@ -363,7 +375,7 @@ public class DialerService {
                 CampaignVariant variant =
                         campaignVariantUseCase.findForCall(campaign.companyId(), campaign.id(), t.phone());
                 Long variantId = null;
-                long aiAgentId = agent.id();
+                long aiAgentId = stepAgent.id();
                 String ttsVoiceOverride = null;
                 String promptOverride = null;
                 PipelineMode pipelineOverride = null;
@@ -382,11 +394,41 @@ public class DialerService {
                 rabbitTemplate.convertAndSend(CallTask.QUEUE,
                         new CallTask(campaign.id(), t.id(), t.clientId(), t.phone(), language,
                                 t.contextData(), campaign.companyId(), aiAgentId, selectedTrunkId,
-                                variantId, ttsVoiceOverride, promptOverride, pipelineOverride));
+                                variantId, ttsVoiceOverride, promptOverride, pipelineOverride,
+                                campaign.numbers().callerIdPoolId(), campaign.numbers().localPresence()));
                 log.info("Dispatched target {} ({}) of campaign {} via trunk {}{}", t.id(),
                         PhoneMasker.mask(t.phone()), campaign.id(),
                         selectedTrunkId, variantId != null ? ", variant " + variant.name() : "");
             }
+        }
+    }
+
+    /**
+     * The agent that speaks on this target's next call: the one named by the sequence step it is
+     * on, else the campaign's own. Null when that agent cannot be read as a published one.
+     * Trunks, TTS warm-up and the enabled check stay the campaign agent's.
+     */
+    private AiAgent findStepAgent(Campaign campaign, CampaignTarget target, AiAgent campaignAgent,
+                                  Map<Long, AiAgent> cache) {
+        CampaignSequence sequence = campaign.sequence();
+        if (sequence == null) {
+            return campaignAgent;
+        }
+        SequenceStep step = target.stepId() != null ? sequence.findStep(target.stepId()).orElse(null) : null;
+        if (step == null) {
+            step = sequence.findStep(sequence.startStepId()).orElse(null);
+        }
+        Long stepAgentId = step != null && step.conversation() != null ? step.conversation().aiAgentId() : null;
+        if (stepAgentId == null || stepAgentId.equals(campaignAgent.id())) {
+            return campaignAgent;
+        }
+        try {
+            return cache.computeIfAbsent(stepAgentId,
+                    id -> aiAgentUseCase.requirePublishedAgent(campaign.companyId(), id));
+        } catch (RuntimeException e) {
+            log.error("Campaign {}: agent {} of sequence step {} is not usable: {}", campaign.id(), stepAgentId,
+                    step.id(), e.getMessage());
+            return null;
         }
     }
 

@@ -16,7 +16,7 @@ class RoiCalculatorTest {
     @Test
     void chargesAnOperatorForEveryAttemptNotOnlyTheAnsweredOnes() {
         // 1 000 calls × 60 s + 300 answered × 120 s talk = 60 000 + 36 000 = 96 000 s = 26.7 h
-        RoiTotals totals = new RoiTotals(1_000, 300, 36_000, 400_000, 50, 10_000_000, 20, 4_000_000, 25, 5_000_000);
+        RoiTotals totals = new RoiTotals(1_000, 300, 36_000, 400_000, 50, 10_000_000, 25, 5_000_000);
 
         RoiFigures figures = RoiCalculator.calculate(totals, OPERATOR, 30);
 
@@ -31,9 +31,9 @@ class RoiCalculatorTest {
     }
 
     @Test
-    void returnIsCountedFromConversionsOnlyNotAlsoFromKeptPromises() {
+    void returnIsCountedFromConversionsOnlyNotFromPromises() {
         // (5 000 000 − 400 000) / 400 000 = 1150 %
-        RoiTotals totals = new RoiTotals(1_000, 300, 36_000, 400_000, 50, 10_000_000, 20, 4_000_000, 25, 5_000_000);
+        RoiTotals totals = new RoiTotals(1_000, 300, 36_000, 400_000, 50, 10_000_000, 25, 5_000_000);
 
         assertThat(RoiCalculator.calculate(totals, OPERATOR, 30).roiPercent()).isEqualTo(1150.0);
     }
@@ -41,14 +41,14 @@ class RoiCalculatorTest {
     @Test
     void theOperatorEquivalentScalesWithThePeriod() {
         // 180 h of operator work in a 7-day period: 180 / (180 × 7 / 30) = 4.3 operators
-        RoiTotals totals = new RoiTotals(0, 0, 648_000, 0, 0, 0, 0, 0, 0, 0);
+        RoiTotals totals = new RoiTotals(0, 0, 648_000, 0, 0, 0, 0, 0);
 
         assertThat(RoiCalculator.calculate(totals, OPERATOR, 7).operatorEquivalent()).isEqualTo(4.3);
     }
 
     @Test
     void nothingSpentLeavesTheRatiosUndefinedRatherThanZero() {
-        RoiFigures figures = RoiCalculator.calculate(new RoiTotals(0, 0, 0, 0, 0, 0, 0, 0, 0, 0), OPERATOR, 7);
+        RoiFigures figures = RoiCalculator.calculate(new RoiTotals(0, 0, 0, 0, 0, 0, 0, 0), OPERATOR, 7);
 
         assertThat(figures.roiPercent()).isNull();
         assertThat(figures.costPerAnsweredCallUzs()).isNull();

@@ -77,7 +77,8 @@ public class OutboundCallPreparer {
         return new OutboundCall(
                 task.campaignId(), task.targetId(), task.clientId(), task.phone(),
                 language, voice, context, agent, task.companyId(), task.sipTrunkId(),
-                task.variantId(), task.promptOverride(), task.pipelineModeOverride());
+                task.variantId(), task.promptOverride(), task.pipelineModeOverride(),
+                task.callerIdPoolId(), task.localPresence());
     }
 
     /**

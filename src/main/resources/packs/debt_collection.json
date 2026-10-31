@@ -18,7 +18,7 @@
         {"id": "PTP_NEGOTIATION", "purpose": "Aniq sana, summa va to'lov kanalini oling. 'Qachondir', 'oy oxirida' kabi noaniq javobni qabul qilmang — aniq kunni so'rang ('ertaga soat 18:00 gacha to'lay olasizmi?'). Mijoz qisman to'lashni aytsa, summasini aniqlang. Sana aytilishi bilan recordPaymentPromise.", "allowedTransitions": ["CONFIRMATION", "SETTLEMENT", "OBJECTION_HANDLING", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "requestPaymentExtension", "recordRefusalReason", "sendSmsPaymentLink"]},
         {"id": "SETTLEMENT", "purpose": "Mijoz to'liq summani to'lay olmasa. Faqat faktlarda bor takliflarni ayting: settlementAmount bo'lsa — '{{settlementDeadlineHours}} soat ichida to'lasangiz {{settlementAmount}} {{currency}} kifoya'; installmentMonths va installmentMonthly bo'lsa — '{{installmentMonths}} oyga, oyiga {{installmentMonthly}} {{currency}}dan'. Bu faktlar bo'lmasa chegirma ham, bo'lib to'lash ham TAKLIF QILMANG — PTP_NEGOTIATION ga qayting yoki operatorga ulang.", "allowedTransitions": ["PTP_NEGOTIATION", "CONFIRMATION", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "requestPaymentExtension", "recordRefusalReason"]},
         {"id": "OBJECTION_HANDLING", "purpose": "Mijoz e'tirozi: (1) 'To'laganman' — qachon va qaysi tizim orqali to'laganini so'rang, recordPaymentClaim, va to'lov tekshirilguncha 3 kun qo'ng'iroq qilinmasligini ayting. (2) 'Bu kreditni men olmaganman' / pasport o'g'irlangan — tortishmang, recordRefusalReason(DISPUTES_DEBT) va operatorga ulang. (3) Ishsiz qoldi, kasal — hamdardlik bildiring, keyin imkoniyatiga qarab sana yoki muddat uzaytirish (requestPaymentExtension) so'rang. (4) 'Boshqa qo'ng'iroq qilmang' — recordDoNotCall.", "allowedTransitions": ["PTP_NEGOTIATION", "SETTLEMENT", "CLOSING", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentClaim", "recordRefusalReason", "requestPaymentExtension", "recordPaymentPromise"]},
-        {"id": "CONFIRMATION", "purpose": "Kelishilgan sana, summa va kanalni BITTA xabar gapi bilan takrorlang (savol emas). Faktlarda paymentLink bo'lsa sendSmsPaymentLink bilan havolani yuboring va SMSni tekshirishni ayting.", "allowedTransitions": ["CLOSING", "PTP_NEGOTIATION", "ESCALATE_TO_HUMAN"], "allowedTools": ["sendSmsPaymentLink", "recordPaymentPromise"]},
+        {"id": "CONFIRMATION", "purpose": "Kelishilgan sana, summa va kanalni BITTA xabar gapi bilan takrorlang (savol emas). Faktlarda paymentLink bo'lsa sendMidCallSms bilan havolani yuboring va SMSni tekshirishni ayting.", "allowedTransitions": ["CLOSING", "PTP_NEGOTIATION", "ESCALATE_TO_HUMAN"], "allowedTools": ["recordPaymentPromise"]},
         {"id": "CLOSING", "purpose": "Qisqa va xushmuomala xayrlashing.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
         {"id": "ESCALATE_TO_HUMAN", "purpose": "Operatorga ulayotganingizni aytib, requestHumanTransfer.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
         {"id": "END_CALL", "purpose": "Qo'ng'iroqni yakunlash.", "allowedTransitions": [], "allowedTools": []}
@@ -34,33 +34,30 @@
         {"name": "settlementDeadlineHours", "type": "number", "description": "Chegirmali summa amal qiladigan soatlar", "required": false},
         {"name": "installmentMonths", "type": "number", "description": "Bo'lib to'lash oylar soni", "required": false},
         {"name": "installmentMonthly", "type": "number", "description": "Bo'lib to'lashda oylik summa", "required": false},
-        {"name": "paymentLink", "type": "string", "description": "To'lov havolasi (Click/Payme) — sendSmsPaymentLink shuni yuboradi", "required": false}
+        {"name": "paymentLink", "type": "string", "description": "To'lov havolasi (Click/Payme) — agentning SMS shabloni ({{paymentLink}}) shuni yuboradi", "required": false}
       ],
       "tools": [
-        {"name": "recordPaymentPromise", "description": "Mijoz aniq to'lov sanasini aytganda", "params": [
-          {"name": "promisedDate", "type": "date", "required": true, "constraint": "bugun yoki kelajakda"},
-          {"name": "amount", "type": "number", "required": false, "constraint": null},
-          {"name": "paymentChannel", "type": "string", "required": false, "constraint": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL, OTHER"},
-          {"name": "note", "type": "string", "required": false, "constraint": null}
+        {"name": "recordPaymentPromise", "disposition": "PROMISE_TO_PAY", "description": "Call when the client names an EXACT DAY themselves (e.g. \"10-oktabr\", \"ertaga\"). Do NOT call it on a vague answer like \"keyingi oy\", \"oy oxirida\", \"pul bo'lganda\" — first ask which day. Guessing the date yourself is FORBIDDEN", "params": [
+          {"name": "promisedDate", "type": "futureDate", "required": true, "constraint": "promised date, today or later"},
+          {"name": "promisedAmount", "type": "number", "required": false, "constraint": "promised amount"},
+          {"name": "paymentChannel", "type": "string", "required": false, "constraint": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL or OTHER. Leave empty if the client did not say"},
+          {"name": "note", "type": "string", "required": false, "constraint": "additional note"}
         ]},
-        {"name": "recordPaymentClaim", "description": "Mijoz qarzni allaqachon to'laganini aytganda", "params": [
-          {"name": "paidDate", "type": "date", "required": false, "constraint": "bugun yoki o'tmishda"},
-          {"name": "paymentChannel", "type": "string", "required": false, "constraint": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL, OTHER"}
+        {"name": "recordPaymentClaim", "disposition": "PAYMENT_CLAIMED", "description": "Call when the client says they have ALREADY paid the debt. First ask when and through which payment system they paid. Do not argue with the client: tell them they will not be called until the payment has been checked", "params": [
+          {"name": "paidDate", "type": "pastDate", "required": false, "constraint": "payment date the client named, today or earlier"},
+          {"name": "paymentChannel", "type": "string", "required": false, "constraint": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL or OTHER"}
         ]},
-        {"name": "recordRefusalReason", "description": "Mijoz to'lay olmasligi yoki qarzni tan olmasligi sababi", "params": [
-          {"name": "reason", "type": "string", "required": true, "constraint": "NO_MONEY, JOB_LOSS, ILLNESS, DISPUTES_DEBT, FORGOT, TECHNICAL_ISSUE, OTHER"},
-          {"name": "detail", "type": "string", "required": false, "constraint": null}
+        {"name": "recordRefusalReason", "disposition": "REFUSED", "description": "Records the reason when the client says they cannot pay or does not recognise the debt", "params": [
+          {"name": "reasonCode", "type": "string", "required": true, "constraint": "NO_MONEY, JOB_LOSS, ILLNESS, DISPUTES_DEBT, FORGOT, TECHNICAL_ISSUE or OTHER"},
+          {"name": "reasonDetail", "type": "string", "required": false, "constraint": "details of the reason"}
         ]},
-        {"name": "requestPaymentExtension", "description": "Mijoz muddatni bir necha kunga uzaytirishni so'raganda", "params": [
-          {"name": "extensionDays", "type": "number", "required": true, "constraint": null},
-          {"name": "reason", "type": "string", "required": true, "constraint": null}
+        {"name": "requestPaymentExtension", "description": "Call when the client asks to extend (postpone) the payment deadline by a few days", "params": [
+          {"name": "extensionRequestedDays", "type": "number", "required": true, "constraint": "how many days the extension is for"},
+          {"name": "extensionReason", "type": "string", "required": true, "constraint": "reason for the delay"}
         ]},
-        {"name": "scheduleCallback", "description": "Mijoz hozir gaplasha olmasa, qulay vaqtga", "params": [
-          {"name": "callbackTime", "type": "string", "required": true, "constraint": null},
-          {"name": "reason", "type": "string", "required": false, "constraint": null}
-        ]},
-        {"name": "sendSmsPaymentLink", "description": "To'lov havolasini SMS orqali yuborish", "params": [
-          {"name": "note", "type": "string", "required": false, "constraint": null}
+        {"name": "scheduleCallback", "disposition": "CALLBACK_REQUESTED", "description": "Call when the client asks to be called back later (e.g. tomorrow or at 16:00)", "params": [
+          {"name": "callbackTime", "type": "string", "required": true, "constraint": "callback date and time (e.g. 2026-09-02T16:00:00 or 'ertaga soat 16:00')"},
+          {"name": "callbackReason", "type": "string", "required": false, "constraint": "reason or note"}
         ]}
       ],
       "outcomeSchema": [
@@ -68,7 +65,9 @@
         {"name": "promisedAmount", "type": "number", "description": "Va'da qilingan summa"},
         {"name": "paymentChannel", "type": "string", "description": "To'lov kanali: CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL, OTHER"},
         {"name": "paidDate", "type": "string", "description": "Mijoz 'to'laganman' desa — aytgan to'lov sanasi (yyyy-MM-dd)"},
-        {"name": "reasonCode", "type": "string", "description": "To'lamaslik sababi: NO_MONEY, JOB_LOSS, ILLNESS, ALREADY_PAID, DISPUTES_DEBT, FORGOT, TECHNICAL_ISSUE, OTHER"}
+        {"name": "reasonCode", "type": "string", "description": "To'lamaslik sababi: NO_MONEY, JOB_LOSS, ILLNESS, ALREADY_PAID, DISPUTES_DEBT, FORGOT, TECHNICAL_ISSUE, OTHER"},
+        {"name": "callbackTime", "type": "string", "description": "Mijoz so'ragan qayta qo'ng'iroq vaqti"},
+        {"name": "extensionRequestedDays", "type": "number", "description": "Mijoz so'ragan muddat uzaytirish (kunlarda)"}
       ],
       "rolePrompt": "Siz bank undiruv bo'limining xushmuomala, lekin aniq gapiradigan mutaxassisisiz. Maqsad — aniq to'lov va'dasi: sana, summa va kanal. Avval telefonni qarzdorning o'zi ko'targanini tasdiqlaysiz; tasdiqlanmaguncha qarz, kredit yoki bank haqida bir og'iz ham gapirmaysiz. Mijoz asabiylashsa ovozingizni ko'tarmaysiz: avval tinglaysiz, hamdardlik bildirasiz, keyin yechimga qaytasiz.",
       "guardrails": [

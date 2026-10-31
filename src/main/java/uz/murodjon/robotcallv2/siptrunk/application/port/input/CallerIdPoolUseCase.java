@@ -31,5 +31,8 @@ public interface CallerIdPoolUseCase {
 
     String acquireCallerId(long companyId, long poolId);
 
+    /** {@link #acquireCallerId} preferring the pool number closest to {@code calleePhone}'s own. */
+    String acquireLocalCallerId(long companyId, long poolId, String calleePhone);
+
     void recordCallAnswer(long poolId, String phone);
 }

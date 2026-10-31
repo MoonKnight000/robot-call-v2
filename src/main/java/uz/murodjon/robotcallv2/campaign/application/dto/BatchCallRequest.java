@@ -18,6 +18,8 @@ import java.util.List;
  * @param limits     optional concurrency and spend limits
  * @param retry      optional retry policy
  * @param immediate  as {@code start?immediate=true}: a future {@code schedule.startAt} is ignored
+ * @param consentConfirmed the caller confirms the legal consent for the contacts being called, as
+ *                  {@code POST /campaigns/{id}/consent} does — a launch is refused without it
  */
 public record BatchCallRequest(
         @NotBlank String name,
@@ -28,7 +30,8 @@ public record BatchCallRequest(
         @Valid CampaignScheduleDto schedule,
         @Valid CampaignLimitsDto limits,
         @Valid CampaignRetryDto retry,
-        boolean immediate
+        boolean immediate,
+        boolean consentConfirmed
 ) {
     /** The same cap as the CSV upload endpoint. */
     public static final int MAX_CSV_CHARS = 5_000_000;

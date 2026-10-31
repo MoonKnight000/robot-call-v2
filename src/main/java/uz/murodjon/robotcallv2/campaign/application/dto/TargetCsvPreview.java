@@ -14,12 +14,14 @@ import java.util.List;
  * @param totalRows     how many data rows parsed cleanly in total (may exceed {@code sampleRows.size()})
  * @param errors        rows that failed to parse, with the reason
  * @param unknownColumns headers the importer does not recognize (also reflected in {@code columns})
+ * @param knownFields    the fields a column can be mapped to by hand; any other name (letters, digits, _) becomes a fact
  */
 public record TargetCsvPreview(
         List<CsvColumnMapping> columns,
         List<ParsedTarget> sampleRows,
         int totalRows,
         List<CsvRowError> errors,
-        List<String> unknownColumns
+        List<String> unknownColumns,
+        List<String> knownFields
 ) {
 }

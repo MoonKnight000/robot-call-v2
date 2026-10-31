@@ -3,11 +3,13 @@ package uz.murodjon.robotcallv2.campaign.application.port.input;
 import com.fasterxml.jackson.databind.JsonNode;
 import uz.murodjon.robotcallv2.campaign.application.dto.*;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.SpreadsheetCsv;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetScore;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallResponse;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
@@ -26,6 +28,23 @@ public interface CampaignTargetUseCase {
     TargetImportResult importTargetsCsv(long companyId, long campaignId, String csv);
 
     TargetCsvPreview previewTargetsCsv(long companyId, long campaignId, String csv);
+
+    /** As {@link #importTargetsCsv}, with the person's column mapping (Retell "Map the columns"). */
+    TargetImportResult importTargets(long companyId, long campaignId, TargetImportRequest request);
+
+    /** As {@link #previewTargetsCsv}, with the mapping; a missing phone column comes back as a header-row error. */
+    TargetCsvPreview previewTargets(long companyId, long campaignId, TargetImportRequest request);
+
+    /** One sheet of an uploaded .xlsx as CSV, for the mapping step; nothing is imported. */
+    SpreadsheetCsv readTargetsXlsx(long companyId, long campaignId, UploadedFile file, int sheet);
+
+    /**
+     * Empties a draft campaign's uploaded list, so it can take a new file or a contact filter instead. 404 when the
+     * company has no such campaign, 409 {@code CAMPAIGN_CONTACTS_LOCKED} once it has been launched.
+     *
+     * @return how many targets were removed
+     */
+    int clearUploadedTargets(long companyId, long campaignId);
 
     ToolTargetPreviewResponse previewToolTargets(long companyId, ToolTargetPreviewRequest request);
 

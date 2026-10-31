@@ -22,7 +22,12 @@ public class CampaignBuilder {
     private CampaignLimits limits;
     private CampaignRecurrence recurrence;
     private CampaignDialing dialing;
+    private CampaignNumbers numbers;
     private Instant lastRunAt;
+    private CampaignKind kind;
+    private CampaignSequence sequence;
+    private AutoEnrollment autoEnroll;
+    private Instant consentConfirmedAt;
     private long version;
 
     CampaignBuilder() {
@@ -41,7 +46,12 @@ public class CampaignBuilder {
         this.limits = source.limits();
         this.recurrence = source.recurrence();
         this.dialing = source.dialing();
+        this.numbers = source.numbers();
         this.lastRunAt = source.lastRunAt();
+        this.kind = source.kind();
+        this.sequence = source.sequence();
+        this.autoEnroll = source.autoEnroll();
+        this.consentConfirmedAt = source.consentConfirmedAt();
         this.version = source.version();
     }
 
@@ -105,8 +115,33 @@ public class CampaignBuilder {
         return this;
     }
 
+    public CampaignBuilder numbers(CampaignNumbers numbers) {
+        this.numbers = numbers;
+        return this;
+    }
+
     public CampaignBuilder lastRunAt(Instant lastRunAt) {
         this.lastRunAt = lastRunAt;
+        return this;
+    }
+
+    public CampaignBuilder kind(CampaignKind kind) {
+        this.kind = kind;
+        return this;
+    }
+
+    public CampaignBuilder sequence(CampaignSequence sequence) {
+        this.sequence = sequence;
+        return this;
+    }
+
+    public CampaignBuilder autoEnroll(AutoEnrollment autoEnroll) {
+        this.autoEnroll = autoEnroll;
+        return this;
+    }
+
+    public CampaignBuilder consentConfirmedAt(Instant consentConfirmedAt) {
+        this.consentConfirmedAt = consentConfirmedAt;
         return this;
     }
 
@@ -117,6 +152,6 @@ public class CampaignBuilder {
 
     public Campaign build() {
         return new Campaign(id, name, status, aiAgentId, companyId, createdBy, priority,
-                schedule, retry, limits, recurrence, dialing, lastRunAt, version);
+                schedule, retry, limits, recurrence, dialing, numbers, lastRunAt, kind, sequence, autoEnroll, consentConfirmedAt, version);
     }
 }

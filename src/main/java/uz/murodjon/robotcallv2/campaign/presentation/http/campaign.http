@@ -237,3 +237,62 @@ Authorization: Bearer {{auth_token}}
 ### Remove the source
 DELETE http://localhost:8080/api/campaigns/1/target-source
 Authorization: Bearer {{auth_token}}
+
+### Auto-enroll: how many contacts the rules being edited match right now (nothing is saved or enrolled)
+POST http://localhost:8080/api/campaigns/1/auto-enroll/preview
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "matchAll": true,
+  "rules": [
+    { "field": "TAG", "operator": "IS_ANY_OF", "value": "qarzdor, vip" },
+    { "field": "DO_NOT_CALL", "operator": "EQUALS", "value": "false" }
+  ]
+}
+
+### Standard "Filter contacts": page 2 of the contacts the draft filter matches (unticked ones included)
+POST http://localhost:8080/api/campaigns/1/auto-enroll/preview?page=2&size=20
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "matchAll": true,
+  "rules": [{ "field": "PHONE", "operator": "STARTS_WITH", "value": "99890" }]
+}
+
+### Empty a draft's uploaded list (to replace the file, or switch to a filter)
+DELETE http://localhost:8080/api/campaigns/1/targets
+Authorization: Bearer {{auth_token}}
+
+### Read the first sheet of an .xlsx as CSV (for the column-mapping step)
+POST http://localhost:8080/api/campaigns/1/targets/xlsx?sheet=0
+Authorization: Bearer {{auth_token}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="targets.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< ./targets.xlsx
+--boundary--
+
+### Preview an import with columns mapped by hand ("" leaves a column out)
+POST http://localhost:8080/api/campaigns/1/targets/import/preview
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "csv": "Mijoz raqami,Ismi,Filial,Izoh\n+998901234567,Aziz,Chilonzor,x\n",
+  "columns": { "Mijoz raqami": "phone", "Ismi": "clientName", "Filial": "branchName", "Izoh": "" }
+}
+
+### Import with the same mapping
+POST http://localhost:8080/api/campaigns/1/targets/import
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "csv": "Mijoz raqami,Ismi,Filial,Izoh\n+998901234567,Aziz,Chilonzor,x\n",
+  "columns": { "Mijoz raqami": "phone", "Ismi": "clientName", "Filial": "branchName", "Izoh": "" }
+}

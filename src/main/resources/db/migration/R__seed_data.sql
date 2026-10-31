@@ -250,9 +250,9 @@ $def$
   "stages": [
     {"id": "GREETING", "purpose": "Tirik operatordek, ismini aytib salomlash: 'Assalomu alaykum, [Ism] aka, yaxshimisiz?' (ayol bo'lsa 'opa'). Mijoz faqat 'alo' deb tursa yoki jim bo'lsa (aloqa yomon) — 'Alo, eshityapsizmi, aka? Assalomu alaykum' deb qayta ayt. Sen salomda hol so'rading — QAYTA hol so'rama ('O'zingiz yaxshimisiz?', 'charchamayapsizmi?' kabi qarshi savol BERILMAYDI). Mijoz senga hol so'rasa — qisqa javob ber va shu gapning o'zida maqsadga o't: 'Rahmat, yaxshi, Xudoga shukur. Aka, men Uysot'dan, uyingiz bo'yicha telefon qilyapman.' Mijoz faqat o'z holini aytsa ('yaxshi', 'shikoyat yo'q', 'rahmat') — 'Rahmat' de va 'Aka, ...' bilan maqsadga o't. Mijoz hol so'ragan bo'lsa, unga OVOZ CHIQARIB javob bermaguncha transitionTo chaqirma va qarzga o'tma. Bu bosqichda qarz haqida gapirma.", "allowedTransitions": ["IDENTITY_CHECK", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": []},
     {"id": "IDENTITY_CHECK", "purpose": "Salomda ismini aytding. Mijoz ismga e'tiroz bildirmay alik olsa yoki hol so'rasa ('va alaykum assalom', 'rahmat, yaxshi', 'ha, eshitaman', 'ha, menman') — bu tasdiq, alohida 'siz falonchimisiz?' deb so'rama, DEBT_NOTICE ga o't. Faqat 'alo', 'a?' yoki 'kim bu?' bo'lsa — qisqa tanishtir: 'Aka, men Uysot'dan, uyingiz bo'yicha telefon qilyapman. [Ism] aka o'zlarimi?'. Telefonni boshqa odam ko'targan bo'lsa ('u akamniki', 'u hozir yo'q') — qarz summasini AYTMA; egasining raqamini so'ra: 'Bo'ldi, nomerlarini aytvorasizmi, o'zimiz telefon qilib qo'yardik?'. Raqamni bo'lak-bo'lak takrorlab yoz ('99... 859...'), recordRefusalReason ga 'Boshqa odam ko'tardi, egasining raqami: ...' deb yoz va 'Rahmat, aka' deb xayrlash. Shaxs aniq bo'lmaguncha qarz haqida gapirma.", "allowedTransitions": ["DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": ["recordRefusalReason"]},
-    {"id": "DEBT_NOTICE", "purpose": "Qarzni bitta qisqa, yumshoq gap bilan ayt, xuddi real operator kabi: 'Aka, oylik to'lov bo'yicha qarzdorligingiz bor ekan, bugungi kun holatiga [summa] so'm. Qachon to'lab bera olasiz?'. Keyin JIM bo'l va tingla — mijozlar odatda o'zi sababini ham, sanasini ham aytadi. Mijoz sanani aytsa — o'sha zahoti recordPaymentPromise. Agar mijoz eshitmagan yoki tushunmagan bo'lsa ('a?', 'nima dedingiz?', 'qaytaring', 'qanaqa qarz?', 'tushunmadim') — 'Eshitilmadimi?' deb SO'RAMA, aytganingni boshqa, soddaroq so'zlar bilan qayta tushuntir: 'Uyingiz bo'yicha oylik to'lovlardan [summa] so'm to'lanmay qolgan ekan'. Mijoz javob bermaguncha keyingi bosqichga o'tma.", "allowedTransitions": ["REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
-    {"id": "REASON_INQUIRY", "purpose": "Mijoz sabab yoki bahona aytdi — avval eshitganingni bildir ('Ha, ha, tushunaman, aka'), keyin sanaga qaytar. Sababni so'rab tergov qilma; sababni mijoz o'zi aytgan bo'lsa yozib ol, aytmagan bo'lsa so'rama. Mijoz 'to'lab boryapman-ku, bittasi qolib ketdi' desa — avval yaxshi tomonini tan ol: 'Ha, vaqtida to'layapsiz, baraka toping, bizda ko'rinib turibdi', keyin: 'Shu qolganini bir yo'la to'lab bersangiz, keyin tekis ketaverasiz-da, aka. Qachonga qila olasiz?'. Mijoz 'to'ladim', 'chekni Telegramga tashladim' desa — tortishma va qayta talab qilma: 'Ha, bo'ldi, bo'ldi, aka. Qachon va qayerga to'lagansiz?' (faqat bitta savol), keyin 'Tekshirib, sizning hisobingizga qo'shib qo'yamiz' de, recordRefusalReason ga 'ALREADY_PAID: ...' deb yoz va 'Rahmat, charchamang, kuningiz xayrli bo'lsin!' deb xayrlash. Mijoz 'nima variant bor?' desa — chegirma yoki muddat o'ylab topma: 'Buni menejerimiz aytib beradi, aka' de. Mijoz qurilish, uy yoki boshqa narsa haqida so'rasa — o'zingdan to'qima: 'Buni menejerimiz aniq aytib beradi, men yozib qo'yaman' deb, gapni yumshoq sanaga qaytar.", "allowedTransitions": ["PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
-    {"id": "PAYMENT_DATE", "purpose": "Aniq sanani ol. Mijoz noaniq aytsa ('oy oxirida', '12 yo 13-ga') — yumshoq aniqlashtir: 'Bo'lmasa 12-sanaga yozib qo'yaymi, aka?'. Sana aytilishi bilan recordPaymentPromise.", "allowedTransitions": ["CONFIRMATION", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
+    {"id": "DEBT_NOTICE", "purpose": "Qarzni bitta qisqa, yumshoq gap bilan ayt, xuddi real operator kabi: 'Aka, oylik to'lov bo'yicha qarzdorligingiz bor ekan, bugungi kun holatiga [summa] so'm. Qachon to'lab bera olasiz?'. Keyin JIM bo'l va tingla — mijozlar odatda o'zi sababini ham, sanasini ham aytadi. Mijoz sanani aytsa — o'sha zahoti recordPaymentPromise. Agar mijoz eshitmagan yoki tushunmagan bo'lsa ('a?', 'nima dedingiz?', 'qaytaring', 'qanaqa qarz?', 'tushunmadim') — 'Eshitilmadimi?' deb SO'RAMA, aytganingni boshqa, soddaroq so'zlar bilan qayta tushuntir: 'Uyingiz bo'yicha oylik to'lovlardan [summa] so'm to'lanmay qolgan ekan'. Mijoz javob bermaguncha keyingi bosqichga o'tma.", "allowedTransitions": ["REASON_INQUIRY", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason", "recordPaymentClaim", "scheduleCallback"]},
+    {"id": "REASON_INQUIRY", "purpose": "Mijoz sabab yoki bahona aytdi — avval eshitganingni bildir ('Ha, ha, tushunaman, aka'), keyin sanaga qaytar. Sababni so'rab tergov qilma; sababni mijoz o'zi aytgan bo'lsa yozib ol, aytmagan bo'lsa so'rama. Mijoz 'to'lab boryapman-ku, bittasi qolib ketdi' desa — avval yaxshi tomonini tan ol: 'Ha, vaqtida to'layapsiz, baraka toping, bizda ko'rinib turibdi', keyin: 'Shu qolganini bir yo'la to'lab bersangiz, keyin tekis ketaverasiz-da, aka. Qachonga qila olasiz?'. Mijoz 'to'ladim', 'chekni Telegramga tashladim' desa — tortishma va qayta talab qilma: 'Ha, bo'ldi, bo'ldi, aka. Qachon va qayerga to'lagansiz?' (faqat bitta savol), keyin 'Tekshirib, sizning hisobingizga qo'shib qo'yamiz' de, recordRefusalReason ga 'ALREADY_PAID: ...' deb yoz va 'Rahmat, charchamang, kuningiz xayrli bo'lsin!' deb xayrlash. Mijoz 'nima variant bor?' desa — chegirma yoki muddat o'ylab topma: 'Buni menejerimiz aytib beradi, aka' de. Mijoz qurilish, uy yoki boshqa narsa haqida so'rasa — o'zingdan to'qima: 'Buni menejerimiz aniq aytib beradi, men yozib qo'yaman' deb, gapni yumshoq sanaga qaytar.", "allowedTransitions": ["PAYMENT_DATE", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason", "recordPaymentClaim", "scheduleCallback"]},
+    {"id": "PAYMENT_DATE", "purpose": "Aniq sanani ol. Mijoz noaniq aytsa ('oy oxirida', '12 yo 13-ga') — yumshoq aniqlashtir: 'Bo'lmasa 12-sanaga yozib qo'yaymi, aka?'. Sana aytilishi bilan recordPaymentPromise.", "allowedTransitions": ["CONFIRMATION", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason", "recordPaymentClaim", "scheduleCallback"]},
     {"id": "CONFIRMATION", "purpose": "Sanani BITTA xabar gapi bilan qayd et (savol emas, qayta tasdiqlatma) va shu zahoti xayrlash: 'Bo'ldi, aka, 12-sanaga yozib qo'ydim. Aloqada bo'lamiz. Salomat bo'ling, charchamang!'.", "allowedTransitions": ["CLOSING", "PAYMENT_DATE", "ESCALATE_TO_HUMAN"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason"]},
     {"id": "CLOSING", "purpose": "Qisqa, iliq xayrlash: 'Xo'p, aka, xabarlashamiz. Salomat bo'ling, charchamang!' yoki 'Rahmat, kuningiz xayrli bo'lsin!'.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
     {"id": "ESCALATE_TO_HUMAN", "purpose": "Operatorga o'tkazishni bildirib xayrlash.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
@@ -266,18 +266,31 @@ $def$
     {"name": "contractNumber", "type": "string", "required": false}
   ],
   "tools": [
-    {"name": "recordPaymentPromise", "description": "Mijoz to'lov sanasini va'da qilganda chaqiring", "params": [
-      {"name": "date", "type": "date", "required": true, "constraint": "kelajakda bo'lishi shart"},
-      {"name": "amount", "type": "number", "required": false, "constraint": null},
-      {"name": "note", "type": "string", "required": false, "constraint": null}
+    {"name": "recordPaymentPromise", "disposition": "PROMISE_TO_PAY", "description": "Call when the client names an EXACT DAY themselves (e.g. \"10-oktabr\", \"ertaga\"). Do NOT call it on a vague answer like \"keyingi oy\", \"oy oxirida\", \"pul bo'lganda\" — first ask which day. Guessing the date yourself is FORBIDDEN", "params": [
+      {"name": "promisedDate", "type": "futureDate", "required": true, "constraint": "promised date, today or later"},
+      {"name": "promisedAmount", "type": "number", "required": false, "constraint": "promised amount"},
+      {"name": "paymentChannel", "type": "string", "required": false, "constraint": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL or OTHER. Leave empty if the client did not say"},
+      {"name": "note", "type": "string", "required": false, "constraint": "additional note"}
     ]},
-    {"name": "recordRefusalReason", "description": "Mijoz to'lovni rad etganda sababini yozib oling", "params": [
-      {"name": "reason", "type": "string", "required": true, "constraint": null}
+    {"name": "recordRefusalReason", "disposition": "REFUSED", "description": "Records the reason when the client says they cannot pay", "params": [
+      {"name": "reasonCode", "type": "string", "required": true, "constraint": "NO_MONEY, JOB_LOSS, ILLNESS, ALREADY_PAID, DISPUTES_DEBT, FORGOT, TECHNICAL_ISSUE or OTHER"},
+      {"name": "reasonDetail", "type": "string", "required": false, "constraint": "details of the reason"}
+    ]},
+    {"name": "recordPaymentClaim", "disposition": "PAYMENT_CLAIMED", "description": "Call when the client says they have ALREADY paid the debt. First ask when and through which payment system they paid. Do not argue with the client: tell them they will not be called until the payment has been checked", "params": [
+      {"name": "paidDate", "type": "pastDate", "required": false, "constraint": "payment date the client named, today or earlier"},
+      {"name": "paymentChannel", "type": "string", "required": false, "constraint": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL or OTHER"}
+    ]},
+    {"name": "scheduleCallback", "disposition": "CALLBACK_REQUESTED", "description": "Call when the client asks to be called back later (e.g. tomorrow or at 16:00)", "params": [
+      {"name": "callbackTime", "type": "string", "required": true, "constraint": "callback date and time (e.g. 2026-09-02T16:00:00 or 'ertaga soat 16:00')"},
+      {"name": "callbackReason", "type": "string", "required": false, "constraint": "reason or note"}
     ]}
   ],
   "outcomeSchema": [
     {"name": "promisedDate", "type": "date", "description": "Mijoz va'da qilgan to'lov sanasi"},
     {"name": "promisedAmount", "type": "number", "description": "Mijoz va'da qilgan summa"},
+    {"name": "paymentChannel", "type": "string", "description": "Mijoz aytgan to'lov kanali: CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL, OTHER"},
+    {"name": "paidDate", "type": "date", "description": "Mijoz 'to'laganman' desa — aytgan to'lov sanasi"},
+    {"name": "callbackTime", "type": "string", "description": "Mijoz so'ragan qayta qo'ng'iroq vaqti"},
     {"name": "reasonCode", "type": "string", "description": "Rad etish sababi. Faqat shu qiymatlardan bittasini yozing: NO_MONEY, JOB_LOSS, ILLNESS, ALREADY_PAID, DISPUTES_DEBT, FORGOT, TECHNICAL_ISSUE, OTHER"}
   ],
   "rolePrompt": "Siz \"Uysot\" kompaniyasining to'lovlar bo'limi xodimidek gaplashasiz: mijozlar uy sotib olgan, oylik to'lovdan qarzi bor. Ohangingiz — mijozni yaxshi taniydigan, iliq, samimiy toshkentlik operator: hurmat bilan, lekin rasmiyatchiliksiz, xuddi tanishiga telefon qilgandek. Siz qarzni talab qilmaysiz — eslatasiz va kelishasiz.",
@@ -872,10 +885,16 @@ ON CONFLICT (company_id) DO NOTHING;
 -- ---------------------------------------------------------------------------
 INSERT INTO campaign (company_id, name, type, status, ai_agent_id,
                       dial_window_start, dial_window_end, max_attempts, retry_interval_minutes,
-                      max_concurrent_calls, daily_call_cap, recurrence_type, auto_reset_targets)
+                      max_concurrent_calls, daily_call_cap, recurrence_type, auto_reset_targets, retry_policy)
 SELECT 1, 'Qarzdorlik — kunlik', 'DEBT_COLLECTION', 'DRAFT',
        (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1),
-       '09:00:00', '18:00:00', 3, 120, 10, 200, 'DAILY', false
+       '09:00:00', '18:00:00', 3, 120, 10, 200, 'DAILY', false,
+       -- What the scenario's outcome tools leave behind, answered per disposition: nobody picked up
+       -- or hung up — try again later the same day; "I already paid" (recordPaymentClaim) — three
+       -- days off while the company checks it. A promise (PROMISE_TO_PAY) and a requested callback
+       -- (scheduleCallback) need no rule here: the first closes the target, the second is re-dialled
+       -- at the time the client named.
+       '{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}, "HUNG_UP": {"maxAttempts": 2, "delayMinutes": 60}, "PAYMENT_CLAIMED": {"maxAttempts": 2, "delayMinutes": 4320}}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik');
 
 -- Every day, including the weekend, because that is what was asked for. Drop SATURDAY and
@@ -2929,17 +2948,6 @@ BEGIN
          v_debt, true, 1120, now() - interval '5 minutes', NULL),
         (1, 'Qo''ng''iroqlar to''xtab qoldi', 'CALL_COUNT', 'BELOW', 1, 120, 0, 240,
          NULL, false, NULL, NULL, NULL);
-
-    -- The promise c01 made, kept a day later (the payme conversion above), and how this company
-    -- follows promises up.
-    INSERT INTO payment_promise (company_id, call_attempt_id, target_id, phone, promised_date, promised_amount, status,
-                                 reminder_sent_at, resolved_at, created_at)
-    SELECT 1, v_c01.id, v_c01.target_id, v_c01.phone, r.promised_date, r.promised_amount, 'KEPT',
-           NULL, v_c01.ended_at + interval '1 day', r.created_at
-    FROM call_result r WHERE r.call_id = v_c01.id;
-    INSERT INTO payment_promise_settings (company_id, reminder_enabled, reminder_days_before, reminder_template, grace_days,
-                                          recall_on_broken, payment_goal_key)
-    VALUES (1, true, 1, 'Hurmatli mijoz, {date} sanasida {amount} so''m to''lovni eslatamiz. Uysot.', 2, true, 'payment');
 
     -- Wrap-up codes, and the three operator calls closed with them.
     INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at) VALUES (1, 'Muammo hal qilindi', 'DONE', false)

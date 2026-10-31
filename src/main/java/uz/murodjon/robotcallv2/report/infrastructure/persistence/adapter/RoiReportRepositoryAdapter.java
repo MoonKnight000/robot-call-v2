@@ -21,7 +21,7 @@ public class RoiReportRepositoryAdapter implements RoiReportRepository {
     public RoiTotals findRoiTotals(long companyId, Instant from, Instant to, Long campaignId) {
         RoiTotalsProjection row = jpaRepository.findRoiTotals(companyId, from, to, campaignId);
         return new RoiTotals(row.getTotalCalls(), row.getAnsweredCalls(), row.getTalkSeconds(), row.getSpentUzs(),
-                row.getPromises(), row.getPromisedAmount(), row.getKeptPromises(), row.getKeptAmount(),
+                row.getPromises(), row.getPromisedAmount(),
                 row.getConversions(), row.getConversionValue());
     }
 }

@@ -7,7 +7,8 @@ package uz.murodjon.robotcallv2.campaign.application.dto;
  * @param header       the raw header text as it appears in the file
  * @param mappedField  the target field it will be loaded into ({@code clientId}, {@code phone},
  *                     {@code language}, or a {@code context_data} key like {@code debtAmount}),
- *                     or {@code null} if the importer does not recognize this header
+ *                     or {@code null} if the importer does not recognize this header (it is loaded as a fact
+ *                     under its own name), or {@code ""} when the person left the column out
  */
 public record CsvColumnMapping(String header, String mappedField) {
 }

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.context.ApplicationEventPublisher;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.*;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallAttempt;
@@ -51,7 +50,7 @@ class CallRecordServiceTest {
         outboxMessageRepository = mock(OutboxMessageRepository.class);
         service = new CallRecordService(callAttemptRepository, callTranscriptRepository, callResultRepository,
                 mock(CallTechnicalRepository.class), mock(CallTalkMetricsRepository.class), new CompanyProperties(),
-                outboxMessageRepository, new ObjectMapper(), mock(ApplicationEventPublisher.class));
+                outboxMessageRepository, new ObjectMapper());
     }
 
     // --- attempt lifecycle

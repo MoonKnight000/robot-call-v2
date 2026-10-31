@@ -8,13 +8,13 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.util.*;
 import java.util.regex.Pattern;
 
 /**
- * Tools the LLM can call to drive the FSM and record outcomes (PROJECT.md §4.2, MASTER_ROADMAP.md §5).
+ * Tools the LLM can call to steer the call itself — move the FSM, hand over, hang up, change
+ * language (PROJECT.md §4.2, MASTER_ROADMAP.md §5). Outcome tools (promise, reason, booking)
+ * are the scenario's own, built by {@link ScenarioToolCallbackFactory}.
  */
 public class DialogTools {
 
@@ -26,12 +26,14 @@ public class DialogTools {
                     + "if you have, leave it empty and do not repeat the sentence. "
                     + "English technical words or placeholders (e.g. dynamic_thought_or_fallback) are STRICTLY FORBIDDEN";
 
+    /**
+     * The tools that steer the call itself and so stay code. Every other tool a scenario
+     * declares (promise, refusal reason, callback, booking…) is built generically by
+     * {@link ScenarioToolCallbackFactory}, a name here is never built that way.
+     */
     static final Set<String> HARDCODED_TOOL_NAMES = Set.of(
-            "recordPaymentPromise", "recordRefusalReason", "scheduleCallback",
-            "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall",
-            "sendSmsPaymentLink", "requestPaymentExtension", "recordPaymentClaim", "endCall", "sendDtmfTones",
-            "bookShowroomVisit", "sendLocationSms", "sendCatalogSms", "waitForCaller", "switchLanguage", "noteCallerMood",
-            "bookAppointment", "checkCalendarAvailability", "cancelAppointment"
+            "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall", "sendDtmfTones",
+            "waitForCaller", "switchLanguage", "noteCallerMood"
     );
 
     /**
@@ -57,18 +59,13 @@ public class DialogTools {
     static final Set<String> CASCADE_ONLY_TOOL_NAMES = Set.of("waitForCaller", "switchLanguage", "noteCallerMood");
 
     /**
-     * One SMS a call, counted across sendMidCallSms and sendSmsPaymentLink on the counter
-     * company tools use too — hence a key no company tool is expected to be named.
+     * One SMS a call, counted by sendMidCallSms on the counter company tools use too —
+     * hence a key no company tool is expected to be named.
      */
     static final String SMS_BUDGET_KEY = "sms:perCall";
 
     /** Three Latin-script segments: anything longer is an essay the model wrote, not an SMS. */
     static final int MAX_SMS_CHARS = 480;
-
-    /** The call fact a payment link arrives under, from the contact's data or the CRM. */
-    static final String PAYMENT_LINK_FACT = "paymentLink";
-
-    private static final String PAYMENT_LINK_SMS_TEXT = "To'lov havolasi: ";
 
     /** The slot in {@code midCallSmsTemplate} the model's text goes into: {@code {{text}}}. */
     static final String SMS_TEXT_PLACEHOLDER = "text";
@@ -250,55 +247,6 @@ public class DialogTools {
                 : moved + ". From this stage you can only move to " + next + ".") + task;
     }
 
-    @Tool(description = "Call when the client names an EXACT DAY themselves (e.g. \"10-oktabr\", \"ertaga\"). "
-            + "Do NOT call it on a vague answer like \"keyingi oy\", \"oy oxirida\", \"pul bo'lganda\" "
-            + "— first ask which day. Guessing the date yourself is FORBIDDEN")
-    public String recordPaymentPromise(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "promised date, format yyyy-MM-dd") LocalDate promisedDate,
-            @ToolParam(description = "promised amount", required = false) BigDecimal amount,
-            @ToolParam(description = "payment channel the client named: CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL "
-                    + "or OTHER. Leave empty if the client did not say", required = false) String paymentChannel,
-            @ToolParam(description = "additional note", required = false) String note) {
-        if (promisedDate != null && promisedDate.isBefore(LocalDate.now())) {
-            return "ERROR: " + promisedDate + " is in the past. Today is " + LocalDate.now()
-                    + ". Work the date out from today and send it again, or ask the client for the exact date.";
-        }
-        recordReply(reply);
-        session.recordOutcome("promisedDate", promisedDate);
-        session.recordOutcome("promisedAmount", amount);
-        session.recordOutcome("paymentChannel", paymentChannel);
-        session.setDisposition(Disposition.PROMISE_TO_PAY);
-        log.info("[{}] payment promise: date={}, amount={}, channel={}, note={}",
-                session.channelId(), promisedDate, amount, paymentChannel, note);
-        return "Payment promise recorded: " + promisedDate;
-    }
-
-    @Tool(description = "Records the reason when the client says they cannot pay")
-    public String recordRefusalReason(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "reason for not paying") String reason,
-            @ToolParam(description = "details of the reason", required = false) String detail) {
-        recordReply(reply);
-        session.recordOutcome("reasonCode", reason);
-        session.setDisposition(Disposition.REFUSED);
-        log.info("[{}] refusal reason: {} ({})", session.channelId(), reason, detail);
-        return "Reason recorded: " + reason;
-    }
-
-    @Tool(description = "Call when the client asks to be called back later (e.g. tomorrow or at 16:00)")
-    public String scheduleCallback(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "callback date and time (e.g. 2026-09-02T16:00:00 or 'ertaga soat 16:00')") String callbackTime,
-            @ToolParam(description = "reason or note", required = false) String reason) {
-        recordReply(reply);
-        session.recordOutcome("callbackTime", callbackTime);
-        session.recordOutcome("callbackReason", reason);
-        session.setDisposition(Disposition.CALLBACK_REQUESTED);
-        log.info("[{}] callback requested: time={}, reason={}", session.channelId(), callbackTime, reason);
-        return "Callback scheduled: " + callbackTime;
-    }
-
     @Tool(description = "Hands the call to an operator only when the client explicitly asks for a person "
             + "or an operator. Rudeness or swearing alone is not a reason to transfer")
     public String requestHumanTransfer(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
@@ -414,75 +362,6 @@ public class DialogTools {
         return "The number has been added to the do-not-call list. Apologise briefly and say goodbye.";
     }
 
-    @Tool(description = "Call when the client asks for the payment link or payment details by SMS")
-    public String sendSmsPaymentLink(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                     @ToolParam(description = "SMS message type or additional text", required = false) String note) {
-        session.recordOutcome("sendSmsRequested", true);
-        session.recordOutcome("smsNote", note);
-        String link = findPaymentLink(session.context());
-        if (link == null) {
-            // No link on this call to send from here: the request stays recorded for whoever
-            // follows up after the call, as it always was.
-            recordReply(reply);
-            log.info("[{}] SMS payment link requested, none on this call", session.channelId());
-            return "The payment link will be sent by SMS.";
-        }
-        // The model decides when, never what: the text is fixed and the link is the call's own.
-        String refusal = sendGuardedSms(PAYMENT_LINK_SMS_TEXT + link);
-        if (refusal != null) {
-            return refusal;
-        }
-        recordReply(reply);
-        session.recordOutcome("paymentLinkSmsSent", true);
-        log.info("[{}] payment link SMS sent", session.channelId());
-        return "The payment link was sent to the client's phone by SMS. Ask the client to check their SMS.";
-    }
-
-    /**
-     * The call's payment link, when its {@value #PAYMENT_LINK_FACT} fact is a whole web
-     * address. A fact longer than {@link CallContext} keeps arrives cut and ending in "…",
-     * and half a link is worse than none.
-     */
-    private static String findPaymentLink(CallContext context) {
-        return findLink(context, null, PAYMENT_LINK_FACT);
-    }
-
-    @Tool(description = "Call when the client asks to extend (postpone) the payment deadline by a few days")
-    public String requestPaymentExtension(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                          @ToolParam(description = "how many days the extension is for") int extensionDays,
-                                          @ToolParam(description = "reason for the delay") String reason) {
-        recordReply(reply);
-        session.recordOutcome("extensionRequestedDays", extensionDays);
-        session.recordOutcome("extensionReason", reason);
-        log.info("[{}] payment extension requested: {} days, reason: {}", session.channelId(), extensionDays, reason);
-        return "Payment extension request recorded: " + extensionDays + " days.";
-    }
-
-    /**
-     * "I already paid." Not argued with and not a refusal: the claim is filed, and
-     * {@link Disposition#PAYMENT_CLAIMED} keeps the dialer off the number for three days
-     * while the company checks it ({@code RetrySchedule}).
-     */
-    @Tool(description = "Call when the client says they have ALREADY paid the debt. First ask when and through "
-            + "which payment system they paid. Do not argue with the client: tell them they will not be called "
-            + "until the payment has been checked")
-    public String recordPaymentClaim(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-                                     @ToolParam(description = "payment date the client named, format yyyy-MM-dd",
-                                             required = false) LocalDate paidDate,
-                                     @ToolParam(description = "payment channel: CLICK, PAYME, UZUM, BANK_BRANCH, "
-                                             + "TERMINAL or OTHER", required = false) String paymentChannel) {
-        if (paidDate != null && paidDate.isAfter(LocalDate.now())) {
-            return "ERROR: " + paidDate + " is in the future. Today is " + LocalDate.now()
-                    + ". A payment date is today or earlier — clarify it with the client.";
-        }
-        recordReply(reply);
-        session.recordOutcome("paidDate", paidDate);
-        session.recordOutcome("paymentChannel", paymentChannel);
-        session.setDisposition(Disposition.PAYMENT_CLAIMED);
-        log.info("[{}] payment claimed: date={}, channel={}", session.channelId(), paidDate, paymentChannel);
-        return "Payment claim recorded. The client will not be called for 3 days while it is checked.";
-    }
-
     /**
      * IVR navigation. Only reaches the model when the scenario declares a {@code ToolDef}
      * named {@code sendDtmfTones} — an outbound scenario that dials companies rather than
@@ -551,196 +430,5 @@ public class DialogTools {
         session.end(disposition);
         log.info("[{}] call ended with disposition: {}", session.channelId(), disposition);
         return "Call ended: " + disposition;
-    }
-
-    @Tool(description = "Books a meeting when the client agrees to come to the real-estate sales office (showroom). "
-            + "Records the meeting time, the number of rooms they are interested in and the payment method. "
-            + "Call only when the client clearly agrees to visit.")
-    public String bookShowroomVisit(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "meeting date and time (e.g. '2026-09-20 15:00' or 'ertaga soat 15:00')") String visitTime,
-            @ToolParam(description = "number of rooms needed (e.g. '2 xonali', '3 xonali')", required = false) String roomsNeeded,
-            @ToolParam(description = "approximate budget", required = false) String budgetRange,
-            @ToolParam(description = "payment method (100% payment, instalments, mortgage)", required = false) String paymentMethod,
-            @ToolParam(description = "additional note", required = false) String note) {
-        if (visitTime == null || visitTime.isBlank()) {
-            return "ERROR: no meeting time given. Ask the client which day and hour they can come.";
-        }
-        recordReply(reply);
-        session.recordOutcome("meetingBooked", true);
-        session.recordOutcome("meetingTime", visitTime.trim());
-        recordIfPresent("roomsNeeded", roomsNeeded);
-        recordIfPresent("budgetRange", budgetRange);
-        recordIfPresent("paymentMethod", paymentMethod);
-        recordIfPresent("meetingNote", note);
-        session.setDisposition(Disposition.GOAL_REACHED);
-        log.info("[{}] showroom visit booked: time={}, rooms={}, budget={}, payment={}",
-                session.channelId(), visitTime, roomsNeeded, budgetRange, paymentMethod);
-        return "Sales office meeting booked: " + visitTime.trim()
-                + ". Tell the client our specialists will meet them and offer to send the address/location by SMS.";
-    }
-
-    @Tool(description = "Sends the sales office (showroom) location and address by SMS when the client asks "
-            + "for it, or after a meeting has been booked.")
-    public String sendLocationSms(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "location link (Google Maps or Yandex Maps)", required = false) String locationUrl,
-            @ToolParam(description = "office address or landmark", required = false) String address) {
-        session.recordOutcome("locationSmsRequested", true);
-        String link = findLink(session.context(), locationUrl, "locationLink", "showroomLocation", "mapUrl");
-        String officeAddress = address != null && !address.isBlank()
-                ? address.trim()
-                : findLocationAddress(session.context());
-
-        if (link == null && officeAddress == null) {
-            recordReply(reply);
-            log.info("[{}] location SMS requested but no location link/address found", session.channelId());
-            return "The location details have been noted to be sent by SMS.";
-        }
-
-        StringBuilder smsText = new StringBuilder("Sotuv ofisimiz manzili: ");
-        if (officeAddress != null) {
-            smsText.append(officeAddress);
-            if (link != null) smsText.append(". ");
-        }
-        if (link != null) {
-            smsText.append("Lokatsiya: ").append(link);
-        }
-
-        String refusal = sendGuardedSms(smsText.toString());
-        if (refusal != null) {
-            return refusal;
-        }
-        recordReply(reply);
-        session.recordOutcome("locationSmsSent", true);
-        log.info("[{}] location SMS sent successfully", session.channelId());
-        return "The sales office location was sent to the client's phone by SMS. Ask the client to check their SMS.";
-    }
-
-    @Tool(description = "Sends the catalogue link by SMS when the client asks for the residential complex's "
-            + "projects, floor plans or presentation (catalogue).")
-    public String sendCatalogSms(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "catalogue or presentation link", required = false) String catalogUrl) {
-        session.recordOutcome("catalogSmsRequested", true);
-        String link = findLink(session.context(), catalogUrl, "catalogUrl", "presentationUrl");
-        if (link == null) {
-            recordReply(reply);
-            log.info("[{}] catalog SMS requested but no link found", session.channelId());
-            return "The catalogue link has been noted to be sent by SMS.";
-        }
-        String refusal = sendGuardedSms("Loyihalarimiz katalogi va rejalari: " + link);
-        if (refusal != null) {
-            return refusal;
-        }
-        recordReply(reply);
-        session.recordOutcome("catalogSmsSent", true);
-        log.info("[{}] catalog SMS sent successfully", session.channelId());
-        return "The catalogue link was sent to the client by SMS. Let the client know the SMS has arrived.";
-    }
-
-    @Tool(description = "Call when the client agrees to book a service, consultation or appointment. "
-            + "Records the appointment date, time, the client's name and the service type, and marks the goal as reached.")
-    public String bookAppointment(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "appointment date (e.g. '2026-10-15' or 'ertaga')") String appointmentDate,
-            @ToolParam(description = "appointment time (e.g. '14:00' or '15:30')") String appointmentTime,
-            @ToolParam(description = "client's name", required = false) String attendeeName,
-            @ToolParam(description = "service or consultation type", required = false) String serviceType,
-            @ToolParam(description = "additional note or requirements", required = false) String note) {
-        if (appointmentDate == null || appointmentDate.isBlank()) {
-            return "ERROR: no appointment date given. Ask the client which day they want to book.";
-        }
-        if (appointmentTime == null || appointmentTime.isBlank()) {
-            return "ERROR: no appointment time given. Ask the client which hour they want to book.";
-        }
-        recordReply(reply);
-        session.recordOutcome("appointmentBooked", true);
-        session.recordOutcome("appointmentDate", appointmentDate.trim());
-        session.recordOutcome("appointmentTime", appointmentTime.trim());
-        recordIfPresent("appointmentAttendee", attendeeName);
-        recordIfPresent("appointmentService", serviceType);
-        recordIfPresent("appointmentNote", note);
-        session.setDisposition(Disposition.GOAL_REACHED);
-        log.info("[{}] appointment booked: date={}, time={}, attendee={}, service={}",
-                session.channelId(), appointmentDate, appointmentTime, attendeeName, serviceType);
-        return "Appointment booked: " + appointmentDate.trim() + " at " + appointmentTime.trim()
-                + ". Confirm the appointment to the client and say you look forward to seeing them.";
-    }
-
-    @Tool(description = "Checks and returns the free slots in the calendar when the client asks for available appointment times.")
-    public String checkCalendarAvailability(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "date being checked (e.g. '2026-10-15' or 'bugun', 'ertaga')") String date,
-            @ToolParam(description = "service type", required = false) String serviceType) {
-        if (date == null || date.isBlank()) {
-            return "ERROR: no date given. Ask the client which date they want free times for.";
-        }
-        recordReply(reply);
-        Object customSlots = session.context() != null ? session.context().fact("availableSlots") : null;
-        String slots = customSlots instanceof String s && !s.isBlank() ? s : "10:00, 11:30, 14:00, 16:30";
-        log.info("[{}] checked calendar availability for date={}: slots={}", session.channelId(), date, slots);
-        return "Free times on " + date.trim() + ": " + slots
-                + ". Offer the client one of these times.";
-    }
-
-    @Tool(description = "Call when the client asks to cancel an appointment booked earlier.")
-    public String cancelAppointment(
-            @ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
-            @ToolParam(description = "date of the appointment being cancelled", required = false) String appointmentDate,
-            @ToolParam(description = "time of the appointment being cancelled", required = false) String appointmentTime,
-            @ToolParam(description = "reason for cancelling", required = false) String reason) {
-        recordReply(reply);
-        session.recordOutcome("appointmentCancelled", true);
-        recordIfPresent("cancelledAppointmentDate", appointmentDate);
-        recordIfPresent("cancelledAppointmentTime", appointmentTime);
-        recordIfPresent("cancellationReason", reason);
-        log.info("[{}] appointment cancelled: date={}, time={}, reason={}",
-                session.channelId(), appointmentDate, appointmentTime, reason);
-        return "Appointment cancelled. Politely let the client know the appointment has been cancelled.";
-    }
-
-    private void recordIfPresent(String key, String value) {
-        if (value != null && !value.isBlank()) {
-            session.recordOutcome(key, value.trim());
-        }
-    }
-
-    /**
-     * {@code provided} when the model passed a whole web address, else the first of the
-     * call's {@code factKeys} that is set — when that one is a whole web address.
-     */
-    private static String findLink(CallContext context, String provided, String... factKeys) {
-        if (isValidWebLink(provided)) {
-            return provided.trim();
-        }
-        return firstFact(context, factKeys) instanceof String s && isValidWebLink(s) ? s.trim() : null;
-    }
-
-    private static String findLocationAddress(CallContext context) {
-        return firstFact(context, "showroomAddress", "officeAddress") instanceof String s && !s.isBlank()
-                ? s.trim() : null;
-    }
-
-    private static Object firstFact(CallContext context, String... keys) {
-        if (context == null) {
-            return null;
-        }
-        for (String key : keys) {
-            Object value = context.fact(key);
-            if (value != null) {
-                return value;
-            }
-        }
-        return null;
-    }
-
-    /** A whole web address. A fact longer than {@link CallContext} keeps arrives cut and ending in "…". */
-    private static boolean isValidWebLink(String value) {
-        if (value == null) return false;
-        String link = value.trim();
-        return (link.startsWith("https://") || link.startsWith("http://"))
-                && !link.endsWith("…")
-                && link.chars().noneMatch(Character::isWhitespace);
     }
 }

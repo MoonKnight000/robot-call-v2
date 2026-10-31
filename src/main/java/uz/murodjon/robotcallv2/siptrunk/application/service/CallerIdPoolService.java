@@ -153,10 +153,23 @@ public class CallerIdPoolService implements CallerIdPoolUseCase {
     @Override
     @Transactional
     public String acquireCallerId(long companyId, long poolId) {
+        return acquire(companyId, poolId, null);
+    }
+
+    @Override
+    @Transactional
+    public String acquireLocalCallerId(long companyId, long poolId, String calleePhone) {
+        return acquire(companyId, poolId, calleePhone);
+    }
+
+    /** The pool's next number; the one closest to {@code calleePhone}'s own when that is given. */
+    private String acquire(long companyId, long poolId, String calleePhone) {
         CallerIdPool pool = callerIdPoolRepository.findById(companyId, poolId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CALLER_ID_POOL_NOT_FOUND, poolId));
 
-        Optional<CallerIdPoolNumber> selected = CallerIdSelector.select(pool.numbers(), pool.strategy(), Instant.now());
+        Optional<CallerIdPoolNumber> selected = calleePhone != null
+                ? CallerIdSelector.selectLocal(pool.numbers(), pool.strategy(), Instant.now(), calleePhone)
+                : CallerIdSelector.select(pool.numbers(), pool.strategy(), Instant.now());
         if (selected.isEmpty()) {
             throw new ConflictException(ErrorCode.CALLER_ID_POOL_EMPTY, poolId);
         }

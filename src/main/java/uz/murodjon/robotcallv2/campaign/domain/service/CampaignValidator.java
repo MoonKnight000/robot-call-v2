@@ -1,8 +1,13 @@
 package uz.murodjon.robotcallv2.campaign.domain.service;
 
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollRule;
+import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSourceStep;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AutoEnrollField;
+import uz.murodjon.robotcallv2.campaign.domain.enums.AutoEnrollOperator;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignKind;
 import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
@@ -11,6 +16,7 @@ import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Component
@@ -19,15 +25,27 @@ public class CampaignValidator {
     /** Three Cyrillic SMS parts (3 × 153 characters) — longer is split into ever more paid parts. */
     static final int MAX_FOLLOW_UP_SMS_LENGTH = 459;
 
+    static final int MAX_AUTO_ENROLL_RULES = 10;
+    static final int MAX_AUTO_ENROLL_VALUE_LENGTH = 200;
+
     /**
      * An AI campaign needs the agent that speaks; an operator campaign needs the queue whose
      * members take its calls, and may name an agent too. PREDICTIVE needs both: the agent takes
      * every answered client no operator is left for.
      */
     public void validateDialMode(DialMode dialMode, Long aiAgentId, Long callQueueId) {
+        validateAiAgent(dialMode, aiAgentId);
+        validateCallQueue(dialMode, callQueueId);
+    }
+
+    /** The agent that speaks — a draft may be saved without it, a campaign cannot be launched without. */
+    public void validateAiAgent(DialMode dialMode, Long aiAgentId) {
         if ((dialMode.placesAiCalls() || dialMode == DialMode.PREDICTIVE) && aiAgentId == null) {
             throw new ValidationException(ErrorCode.CAMPAIGN_AI_AGENT_REQUIRED);
         }
+    }
+
+    public void validateCallQueue(DialMode dialMode, Long callQueueId) {
         if (!dialMode.placesAiCalls() && callQueueId == null) {
             throw new ValidationException(ErrorCode.CAMPAIGN_CALL_QUEUE_REQUIRED, dialMode);
         }
@@ -111,6 +129,49 @@ public class CampaignValidator {
             if (step.extract().isEmpty()) {
                 throw new ValidationException(ErrorCode.TARGET_SOURCE_STEP_EXTRACTS_NOTHING, name);
             }
+        }
+    }
+
+    /**
+     * Each rule needs a value to compare with, and the list stays short enough to be read as one
+     * sentence. A campaign with no rules yet is a draft and passes.
+     */
+    public void validateAutoEnroll(CampaignKind kind, AutoEnrollment autoEnroll) {
+        List<String> errors = new ArrayList<>();
+        // Both kinds filter contacts by the same rules; only a STANDARD list has rows to untick — an auto-enroll
+        // campaign leaves a contact out by a rule that rules it out, as in Retell.
+        if (kind != CampaignKind.STANDARD && !autoEnroll.excludedContactIds().isEmpty()) {
+            errors.add("autoEnroll.excludedContactIds: only a STANDARD campaign excludes contacts");
+        }
+        if (autoEnroll.rules().size() > MAX_AUTO_ENROLL_RULES) {
+            errors.add("autoEnroll.rules: at most " + MAX_AUTO_ENROLL_RULES + " rules");
+        }
+        for (int index = 0; index < autoEnroll.rules().size(); index++) {
+            AutoEnrollRule rule = autoEnroll.rules().get(index);
+            String path = "autoEnroll.rules[" + index + "]";
+            if (rule == null || rule.field() == null || rule.operator() == null) {
+                errors.add(path + ": field and operator are required");
+            } else if (rule.value() == null || rule.value().isBlank()
+                    || rule.value().length() > MAX_AUTO_ENROLL_VALUE_LENGTH) {
+                errors.add(path + ".value: 1 to " + MAX_AUTO_ENROLL_VALUE_LENGTH + " characters");
+            } else if (rule.field() == AutoEnrollField.PHONE && !rule.value().matches(".*\\d.*")) {
+                errors.add(path + ".value: a phone rule needs at least one digit");
+            } else if (rule.field() == AutoEnrollField.DO_NOT_CALL && (rule.operator() != AutoEnrollOperator.EQUALS
+                    || !rule.value().trim().matches("(?i)true|false"))) {
+                errors.add(path + ": do-not-call takes EQUALS true or false");
+            } else if (rule.operator() == AutoEnrollOperator.IS_ANY_OF && rule.field() != AutoEnrollField.TAG) {
+                errors.add(path + ".operator: IS_ANY_OF is for tags only");
+            }
+        }
+        // As in Retell: phone number, do-not-call and tags take one row each; the text fields may take several.
+        for (AutoEnrollField single : List.of(AutoEnrollField.PHONE, AutoEnrollField.DO_NOT_CALL, AutoEnrollField.TAG)) {
+            long rows = autoEnroll.rules().stream().filter(r -> r != null && r.field() == single).count();
+            if (rows > 1) {
+                errors.add("autoEnroll.rules: at most one " + single + " rule");
+            }
+        }
+        if (!errors.isEmpty()) {
+            throw ValidationException.withErrors(ErrorCode.CAMPAIGN_AUTO_ENROLL_INVALID, errors, errors.size());
         }
     }
 

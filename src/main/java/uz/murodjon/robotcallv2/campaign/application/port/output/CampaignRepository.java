@@ -40,6 +40,9 @@ public interface CampaignRepository {
      */
     boolean completeIfFinished(long companyId, long id);
 
+    /** Stamps the consent confirmation at {@code at}; a campaign that already has one keeps its own. */
+    void recordConsent(long companyId, long id, Instant at);
+
     void recordRecurrenceRun(long id, Instant lastRunAt, CampaignStatus status);
 
     /**

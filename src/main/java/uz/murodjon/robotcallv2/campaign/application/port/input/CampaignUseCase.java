@@ -27,6 +27,15 @@ public interface CampaignUseCase {
 
     PageableData<CampaignRow> listCampaigns(long companyId, CampaignFilter filter);
 
+    /**
+     * Records that the contacts the campaign calls were gathered lawfully (consent, do-not-call
+     * laws, opt-ins). A DRAFT cannot be launched before this; asking again changes nothing.
+     */
+    CampaignRow acceptConsent(long companyId, long campaignId);
+
+    /** The Overview tab: the campaign, its caller ID pool and what, if anything, blocks a launch. */
+    CampaignOverviewResponse requireCampaignOverview(long companyId, long campaignId);
+
     CampaignStatusResponse start(long companyId, long campaignId, boolean immediate);
 
     CampaignStatusResponse pause(long companyId, long campaignId);

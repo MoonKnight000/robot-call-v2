@@ -10,10 +10,15 @@ import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.ConversationStepConfig;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
+import uz.murodjon.robotcallv2.campaign.domain.entity.SequenceStep;
+import uz.murodjon.robotcallv2.campaign.domain.enums.SequenceStepType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.campaign.domain.service.RetrySchedule;
+import uz.murodjon.robotcallv2.campaign.domain.service.SequenceRouting;
 import uz.murodjon.robotcallv2.campaign.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
@@ -78,7 +83,11 @@ public class CampaignOutcomeService {
         }
         Campaign c = campaignRepository.find(companyId, t.campaignId());
         sendFollowUpSms(c, t, disposition);
-        if (isTerminal(disposition)) {
+        if (c != null && c.sequence() != null) {
+            applySequenceOutcome(c, t, disposition);
+            return;
+        }
+        if (SequenceRouting.isFinal(disposition)) {
             campaignTargetRepository.updateStatus(targetId, TargetStatus.DONE, null);
             log.info("Target {} DONE ({})", targetId, disposition);
             checkCompletion(companyId, t.campaignId());
@@ -109,6 +118,94 @@ public class CampaignOutcomeService {
     }
 
     /**
+     * A finished call on a campaign that has a sequence: the target retries its step until the
+     * step's attempts are spent, then follows the route of how the step ended — to the next
+     * step, or out of the sequence when no route is set for that outcome.
+     */
+    private void applySequenceOutcome(Campaign campaign, CampaignTarget target, Disposition disposition) {
+        CampaignSequence sequence = campaign.sequence();
+        SequenceStep step = currentStep(sequence, target);
+        if (step == null) {
+            // Nothing to route on (a sequence edited under a live campaign): the call's result stands.
+            finishTarget(campaign, target, disposition);
+            return;
+        }
+        if (!SequenceRouting.isFinal(disposition)) {
+            int maxAttempts = step.conversation() != null ? step.conversation().maxAttempts()
+                    : ConversationStepConfig.DEFAULT_MAX_ATTEMPTS;
+            RetryRule rule = campaign.retry().policy().ruleFor(disposition);
+            if (rule != null && rule.maxAttempts() != null && rule.maxAttempts() > 0) {
+                maxAttempts = Math.min(maxAttempts, rule.maxAttempts());
+            }
+            if (disposition == Disposition.CALLBACK_REQUESTED && target.nextAttemptAt() != null
+                    && target.nextAttemptAt().isAfter(Instant.now(clock))) {
+                log.info("Target {} already scheduled for smart callback at {}, preserving schedule",
+                        target.id(), target.nextAttemptAt());
+                return;
+            }
+            if (target.stepAttempts() < maxAttempts) {
+                int stepDelay = step.conversation() != null ? step.conversation().retryDelayMinutes() : 0;
+                Instant next = nextAttemptAt(disposition, campaign,
+                        stepDelay > 0 ? stepDelay : campaign.retry().intervalMinutes());
+                campaignTargetRepository.updateStatus(target.id(), TargetStatus.PENDING, next);
+                log.info("Target {} retries step {} ({}, attempt {}/{}) -> {}", target.id(), step.id(), disposition,
+                        target.stepAttempts(), maxAttempts, next);
+                return;
+            }
+        }
+        String nextStepId = SequenceRouting.endsSequence(disposition) ? null
+                : step.routes().get(SequenceRouting.outcomeOf(disposition));
+        if (nextStepId == null) {
+            finishTarget(campaign, target, disposition);
+            return;
+        }
+        advanceTo(campaign, target, nextStepId, Duration.ZERO);
+    }
+
+    /** The step the target is on; the start step when it has none yet or its step is gone. */
+    private static SequenceStep currentStep(CampaignSequence sequence, CampaignTarget target) {
+        SequenceStep step = target.stepId() != null ? sequence.findStep(target.stepId()).orElse(null) : null;
+        return step != null ? step : sequence.findStep(sequence.startStepId()).orElse(null);
+    }
+
+    /** The target leaves the sequence: DONE when the call settled it, EXHAUSTED when attempts ran out. */
+    private void finishTarget(Campaign campaign, CampaignTarget target, Disposition disposition) {
+        TargetStatus status = SequenceRouting.isFinal(disposition) ? TargetStatus.DONE : TargetStatus.EXHAUSTED;
+        campaignTargetRepository.updateStatus(target.id(), status, null);
+        log.info("Target {} {} ({}, step {})", target.id(), status, disposition, target.stepId());
+        checkCompletion(campaign.companyId(), campaign.id());
+    }
+
+    /**
+     * Moves the target on to {@code stepId}. SMS steps are sent on the way and WAIT steps add to
+     * the delay, so the target always lands on the next CONVERSATION step — or leaves the
+     * sequence when the chain runs out.
+     */
+    private void advanceTo(Campaign campaign, CampaignTarget target, String stepId, Duration delay) {
+        CampaignSequence sequence = campaign.sequence();
+        SequenceStep step = sequence.findStep(stepId).orElse(null);
+        // The validator keeps a sequence acyclic; the bound only guards a row edited by hand.
+        for (int hops = 0; step != null && step.type() != SequenceStepType.CONVERSATION
+                && hops <= sequence.steps().size(); hops++) {
+            if (step.type() == SequenceStepType.SMS && !target.doNotCall()) {
+                textTarget(campaign, target, step.smsText(), "sequence step " + step.id());
+            } else if (step.type() == SequenceStepType.WAIT && step.waitMinutes() != null) {
+                delay = delay.plusMinutes(step.waitMinutes());
+            }
+            step = step.next() != null ? sequence.findStep(step.next()).orElse(null) : null;
+        }
+        if (step == null || step.type() != SequenceStepType.CONVERSATION) {
+            campaignTargetRepository.updateStatus(target.id(), TargetStatus.DONE, null);
+            log.info("Target {} DONE: its sequence ended", target.id());
+            checkCompletion(campaign.companyId(), campaign.id());
+            return;
+        }
+        Instant dueAt = delay.isZero() ? null : intoDialWindow(campaign, ZonedDateTime.now(clock).plus(delay));
+        campaignTargetRepository.moveToStep(target.id(), step.id(), dueAt);
+        log.info("Target {} moves to step {} -> {}", target.id(), step.id(), dueAt);
+    }
+
+    /**
      * Texts the number when the campaign's rule for this outcome says so — the second channel
      * of a follow-up: "no answer → SMS → call again later". Never fails the outcome: the target
      * moves on whether or not the SMS gateway answered.
@@ -125,17 +222,22 @@ public class CampaignOutcomeService {
         if (rule.smsOnAttempt() != null && rule.smsOnAttempt() != target.attempts()) {
             return;
         }
+        textTarget(campaign, target, rule.smsText(), "outcome " + disposition + ", attempt " + target.attempts());
+    }
+
+    /** Renders {@code template} with the target's facts and sends it; a gateway failure is logged, never thrown. */
+    private void textTarget(Campaign campaign, CampaignTarget target, String template, String reason) {
         if (!smsUseCase.isEnabled()) {
-            log.debug("Follow-up SMS for target {} skipped: SMS is not enabled", target.id());
+            log.debug("SMS for target {} skipped: SMS is not enabled", target.id());
             return;
         }
-        String text = PromptTemplateEngine.render(rule.smsText(), findFacts(target));
+        String text = PromptTemplateEngine.render(template, findFacts(target));
         try {
             boolean sent = smsUseCase.sendSms(campaign.companyId(), new SmsSendRequest(target.phone(), text));
-            log.info("Follow-up SMS after {} to {} (target {}, attempt {}): {}", disposition,
-                    PhoneMasker.mask(target.phone()), target.id(), target.attempts(), sent ? "sent" : "not sent");
+            log.info("SMS to {} (target {}, {}): {}", PhoneMasker.mask(target.phone()), target.id(), reason,
+                    sent ? "sent" : "not sent");
         } catch (Exception e) {
-            log.warn("Follow-up SMS to target {} failed: {}", target.id(), e.getMessage());
+            log.warn("SMS to target {} failed: {}", target.id(), e.getMessage());
         }
     }
 
@@ -227,25 +329,26 @@ public class CampaignOutcomeService {
     }
 
     private Instant nextAttemptAt(Disposition disposition, Campaign campaign) {
-        int retryMinutes = campaign != null ? campaign.retry().intervalMinutes() : 0;
+        return nextAttemptAt(disposition, campaign, campaign != null ? campaign.retry().intervalMinutes() : 0);
+    }
+
+    /** {@code retryMinutes} stands in for the campaign's interval — a sequence step brings its own. */
+    private Instant nextAttemptAt(Disposition disposition, Campaign campaign, int retryMinutes) {
         RetryRule rule = campaign != null ? campaign.retry().policy().ruleFor(disposition) : null;
         Duration delay = RetrySchedule.delayFor(disposition, retryProperties.toRetryDelays(), retryMinutes, rule);
         ZonedDateTime candidate = ZonedDateTime.now(clock).plus(delay);
-        if (campaign == null || !retryProperties.respectDialWindow()) {
+        if (campaign == null) {
+            return candidate.toInstant();
+        }
+        return intoDialWindow(campaign, candidate);
+    }
+
+    /** {@code candidate}, or the next moment the campaign may dial when it falls outside its window. */
+    private Instant intoDialWindow(Campaign campaign, ZonedDateTime candidate) {
+        if (!retryProperties.respectDialWindow()) {
             return candidate.toInstant();
         }
         return RetrySchedule.intoWindow(candidate, campaign.schedule().allowedDays(),
                 campaign.schedule().dialWindowStart(), campaign.schedule().dialWindowEnd(), holidaysOf(campaign.companyId())).toInstant();
-    }
-
-    private static boolean isTerminal(Disposition d) {
-        return d == Disposition.PROMISE_TO_PAY
-                || d == Disposition.REFUSED
-                || d == Disposition.TRANSFERRED
-                || d == Disposition.WRONG_NUMBER
-                || d == Disposition.COMPLETED
-                || d == Disposition.GOAL_REACHED
-                || d == Disposition.GOAL_NOT_REACHED
-                || d == Disposition.DO_NOT_CALL;
     }
 }

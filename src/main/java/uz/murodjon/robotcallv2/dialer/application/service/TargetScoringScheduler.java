@@ -15,8 +15,6 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.TargetOrdering;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.dialer.domain.service.PaymentPropensityScorer;
-import uz.murodjon.robotcallv2.promise.application.port.input.PaymentPromiseUseCase;
-import uz.murodjon.robotcallv2.promise.domain.entity.PaymentPromiseTally;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 
 import java.time.Clock;
@@ -41,7 +39,7 @@ public class TargetScoringScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(TargetScoringScheduler.class);
 
-    /** How far back a number's calls and promises are read. */
+    /** How far back a number's calls are read. */
     static final Duration HISTORY = Duration.ofDays(180);
     static final Duration RESCORE_AFTER = Duration.ofHours(12);
     static final int PAGE_SIZE = 500;
@@ -51,19 +49,17 @@ public class TargetScoringScheduler {
     private final CampaignUseCase campaignUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
     private final CallAttemptUseCase callAttemptUseCase;
-    private final PaymentPromiseUseCase paymentPromiseUseCase;
     private final CompanyConfigUseCase companyConfigUseCase;
     private final ClusterJobLock clusterJobLock;
     private final Clock clock;
 
     public TargetScoringScheduler(CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
-                                  CallAttemptUseCase callAttemptUseCase, PaymentPromiseUseCase paymentPromiseUseCase,
+                                  CallAttemptUseCase callAttemptUseCase,
                                   CompanyConfigUseCase companyConfigUseCase, ClusterJobLock clusterJobLock,
                                   Clock clock) {
         this.campaignUseCase = campaignUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
         this.callAttemptUseCase = callAttemptUseCase;
-        this.paymentPromiseUseCase = paymentPromiseUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
         this.clusterJobLock = clusterJobLock;
         this.clock = clock;
@@ -106,12 +102,10 @@ public class TargetScoringScheduler {
             Set<String> phones = targets.stream().map(CampaignTarget::phone).collect(Collectors.toSet());
             Map<String, PhoneCallHistory> calls =
                     callAttemptUseCase.findPhoneCallHistories(companyId, phones, since, zone);
-            Map<String, PaymentPromiseTally> promises =
-                    paymentPromiseUseCase.findTalliesByPhones(companyId, phones, since);
             Map<Long, TargetScore> scores = new HashMap<>();
             for (CampaignTarget target : targets) {
                 scores.put(target.id(),
-                        PaymentPropensityScorer.score(calls.get(target.phone()), promises.get(target.phone())));
+                        PaymentPropensityScorer.score(calls.get(target.phone())));
             }
             campaignTargetUseCase.updateTargetScores(companyId, scores);
             scored += scores.size();

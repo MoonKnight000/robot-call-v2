@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.scenario.domain.service;
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.*;
 import java.util.regex.Pattern;
@@ -404,11 +405,23 @@ public final class ScenarioValidator {
             if (RESERVED_TOOL_NAMES.contains(t.name())) {
                 errors.add("tool name '" + t.name() + "' is reserved for the fixed universal tool set");
             }
+            if (t.disposition() != null && !t.disposition().isBlank() && !isKnownDisposition(t.disposition())) {
+                errors.add("tool " + t.name() + " names an unknown disposition '" + t.disposition() + "'");
+            }
             if (t.params() == null) {
                 continue;
             }
             checkNamesUnique("tool " + t.name() + " param",
                     t.params().stream().map(ToolParamDef::name).toList(), errors);
+        }
+    }
+
+    private static boolean isKnownDisposition(String name) {
+        try {
+            Disposition.valueOf(name.trim());
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
         }
     }
 

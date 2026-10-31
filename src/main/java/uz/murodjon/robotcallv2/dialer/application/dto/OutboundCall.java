@@ -20,6 +20,8 @@ import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
  * @param promptOverride       the variant's replacement for the scenario's role prompt; null
  *                             leaves it alone
  * @param pipelineModeOverride the variant's pipeline for this call; null runs the agent's own
+ * @param callerIdPoolId       the pool this call's caller ID is taken from; null uses the trunk's own
+ * @param localPresence        take the pool number closest to {@code phone}'s own
  */
 public record OutboundCall(
         Long campaignId,
@@ -35,7 +37,8 @@ public record OutboundCall(
         Long variantId,
         String promptOverride,
         PipelineMode pipelineModeOverride,
-        Long callerIdPoolId
+        Long callerIdPoolId,
+        boolean localPresence
 ) {
 
     public OutboundCall(Long campaignId, Long targetId, Long clientId, String phone, String language,
@@ -43,6 +46,6 @@ public record OutboundCall(
                         Long sipTrunkId, Long variantId, String promptOverride,
                         PipelineMode pipelineModeOverride) {
         this(campaignId, targetId, clientId, phone, language, ttsVoice, context, agent,
-                companyId, sipTrunkId, variantId, promptOverride, pipelineModeOverride, null);
+                companyId, sipTrunkId, variantId, promptOverride, pipelineModeOverride, null, false);
     }
 }

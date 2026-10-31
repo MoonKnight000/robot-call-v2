@@ -125,6 +125,34 @@ public class CampaignEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     private String retryPolicy;
 
+    /** The caller ID pool the campaign's calls present numbers from; a plain id, as {@code callQueueId}. */
+    @Column(name = "caller_id_pool_id")
+    private Long callerIdPoolId;
+
+    @Column(name = "local_presence", nullable = false)
+    private boolean localPresence;
+
+    @Column(name = "max_cps")
+    private Integer maxCps;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "kind", nullable = false)
+    private CampaignKind kind = CampaignKind.STANDARD;
+
+    /** The steps a contact goes through as JSON; null for a campaign from before sequences. */
+    @Column(name = "sequence")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String sequence;
+
+    /** Written only by the consent confirmation, never by an edit. */
+    @Column(name = "consent_confirmed_at", insertable = false, updatable = false)
+    private Instant consentConfirmedAt;
+
+    /** The auto-enroll rules as JSON; null when there are none. */
+    @Column(name = "auto_enroll")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String autoEnroll;
+
     /** When a SCHEDULED campaign goes ACTIVE; null starts on the operator's command. */
     @Column(name = "start_at")
     private Instant startAt;
@@ -374,6 +402,58 @@ public class CampaignEntity {
 
     public void setRetryPolicy(String retryPolicy) {
         this.retryPolicy = retryPolicy;
+    }
+
+    public Long getCallerIdPoolId() {
+        return callerIdPoolId;
+    }
+
+    public void setCallerIdPoolId(Long callerIdPoolId) {
+        this.callerIdPoolId = callerIdPoolId;
+    }
+
+    public boolean isLocalPresence() {
+        return localPresence;
+    }
+
+    public void setLocalPresence(boolean localPresence) {
+        this.localPresence = localPresence;
+    }
+
+    public Integer getMaxCps() {
+        return maxCps;
+    }
+
+    public void setMaxCps(Integer maxCps) {
+        this.maxCps = maxCps;
+    }
+
+    public CampaignKind getKind() {
+        return kind;
+    }
+
+    public void setKind(CampaignKind kind) {
+        this.kind = kind;
+    }
+
+    public Instant getConsentConfirmedAt() {
+        return consentConfirmedAt;
+    }
+
+    public String getAutoEnroll() {
+        return autoEnroll;
+    }
+
+    public void setAutoEnroll(String autoEnroll) {
+        this.autoEnroll = autoEnroll;
+    }
+
+    public String getSequence() {
+        return sequence;
+    }
+
+    public void setSequence(String sequence) {
+        this.sequence = sequence;
     }
 
     public Instant getStartAt() {

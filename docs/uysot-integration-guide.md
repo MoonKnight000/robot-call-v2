@@ -122,11 +122,9 @@ Muloqot davomida AI operator quyidagi ichki vositalardan (tools) foydalanadi:
 
 | Funksiya Nomi | Tavsifi | Yuboriladigan Argumentlar |
 |---|---|---|
-| `bookShowroomVisit` | Sotuv ofisi / shourumga mijoz tashrifini tasdiqlaydi va maqsadga erishadi | `visitTime` (masalan: `2026-09-20 15:00`), `visitorCount`, `notes` |
-| `sendLocationSms` | Shourum manzili yoki Google/Yandex Maps lokatsiya linkini SMS orqali yuboradi | `phone` (ixtiyoriy, avtomatik olinadi), `locationLink`, `address` |
-| `sendCatalogSms` | Turar-joy majmuasi narxlari va loyiha taqdimot fayli linkini SMS orqali yuboradi | `phone`, `catalogUrl` |
+| `bookShowroomVisit` | Ssenariy e'lon qiladigan tool (kodda emas): sotuv ofisiga tashrifni yozadi va maqsadga erishadi (`disposition: GOAL_REACHED`) | `meetingTime` (masalan: `2026-09-20 15:00`), `roomsNeeded`, `budgetRange`, `paymentMethod`, `meetingNote` |
 
-Ushbu vositalar chaqirilganda mijozga darhol tegishli ma'lumot SMS orqali jo'natiladi va suhbat kontekstiga yoziladi.
+Manzil yoki katalog havolasini SMS qilish uchun agentda `midCallSmsEnabled: true` va shablon (masalan `Manzil: {{locationLink}}`) beriladi, `sendMidCallSms` uni qo'ng'iroq faktlari bilan to'ldirib yuboradi ([api/webhooks.md](api/webhooks.md)).
 
 ---
 

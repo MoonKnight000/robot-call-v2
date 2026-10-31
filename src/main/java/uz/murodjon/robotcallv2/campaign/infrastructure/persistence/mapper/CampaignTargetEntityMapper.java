@@ -26,7 +26,9 @@ public class CampaignTargetEntityMapper {
                 e.isDoNotCall(),
                 e.getNextAttemptAt(),
                 e.getScore(),
-                e.getBestCallHour()
+                e.getBestCallHour(),
+                e.getStepId(),
+                e.getStepAttempts()
         );
     }
 

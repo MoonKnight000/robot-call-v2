@@ -217,19 +217,12 @@ keyingi `SEND_SMS` action ([ai-agents.md](ai-agents.md) §Post-call actions) cha
 | Tool | Qachon taklif qilinadi | Nima yuboradi |
 |---|---|---|
 | `sendMidCallSms(reply, text)` | agentda `midCallSmsEnabled: true` bo'lsa | `midCallSmsTemplate` bo'lmasa — model yozgan `text`; bo'lsa — to'ldirilgan shablon (quyida) |
-| `sendSmsPaymentLink(reply, note)` | ssenariy uni e'lon qilgan bo'lsa | qat'iy matn: `To'lov havolasi: <paymentLink>` |
-
-`sendSmsPaymentLink` havolani qo'ng'iroq faktlaridagi `paymentLink` dan oladi (kontakt
-ma'lumoti yoki CRM). Fakt yo'q, butun `http(s)://` manzil emas yoki 200 belgidan uzun
-(kesilgan) bo'lsa SMS yuborilmaydi — tool avvalgidek faqat `sendSmsRequested: true` va
-`smsNote` ni natijaga yozadi. Havola bo'lsa ham SMS faqat agentda `midCallSmsEnabled: true`
-bo'lganda ketadi.
 
 **Cheklovlar** (`DialogTools` — Java'da, promptda emas):
 
 - **Faqat shu mijozga.** Tool'larda raqam parametri yo'q: SMS qo'ng'iroqning o'z raqamiga
   ketadi (`call_attempt` raqami, u bo'lmasa `phone` fakti).
-- **Bir qo'ng'iroqqa bitta SMS**, ikkala tool uchun umumiy. Ikkinchisi `XATO:` bilan rad
+- **Bir qo'ng'iroqqa bitta SMS.** Ikkinchisi `XATO:` bilan rad
   etiladi. Yuborilmay qolgan urinish ham hisoblanadi: taymaut bo'lgan SMS yetib borgan
   bo'lishi mumkin, qayta urinish mijozga ikkinchi nusxa bo'ladi.
 - **Ko'pi bilan 480 belgi.** Uzunroq matn rad etiladi; bu urinish hisoblanmaydi.
@@ -239,8 +232,7 @@ bo'lganda ketadi.
   qo'ng'iroqlarda bir xil ishlaydi.
 - SMS matni va to'liq raqam logga yozilmaydi — faqat maskalangan raqam va uzunlik.
 
-Natijaga yoziladigan kalitlar: `midCallSmsSent`, `midCallSmsText` (`sendMidCallSms`);
-`sendSmsRequested`, `smsNote`, `paymentLinkSmsSent` (`sendSmsPaymentLink`).
+Natijaga yoziladigan kalitlar: `midCallSmsSent`, `midCallSmsText` (`sendMidCallSms`).
 
 **`midCallSmsTemplate`** — agentning SMS shabloni. Eskiz production'da faqat oldindan
 tasdiqlangan shablonga mos matnni yetkazadi, shuning uchun shablon berilsa xabarni model
@@ -258,8 +250,7 @@ yozmaydi:
 480 belgi chegarasi to'ldirilgan matnga qo'llanadi; natijadagi `midCallSmsText` — haqiqatda
 yuborilgan matn. Misol: `"midCallSmsTemplate": "Hurmatli {{clientName | mijoz}}, to'lov
 havolasi: {{text}}"` — Eskiz kabinetida xuddi shu matn (o'zgaruvchan qismlari bilan)
-shablon sifatida tasdiqlangan bo'lishi kerak. `sendSmsPaymentLink` ning qat'iy matni
-(`To'lov havolasi: <havola>`) ham shablon sifatida tasdiqlanishi kerak.
+shablon sifatida tasdiqlangan bo'lishi kerak. To'lov havolasi uchun: `"midCallSmsTemplate": "To'lov havolasi: {{paymentLink}}"` — `{{paymentLink}}` qo'ng'iroq faktidan to'ldiriladi (kontakt ma'lumoti yoki CRM), model faqat *qachon* yuborishni hal qiladi.
 
 ### Eskiz sozlamalari (`config/integrations.yml`)
 

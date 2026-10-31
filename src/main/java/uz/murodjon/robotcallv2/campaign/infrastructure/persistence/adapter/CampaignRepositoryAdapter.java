@@ -139,6 +139,11 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
     }
 
     @Override
+    public void recordConsent(long companyId, long id, Instant at) {
+        campaignJpaRepository.recordConsent(id, companyId, at);
+    }
+
+    @Override
     @Transactional
     public void recordRecurrenceRun(long id, Instant lastRunAt, CampaignStatus status) {
         campaignJpaRepository.recordRecurrenceRun(id, lastRunAt, status);
@@ -173,9 +178,6 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
 
             if (filter.status() != null) {
                 predicates.add(cb.equal(root.get("status"), filter.status()));
-            }
-            if (filter.type() != null) {
-                predicates.add(cb.equal(root.get("type"), filter.type()));
             }
             if (filter.aiAgentId() != null) {
                 predicates.add(cb.equal(root.get("aiAgent").get("id"), filter.aiAgentId()));

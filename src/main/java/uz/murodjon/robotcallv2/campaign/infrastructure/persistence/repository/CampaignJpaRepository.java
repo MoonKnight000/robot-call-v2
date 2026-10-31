@@ -61,10 +61,19 @@ public interface CampaignJpaRepository extends JpaRepository<CampaignEntity, Lon
     /** Atomic ACTIVE → COMPLETED; 1 row when this call won, 0 when another already had or targets remain. */
     @Modifying
     @Transactional
+    // An auto-enroll campaign is waiting for contacts that do not exist yet; only its endAt closes it.
     @Query(value = "UPDATE campaign SET status = 'COMPLETED' WHERE id = :id AND company_id = :companyId "
-            + "AND status = 'ACTIVE' AND NOT EXISTS (SELECT 1 FROM campaign_target t WHERE t.campaign_id = :id "
+            + "AND status = 'ACTIVE' AND kind <> 'AUTO_ENROLL' AND NOT EXISTS (SELECT 1 FROM campaign_target t WHERE t.campaign_id = :id "
             + "AND t.status IN ('PENDING', 'IN_PROGRESS'))", nativeQuery = true)
     int completeIfFinished(@Param("id") long id, @Param("companyId") long companyId);
+
+    // Cleared so a campaign read later in the same transaction (batch-call) sees the stamp: the column is
+    // not updatable through the entity.
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Transactional
+    @Query(value = "UPDATE campaign SET consent_confirmed_at = :at "
+            + "WHERE id = :id AND company_id = :companyId AND consent_confirmed_at IS NULL", nativeQuery = true)
+    void recordConsent(@Param("id") long id, @Param("companyId") long companyId, @Param("at") Instant at);
 
     @Modifying
     @Transactional

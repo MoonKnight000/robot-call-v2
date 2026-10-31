@@ -5,3 +5,7 @@ Authorization: Bearer {{auth_token}}
 ### SIP trunks: channel limit, calls on them now, and the channel count learned from refusals
 GET http://localhost:8080/api/concurrency/trunks
 Authorization: Bearer {{auth_token}}
+
+### A campaign's dialing capacity: company limit, its own and other campaigns' share, trunk CPS
+GET http://localhost:8080/api/concurrency/campaigns/1
+Authorization: Bearer {{auth_token}}

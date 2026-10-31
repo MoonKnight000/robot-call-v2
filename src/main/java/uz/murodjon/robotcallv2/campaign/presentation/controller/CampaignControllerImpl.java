@@ -2,17 +2,22 @@ package uz.murodjon.robotcallv2.campaign.presentation.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import uz.murodjon.robotcallv2.crm.domain.entity.Debtor;
 import uz.murodjon.robotcallv2.campaign.application.dto.*;
 import uz.murodjon.robotcallv2.campaign.application.port.input.BatchCallUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignAutoEnrollUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
+import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
+import uz.murodjon.robotcallv2.campaign.domain.entity.SpreadsheetCsv;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetFilter;
 import uz.murodjon.robotcallv2.donotcall.application.dto.DoNotCallResponse;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
 
 import java.util.List;
 
@@ -22,12 +27,15 @@ public class CampaignControllerImpl implements CampaignController {
     private final CampaignUseCase campaignUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
     private final BatchCallUseCase batchCallUseCase;
+    private final CampaignAutoEnrollUseCase campaignAutoEnrollUseCase;
 
     public CampaignControllerImpl(CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
-                                  BatchCallUseCase batchCallUseCase) {
+                                  BatchCallUseCase batchCallUseCase,
+                                  CampaignAutoEnrollUseCase campaignAutoEnrollUseCase) {
         this.campaignUseCase = campaignUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
         this.batchCallUseCase = batchCallUseCase;
+        this.campaignAutoEnrollUseCase = campaignAutoEnrollUseCase;
     }
 
     @Override
@@ -58,6 +66,22 @@ public class CampaignControllerImpl implements CampaignController {
     @Override
     public ResponseEntity<ResponseData<CampaignStatusResponse>> archive(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(campaignUseCase.archive(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CampaignRow>> acceptConsent(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(campaignUseCase.acceptConsent(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CampaignOverviewResponse>> overview(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(campaignUseCase.requireCampaignOverview(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AutoEnrollPreviewResponse>> previewAutoEnroll(long companyId, long id, int page, int size,
+                                                                               AutoEnrollment draft) {
+        return ResponseEntity.ok(ResponseData.ok(campaignAutoEnrollUseCase.previewAutoEnroll(companyId, id, draft, page, size)));
     }
 
     @Override
@@ -97,6 +121,11 @@ public class CampaignControllerImpl implements CampaignController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<Integer>> clearTargets(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.clearUploadedTargets(companyId, id)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<TargetImportResult>> addTargetsCsv(long companyId, long id, String csv) {
         return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.importTargetsCsv(companyId, id, csv)));
     }
@@ -104,6 +133,21 @@ public class CampaignControllerImpl implements CampaignController {
     @Override
     public ResponseEntity<ResponseData<TargetCsvPreview>> previewTargetsCsv(long companyId, long id, String csv) {
         return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.previewTargetsCsv(companyId, id, csv)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TargetImportResult>> importTargets(long companyId, long id, TargetImportRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.importTargets(companyId, id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<TargetCsvPreview>> previewTargets(long companyId, long id, TargetImportRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.previewTargets(companyId, id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<SpreadsheetCsv>> readTargetsXlsx(long companyId, long id, MultipartFile file, int sheet) {
+        return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.readTargetsXlsx(companyId, id, UploadedFile.from(file), sheet)));
     }
 
     @Override

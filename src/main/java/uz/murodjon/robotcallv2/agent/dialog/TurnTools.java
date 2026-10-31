@@ -43,9 +43,9 @@ import java.util.*;
  * this stage did not offer is answered with an error rather than executed, and that is
  * only decidable against the list that was sent.
  *
- * <p>Where the tools themselves come from: {@link DialogTools} holds the hardcoded ones
- * (they carry code-level guardrails, e.g. rejecting a promised date in the past) and
- * {@link ScenarioToolCallbackFactory} builds every tool a scenario declares for itself.
+ * <p>Where the tools themselves come from: {@link DialogTools} holds the ones that steer the
+ * call (hand over, hang up, language) and {@link ScenarioToolCallbackFactory} builds every
+ * tool a scenario declares for itself — the outcome tools, with their disposition and date rules.
  */
 @Component
 public class TurnTools {
@@ -97,10 +97,9 @@ public class TurnTools {
      * tool declaration is re-sent (and re-billed) on every turn, and the ones that
      * cannot legitimately fire yet are also the ones a model is most likely to misfire.
      *
-     * <p>Two of a scenario's tools — {@code recordPaymentPromise}/{@code
-     * recordRefusalReason} — are hardcoded {@link DialogTools} methods and only appear
-     * when the scenario actually declares a matching {@link ToolDef} name; every other
-     * declared tool is built generically by {@link ScenarioToolCallbackFactory}.
+     * <p>A {@link DialogTools} method that is not universal only appears when the scenario
+     * declares a matching {@link ToolDef} name; every other declared tool is built
+     * generically by {@link ScenarioToolCallbackFactory}.
      *
      * <p>The set only changes on a stage transition, so the request prefix — which
      * includes the tool declarations — still holds still for several turns at a time.
@@ -122,8 +121,8 @@ public class TurnTools {
                 continue; // a single-language company has nothing to switch to
             }
             // requestHumanTransfer/recordWrongPerson/recordDoNotCall/endCall/transitionTo
-            // are universal and always included; recordPaymentPromise/recordRefusalReason
-            // only when this scenario actually declares them.
+            // are universal and always included; the rest only when this scenario
+            // actually declares them.
             if (DialogTools.ALWAYS_AVAILABLE_TOOL_NAMES.contains(name) || declared.contains(name)) {
                 callbacks.add(fixed);
             }

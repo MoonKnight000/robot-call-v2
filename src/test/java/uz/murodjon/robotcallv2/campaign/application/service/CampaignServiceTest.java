@@ -27,6 +27,8 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.*;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
+import uz.murodjon.robotcallv2.campaign.domain.service.SequenceValidator;
+import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
 import uz.murodjon.robotcallv2.campaign.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
@@ -93,9 +95,9 @@ class CampaignServiceTest {
                 retryProperties, audit, notifications, mock(SmsUseCase.class), new ObjectMapper(), clock);
         targetService = new CampaignTargetService(campaigns, targets, targetSources, doNotCallUseCase, audit,
                 notifications, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
-                mock(ToolTargetImporter.class), mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), outcomeService, clock, new ObjectMapper());
+                mock(ToolTargetImporter.class), mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), outcomeService, clock, new ObjectMapper(), mock(SpreadsheetReaderPort.class));
         service = new CampaignService(campaigns, targets, targetSources, aiAgents, users, companyConfig, audit,
-                notifications, ttsWarmup, targetService, outcomeService, new CampaignValidator(), callQueues, clock);
+                notifications, ttsWarmup, targetService, outcomeService, new CampaignValidator(), new SequenceValidator(), mock(CallerIdPoolUseCase.class), callQueues, mock(AutoEnrollService.class), clock);
     }
 
     private Campaign campaign(int maxAttempts, int retryIntervalMinutes) {
@@ -106,7 +108,7 @@ class CampaignServiceTest {
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0),
                         Set.of(DayOfWeek.MONDAY)))
                 .retry(new CampaignRetry(maxAttempts, retryIntervalMinutes, null))
-                .limits(new CampaignLimits(5, 0, null, null))
+                .limits(new CampaignLimits(5, 0, null, null, null))
                 .aiAgentId(AI_AGENT_ID)
                 .companyId(1L)
                 .recurrence(new CampaignRecurrence(RecurrenceType.ONCE, null, null, false))
@@ -297,7 +299,7 @@ class CampaignServiceTest {
         when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(true);
 
         service.updateCampaign(1L, CAMPAIGN_ID, new UpdateCampaignRequest("c", AI_AGENT_ID, null,
-                schedule(null, null), retry(), limits(), recurrence(), null, null));
+                schedule(null, null), retry(), limits(), recurrence(), null, null, null, null, null));
 
         ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
         verify(campaigns).update(eq(1L), eq(CAMPAIGN_ID), written.capture());
@@ -307,18 +309,18 @@ class CampaignServiceTest {
 
     private static CreateCampaignRequest createRequestWithWindow(LocalTime start, LocalTime end) {
         return new CreateCampaignRequest("c", AI_AGENT_ID, null,
-                schedule(start, end), retry(), limits(), recurrence(), null);
+                schedule(start, end), retry(), limits(), recurrence(), null, null, null, null, null);
     }
 
     private static CreateCampaignRequest createRequest(DialMode dialMode, Long aiAgentId, Long callQueueId) {
         return new CreateCampaignRequest("c", aiAgentId, null,
                 schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(),
-                new CampaignDialingDto(dialMode, callQueueId, null, null));
+                new CampaignDialingDto(dialMode, callQueueId, null, null), null, null, null, null);
     }
 
     private static UpdateCampaignRequest updateRequest(Long version) {
         return new UpdateCampaignRequest("c", AI_AGENT_ID, null,
-                schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(), null, version);
+                schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(), null, null, null, null, version);
     }
 
     private static CampaignScheduleDto schedule(LocalTime start, LocalTime end) {
@@ -330,7 +332,7 @@ class CampaignServiceTest {
     }
 
     private static CampaignLimitsDto limits() {
-        return new CampaignLimitsDto(5, 0, null, null);
+        return new CampaignLimitsDto(5, 0, null, null, null);
     }
 
     private static CampaignRecurrenceDto recurrence() {

@@ -51,16 +51,14 @@ class DialogToolsSmsGuardTest {
     }
 
     @Test
-    void thePaymentLinkAndAMidCallSmsShareTheOneSms() {
-        DialogTools tools = new DialogTools(
-                sessionWithTemplate(SLOT_ONLY, Map.of("paymentLink", "https://pay.example.uz/abc123"), sent::add));
+    void aTemplateCanCarryTheCallsOwnPaymentLink() {
+        DialogTools tools = new DialogTools(sessionWithTemplate("To'lov havolasi: {{paymentLink}}",
+                Map.of("paymentLink", "https://pay.example.uz/abc123"), sent::add));
 
-        String link = tools.sendSmsPaymentLink(null, null);
-        String other = tools.sendMidCallSms(null, "Yana bir SMS");
+        String result = tools.sendMidCallSms(null, null);
 
-        assertThat(link).doesNotStartWith("ERROR:");
-        assertThat(other).startsWith("ERROR:");
-        // The model decides when, not what: the text is fixed and the link is the call's own.
+        assertThat(result).doesNotStartWith("ERROR:");
+        // The model decides when, never what: the text is the template and the link is the call's own.
         assertThat(sent).containsExactly("To'lov havolasi: https://pay.example.uz/abc123");
     }
 
@@ -96,27 +94,6 @@ class DialogToolsSmsGuardTest {
         String result = new DialogTools(session).sendMidCallSms(null, "Salom");
 
         assertThat(result).startsWith("ERROR:");
-    }
-
-    @Test
-    void onlyRecordsThePaymentLinkRequestWhenTheCallHasNoLink() {
-        DialogSession session = session(Map.of(), sent::add);
-
-        String result = new DialogTools(session).sendSmsPaymentLink(null, "rekvizitlar");
-
-        assertThat(result).doesNotStartWith("ERROR:");
-        assertThat(sent).isEmpty();
-        assertThat(session.outcome()).containsEntry("sendSmsRequested", true);
-    }
-
-    @Test
-    void doesNotSendAPaymentLinkThatIsNotAWebAddress() {
-        DialogSession session = session(Map.of("paymentLink", "+998 90 123 45 67 ga qo'ng'iroq qiling"), sent::add);
-
-        new DialogTools(session).sendSmsPaymentLink(null, null);
-
-        assertThat(sent).isEmpty();
-        assertThat(session.outcome()).containsEntry("sendSmsRequested", true);
     }
 
     @Test

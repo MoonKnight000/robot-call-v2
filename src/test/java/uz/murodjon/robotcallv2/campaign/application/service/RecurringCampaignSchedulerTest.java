@@ -56,7 +56,7 @@ class RecurringCampaignSchedulerTest {
                 .status(status)
                 .schedule(new CampaignSchedule(null, null, windowStart, windowEnd, dialDays))
                 .retry(new CampaignRetry(3, 0, null))
-                .limits(new CampaignLimits(10, 0, null, null))
+                .limits(new CampaignLimits(10, 0, null, null, null))
                 .aiAgentId(7L)
                 .companyId(1L)
                 .createdBy(1L)

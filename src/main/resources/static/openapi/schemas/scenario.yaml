@@ -411,6 +411,9 @@ ToolDef:
         $ref: '#/ToolParamDef'
     preToolSpeech:
       type: string
+    disposition:
+      type: string
+      description: "the Disposition a successful call gives the conversation (PROMISE_TO_PAY, REFUSED, CALLBACK_REQUESTED, PAYMENT_CLAIMED, GOAL_REACHED…); null = the tool only records its params"
 ToolParamDef:
   type: object
   properties:
@@ -418,6 +421,7 @@ ToolParamDef:
       type: string
     type:
       type: string
+      description: "string, number, boolean, date (yyyy-MM-dd), futureDate (today or later) or pastDate (today or earlier)"
     required:
       type: boolean
     constraint:

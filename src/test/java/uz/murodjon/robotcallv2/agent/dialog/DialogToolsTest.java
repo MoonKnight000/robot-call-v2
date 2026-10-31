@@ -78,36 +78,6 @@ class DialogToolsTest {
     }
 
     @Test
-    void rejectsAPromiseInThePast() {
-        LocalDate yesterday = LocalDate.now().minusDays(1);
-
-        String result = tools.recordPaymentPromise("Yaxshi, yozib qo'ydim.", yesterday, null, null, null);
-
-        assertThat(result).startsWith("ERROR:");
-        // The line confirmed a promise the guardrail refused — it must not be spoken.
-        assertThat(session.toolReplies()).isNull();
-        // The usual cause is a wrong year, so today's date has to be in the reply —
-        // without it the model has nothing to correct against and re-sends the same date.
-        assertThat(result).contains(LocalDate.now().toString());
-        assertThat(session.outcome()).doesNotContainKey("promisedDate");
-        assertThat(session.disposition()).isNull();
-    }
-
-    @Test
-    void acceptsAPromiseFromToday() {
-        LocalDate today = LocalDate.now();
-
-        tools.recordPaymentPromise("Kelishdik, belgilab qo'ydim.", today, new BigDecimal("500000"), "CLICK", "yarim to'lov");
-
-        // What the caller hears on a tool-only turn, without a second LLM round trip.
-        assertThat(session.toolReplies()).isEqualTo("Kelishdik, belgilab qo'ydim.");
-        assertThat(session.outcome().get("promisedDate")).isEqualTo(today);
-        assertThat((BigDecimal) session.outcome().get("promisedAmount")).isEqualByComparingTo("500000");
-        assertThat(session.outcome().get("paymentChannel")).isEqualTo("CLICK");
-        assertThat(session.disposition()).isEqualTo(Disposition.PROMISE_TO_PAY);
-    }
-
-    @Test
     void optOutEndsTheCallAndKeepsTheReason() {
         // §11.4: the reason has to survive until teardown writes the phone-level entry.
         tools.recordDoNotCall("Uzr so'rayman, boshqa bezovta qilmaymiz.",
@@ -116,15 +86,6 @@ class DialogToolsTest {
         assertThat(session.isEnded()).isTrue();
         assertThat(session.disposition()).isEqualTo(Disposition.DO_NOT_CALL);
         assertThat(session.doNotCallReason()).contains("qo'ng'iroq");
-    }
-
-    @Test
-    void refusalRecordsTheReasonCode() {
-        tools.recordRefusalReason("Tushundim, holatingizni yozib qo'ydim.", "JOB_LOSS", "ishdan bo'shadi");
-
-        assertThat(session.outcome().get("reasonCode")).isEqualTo("JOB_LOSS");
-        assertThat(session.disposition()).isEqualTo(Disposition.REFUSED);
-        assertThat(session.isEnded()).isFalse(); // the agent still has to close the call
     }
 
     @Test
@@ -328,87 +289,5 @@ class DialogToolsTest {
 
         assertThat(session.isEnded()).isTrue();
         assertThat(session.disposition()).isEqualTo(Disposition.HUNG_UP);
-    }
-
-    @Test
-    void bookShowroomVisitRecordsMeetingAndReachesGoal() {
-        String res = tools.bookShowroomVisit("Sizni ofisimizda kutamiz!", "2026-09-20 15:00",
-                "3 xonali", "60000 USD", "Bo'lib to'lash", "Oilaviy kelishadi");
-
-        assertThat(res).contains("Sotuv ofisiga uchrashuv belgilandi");
-        assertThat(session.toolReplies()).isEqualTo("Sizni ofisimizda kutamiz!");
-        assertThat(session.outcome().get("meetingBooked")).isEqualTo(true);
-        assertThat(session.outcome().get("meetingTime")).isEqualTo("2026-09-20 15:00");
-        assertThat(session.outcome().get("roomsNeeded")).isEqualTo("3 xonali");
-        assertThat(session.outcome().get("budgetRange")).isEqualTo("60000 USD");
-        assertThat(session.outcome().get("paymentMethod")).isEqualTo("Bo'lib to'lash");
-        assertThat(session.outcome().get("meetingNote")).isEqualTo("Oilaviy kelishadi");
-        assertThat(session.disposition()).isEqualTo(Disposition.GOAL_REACHED);
-    }
-
-    @Test
-    void bookShowroomVisitRequiresVisitTime() {
-        String res = tools.bookShowroomVisit("Xayr", null, "2 xonali", null, null, null);
-        assertThat(res).startsWith("ERROR:");
-        assertThat(session.outcome().get("meetingBooked")).isNull();
-    }
-
-    @Test
-    void sendLocationSmsRequestsSmsWhenNoLinkOrAddress() {
-        String res = tools.sendLocationSms("Lokatsiyani yuboraman", null, null);
-        assertThat(res).contains("qayd etildi");
-        assertThat(session.outcome().get("locationSmsRequested")).isEqualTo(true);
-    }
-
-    @Test
-    void sendCatalogSmsRequestsSmsWhenNoLink() {
-        String res = tools.sendCatalogSms("Katalogni yuboraman", null);
-        assertThat(res).contains("qayd etildi");
-        assertThat(session.outcome().get("catalogSmsRequested")).isEqualTo(true);
-    }
-
-    @Test
-    void bookAppointmentRecordsDetailsAndReachesGoal() {
-        String res = tools.bookAppointment("Sizni 15-oktabr soat 14:00 da kutamiz!", "2026-10-15", "14:00",
-                "Ali Valiyev", "Stomatolog ko'rigi", "Birinchi marta kelmoqda");
-
-        assertThat(res).contains("Uchrashuv muvaffaqiyatli band qilindi");
-        assertThat(session.toolReplies()).isEqualTo("Sizni 15-oktabr soat 14:00 da kutamiz!");
-        assertThat(session.outcome().get("appointmentBooked")).isEqualTo(true);
-        assertThat(session.outcome().get("appointmentDate")).isEqualTo("2026-10-15");
-        assertThat(session.outcome().get("appointmentTime")).isEqualTo("14:00");
-        assertThat(session.outcome().get("appointmentAttendee")).isEqualTo("Ali Valiyev");
-        assertThat(session.outcome().get("appointmentService")).isEqualTo("Stomatolog ko'rigi");
-        assertThat(session.outcome().get("appointmentNote")).isEqualTo("Birinchi marta kelmoqda");
-        assertThat(session.disposition()).isEqualTo(Disposition.GOAL_REACHED);
-    }
-
-    @Test
-    void bookAppointmentRequiresDateAndTime() {
-        String resNoDate = tools.bookAppointment("Rahmat", null, "14:00", "Ali", null, null);
-        assertThat(resNoDate).startsWith("ERROR: no appointment date");
-        assertThat(session.outcome().get("appointmentBooked")).isNull();
-
-        String resNoTime = tools.bookAppointment("Rahmat", "2026-10-15", "", "Ali", null, null);
-        assertThat(resNoTime).startsWith("ERROR: no appointment time");
-        assertThat(session.outcome().get("appointmentBooked")).isNull();
-    }
-
-    @Test
-    void checkCalendarAvailabilityReturnsAvailableSlots() {
-        String res = tools.checkCalendarAvailability("Hozir bo'sh vaqtlarni tekshiraman", "2026-10-15", "Konsultatsiya");
-        assertThat(res).contains("Free times on 2026-10-15");
-        assertThat(session.toolReplies()).isEqualTo("Hozir bo'sh vaqtlarni tekshiraman");
-    }
-
-    @Test
-    void cancelAppointmentRecordsCancellation() {
-        String res = tools.cancelAppointment("Uchrashuvingiz bekor qilindi", "2026-10-15", "14:00", "Vaqt to'g'ri kelmadi");
-        assertThat(res).contains("Uchrashuv muvaffaqiyatli bekor qilindi");
-        assertThat(session.toolReplies()).isEqualTo("Uchrashuvingiz bekor qilindi");
-        assertThat(session.outcome().get("appointmentCancelled")).isEqualTo(true);
-        assertThat(session.outcome().get("cancelledAppointmentDate")).isEqualTo("2026-10-15");
-        assertThat(session.outcome().get("cancelledAppointmentTime")).isEqualTo("14:00");
-        assertThat(session.outcome().get("cancellationReason")).isEqualTo("Vaqt to'g'ri kelmadi");
     }
 }

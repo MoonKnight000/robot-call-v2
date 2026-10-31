@@ -31,7 +31,6 @@ Umumiy javob formati va xatolar uchun [README.md](README.md)ga qarang.
       "totalCalls": 12000, "answeredCalls": 5200, "talkSeconds": 468000,
       "spentUzs": 2080000,
       "promises": 900, "promisedAmountUzs": 310000000,
-      "keptPromises": 420, "keptAmountUzs": 120000000,
       "conversions": 430, "conversionValueUzs": 121500000
     },
     "figures": {
@@ -55,8 +54,7 @@ nazar, uni yutgan qo'ng'iroq davriga yoziladi.
 | Maydon | Izoh |
 |---|---|
 | `totals.spentUzs` | Shu qo'ng'iroqlar uchun yechilgan pul (`call_billing`, `SETTLED`) |
-| `totals.promises` / `promisedAmountUzs` | Qo'ng'iroqlarda olingan to'lov va'dalari ([payment-promises.md](payment-promises.md)) |
-| `totals.keptPromises` / `keptAmountUzs` | Shulardan to'lov xabari kelib bajarilganlari |
+| `totals.promises` / `promisedAmountUzs` | Qo'ng'iroqlarda olingan to'lov va'dalari |
 | `totals.conversions` / `conversionValueUzs` | CRM xabar qilgan va shu qo'ng'iroqlarga bog'langan konversiyalar ([conversions.md](conversions.md)) — **haqiqiy tushgan pul** |
 | `figures.operatorHours` | `(talkSeconds + totalCalls × operatorSecondsPerAttempt) / 3600` — operator javob berilmagan qo'ng'iroqqa ham vaqt sarflaydi |
 | `figures.operatorCostUzs` | `operatorHours × operatorHourlyCostUzs` |
@@ -65,9 +63,7 @@ nazar, uni yutgan qo'ng'iroq davriga yoziladi.
 | `figures.roiPercent` | `(conversionValueUzs − spentUzs) / spentUzs × 100`; hech narsa sarflanmagan bo'lsa `null` |
 | `figures.costPerAnsweredCallUzs`, `costPerPromiseUzs` | Bo'luvchi `0` bo'lsa `null` |
 
-ROI daromadi **faqat konversiyalardan** olinadi: bajarilgan va'da konversiya (to'lov xabari)
-orqali bajariladi, ikkalasini qo'shish bir pulni ikki marta sanaydi. `keptAmountUzs` alohida
-ko'rsatish uchun.
+ROI daromadi **faqat konversiyalardan** olinadi: va'da hali tushgan pul emas, shuning uchun u daromadga qo'shilmaydi.
 
 `assumptions` javobda qaytadi: tejash shu farazlarga bog'liq, UI ularni ko'rsatishi va
 `operatorHourlyCostUzs` ni o'zgartirish imkonini berishi kerak.

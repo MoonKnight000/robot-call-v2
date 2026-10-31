@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.Campai
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.mapper.CampaignTargetEntityMapper;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetJpaRepository;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.repository.CampaignTargetSummaryProjection;
+import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.sql.Types;
 import java.time.Instant;
@@ -191,6 +192,12 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
     }
 
     @Override
+    public void moveToStep(long id, String stepId, Instant nextAttemptAt) {
+        // Never a null bound into the native query: "at once" is now.
+        campaignTargetJpaRepository.moveToStep(id, stepId, nextAttemptAt != null ? nextAttemptAt : Instant.now());
+    }
+
+    @Override
     public void releaseClaim(long id, Instant nextAttemptAt) {
         campaignTargetJpaRepository.releaseClaim(id, nextAttemptAt);
     }
@@ -222,6 +229,7 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
         }
         List<CampaignTargetSummaryProjection> summaries =
                 campaignTargetJpaRepository.summarizeByCampaignIdsAndCompanyId(campaignIds, companyId);
+        Map<Long, Long> successful = countSuccessfulTargets(companyId, campaignIds);
         Map<Long, CampaignTargetStats> result = new HashMap<>();
         for (CampaignTargetSummaryProjection s : summaries) {
             if (s.getCampaignId() != null) {
@@ -229,7 +237,8 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
                         s.getTotalTargets(),
                         s.getCalledTargets(),
                         s.getPendingTargets(),
-                        s.getCompletedTargets()
+                        s.getCompletedTargets(),
+                        successful.getOrDefault(s.getCampaignId(), 0L)
                 ));
             }
         }
@@ -238,13 +247,28 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
 
     @Override
     public CampaignTargetStats findStatsByCampaignId(long companyId, long campaignId) {
+        long successful = countSuccessfulTargets(companyId, List.of(campaignId)).getOrDefault(campaignId, 0L);
         return campaignTargetJpaRepository.summarizeByCampaignIdAndCompanyId(campaignId, companyId)
                 .map(s -> new CampaignTargetStats(
                         s.getTotalTargets(),
                         s.getCalledTargets(),
                         s.getPendingTargets(),
-                        s.getCompletedTargets()
+                        s.getCompletedTargets(),
+                        successful
                 ))
                 .orElse(CampaignTargetStats.ZERO);
+    }
+
+    /** Campaign id → targets with at least one call that reached what the campaign was after. */
+    private Map<Long, Long> countSuccessfulTargets(long companyId, Collection<Long> campaignIds) {
+        List<String> conversions = Arrays.stream(Disposition.values())
+                .filter(Disposition::isConversion)
+                .map(Disposition::name)
+                .toList();
+        Map<Long, Long> counts = new HashMap<>();
+        for (Object[] row : campaignTargetJpaRepository.countSuccessfulByCampaignIds(campaignIds, companyId, conversions)) {
+            counts.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+        }
+        return counts;
     }
 }
