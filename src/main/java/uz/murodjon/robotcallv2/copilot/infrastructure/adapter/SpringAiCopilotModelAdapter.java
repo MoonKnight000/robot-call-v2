@@ -54,17 +54,26 @@ public class SpringAiCopilotModelAdapter implements CopilotModelPort {
     @Override
     public CopilotModelReply generateReply(String instructions, List<CopilotMessage> history, List<McpTool> tools,
                                            CopilotToolInvoker invoker) {
+        List<ToolCallback> callbacks = tools.stream().map(tool -> toCallback(tool, invoker)).toList();
+        return call(instructions, toMessages(history), callbacks);
+    }
+
+    @Override
+    public CopilotModelReply generateText(String instructions, String message) {
+        return call(instructions, List.of(new UserMessage(message)), List.of());
+    }
+
+    private CopilotModelReply call(String instructions, List<Message> messages, List<ToolCallback> callbacks) {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         if (chatModel == null) {
             throw new ConflictException(ErrorCode.COPILOT_NOT_CONFIGURED);
         }
-        List<ToolCallback> callbacks = tools.stream().map(tool -> toCallback(tool, invoker)).toList();
         ChatResponse response;
         try {
             response = ChatClient.create(chatModel).prompt()
                     .options(options(chatModel, callbacks).mutate())
                     .system(instructions)
-                    .messages(toMessages(history))
+                    .messages(messages)
                     .call()
                     .chatResponse();
         } catch (AppException e) {

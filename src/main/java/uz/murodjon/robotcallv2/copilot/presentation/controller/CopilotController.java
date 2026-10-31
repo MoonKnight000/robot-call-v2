@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import uz.murodjon.robotcallv2.copilot.application.dto.AskCopilotRequest;
 import uz.murodjon.robotcallv2.copilot.application.dto.CopilotReplyResponse;
+import uz.murodjon.robotcallv2.copilot.application.dto.RewritePromptRequest;
+import uz.murodjon.robotcallv2.copilot.application.dto.RewritePromptResponse;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSession;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSessionFilter;
@@ -57,4 +59,14 @@ public interface CopilotController {
     ResponseEntity<ResponseData<Void>> deleteSession(
             @CurrentCompanyId long companyId,
             @PathVariable long sessionId);
+
+    /**
+     * The prompt editors' AI button: improves the prompt, writes one from the instruction, or
+     * rewrites the prompt by the instruction. Returns the text only — nothing is saved.
+     */
+    @PreAuthorize("hasAnyAuthority('AI_AGENT_READ', 'REPORT_READ')")
+    @PostMapping("/prompt/rewrite")
+    ResponseEntity<ResponseData<RewritePromptResponse>> rewritePrompt(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody RewritePromptRequest request);
 }

@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.copilot.application.port.input;
 
 import uz.murodjon.robotcallv2.copilot.application.dto.AskCopilotRequest;
 import uz.murodjon.robotcallv2.copilot.application.dto.CopilotReplyResponse;
+import uz.murodjon.robotcallv2.copilot.application.dto.RewritePromptRequest;
+import uz.murodjon.robotcallv2.copilot.application.dto.RewritePromptResponse;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSession;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSessionFilter;
@@ -30,4 +32,7 @@ public interface CopilotUseCase {
     List<CopilotMessage> findMessages(long companyId, long sessionId);
 
     void deleteSession(long companyId, long sessionId);
+
+    /** The prompt editors' AI button: improves or writes one prompt. Nothing is saved. */
+    RewritePromptResponse rewritePrompt(long companyId, RewritePromptRequest request);
 }

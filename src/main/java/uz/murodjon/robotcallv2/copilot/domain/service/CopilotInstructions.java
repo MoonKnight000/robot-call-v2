@@ -12,11 +12,17 @@ import java.time.LocalDate;
 public final class CopilotInstructions {
 
     private static final String TEXT = PromptText.text("copilot.txt");
+    private static final String PROMPT_REWRITE_TEXT = PromptText.text("prompt-rewrite.txt");
 
     private CopilotInstructions() {
     }
 
     public static String forDate(LocalDate today) {
         return TEXT.formatted(today);
+    }
+
+    /** For the prompt editors' AI button: rewrites or writes one prompt, no tools. */
+    public static String forPromptRewrite() {
+        return PROMPT_REWRITE_TEXT;
     }
 }

@@ -118,3 +118,35 @@ Javob — `List<CopilotMessage>`, eskisidan yangisiga: `USER` savollar, `TOOL` c
 ## `DELETE /api/copilot/sessions/{sessionId}` — suhbatni o'chirish
 
 Suhbat va uning barcha xabarlari o'chiriladi. Billing ledger'dagi yozuvlar qoladi.
+
+---
+
+## `POST /api/copilot/prompt/rewrite` — prompt'ni AI bilan yozish/yaxshilash
+
+Prompt muharrirlaridagi AI tugmasi uchun. Hech narsa saqlanmaydi va suhbat tarixiga yozilmaydi —
+faqat yangi matn qaytadi, uni qo'llash/bekor qilishni foydalanuvchi o'zi hal qiladi. Tool'larsiz,
+bitta model chaqiruvi.
+
+**Request body** (`RewritePromptRequest`):
+
+```json
+{ "prompt": "Mijozga qarz haqida eslat. {{client_name}} ga salom ber.", "instruction": "Qisqaroq va muloyimroq qil" }
+```
+
+| Maydon | Turi | Majburiy | Izoh |
+|---|---|---|---|
+| `prompt` | `string` (≤20000) | ❌ | Hozirgi prompt; bo'sh bo'lsa — `instruction` bo'yicha yangisi yoziladi |
+| `instruction` | `string` (≤2000) | ❌ | Nima o'zgarsin; bo'sh bo'lsa — prompt umumiy yaxshilanadi |
+
+Ikkalasi ham bo'sh bo'lsa — `400 PROMPT_REWRITE_EMPTY`. `{{o'zgaruvchi}}` lar o'zgarishsiz qoladi,
+til — prompt tili (prompt bo'lmasa — instruction tili).
+
+**Response** (`RewritePromptResponse`):
+
+```json
+{ "accept": true, "data": { "prompt": "..." }, "message": null, "messageCode": null, "errors": null }
+```
+
+**Xatolar:** `400 PROMPT_REWRITE_EMPTY`, `400 VALIDATION_FAILED` (uzunlik), `409 COPILOT_NO_BALANCE`,
+`409 COPILOT_NOT_CONFIGURED`, `502 COPILOT_REPLY_FAILED`. Tokenlar hozircha balansdan yechilmaydi
+(faqat balans borligi tekshiriladi).

@@ -44,3 +44,13 @@ Authorization: Bearer {{auth_token}}
 ### Delete a conversation
 DELETE http://localhost:8080/api/copilot/sessions/1
 Authorization: Bearer {{auth_token}}
+
+### Rewrite a prompt with AI (the prompt editors' AI button)
+POST http://localhost:8080/api/copilot/prompt/rewrite
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "prompt": "Mijozga qarz haqida eslat. {{client_name}} ga salom ber.",
+  "instruction": "Qisqaroq va muloyimroq qil"
+}

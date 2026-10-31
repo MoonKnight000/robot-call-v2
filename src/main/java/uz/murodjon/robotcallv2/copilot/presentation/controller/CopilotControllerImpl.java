@@ -5,6 +5,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import uz.murodjon.robotcallv2.copilot.application.dto.AskCopilotRequest;
 import uz.murodjon.robotcallv2.copilot.application.dto.CopilotReplyResponse;
+import uz.murodjon.robotcallv2.copilot.application.dto.RewritePromptRequest;
+import uz.murodjon.robotcallv2.copilot.application.dto.RewritePromptResponse;
 import uz.murodjon.robotcallv2.copilot.application.port.input.CopilotUseCase;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSession;
@@ -49,5 +51,11 @@ public class CopilotControllerImpl implements CopilotController {
     public ResponseEntity<ResponseData<Void>> deleteSession(long companyId, long sessionId) {
         copilotUseCase.deleteSession(companyId, sessionId);
         return ResponseEntity.ok(ResponseData.ok(null));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<RewritePromptResponse>> rewritePrompt(long companyId,
+                                                                             RewritePromptRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(copilotUseCase.rewritePrompt(companyId, request)));
     }
 }

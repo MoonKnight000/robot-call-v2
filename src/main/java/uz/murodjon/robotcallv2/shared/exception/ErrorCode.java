@@ -450,6 +450,7 @@ public enum ErrorCode {
     CALL_REANALYSIS_NOT_ACTIVE("reanalysis %s is %s — only a QUEUED or RUNNING one can be cancelled"),
     COPILOT_NO_BALANCE("not enough balance to ask the copilot — top up first"),
     COPILOT_NOT_CONFIGURED("the copilot is not available — no chat model is configured"),
+    PROMPT_REWRITE_EMPTY("give a prompt to improve or an instruction to write one from"),
     OWN_LLM_API_KEY_MISSING("the company's own LLM needs secret '%s', which is gone or cannot be decrypted"),
     CAMPAIGN_NOT_ACTIVE("Campaign %s is %s — instant calls can only be queued on an ACTIVE campaign"),
     CAMPAIGN_NOT_AI("Campaign %s is dialled by operators (%s) — only an AI campaign can do this"),

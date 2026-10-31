@@ -19,4 +19,12 @@ public interface CopilotModelPort {
      */
     CopilotModelReply generateReply(String instructions, List<CopilotMessage> history, List<McpTool> tools,
                                     CopilotToolInvoker invoker);
+
+    /**
+     * One answer to one message, without tools or history.
+     *
+     * @throws uz.murodjon.robotcallv2.shared.exception.ConflictException when no model is configured
+     * @throws uz.murodjon.robotcallv2.shared.exception.ExternalServiceException when the model fails
+     */
+    CopilotModelReply generateText(String instructions, String message);
 }

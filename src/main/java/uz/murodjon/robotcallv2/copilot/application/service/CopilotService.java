@@ -9,6 +9,8 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.copilot.application.dto.AskCopilotRequest;
 import uz.murodjon.robotcallv2.copilot.application.dto.CopilotReplyResponse;
+import uz.murodjon.robotcallv2.copilot.application.dto.RewritePromptRequest;
+import uz.murodjon.robotcallv2.copilot.application.dto.RewritePromptResponse;
 import uz.murodjon.robotcallv2.copilot.application.port.input.CopilotUseCase;
 import uz.murodjon.robotcallv2.copilot.application.port.output.CopilotModelPort;
 import uz.murodjon.robotcallv2.copilot.application.port.output.CopilotRepository;
@@ -176,6 +178,21 @@ public class CopilotService implements CopilotUseCase {
         long userId = requireUserId();
         requireSession(companyId, userId, sessionId);
         repository.deleteSession(companyId, userId, sessionId);
+    }
+
+    @Override
+    public RewritePromptResponse rewritePrompt(long companyId, RewritePromptRequest request) {
+        String prompt = request.prompt() == null ? "" : request.prompt().strip();
+        String instruction = request.instruction() == null ? "" : request.instruction().strip();
+        if (prompt.isEmpty() && instruction.isEmpty()) {
+            throw new ValidationException(ErrorCode.PROMPT_REWRITE_EMPTY);
+        }
+        if (!callBillingUseCase.hasBalanceForCall(companyId)) {
+            throw new ConflictException(ErrorCode.COPILOT_NO_BALANCE);
+        }
+        String message = "CURRENT PROMPT:\n" + prompt + "\n\nINSTRUCTION:\n" + instruction;
+        CopilotModelReply reply = modelPort.generateText(CopilotInstructions.forPromptRewrite(), message);
+        return new RewritePromptResponse(reply.text());
     }
 
     /** An API key has no user to own a conversation; the copilot is the panel's. */
