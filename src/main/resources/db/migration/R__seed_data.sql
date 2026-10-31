@@ -4038,3 +4038,24 @@ BEGIN
          '10.0.0.5', now() - interval '15 days');
 END
 $seed$;
+
+-- ---------------------------------------------------------------------------
+-- Every campaign needs a campaign_dialer_config and a campaign_schedule row. CampaignEntity
+-- reads them as secondary tables (outer join) into primitive fields (daily_call_cap,
+-- auto_reset_targets, ...), so a campaign without a row fails to load with "Null value was
+-- assigned to a property of primitive type". Seed campaigns above that set only some of the
+-- rows get the column defaults here.
+-- ---------------------------------------------------------------------------
+INSERT INTO campaign_dialer_config (campaign_id)
+SELECT id FROM campaign
+ON CONFLICT (campaign_id) DO NOTHING;
+
+INSERT INTO campaign_schedule (campaign_id)
+SELECT id FROM campaign
+ON CONFLICT (campaign_id) DO NOTHING;
+
+-- Same for agents: AiAgentEntity maps ai_agent_ambience as a secondary table into an embedded
+-- object, which Hibernate leaves null when the row is missing (NPE in AiAgentEntityMapper).
+INSERT INTO ai_agent_ambience (ai_agent_id)
+SELECT id FROM ai_agent
+ON CONFLICT (ai_agent_id) DO NOTHING;
