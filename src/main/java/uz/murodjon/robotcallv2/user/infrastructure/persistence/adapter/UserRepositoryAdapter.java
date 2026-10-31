@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.storage.infrastructure.persistence.repository.Sto
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
+import uz.murodjon.robotcallv2.user.domain.enums.UserType;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.entity.UserEntity;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.mapper.UserEntityMapper;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
@@ -44,7 +45,7 @@ public class UserRepositoryAdapter implements UserRepository {
 
     @Override
     public long create(long companyId, String name, String username, String email, String passwordHash,
-                                  long roleId, UserStatus status) {
+                       long roleId, UserStatus status) {
         CompanyEntity comp = companyJpaRepository.getReferenceById(companyId);
 
         UserEntity entity = new UserEntity();
@@ -55,8 +56,29 @@ public class UserRepositoryAdapter implements UserRepository {
         entity.setPasswordHash(passwordHash);
         entity.setRole(roleReference(roleId));
         entity.setStatus(status);
+        entity.setType(UserType.COMPANY_USER);
         entity.setCreatedAt(Instant.now());
         return userJpaRepository.save(entity).getId();
+    }
+
+    @Override
+    public long createPlatformAdmin(String name, String username, String email, String passwordHash) {
+        UserEntity entity = new UserEntity();
+        entity.setCompany(null);
+        entity.setName(name);
+        entity.setUsername(username);
+        entity.setEmail(email);
+        entity.setPasswordHash(passwordHash);
+        entity.setRole(null);
+        entity.setStatus(UserStatus.ACTIVE);
+        entity.setType(UserType.PLATFORM_ADMIN);
+        entity.setCreatedAt(Instant.now());
+        return userJpaRepository.save(entity).getId();
+    }
+
+    @Override
+    public boolean hasPlatformAdmin() {
+        return userJpaRepository.existsByType(UserType.PLATFORM_ADMIN);
     }
 
     @Override

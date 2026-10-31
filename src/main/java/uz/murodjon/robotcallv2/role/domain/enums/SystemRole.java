@@ -9,9 +9,8 @@ import java.util.Set;
  * stored as rows, so a permission added in a later release reaches them without a data
  * migration — and so nobody can quietly widen ADMIN by editing a table.
  *
- * <p>DEVELOPER and SUPERADMIN are deliberately not assignable by a tenant's own admin:
- * DEVELOPER is our engineer sitting inside a customer's company with every company right,
- * SUPERADMIN is platform staff and additionally holds {@link Permission#PLATFORM_ADMIN}.
+ * <p>DEVELOPER is deliberately not assignable by a tenant's own admin:
+ * it is our engineer sitting inside a customer's company with every company right.
  */
 public enum SystemRole {
 
@@ -19,7 +18,6 @@ public enum SystemRole {
     ADMIN("Administrator", true),
     OPERATOR("Operator", true),
     VIEWER("Viewer", true),
-    SUPERADMIN("Superadmin", false),
     /** Runs the operator floor: everything an operator does, plus monitoring, queue membership and the call review inbox. */
     SUPERVISOR("Supervisor", true);
 
@@ -35,7 +33,7 @@ public enum SystemRole {
         return label;
     }
 
-    /** False for the two roles only platform staff may hand out (DEVELOPER, SUPERADMIN). */
+    /** False for roles only platform staff may hand out (DEVELOPER). */
     public boolean assignableByCompany() {
         return assignableByCompany;
     }
@@ -43,7 +41,6 @@ public enum SystemRole {
     public Set<Permission> resolvePermissions() {
         return switch (this) {
             case DEVELOPER -> Permission.findCompanyPermissions();
-            case SUPERADMIN -> platformPermissions();
             // Everything a tenant's own boss needs; engine tuning stays with DEVELOPER
             // because a wrong value there breaks every call in the company.
             case ADMIN -> withoutEngineEdit();
@@ -105,12 +102,6 @@ public enum SystemRole {
             }
         }
         return null;
-    }
-
-    private static Set<Permission> platformPermissions() {
-        EnumSet<Permission> all = EnumSet.copyOf(Permission.findCompanyPermissions());
-        all.add(Permission.PLATFORM_ADMIN);
-        return Collections.unmodifiableSet(all);
     }
 
     private static Set<Permission> withoutEngineEdit() {

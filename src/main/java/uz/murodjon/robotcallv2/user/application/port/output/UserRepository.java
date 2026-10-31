@@ -14,6 +14,10 @@ public interface UserRepository {
     long create(long companyId, String name, String username, String email, String passwordHash,
                 long roleId, UserStatus status);
 
+    long createPlatformAdmin(String name, String username, String email, String passwordHash);
+
+    boolean hasPlatformAdmin();
+
     boolean existsByEmail(String email);
 
     boolean existsByUsername(String username);

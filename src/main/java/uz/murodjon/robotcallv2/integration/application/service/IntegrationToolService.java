@@ -274,10 +274,13 @@ public class IntegrationToolService implements IntegrationToolUseCase {
         if (defaultChanged && request.applyTo() == null) {
             throw new ValidationException(ErrorCode.INTEGRATION_TOOL_PROPAGATION_REQUIRED);
         }
+        requireGrantComplete(request.permission(), request.scope());
         IntegrationTool edited = current.toBuilder()
                 .label(request.label().trim())
                 .description(request.description().trim())
                 .group(request.group())
+                .permission(request.permission())
+                .scope(request.scope())
                 .defaultEnabled(request.defaultEnabled())
                 .platformEnabled(request.platformEnabled())
                 .sortOrder(request.sortOrder())
@@ -292,10 +295,7 @@ public class IntegrationToolService implements IntegrationToolUseCase {
             if (request.definition() == null) {
                 throw new ValidationException(ErrorCode.INTEGRATION_TOOL_DEFINITION_REQUIRED);
             }
-            requireGrantComplete(request.permission(), request.scope());
             edited = edited.toBuilder()
-                    .permission(request.permission())
-                    .scope(request.scope())
                     .definition(buildTemplate(request.definition(), repository.findByProvider(current.provider()), current))
                     .build();
         }

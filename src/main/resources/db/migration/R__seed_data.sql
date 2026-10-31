@@ -33,27 +33,22 @@ VALUES (1, 'DEVELOPER', 'Developer', true),
        (1, 'ADMIN', 'Administrator', true),
        (1, 'OPERATOR', 'Operator', true),
        (1, 'VIEWER', 'Viewer', true),
-       (1, 'SUPERVISOR', 'Supervisor', true),
-       (1, 'SUPERADMIN', 'Superadmin', true)
+       (1, 'SUPERVISOR', 'Supervisor', true)
 ON CONFLICT (company_id, code) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('app_role', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM app_role), 1), true);
 
--- The platform admin: platform staff, not a tenant user. SUPERADMIN is the only role holding
--- PLATFORM_ADMIN (SystemRole), which is what opens company CRUD, platform trunks and users,
--- the number marketplace and every other company's data (CompanyAccessGuard). It lives in
--- company 1 for the same reason UserBootstrap's first admin does: a user needs a company,
--- and the bootstrap tenant is the one that always exists.
+-- The platform admin: platform staff, not a tenant user. Has no company_id and no company role.
+-- Holds PLATFORM_ADMIN authority, which is what opens company CRUD, platform trunks and users,
+-- the number marketplace and every other company's data (CompanyAccessGuard).
 --
 -- Login: platform / platform@robotcall.uz. The password is not written down here; it was
 -- handed over with this change — change it after the first login (PUT /api/profile/password).
--- Guarded by username and never refreshed, so a changed password survives a reseed. Because
--- company 1 has a user from here on, UserBootstrap does not create the BOOTSTRAP_ADMIN_*
--- account.
-INSERT INTO app_user (company_id, name, email, username, password_hash, role_id, status, position)
-SELECT 1, 'Platforma administratori', 'platform@robotcall.uz', 'platform',
-       '$2a$12$LEjDtXWZDfTGd6GJwFcYDuj5Ti0DKLgkxT8BuyDf3Ba7uDZ19W//K',
-       (SELECT id FROM app_role WHERE company_id = 1 AND code = 'SUPERADMIN'), 'ACTIVE', 'Platforma egasi'
+-- Guarded by username and never refreshed, so a changed password survives a reseed.
+INSERT INTO app_user (company_id, name, email, username, password_hash, role_id, status, position, type)
+SELECT NULL, 'Platforma administratori', 'platform@robotcall.uz', 'platform',
+       '$2a$12$AMpkNRnaJXARmQLilyxKf.65i4WWkVfdrIhptzC0e3n/9sWeLZgdG',
+       NULL, 'ACTIVE', 'Platforma egasi', 'PLATFORM_ADMIN'
 WHERE NOT EXISTS (SELECT 1 FROM app_user WHERE username = 'platform' OR email = 'platform@robotcall.uz');
 
 -- Everyone else is seeded in the TEST DATA section at the bottom, every one with the test
@@ -1089,7 +1084,7 @@ BEGIN
            (SELECT id FROM app_role WHERE company_id = 1 AND code = u.role),
            u.status, u.phone, u.position, u.ext, u.last_login
     FROM (VALUES
-        ('Bosh administrator', 'superadmin@test.uz', 'superadmin', 'SUPERADMIN', 'ACTIVE', '+998901110000', 'Platforma egasi', NULL, now() - interval '1 hour'),
+        ('Bosh administrator', 'superadmin@test.uz', 'superadmin', 'ADMIN',      'ACTIVE', '+998901110000', 'Bosh administrator', NULL, now() - interval '1 hour'),
         ('Jasur Tursunov',     'admin@test.uz',      'admin',      'ADMIN',      'ACTIVE', '+998901110001', 'Kompaniya administratori', NULL, now() - interval '3 hours'),
         ('Dasturchi (test)',   'developer@test.uz',  'developer',  'DEVELOPER',  'ACTIVE', NULL, 'Integratsiya muhandisi', NULL, NULL),
         ('Dilshod Karimov',    'supervisor@test.uz', 'supervisor', 'SUPERVISOR', 'ACTIVE', '+998901110003', 'Smena rahbari', '103', now() - interval '5 hours'),
@@ -2694,7 +2689,7 @@ BEGIN
     INSERT INTO app_role (company_id, code, name, is_system) VALUES
         (v_c2, 'DEVELOPER', 'Developer', true), (v_c2, 'ADMIN', 'Administrator', true),
         (v_c2, 'OPERATOR', 'Operator', true),   (v_c2, 'VIEWER', 'Viewer', true),
-        (v_c2, 'SUPERVISOR', 'Supervisor', true), (v_c2, 'SUPERADMIN', 'Superadmin', true);
+        (v_c2, 'SUPERVISOR', 'Supervisor', true);
     -- A role of the company's own, with explicit permissions.
     WITH new_role AS (
         INSERT INTO app_role (company_id, code, name, description, is_system)
@@ -3207,7 +3202,7 @@ BEGIN
         INSERT INTO app_role (company_id, code, name, is_system)
         SELECT v_c, r.code, r.name, true
         FROM (VALUES ('DEVELOPER', 'Developer'), ('ADMIN', 'Administrator'), ('OPERATOR', 'Operator'),
-                     ('VIEWER', 'Viewer'), ('SUPERVISOR', 'Supervisor'), ('SUPERADMIN', 'Superadmin')) AS r(code, name);
+                     ('VIEWER', 'Viewer'), ('SUPERVISOR', 'Supervisor')) AS r(code, name);
     END LOOP;
 
     INSERT INTO app_user (company_id, name, email, username, password_hash, role_id, status, phone, position) VALUES

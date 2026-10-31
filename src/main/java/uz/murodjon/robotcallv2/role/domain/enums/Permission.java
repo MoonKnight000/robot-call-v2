@@ -89,7 +89,7 @@ public enum Permission {
     ROLE_EDIT("rol.w", PermissionGroup.ROLE),
 
     COMPANY_READ("cny.r", PermissionGroup.COMPANY),
-    COMPANY_EDIT("cny.w", PermissionGroup.COMPANY),
+    COMPANY_EDIT("cny.w", PermissionGroup.COMPANY, PermissionScope.PLATFORM),
 
     AI_MODEL_READ("aim.r", PermissionGroup.AI_MODEL),
     AI_MODEL_EDIT("aim.w", PermissionGroup.AI_MODEL),

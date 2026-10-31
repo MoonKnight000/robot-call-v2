@@ -31,6 +31,9 @@ public class AuditService implements AuditUseCase {
 
     @Override
     public void record(long companyId, String action, String entity, String entityId, String detail) {
+        if (companyId <= 0) {
+            return;
+        }
         String actor = currentUser.actorName();
         try {
             repository.save(companyId, AuditLog.entry(actor, action, entity, entityId, detail,

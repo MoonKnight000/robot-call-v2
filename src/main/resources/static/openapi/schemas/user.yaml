@@ -71,6 +71,8 @@ UserRow:
       type: string
     status:
       $ref: '#/UserStatus'
+    type:
+      $ref: '#/UserType'
     lastLoginAt:
       type: string
       format: date-time
@@ -79,8 +81,6 @@ UserRow:
       format: date-time
   required:
   - id
-  - companyId
-  - roleId
 UserStatus:
   type: string
   enum:
@@ -88,3 +88,9 @@ UserStatus:
   - ACTIVE
   - BLOCKED
   description: app_user.status (ROADMAP E.1).
+UserType:
+  type: string
+  enum:
+  - PLATFORM_ADMIN
+  - COMPANY_USER
+  description: app_user.type distinguishing platform admins from company employees.

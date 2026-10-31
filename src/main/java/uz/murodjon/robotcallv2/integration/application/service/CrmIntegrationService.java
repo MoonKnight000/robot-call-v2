@@ -5,10 +5,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmAccountProbePort;
@@ -21,7 +23,9 @@ import uz.murodjon.robotcallv2.integration.domain.entity.CrmIntegration;
 import uz.murodjon.robotcallv2.integration.domain.entity.OAuthTokenReply;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmAuthMethod;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmIntegrationStatus;
+import uz.murodjon.robotcallv2.integration.domain.enums.CrmPermission;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
+import uz.murodjon.robotcallv2.integration.domain.enums.CrmScopeLevel;
 import uz.murodjon.robotcallv2.integration.domain.enums.IntegrationCatalogStatus;
 import uz.murodjon.robotcallv2.integration.domain.service.CrmIntegrationValidator;
 import uz.murodjon.robotcallv2.integration.infrastructure.config.UysotOAuthProperties;
@@ -60,11 +64,13 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     private final ObjectMapper objectMapper;
     private final UysotOAuthPort uysotOAuthPort;
     private final CrmAccountProbePort crmAccountProbePort;
+    private final CompanyProperties companyProperties;
 
+    @Autowired
     public CrmIntegrationService(CrmIntegrationRepository repository, SecretCipher cipher, UysotOAuthProperties uysotOAuthProperties,
                                  OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, CompanyUseCase companyUseCase,
                                  UysotOAuthPort uysotOAuthPort, CrmAccountProbePort crmAccountProbePort,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper, CompanyProperties companyProperties) {
         this.objectMapper = objectMapper;
         this.crmAccountProbePort = crmAccountProbePort;
         this.repository = repository;
@@ -74,6 +80,15 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         this.audit = audit;
         this.companyUseCase = companyUseCase;
         this.uysotOAuthPort = uysotOAuthPort;
+        this.companyProperties = companyProperties != null ? companyProperties : new CompanyProperties();
+    }
+
+    public CrmIntegrationService(CrmIntegrationRepository repository, SecretCipher cipher, UysotOAuthProperties uysotOAuthProperties,
+                                 OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, CompanyUseCase companyUseCase,
+                                 UysotOAuthPort uysotOAuthPort, CrmAccountProbePort crmAccountProbePort,
+                                 ObjectMapper objectMapper) {
+        this(repository, cipher, uysotOAuthProperties, oauthStateStorePort, audit, companyUseCase, uysotOAuthPort,
+                crmAccountProbePort, objectMapper, new CompanyProperties());
     }
 
     @Override
@@ -100,10 +115,14 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
 
     @Override
     public CrmIntegrationRow findByCompanyId(long companyId) {
+        PlatformCrmSettingsResponse defaults = findPlatformSettings();
         return repository.find(companyId)
-                .map(c -> CrmIntegrationRow.of(c, readGrants(c.grantsJson()), accountHostOf(c)))
+                .map(c -> {
+                    List<CrmGrant> grants = readGrants(c.grantsJson());
+                    return CrmIntegrationRow.of(c, grants.isEmpty() ? defaults.grants() : grants, accountHostOf(c));
+                })
                 .orElseGet(() -> new CrmIntegrationRow(companyId, CrmProvider.UYSOT,
-                        null, List.of(), CrmIntegrationStatus.NOT_CONNECTED, null, null));
+                        defaults.appName(), defaults.grants(), CrmIntegrationStatus.NOT_CONNECTED, null, null));
     }
 
     @Override
@@ -201,11 +220,10 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         if (!uysotOAuthProperties.configured()) {
             throw new ExternalServiceException(ErrorCode.UYSOT_OAUTH_NOT_CONFIGURED, "uysot-oauth");
         }
-        CrmIntegration integration = repository.find(companyId)
-                .orElseThrow(() -> new ValidationException(ErrorCode.CRM_INTEGRATION_APP_NOT_CONFIGURED));
-        List<CrmGrant> grants = readGrants(integration.grantsJson());
+        CrmIntegration integration = repository.find(companyId).orElse(null);
+        List<CrmGrant> grants = integration != null ? readGrants(integration.grantsJson()) : List.of();
         if (grants.isEmpty()) {
-            throw new ValidationException(ErrorCode.CRM_INTEGRATION_APP_NOT_CONFIGURED);
+            grants = findPlatformSettings().grants();
         }
         String state = issueState(companyId);
         // RFC 6749 authorization-code parameters, as Uysot's OAuth guide documents them.
@@ -300,6 +318,28 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     @Override
     public List<CrmGrant> findGrants(long companyId) {
         return repository.find(companyId).map(c -> readGrants(c.grantsJson())).orElse(List.of());
+    }
+
+    @Override
+    public PlatformCrmSettingsResponse findPlatformSettings() {
+        long defaultId = companyProperties.defaultId();
+        CrmIntegration row = repository.find(defaultId).orElse(null);
+        String appName = row != null && row.appName() != null && !row.appName().isBlank()
+                ? row.appName() : "Uysot Voice Agent";
+        List<CrmGrant> grants = row != null ? readGrants(row.grantsJson()) : List.of();
+        if (grants.isEmpty()) {
+            grants = defaultGrants();
+        }
+        return new PlatformCrmSettingsResponse(appName, grants);
+    }
+
+    @Override
+    public PlatformCrmSettingsResponse updatePlatformSettings(UpdatePlatformCrmSettingsRequest request) {
+        CrmIntegrationValidator.validateAppName(request.appName());
+        long defaultId = companyProperties.defaultId();
+        CrmIntegration saved = repository.saveAppInfo(defaultId, request.appName().trim(), writeGrants(request.grants()));
+        audit.record(defaultId, "CRM_PLATFORM_SETTINGS_UPDATE", "crm_integration", String.valueOf(defaultId), request.appName());
+        return new PlatformCrmSettingsResponse(saved.appName(), readGrants(saved.grantsJson()));
     }
 
     @Override
@@ -439,6 +479,23 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    private static List<CrmGrant> defaultGrants() {
+        return List.of(
+                new CrmGrant(CrmPermission.LEAD, CrmScopeLevel.READ),
+                new CrmGrant(CrmPermission.LEAD, CrmScopeLevel.SAVE),
+                new CrmGrant(CrmPermission.LEAD_NOTE, CrmScopeLevel.READ),
+                new CrmGrant(CrmPermission.LEAD_NOTE, CrmScopeLevel.SAVE),
+                new CrmGrant(CrmPermission.LEAD_TASK, CrmScopeLevel.READ),
+                new CrmGrant(CrmPermission.LEAD_TASK, CrmScopeLevel.SAVE),
+                new CrmGrant(CrmPermission.CONTRACT, CrmScopeLevel.READ),
+                new CrmGrant(CrmPermission.CONTRACT_PAYMENT, CrmScopeLevel.READ),
+                new CrmGrant(CrmPermission.CLIENT, CrmScopeLevel.READ),
+                new CrmGrant(CrmPermission.BOOKING, CrmScopeLevel.READ),
+                new CrmGrant(CrmPermission.BOOKING, CrmScopeLevel.SAVE),
+                new CrmGrant(CrmPermission.CALL, CrmScopeLevel.SAVE)
+        );
     }
 
     private String writeGrants(List<CrmGrant> grants) {

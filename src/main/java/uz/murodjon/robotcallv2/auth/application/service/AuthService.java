@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.enums.CompanyStatus;
+import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
@@ -24,6 +25,7 @@ import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
+import uz.murodjon.robotcallv2.user.domain.enums.UserType;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -59,6 +61,7 @@ public class AuthService implements AuthUseCase {
     private final RateLimitProperties rateLimitProperties;
     private final TwoFactorUseCase twoFactor;
     private final StreamTicketService streamTicketService;
+    private final CompanyProperties companyProperties;
     private final Clock clock;
     /** See {@link #obtainDummyPasswordHash()}. */
     private volatile String dummyPasswordHash;
@@ -67,7 +70,8 @@ public class AuthService implements AuthUseCase {
                        PasswordEncoder passwordEncoder, JwtTokenService jwtTokenService, CurrentUser currentUser,
                        AuditUseCase audit, SessionService sessionService, PasswordResetMailSender resetMail,
                        RoleUseCase roleUseCase, RateLimiter rateLimiter, RateLimitProperties rateLimitProperties,
-                       TwoFactorUseCase twoFactor, StreamTicketService streamTicketService, Clock clock) {
+                       TwoFactorUseCase twoFactor, StreamTicketService streamTicketService,
+                       CompanyProperties companyProperties, Clock clock) {
         this.twoFactor = twoFactor;
         this.streamTicketService = streamTicketService;
         this.userUseCase = userUseCase;
@@ -81,6 +85,7 @@ public class AuthService implements AuthUseCase {
         this.roleUseCase = roleUseCase;
         this.rateLimiter = rateLimiter;
         this.rateLimitProperties = rateLimitProperties;
+        this.companyProperties = companyProperties;
         this.clock = clock;
     }
 
@@ -114,9 +119,10 @@ public class AuthService implements AuthUseCase {
         if (failure != null) {
             long failures = rateLimiter.hit(failuresKey, Duration.ofMinutes(lockoutMinutes));
             if (user != null) {
-                audit.record(user.companyId(), "LOGIN_FAILED", "user", String.valueOf(user.id()), failure);
+                long auditCompanyId = user.companyId() != null ? user.companyId() : companyProperties.defaultId();
+                audit.record(auditCompanyId, "LOGIN_FAILED", "user", String.valueOf(user.id()), failure);
                 if (lockAfter > 0 && failures == lockAfter) {
-                    audit.record(user.companyId(), "LOGIN_LOCKED", "user", String.valueOf(user.id()),
+                    audit.record(auditCompanyId, "LOGIN_LOCKED", "user", String.valueOf(user.id()),
                             lockoutMinutes + " min, from " + clientAddress);
                 }
             }
@@ -129,14 +135,19 @@ public class AuthService implements AuthUseCase {
             }
             if (!twoFactor.verifyCode(user.id(), request.otpCode())) {
                 rateLimiter.hit(failuresKey, Duration.ofMinutes(lockoutMinutes));
-                audit.record(user.companyId(), "LOGIN_FAILED", "user", String.valueOf(user.id()), "BAD_TOTP");
+                long auditCompanyId = user.companyId() != null ? user.companyId() : companyProperties.defaultId();
+                audit.record(auditCompanyId, "LOGIN_FAILED", "user", String.valueOf(user.id()), "BAD_TOTP");
                 throw new ValidationException(ErrorCode.TOTP_CODE_INVALID);
             }
         }
-        requireCompanyActive(user.companyId());
+        if (user.type() != UserType.PLATFORM_ADMIN && user.companyId() != null) {
+            requireCompanyActive(user.companyId());
+        }
         rateLimiter.clear(failuresKey);
         userUseCase.touchLastLogin(user.id());
-        audit.record(user.companyId(), "USER_LOGIN", "user", String.valueOf(user.id()), user.email());
+        if (user.companyId() != null) {
+            audit.record(user.companyId(), "USER_LOGIN", "user", String.valueOf(user.id()), user.email());
+        }
         IssuedSession issued = issueTokens(user);
         sessionService.create(user.companyId(), user.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
         return issued.response();
@@ -198,7 +209,9 @@ public class AuthService implements AuthUseCase {
         if (user.status() != UserStatus.ACTIVE) {
             throw new ForbiddenException(ErrorCode.ACCOUNT_INACTIVE);
         }
-        requireCompanyActive(user.companyId());
+        if (user.type() != UserType.PLATFORM_ADMIN && user.companyId() != null) {
+            requireCompanyActive(user.companyId());
+        }
         IssuedSession issued = issueTokens(user);
         sessionService.rotate(session.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
         return issued.response();
@@ -227,7 +240,8 @@ public class AuthService implements AuthUseCase {
         return sessionService.findByPreviousHash(tokenHash)
                 .map(stale -> {
                     sessionService.revokeAllForUser(stale.userId());
-                    audit.record(stale.companyId(), "REFRESH_REUSE_DETECTED", "session",
+                    long auditCompanyId = stale.companyId() != null ? stale.companyId() : companyProperties.defaultId();
+                    audit.record(auditCompanyId, "REFRESH_REUSE_DETECTED", "session",
                             String.valueOf(stale.id()), String.valueOf(stale.userId()));
                     return new ForbiddenException(ErrorCode.REFRESH_TOKEN_REUSED);
                 })
@@ -253,7 +267,9 @@ public class AuthService implements AuthUseCase {
             throw new ValidationException(ErrorCode.ACTIVATION_TOKEN_EXPIRED);
         }
         userUseCase.activate(user.id(), passwordEncoder.encode(request.password()));
-        audit.record(user.companyId(), "USER_ACTIVATE", "user", String.valueOf(user.id()), user.email());
+        if (user.companyId() != null) {
+            audit.record(user.companyId(), "USER_ACTIVATE", "user", String.valueOf(user.id()), user.email());
+        }
         User activated = userUseCase.findByEmail(user.email()).orElseThrow();
         IssuedSession issued = issueTokens(activated);
         sessionService.create(activated.companyId(), activated.id(), issued.refreshTokenHash(), issued.refreshExpiresAt());
@@ -267,7 +283,9 @@ public class AuthService implements AuthUseCase {
                 .ifPresent(user -> {
                     String token = Tokens.generate();
                     userUseCase.setResetToken(user.id(), Tokens.hash(token), clock.instant().plus(RESET_TTL));
-                    audit.record(user.companyId(), "PASSWORD_RESET_REQUEST", "user", String.valueOf(user.id()), user.email());
+                    if (user.companyId() != null) {
+                        audit.record(user.companyId(), "PASSWORD_RESET_REQUEST", "user", String.valueOf(user.id()), user.email());
+                    }
                     try {
                         resetMail.send(user.email(), token);
                     } catch (Exception e) {
@@ -294,7 +312,9 @@ public class AuthService implements AuthUseCase {
                     ? ErrorCode.TOTP_REQUIRED : ErrorCode.TOTP_CODE_INVALID);
         }
         userUseCase.resetPassword(user.id(), passwordEncoder.encode(request.newPassword()));
-        audit.record(user.companyId(), "PASSWORD_RESET", "user", String.valueOf(user.id()), user.email());
+        if (user.companyId() != null) {
+            audit.record(user.companyId(), "PASSWORD_RESET", "user", String.valueOf(user.id()), user.email());
+        }
         // Whoever held the old password held every session opened with it.
         sessionService.revokeAllForUser(user.id());
         User updated = userUseCase.findByEmail(user.email()).orElseThrow();
@@ -307,11 +327,18 @@ public class AuthService implements AuthUseCase {
     public CurrentUserResponse findCurrentUser(long companyId) {
         long userId = currentUser.id()
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
-        User user = userUseCase.requireUser(companyId, userId);
+        User user = userUseCase.findById(userId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
+        if (user.type() == UserType.PLATFORM_ADMIN) {
+            return new CurrentUserResponse(user.id(), user.name(), user.username(), user.email(),
+                    null, "PLATFORM_ADMIN", "Platform Administrator", Set.of(Permission.PLATFORM_ADMIN),
+                    null, null, UserType.PLATFORM_ADMIN);
+        }
+        user = userUseCase.requireUser(companyId, userId);
         var company = companyUseCase.findById(user.companyId());
         return new CurrentUserResponse(user.id(), user.name(), user.username(), user.email(),
                 user.roleId(), user.roleCode(), user.roleName(), resolvePermissions(user),
-                user.companyId(), company == null ? null : company.name());
+                user.companyId(), company == null ? null : company.name(), UserType.COMPANY_USER);
     }
 
     /**
@@ -322,12 +349,17 @@ public class AuthService implements AuthUseCase {
     public StreamTicketResponse createStreamTicket(long companyId) {
         long userId = currentUser.id()
                 .orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
-        return streamTicketService.create(buildPrincipal(userUseCase.requireUser(companyId, userId)));
+        User user = userUseCase.findById(userId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.USER_NOT_FOUND, userId));
+        if (user.type() != UserType.PLATFORM_ADMIN) {
+            user = userUseCase.requireUser(companyId, userId);
+        }
+        return streamTicketService.create(buildPrincipal(user));
     }
 
     private AuthenticatedUser buildPrincipal(User user) {
         return new AuthenticatedUser(user.id(), user.companyId(), user.roleId(),
-                user.roleCode(), resolvePermissions(user), user.name(), user.email());
+                user.roleCode(), resolvePermissions(user), user.name(), user.email(), user.type());
     }
 
     private IssuedSession issueTokens(User user) {
@@ -343,6 +375,12 @@ public class AuthService implements AuthUseCase {
 
     /** Everything the role grants right now, less what the platform switched off for the company — what the new token will carry. */
     private Set<Permission> resolvePermissions(User user) {
+        if (user.type() == UserType.PLATFORM_ADMIN) {
+            return Set.of(Permission.PLATFORM_ADMIN);
+        }
+        if (user.companyId() == null || user.roleId() == null) {
+            return Set.of();
+        }
         Role role = roleUseCase.findRole(user.companyId(), user.roleId());
         if (role == null) {
             return Set.of();

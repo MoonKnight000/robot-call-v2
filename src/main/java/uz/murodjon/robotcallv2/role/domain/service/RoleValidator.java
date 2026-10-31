@@ -67,7 +67,7 @@ public final class RoleValidator {
                 });
     }
 
-    /** DEVELOPER and SUPERADMIN are handed out by platform staff only, never by a tenant admin. */
+    /** DEVELOPER is handed out by platform staff only, never by a tenant admin. */
     public static void validateAssignable(Role role, boolean platformAdmin) {
         SystemRole systemRole = role.findSystemRole();
         if (systemRole != null && !systemRole.assignableByCompany() && !platformAdmin) {

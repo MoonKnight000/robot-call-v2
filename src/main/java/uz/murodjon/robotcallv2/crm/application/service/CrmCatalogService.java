@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 
 import java.time.Clock;
@@ -155,12 +156,19 @@ public class CrmCatalogService implements CrmCatalogUseCase {
         if (hit != null && hit.expiresAt().isAfter(now)) {
             return (List<T>) hit.value();
         }
-        List<T> value = List.copyOf(loader.get());
-        if (cache.size() >= MAX_CACHE_ENTRIES) {
-            cache.clear();
+        try {
+            List<T> value = List.copyOf(loader.get());
+            if (cache.size() >= MAX_CACHE_ENTRIES) {
+                cache.clear();
+            }
+            cache.put(key, new Cached(value, now.plus(ttl)));
+            return value;
+        } catch (ExternalServiceException e) {
+            if (hit != null) {
+                return (List<T>) hit.value();
+            }
+            throw e;
         }
-        cache.put(key, new Cached(value, now.plus(ttl)));
-        return value;
     }
 
     private record Cached(List<?> value, Instant expiresAt) {

@@ -18,7 +18,7 @@ public class UserSessionEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id", nullable = false)
+    @JoinColumn(name = "company_id")
     private CompanyEntity company;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -66,8 +66,8 @@ public class UserSessionEntity {
         this.company = company;
     }
 
-    public long getCompanyId() {
-        return company != null ? company.getId() : 0L;
+    public Long getCompanyId() {
+        return company != null ? company.getId() : null;
     }
 
     public UserEntity getUser() {

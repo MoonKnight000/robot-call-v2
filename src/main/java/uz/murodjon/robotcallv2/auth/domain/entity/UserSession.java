@@ -7,7 +7,7 @@ import java.time.Instant;
  */
 public record UserSession(
         long id,
-        long companyId,
+        Long companyId,
         long userId,
         String refreshTokenHash,
         String device,

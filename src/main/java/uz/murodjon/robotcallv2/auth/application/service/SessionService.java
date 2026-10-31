@@ -28,7 +28,7 @@ public class SessionService implements SessionUseCase {
         this.currentUser = currentUser;
     }
 
-    public long create(long companyId, long userId, String tokenHash, Instant expiresAt) {
+    public long create(Long companyId, long userId, String tokenHash, Instant expiresAt) {
         return repository.create(companyId, userId, tokenHash, expiresAt,
                 currentUser.userAgent().orElse(null), currentUser.remoteAddress().orElse(null));
     }

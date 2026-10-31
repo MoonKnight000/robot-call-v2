@@ -32,10 +32,10 @@ public class UserSessionRepositoryAdapter implements UserSessionRepository {
     }
 
     @Override
-    public long create(long companyId, long userId, String tokenHash, Instant expiresAt,
+    public long create(Long companyId, long userId, String tokenHash, Instant expiresAt,
                        String device, String ipAddress) {
         UserEntity user = userJpaRepository.getReferenceById(userId);
-        CompanyEntity company = companyJpaRepository.getReferenceById(companyId);
+        CompanyEntity company = companyId != null ? companyJpaRepository.getReferenceById(companyId) : null;
 
         UserSessionEntity entity = new UserSessionEntity();
         entity.setCompany(company);

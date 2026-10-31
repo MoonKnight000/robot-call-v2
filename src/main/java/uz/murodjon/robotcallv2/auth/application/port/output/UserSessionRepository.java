@@ -8,7 +8,7 @@ import java.util.Optional;
 
 public interface UserSessionRepository {
 
-    long create(long companyId, long userId, String tokenHash, Instant expiresAt,
+    long create(Long companyId, long userId, String tokenHash, Instant expiresAt,
                 String device, String ipAddress);
 
     Optional<UserSession> findActiveByHash(String tokenHash);

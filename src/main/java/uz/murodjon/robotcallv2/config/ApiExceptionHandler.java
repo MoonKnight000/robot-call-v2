@@ -6,7 +6,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -133,6 +135,17 @@ public class ApiExceptionHandler {
     @ExceptionHandler(AsyncRequestNotUsableException.class)
     public void asyncDisconnected(AsyncRequestNotUsableException e) {
         log.debug("SSE client disconnected: {}", e.getMessage());
+    }
+
+    /**
+     * The client sent an {@code Accept} header that cannot accept JSON (e.g. {@code text/event-stream}
+     * or a raw media type) on an error response.
+     */
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<String> mediaTypeNotAcceptable(HttpMediaTypeNotAcceptableException e) {
+        return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE)
+                .contentType(MediaType.TEXT_PLAIN)
+                .body("Not Acceptable: " + e.getMessage());
     }
 
     /**

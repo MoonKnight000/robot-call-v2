@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.role.application.service;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
-import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.role.application.dto.CreateRoleRequest;
 import uz.murodjon.robotcallv2.role.application.dto.PermissionGroupRow;
 import uz.murodjon.robotcallv2.role.application.dto.RoleRow;
@@ -31,16 +30,14 @@ import java.util.Map;
 public class RoleService implements RoleUseCase {
 
     private final RoleRepository repository;
-    private final CompanyProperties companyProperties;
     /** Sessions belong to auth, which depends on this feature — it hears of an edited role by event. */
     private final ApplicationEventPublisher eventPublisher;
     private final AuditUseCase audit;
     private final CurrentUser currentUser;
 
-    public RoleService(RoleRepository repository, CompanyProperties companyProperties,
-                       ApplicationEventPublisher eventPublisher, AuditUseCase audit, CurrentUser currentUser) {
+    public RoleService(RoleRepository repository, ApplicationEventPublisher eventPublisher,
+                       AuditUseCase audit, CurrentUser currentUser) {
         this.repository = repository;
-        this.companyProperties = companyProperties;
         this.eventPublisher = eventPublisher;
         this.audit = audit;
         this.currentUser = currentUser;
@@ -133,11 +130,6 @@ public class RoleService implements RoleUseCase {
     @Override
     public void createSystemRoles(long companyId) {
         for (SystemRole systemRole : SystemRole.values()) {
-            if (systemRole == SystemRole.SUPERADMIN && companyId != companyProperties.defaultId()) {
-                // Platform staff live in the platform's own tenant; every other company
-                // would otherwise be able to see a role that reaches across tenants.
-                continue;
-            }
             if (repository.findByCode(companyId, systemRole.name()) == null) {
                 repository.create(companyId, Role.ofSystemRole(systemRole));
             }

@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.util.Tokens;
+import uz.murodjon.robotcallv2.user.domain.enums.UserType;
 
 import javax.crypto.SecretKey;
 import java.time.Instant;
@@ -57,6 +58,7 @@ public class JwtTokenService implements AccessTokenUseCase {
                 .claim("companyId", user.companyId())
                 .claim("roleId", user.roleId())
                 .claim("role", user.roleCode())
+                .claim("type", user.type() != null ? user.type().name() : null)
                 .claim(PERMISSIONS_CLAIM, encodePermissions(user.permissions()))
                 .claim("name", user.name())
                 .claim("email", user.email())
@@ -79,15 +81,19 @@ public class JwtTokenService implements AccessTokenUseCase {
             if (revocation.isRevoked(userId, issuedAt == null ? null : issuedAt.toInstant())) {
                 return null;
             }
+            Number companyId = (Number) claims.get("companyId");
             Number roleId = (Number) claims.get("roleId");
+            String typeStr = claims.get("type", String.class);
+            UserType type = typeStr != null ? UserType.valueOf(typeStr) : (companyId == null ? UserType.PLATFORM_ADMIN : UserType.COMPANY_USER);
             return new AuthenticatedUser(
                     userId,
-                    ((Number) claims.get("companyId")).longValue(),
-                    roleId == null ? 0L : roleId.longValue(),
+                    companyId == null ? null : companyId.longValue(),
+                    roleId == null ? null : roleId.longValue(),
                     claims.get("role", String.class),
                     decodePermissions(claims.get(PERMISSIONS_CLAIM, String.class)),
                     claims.get("name", String.class),
-                    claims.get("email", String.class));
+                    claims.get("email", String.class),
+                    type);
         } catch (JwtException | IllegalArgumentException e) {
             return null;
         }

@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.Company
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
 import uz.murodjon.robotcallv2.storage.infrastructure.persistence.entity.StoredFileEntity;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
+import uz.murodjon.robotcallv2.user.domain.enums.UserType;
 
 import java.time.Instant;
 
@@ -18,7 +19,7 @@ public class UserEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id", nullable = false)
+    @JoinColumn(name = "company_id")
     private CompanyEntity company;
 
     @Column(nullable = false)
@@ -35,14 +36,18 @@ public class UserEntity {
 
     // Eager: UserEntityMapper reads the role name and code outside any transaction, where a lazy
     // proxy would fail, and a company has at most a handful of roles. RoleEntity is
-    // @BatchSize, so a user list loads its roles in one query.
+    // @BatchSize, so a user list loads its roles in one query. Null for platform admin.
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "role_id", nullable = false)
+    @JoinColumn(name = "role_id")
     private RoleEntity role;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private UserType type = UserType.COMPANY_USER;
 
     @Column(name = "invite_token_hash")
     private String inviteTokenHash;
@@ -94,8 +99,8 @@ public class UserEntity {
         this.company = company;
     }
 
-    public long getCompanyId() {
-        return company != null ? company.getId() : 0L;
+    public Long getCompanyId() {
+        return company != null ? company.getId() : null;
     }
 
     public String getName() {
@@ -138,12 +143,24 @@ public class UserEntity {
         this.role = role;
     }
 
+    public Long getRoleId() {
+        return role != null ? role.getId() : null;
+    }
+
     public UserStatus getStatus() {
         return status;
     }
 
     public void setStatus(UserStatus status) {
         this.status = status;
+    }
+
+    public UserType getType() {
+        return type;
+    }
+
+    public void setType(UserType type) {
+        this.type = type;
     }
 
     public String getInviteTokenHash() {

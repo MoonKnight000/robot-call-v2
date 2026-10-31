@@ -25,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * {@link UysotCatalogPort} over the Uysot Open API v1.
@@ -43,6 +44,8 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
     private static final Logger log = LoggerFactory.getLogger(HttpClientUysotCatalogAdapter.class);
 
     private static final Duration TIMEOUT = Duration.ofSeconds(4);
+    private static final int MAX_RETRIES = 3;
+    private static final long RETRY_BACKOFF_MS = 300L;
     private static final String SERVICE = "uysot";
     private static final List<String> ACTIVE_CONTRACT_STATUSES = List.of("ACTIVE", "STARTED");
     private static final int PHONE_SUFFIX_DIGITS = 9;
@@ -296,24 +299,66 @@ public class HttpClientUysotCatalogAdapter implements UysotCatalogPort {
         if (connection.accessToken() != null) {
             request.header("X-Open-Api-Token", connection.accessToken());
         }
-        HttpResponse<String> response;
-        try {
-            response = httpClient.send(request.build(), HttpResponse.BodyHandlers.ofString());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new ExternalServiceException(ErrorCode.UYSOT_REQUEST_FAILED, SERVICE, e, path, "interrupted");
-        } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.UYSOT_REQUEST_FAILED, SERVICE, e, path, e.getMessage());
-        }
-        if (response.statusCode() / 100 != 2) {
-            log.warn("Uysot {} answered HTTP {}", path, response.statusCode());
-            throw new ExternalServiceException(ErrorCode.UYSOT_REQUEST_FAILED, SERVICE, path,
-                    "HTTP " + response.statusCode());
+        HttpRequest httpRequest = request.build();
+        HttpResponse<String> response = null;
+        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new ExternalServiceException(ErrorCode.UYSOT_REQUEST_FAILED, SERVICE, e, path, "interrupted");
+            } catch (Exception e) {
+                if (attempt >= MAX_RETRIES) {
+                    throw new ExternalServiceException(ErrorCode.UYSOT_REQUEST_FAILED, SERVICE, e, path, e.getMessage());
+                }
+                log.warn("Uysot {} failed on attempt {} ({}): retrying", path, attempt + 1, e.getMessage());
+                sleepBackoff(attempt, null);
+                continue;
+            }
+            if (response.statusCode() / 100 == 2) {
+                break;
+            }
+            if (!isRetryable(response.statusCode()) || attempt >= MAX_RETRIES) {
+                log.warn("Uysot {} answered HTTP {}", path, response.statusCode());
+                throw new ExternalServiceException(ErrorCode.UYSOT_REQUEST_FAILED, SERVICE, path,
+                        "HTTP " + response.statusCode());
+            }
+            String retryAfter = response.headers().firstValue("Retry-After").orElse(null);
+            log.warn("Uysot {} answered HTTP {}, retrying ({}/{})", path, response.statusCode(), attempt + 1, MAX_RETRIES);
+            sleepBackoff(attempt, retryAfter);
         }
         try {
             return objectMapper.readTree(response.body());
         } catch (Exception e) {
             throw new ExternalServiceException(ErrorCode.UYSOT_REQUEST_FAILED, SERVICE, e, path, "unreadable body");
+        }
+    }
+
+    static boolean isRetryable(int status) {
+        return status == 429 || status == 408 || status == 502 || status == 503 || status == 504;
+    }
+
+    static void sleepBackoff(int attempt, String retryAfter) {
+        long waitMs = 0;
+        if (retryAfter != null && !retryAfter.isBlank()) {
+            try {
+                waitMs = Long.parseLong(retryAfter.trim()) * 1000L;
+            } catch (NumberFormatException ignored) {
+                // Ignore non-seconds header format and fall back to exponential backoff
+            }
+        }
+        if (waitMs <= 0) {
+            long ceiling = RETRY_BACKOFF_MS << attempt;
+            waitMs = ceiling / 2 + ThreadLocalRandom.current().nextLong(ceiling / 2 + 1);
+        }
+        if (waitMs > 3000L) {
+            waitMs = 3000L;
+        }
+        try {
+            Thread.sleep(waitMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ExternalServiceException(ErrorCode.UYSOT_REQUEST_FAILED, SERVICE, e, "retry", "interrupted");
         }
     }
 

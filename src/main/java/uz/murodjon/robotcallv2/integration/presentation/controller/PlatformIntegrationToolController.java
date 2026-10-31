@@ -6,7 +6,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.integration.application.dto.CreateIntegrationToolRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.IntegrationToolAdminRow;
+import uz.murodjon.robotcallv2.integration.application.dto.PlatformCrmSettingsResponse;
 import uz.murodjon.robotcallv2.integration.application.dto.UpdateIntegrationToolRequest;
+import uz.murodjon.robotcallv2.integration.application.dto.UpdatePlatformCrmSettingsRequest;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
@@ -67,4 +69,14 @@ public interface PlatformIntegrationToolController {
             @CurrentCompanyId long companyId,
             @PathVariable long id,
             @RequestBody(required = false) TestToolRequest request);
+
+    /** Platform-wide CRM integration settings (app name, required OAuth grants). */
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
+    @GetMapping("/crm-settings")
+    ResponseEntity<ResponseData<PlatformCrmSettingsResponse>> getCrmSettings();
+
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
+    @PutMapping("/crm-settings")
+    ResponseEntity<ResponseData<PlatformCrmSettingsResponse>> updateCrmSettings(
+            @Valid @RequestBody UpdatePlatformCrmSettingsRequest request);
 }

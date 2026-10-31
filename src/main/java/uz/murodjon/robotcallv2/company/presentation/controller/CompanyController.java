@@ -27,13 +27,13 @@ public interface CompanyController {
     @PostMapping("/companies/list")
     ResponseEntity<ResponseData<PageableData<Company>>> list(@Valid @RequestBody CompanyFilter filter);
 
-    @PreAuthorize("hasAuthority('COMPANY_READ')")
+    @PreAuthorize("hasAnyAuthority('COMPANY_READ', 'PLATFORM_ADMIN')")
     @GetMapping("/companies/{id}")
     ResponseEntity<ResponseData<Company>> get(
             @CurrentCompanyId long callerCompanyId,
             @PathVariable long id);
 
-    @PreAuthorize("hasAuthority('COMPANY_EDIT')")
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
     @PutMapping("/companies/{id}")
     ResponseEntity<ResponseData<Company>> update(
             @CurrentCompanyId long callerCompanyId,
@@ -50,20 +50,20 @@ public interface CompanyController {
             @PathVariable long id,
             @Valid @RequestBody UpdateCompanyByPlatformRequest request);
 
-    @PreAuthorize("hasAuthority('COMPANY_EDIT')")
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
     @PostMapping("/companies/{id}/logo")
     ResponseEntity<ResponseData<Company>> uploadLogo(
             @CurrentCompanyId long callerCompanyId,
             @PathVariable long id,
             @RequestParam("file") MultipartFile file);
 
-    @PreAuthorize("hasAuthority('COMPANY_READ')")
+    @PreAuthorize("hasAnyAuthority('COMPANY_READ', 'PLATFORM_ADMIN')")
     @GetMapping("/companies/{id}/config")
     ResponseEntity<ResponseData<CompanyConfig>> getConfig(
             @CurrentCompanyId long callerCompanyId,
             @PathVariable long id);
 
-    @PreAuthorize("hasAuthority('COMPANY_EDIT')")
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
     @PutMapping("/companies/{id}/config")
     ResponseEntity<ResponseData<CompanyConfig>> updateConfig(
             @CurrentCompanyId long callerCompanyId,

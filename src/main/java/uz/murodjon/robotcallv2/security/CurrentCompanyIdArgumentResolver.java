@@ -38,6 +38,6 @@ public class CurrentCompanyIdArgumentResolver implements HandlerMethodArgumentRe
         if (authentication == null || !(authentication.getPrincipal() instanceof AuthenticatedUser user)) {
             throw new ForbiddenException(ErrorCode.NO_USER_SESSION);
         }
-        return user.companyId();
+        return user.companyId() != null ? user.companyId() : 0L;
     }
 }
