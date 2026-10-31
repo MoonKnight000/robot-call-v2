@@ -98,6 +98,19 @@ public interface CampaignController {
             @PathVariable long id,
             @RequestBody @Size(max = MAX_CSV_CHARS) String csv);
 
+    @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
+    @PostMapping("/campaigns/{id:\\d+}/targets/batch")
+    ResponseEntity<ResponseData<AddTargetsResponse>> addBatchTargets(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody List<BatchCallTargetItemDto> targets);
+
+    @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
+    @PostMapping("/campaigns/target-source/preview-tool")
+    ResponseEntity<ResponseData<ToolTargetPreviewResponse>> previewToolTargets(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody ToolTargetPreviewRequest request);
+
     @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
     @GetMapping("/campaigns/{id:\\d+}/target-source")
     ResponseEntity<ResponseData<TargetSourceRow>> targetSource(

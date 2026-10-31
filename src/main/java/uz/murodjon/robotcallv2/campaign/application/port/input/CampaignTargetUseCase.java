@@ -27,6 +27,10 @@ public interface CampaignTargetUseCase {
 
     TargetCsvPreview previewTargetsCsv(long companyId, long campaignId, String csv);
 
+    ToolTargetPreviewResponse previewToolTargets(long companyId, ToolTargetPreviewRequest request);
+
+    AddTargetsResponse addBatchTargets(long companyId, long campaignId, List<BatchCallTargetItemDto> targets);
+
     /** The campaign's target source, or null when it has none. */
     TargetSourceRow findTargetSource(long companyId, long campaignId);
 

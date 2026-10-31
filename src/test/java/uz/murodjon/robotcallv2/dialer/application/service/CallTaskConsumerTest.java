@@ -25,7 +25,6 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.company.CompanyFixtures;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
@@ -118,7 +117,6 @@ class CallTaskConsumerTest {
         when(campaignUseCase.findCampaign(1L, 1L)).thenReturn(Campaign.builder()
                 .id(1L)
                 .name("c")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.PAUSED)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
                 .retry(new CampaignRetry(3, 24, null))
@@ -222,7 +220,6 @@ class CallTaskConsumerTest {
         Campaign activeCampaign = Campaign.builder()
                 .id(1L)
                 .name("c")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
                 .retry(new CampaignRetry(3, 24, null))

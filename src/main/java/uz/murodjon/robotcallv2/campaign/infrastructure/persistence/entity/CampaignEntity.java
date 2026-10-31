@@ -37,9 +37,8 @@ public class CampaignEntity {
     @Column(nullable = false)
     private String name;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private CampaignType type;
+    @Column(name = "type")
+    private String type = "OUTBOUND";
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -166,11 +165,11 @@ public class CampaignEntity {
         this.name = name;
     }
 
-    public CampaignType getType() {
+    public String getType() {
         return type;
     }
 
-    public void setType(CampaignType type) {
+    public void setType(String type) {
         this.type = type;
     }
 

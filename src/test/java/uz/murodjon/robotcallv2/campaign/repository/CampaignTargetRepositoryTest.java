@@ -17,7 +17,6 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.donotcall.application.port.output.DoNotCallRepository;
@@ -85,7 +84,7 @@ class CampaignTargetRepositoryTest {
         long agentId = jdbc.queryForObject(
                 "INSERT INTO ai_agent(company_id, name) VALUES (?, 'claim-test-agent') RETURNING id",
                 Long.class, COMPANY_ID);
-        campaignId = campaigns.create(COMPANY_ID, new Campaign(0, "claim-test", CampaignType.DEBT_COLLECTION,
+        campaignId = campaigns.create(COMPANY_ID, new Campaign(0, "claim-test",
                 CampaignStatus.DRAFT, LocalTime.of(9, 0), LocalTime.of(20, 0),
                 EnumSet.of(DayOfWeek.MONDAY, DayOfWeek.TUESDAY, DayOfWeek.WEDNESDAY, DayOfWeek.THURSDAY, DayOfWeek.FRIDAY),
                 3, 24, 5, 0, agentId, COMPANY_ID, null, RecurrenceType.ONCE, null, null, false, null));

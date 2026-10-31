@@ -6,15 +6,12 @@ import java.time.Instant;
 
 /**
  * Collects a {@link Campaign}'s fields; obtained from {@link Campaign#builder()} or, to change
- * a few fields of an existing campaign, {@link Campaign#toBuilder()}. Anything not set keeps
- * the value a campaign not saved yet has: id and version 0; the record itself fills in the
- * priority and every group left unset.
+ * a few fields of an existing campaign, {@link Campaign#toBuilder()}.
  */
 public class CampaignBuilder {
 
     private long id;
     private String name;
-    private CampaignType type;
     private CampaignStatus status;
     private Long aiAgentId;
     private long companyId;
@@ -34,7 +31,6 @@ public class CampaignBuilder {
     CampaignBuilder(Campaign source) {
         this.id = source.id();
         this.name = source.name();
-        this.type = source.type();
         this.status = source.status();
         this.aiAgentId = source.aiAgentId();
         this.companyId = source.companyId();
@@ -56,11 +52,6 @@ public class CampaignBuilder {
 
     public CampaignBuilder name(String name) {
         this.name = name;
-        return this;
-    }
-
-    public CampaignBuilder type(CampaignType type) {
-        this.type = type;
         return this;
     }
 
@@ -125,7 +116,7 @@ public class CampaignBuilder {
     }
 
     public Campaign build() {
-        return new Campaign(id, name, type, status, aiAgentId, companyId, createdBy, priority,
+        return new Campaign(id, name, status, aiAgentId, companyId, createdBy, priority,
                 schedule, retry, limits, recurrence, dialing, lastRunAt, version);
     }
 }

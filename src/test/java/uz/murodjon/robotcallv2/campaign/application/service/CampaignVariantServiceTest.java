@@ -10,7 +10,6 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignVariant;
 import uz.murodjon.robotcallv2.campaign.domain.entity.VariantOptimizationPlan;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.conversion.application.port.input.ConversionUseCase;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
@@ -137,7 +136,6 @@ class CampaignVariantServiceTest {
                 .id(CAMPAIGN_ID)
                 .companyId(COMPANY_ID)
                 .name("A/B Test Campaign")
-                .type(CampaignType.OUTBOUND)
                 .status(CampaignStatus.ACTIVE)
                 .build();
     }

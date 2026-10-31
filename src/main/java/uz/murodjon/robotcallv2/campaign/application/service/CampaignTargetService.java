@@ -125,6 +125,27 @@ public class CampaignTargetService implements CampaignTargetUseCase {
     }
 
     @Override
+    public AddTargetsResponse addBatchTargets(long companyId, long campaignId, List<BatchCallTargetItemDto> targets) {
+        requireCampaignExists(companyId, campaignId);
+        TargetIntake intake = new TargetIntake(companyId, campaignId);
+        if (targets != null) {
+            for (BatchCallTargetItemDto t : targets) {
+                String json = "{}";
+                if (t.variables() != null && !t.variables().isEmpty()) {
+                    try {
+                        json = objectMapper.writeValueAsString(t.variables());
+                    } catch (Exception e) {
+                        log.warn("Failed to serialize variables for target {}: {}", t.phone(), e.getMessage());
+                    }
+                }
+                intake.add(t.clientId() != null ? t.clientId() : 0L, PhoneNumbers.require(t.phone()), t.language(), json);
+            }
+        }
+        intake.insert();
+        return new AddTargetsResponse(campaignId, intake.added.size(), intake.added, intake.duplicates, intake.doNotCall);
+    }
+
+    @Override
     public TargetImportResult importTargetsCsv(long companyId, long campaignId, String csv) {
         requireCampaignExists(companyId, campaignId);
         TargetCsvParseResult parsed = TargetCsvImporter.parse(csv);
@@ -223,6 +244,14 @@ public class CampaignTargetService implements CampaignTargetUseCase {
         TargetCsvParseResult parsed = TargetCsvImporter.parse(csv);
         List<ParsedTarget> sample = parsed.targets().stream().limit(10).toList();
         return new TargetCsvPreview(columns, sample, parsed.targets().size(), parsed.errors(), parsed.unknownColumns());
+    }
+
+    @Override
+    public ToolTargetPreviewResponse previewToolTargets(long companyId, ToolTargetPreviewRequest request) {
+        if (request == null || request.toolName() == null || request.toolName().isBlank()) {
+            throw new ValidationException(ErrorCode.VALIDATION_FAILED);
+        }
+        return toolTargetImporter.previewTargets(companyId, request);
     }
 
     @Override

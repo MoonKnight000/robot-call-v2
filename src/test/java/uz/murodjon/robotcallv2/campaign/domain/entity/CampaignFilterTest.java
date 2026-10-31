@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Sort;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignTableField;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 
 import java.time.Instant;
@@ -31,7 +30,7 @@ class CampaignFilterTest {
         customOrders.put(CampaignTableField.NAME, Sort.Direction.ASC);
 
         CampaignFilter filter = new CampaignFilter(0, 20, customOrders, "test", CampaignStatus.ACTIVE,
-                CampaignType.DEBT_COLLECTION, 1L, 2L, RecurrenceType.ONCE, Instant.now(), Instant.now());
+                1L, 2L, RecurrenceType.ONCE, Instant.now(), Instant.now());
 
         assertThat(filter.orders()).containsExactly(
                 java.util.Map.entry(CampaignTableField.NAME, Sort.Direction.ASC),
@@ -44,7 +43,7 @@ class CampaignFilterTest {
         LinkedHashMap<CampaignTableField, Sort.Direction> customOrders = new LinkedHashMap<>();
         customOrders.put(CampaignTableField.ID, Sort.Direction.ASC);
 
-        CampaignFilter filter = new CampaignFilter(0, 20, customOrders, null, null, null, null, null, null, null, null);
+        CampaignFilter filter = new CampaignFilter(0, 20, customOrders, null, null, null, null, null, null, null);
 
         assertThat(filter.orders()).containsExactly(
                 java.util.Map.entry(CampaignTableField.ID, Sort.Direction.ASC)

@@ -177,7 +177,6 @@ class ProgressiveDialServiceTest {
         return Campaign.builder()
                 .id(CAMPAIGN_ID)
                 .name("Progressive")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), Set.of()))
                 .retry(new CampaignRetry(3, 24, null))

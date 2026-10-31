@@ -109,7 +109,6 @@ class DialerServiceTest {
         when(campaignUseCase.findActiveCampaigns()).thenReturn(List.of(Campaign.builder()
                 .id(CAMPAIGN_ID)
                 .name("c")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0), dialDays))
                 .retry(new CampaignRetry(3, 24, null))
@@ -213,7 +212,6 @@ class DialerServiceTest {
         when(campaignUseCase.findActiveCampaigns()).thenReturn(List.of(Campaign.builder()
                 .id(CAMPAIGN_ID)
                 .name("c")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0),
                         Set.of(DayOfWeek.WEDNESDAY)))

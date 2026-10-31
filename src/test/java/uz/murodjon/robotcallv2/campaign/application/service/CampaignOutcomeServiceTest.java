@@ -14,7 +14,6 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
 import uz.murodjon.robotcallv2.campaign.infrastructure.config.RetryProperties;
@@ -59,7 +58,6 @@ class CampaignOutcomeServiceTest {
         when(campaigns.find(COMPANY_ID, CAMPAIGN_ID)).thenReturn(Campaign.builder()
                 .id(CAMPAIGN_ID)
                 .name("c")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0),
                         EnumSet.allOf(DayOfWeek.class)))

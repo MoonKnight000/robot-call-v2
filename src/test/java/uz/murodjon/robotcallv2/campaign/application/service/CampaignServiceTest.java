@@ -102,7 +102,6 @@ class CampaignServiceTest {
         return Campaign.builder()
                 .id(CAMPAIGN_ID)
                 .name("c")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, LocalTime.of(9, 0), LocalTime.of(20, 0),
                         Set.of(DayOfWeek.MONDAY)))
@@ -118,7 +117,7 @@ class CampaignServiceTest {
     void filterCampaignsDelegatesToRepositoryWithConsistentPagingAndEnrichesTargetStats() {
         Campaign c = campaign(3, 0);
         CampaignFilter filter = new CampaignFilter(0, 10, null, "test", CampaignStatus.ACTIVE,
-                CampaignType.DEBT_COLLECTION, 1L, null, null, null, null);
+                1L, null, null, null, null);
         when(campaigns.findAll(1L, filter)).thenReturn(List.of(c));
         when(campaigns.countByFilter(1L, filter)).thenReturn(1L);
         when(targets.findStatsByCampaignIds(1L, Set.of(CAMPAIGN_ID))).thenReturn(
@@ -307,12 +306,12 @@ class CampaignServiceTest {
     }
 
     private static CreateCampaignRequest createRequestWithWindow(LocalTime start, LocalTime end) {
-        return new CreateCampaignRequest("c", CampaignType.SURVEY, AI_AGENT_ID, null,
+        return new CreateCampaignRequest("c", AI_AGENT_ID, null,
                 schedule(start, end), retry(), limits(), recurrence(), null);
     }
 
     private static CreateCampaignRequest createRequest(DialMode dialMode, Long aiAgentId, Long callQueueId) {
-        return new CreateCampaignRequest("c", CampaignType.SURVEY, aiAgentId, null,
+        return new CreateCampaignRequest("c", aiAgentId, null,
                 schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(),
                 new CampaignDialingDto(dialMode, callQueueId, null, null));
     }

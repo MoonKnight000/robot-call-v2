@@ -119,7 +119,6 @@ public class CampaignService implements CampaignUseCase {
         campaignValidator.validateRetryPolicy(retry.policyOrNone());
         Campaign row = Campaign.builder()
                 .name(request.name())
-                .type(request.type())
                 .status(CampaignStatus.DRAFT)
                 .aiAgentId(agent != null ? agent.id() : null)
                 .companyId(companyId)

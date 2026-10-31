@@ -6,7 +6,6 @@ import org.springframework.data.domain.Sort;
 
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignTableField;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.shared.api.FilterInterface;
 
@@ -19,7 +18,6 @@ public record CampaignFilter(
         LinkedHashMap<CampaignTableField, Sort.Direction> orders,
         String search,
         CampaignStatus status,
-        CampaignType type,
         Long aiAgentId,
         Long createdBy,
         RecurrenceType recurrenceType,
@@ -40,6 +38,6 @@ public record CampaignFilter(
     }
 
     public CampaignFilter(Integer page, Integer size, LinkedHashMap<CampaignTableField, Sort.Direction> orders, CampaignStatus status) {
-        this(page, size, orders, null, status, null, null, null, null, null, null);
+        this(page, size, orders, null, status, null, null, null, null, null);
     }
 }

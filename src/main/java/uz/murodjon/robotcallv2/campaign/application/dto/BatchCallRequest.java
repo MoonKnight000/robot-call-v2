@@ -4,23 +4,30 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
+
+import java.util.List;
 
 /**
- * Agent + numbers + go, in one request ({@code POST /api/campaigns/batch-call}). The same as
- * {@code POST /api/campaigns}, then {@code .../targets/csv}, then {@code .../start}; every
- * campaign setting this leaves out takes its {@code POST /api/campaigns} default.
+ * Agent + audience + start, in one request ({@code POST /api/campaigns/batch-call}).
+ * Accepts targets as CSV, as a tool-based dynamic query, or as a direct list of target objects.
  *
- * @param csv       the target file, as {@code POST /api/campaigns/{id}/targets/csv} takes it
- * @param schedule  optional; dial window and days default to the company's
- * @param immediate as {@code start?immediate=true}: a future {@code schedule.startAt} is ignored
+ * @param csv        the target file, as {@code POST /api/campaigns/{id}/targets/csv} takes it
+ * @param toolSource an integration tool to run to fetch the audience
+ * @param targets    direct JSON target objects with dynamic variables
+ * @param schedule   optional; dial window and days default to the company's
+ * @param limits     optional concurrency and spend limits
+ * @param retry      optional retry policy
+ * @param immediate  as {@code start?immediate=true}: a future {@code schedule.startAt} is ignored
  */
 public record BatchCallRequest(
         @NotBlank String name,
-        @NotNull CampaignType type,
         @NotNull Long aiAgentId,
-        @NotBlank @Size(max = BatchCallRequest.MAX_CSV_CHARS) String csv,
+        @Size(max = BatchCallRequest.MAX_CSV_CHARS) String csv,
+        @Valid BatchCallToolSourceDto toolSource,
+        @Valid List<BatchCallTargetItemDto> targets,
         @Valid CampaignScheduleDto schedule,
+        @Valid CampaignLimitsDto limits,
+        @Valid CampaignRetryDto retry,
         boolean immediate
 ) {
     /** The same cap as the CSV upload endpoint. */

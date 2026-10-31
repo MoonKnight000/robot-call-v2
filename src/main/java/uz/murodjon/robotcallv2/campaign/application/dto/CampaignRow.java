@@ -3,7 +3,6 @@ package uz.murodjon.robotcallv2.campaign.application.dto;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 
 import java.time.Instant;
 
@@ -16,7 +15,6 @@ import java.time.Instant;
 public record CampaignRow(
         long id,
         String name,
-        CampaignType type,
         CampaignStatus status,
         Long aiAgentId,
         String aiAgentName,
@@ -40,7 +38,7 @@ public record CampaignRow(
 
     public static CampaignRow of(Campaign c, String aiAgentName, String createdByName, CampaignTargetStats stats) {
         return new CampaignRow(
-                c.id(), c.name(), c.type(), c.status(),
+                c.id(), c.name(), c.status(),
                 c.aiAgentId(), aiAgentName, c.companyId(),
                 c.createdBy(), createdByName,
                 c.priority(),

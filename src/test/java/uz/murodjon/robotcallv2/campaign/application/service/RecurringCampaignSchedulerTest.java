@@ -9,7 +9,6 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.company.application.service.CompanyConfigService;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
@@ -54,7 +53,6 @@ class RecurringCampaignSchedulerTest {
         return Campaign.builder()
                 .id(id)
                 .name("Test Recurring")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(status)
                 .schedule(new CampaignSchedule(null, null, windowStart, windowEnd, dialDays))
                 .retry(new CampaignRetry(3, 0, null))

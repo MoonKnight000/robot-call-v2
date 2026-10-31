@@ -43,7 +43,6 @@ public class CampaignEntityMapper {
         return Campaign.builder()
                 .id(entity.getId())
                 .name(entity.getName())
-                .type(entity.getType())
                 .status(entity.getStatus())
                 .aiAgentId(entity.getAiAgentId())
                 .companyId(entity.getCompanyId())
@@ -71,7 +70,7 @@ public class CampaignEntityMapper {
         }
         CampaignEntity entity = new CampaignEntity();
         entity.setId(campaign.id() > 0 ? campaign.id() : null);
-        entity.setType(campaign.type());
+        entity.setType(entity.getType() != null ? entity.getType() : "OUTBOUND");
         entity.setStatus(campaign.status());
         entity.setDialMode(campaign.dialing().mode());
         entity.setCompany(company);

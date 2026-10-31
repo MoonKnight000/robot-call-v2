@@ -15,7 +15,6 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignReposito
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 
 import java.time.DayOfWeek;
@@ -85,7 +84,7 @@ class CompanyIsolationTest {
     }
 
     private Campaign ownCampaign(String name) {
-        return new Campaign(0, name, CampaignType.DEBT_COLLECTION, CampaignStatus.DRAFT,
+        return new Campaign(0, name, CampaignStatus.DRAFT,
                 LocalTime.of(9, 0), LocalTime.of(20, 0), EnumSet.of(DayOfWeek.MONDAY),
                 3, 24, 5, 0, ownAgentId, OWN_COMPANY_ID, null, RecurrenceType.ONCE, null, null, false, null);
     }

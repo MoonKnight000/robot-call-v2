@@ -44,6 +44,25 @@ public final class CallContextFactory {
                         }
                     }
                 }
+                if (n.isObject()) {
+                    n.fields().forEachRemaining(entry -> {
+                        String key = entry.getKey();
+                        if (!"agentOverrides".equals(key) && !"goal".equals(key) && !facts.containsKey(key)) {
+                            JsonNode val = entry.getValue();
+                            if (val.isTextual()) {
+                                facts.put(key, val.asText());
+                            } else if (val.isIntegralNumber()) {
+                                facts.put(key, val.longValue());
+                            } else if (val.isFloatingPointNumber()) {
+                                facts.put(key, val.doubleValue());
+                            } else if (val.isBoolean()) {
+                                facts.put(key, val.asBoolean());
+                            } else if (!val.isNull()) {
+                                facts.put(key, val.toString());
+                            }
+                        }
+                    });
+                }
                 String g = readText(n, "goal");
                 if (g != null && !g.isBlank()) {
                     goal = g;

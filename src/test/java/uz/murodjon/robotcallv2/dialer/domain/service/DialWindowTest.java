@@ -8,7 +8,6 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
-import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 
@@ -26,7 +25,6 @@ class DialWindowTest {
         return Campaign.builder()
                 .id(1L)
                 .name("Test Campaign")
-                .type(CampaignType.DEBT_COLLECTION)
                 .status(CampaignStatus.ACTIVE)
                 .schedule(new CampaignSchedule(null, null, start, end, Set.of()))
                 .retry(new CampaignRetry(3, 24, null))

@@ -107,6 +107,16 @@ public class CampaignControllerImpl implements CampaignController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<AddTargetsResponse>> addBatchTargets(long companyId, long id, List<BatchCallTargetItemDto> targets) {
+        return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.addBatchTargets(companyId, id, targets)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ToolTargetPreviewResponse>> previewToolTargets(long companyId, ToolTargetPreviewRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.previewToolTargets(companyId, request)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<PageableData<CampaignTarget>>> targets(long companyId, long id, TargetFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(campaignTargetUseCase.listTargets(companyId, id, filter)));
     }

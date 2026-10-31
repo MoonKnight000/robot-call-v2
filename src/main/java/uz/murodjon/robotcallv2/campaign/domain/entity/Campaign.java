@@ -23,15 +23,13 @@ import java.util.Set;
  * @param aiAgentId the agent whose voice and script this campaign's calls run under; required
  *                  for {@link DialMode#AI}, optional for the operator modes
  * @param priority  1 (low) … 5 (urgent): the dialer splits each tick's batch between the
- *                  active campaigns in proportion to it, so a debt campaign at 5 gets
- *                  five lines for every one a survey at 1 gets
+ *                  active campaigns in proportion to it
  * @param version   the optimistic-lock counter the row had when read; an edit is written only
  *                  while the row still has it (0 for a campaign not saved yet)
  */
 public record Campaign(
         long id,
         String name,
-        CampaignType type,
         CampaignStatus status,
         Long aiAgentId,
         long companyId,
@@ -80,16 +78,16 @@ public record Campaign(
     }
 
     /**
-     * The pre-V23 shape, kept only for the integration tests that still build a campaign this
+     * The legacy test shape, kept only for tests that still build a campaign this
      * way; everything else uses {@link #builder()}.
      */
-    public Campaign(long id, String name, CampaignType type, CampaignStatus status,
+    public Campaign(long id, String name, CampaignStatus status,
                     LocalTime dialWindowStart, LocalTime dialWindowEnd, Set<DayOfWeek> dialDays,
                     int maxAttempts, int retryIntervalMinutes, int maxConcurrentCalls, int dailyCallCap,
                     long aiAgentId, long companyId, Long createdBy, RecurrenceType recurrenceType,
                     Integer recurringDayOfMonth, String cronExpression, boolean autoResetTargets,
                     Instant lastRunAt) {
-        this(id, name, type, status, aiAgentId, companyId, createdBy, DEFAULT_PRIORITY,
+        this(id, name, status, aiAgentId, companyId, createdBy, DEFAULT_PRIORITY,
                 new CampaignSchedule(null, null, dialWindowStart, dialWindowEnd, dialDays),
                 new CampaignRetry(maxAttempts, retryIntervalMinutes, RetryPolicy.NONE),
                 new CampaignLimits(maxConcurrentCalls, dailyCallCap, null, null),
