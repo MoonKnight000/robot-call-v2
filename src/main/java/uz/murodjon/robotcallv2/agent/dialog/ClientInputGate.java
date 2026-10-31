@@ -8,7 +8,8 @@ import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
+import uz.murodjon.robotcallv2.shared.dialog.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -456,6 +457,10 @@ public class ClientInputGate {
     }
 
     private static InterruptionSensitivity sensitivity(DialogSession s) {
+        StageOverrides overrides = SystemPromptFactory.overridesOf(s);
+        if (overrides != null && overrides.interruptionSensitivity() != null) {
+            return overrides.interruptionSensitivity();
+        }
         return s.agent() != null ? s.agent().callBehaviour().interruptionSensitivity() : InterruptionSensitivity.MEDIUM;
     }
 

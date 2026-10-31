@@ -70,6 +70,20 @@ public interface CampaignTargetRepository {
     void moveToStep(long id, String stepId, Instant nextAttemptAt);
 
     /**
+     * Records the sequence outcome the target's last answered call reached (the campaign's
+     * "Disposition mix"), and whether it left the sequence as a conversion.
+     */
+    void recordOutcome(long id, String outcome, boolean converted);
+
+    /**
+     * Double dial: puts the target back to PENDING, due at once, with the attempt it just spent
+     * handed back — unless that attempt was itself the second dial.
+     *
+     * @return false when the attempt was already double dialled, and nothing was changed
+     */
+    boolean redialOnce(long id);
+
+    /**
      * Undo a claim without spending the attempt: back to PENDING at {@code nextAttemptAt},
      * with the attempt {@code claimDue} counted taken back. For a target the dialer claimed
      * and then decided not to dial — nothing was placed, so nothing may be counted.

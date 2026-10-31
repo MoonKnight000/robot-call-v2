@@ -1,4 +1,4 @@
-package uz.murodjon.robotcallv2.aiagent.domain.enums;
+package uz.murodjon.robotcallv2.shared.dialog;
 
 public enum InterruptionSensitivity {
     LOW,

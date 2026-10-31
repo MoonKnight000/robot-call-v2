@@ -48,7 +48,6 @@ public class AiAgentBuilder {
     private List<WorkflowFunction> preCallFunctions;
     private Set<HandbookRule> handbook;
     private String timezone;
-    private Set<Long> sipTrunkIds;
     private boolean enabled;
     private Instant createdAt;
     private Long createdBy;
@@ -90,7 +89,6 @@ public class AiAgentBuilder {
         this.preCallFunctions = source.preCallFunctions();
         this.handbook = source.handbook();
         this.timezone = source.timezone();
-        this.sipTrunkIds = source.sipTrunkIds();
         this.enabled = source.enabled();
         this.createdAt = source.createdAt();
         this.createdBy = source.createdBy();
@@ -256,11 +254,6 @@ public class AiAgentBuilder {
         return this;
     }
 
-    public AiAgentBuilder sipTrunkIds(Set<Long> sipTrunkIds) {
-        this.sipTrunkIds = sipTrunkIds;
-        return this;
-    }
-
     public AiAgentBuilder enabled(boolean enabled) {
         this.enabled = enabled;
         return this;
@@ -319,7 +312,6 @@ public class AiAgentBuilder {
                 preCallFunctions,
                 handbook,
                 timezone,
-                sipTrunkIds,
                 enabled,
                 createdAt,
                 createdBy,

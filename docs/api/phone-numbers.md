@@ -21,8 +21,10 @@ Umumiy javob formati va xatolar uchun [README.md](README.md)ga qarang. Sxemalar:
 |---|---|---|---|
 | `POST` | `/api/phone-numbers/marketplace` | SIP_TRUNK_READ | Bozor: sotuvdagi (`AVAILABLE`) raqamlar sahifasi |
 | `POST` | `/api/phone-numbers/purchase` | SIP_TRUNK_EDIT | Bozordan raqam sotib olish |
+| `POST` | `/api/phone-numbers/byo` | SIP_TRUNK_EDIT | O'z SIP trunkidagi raqamni qo'shish (BYON) — §5.1 |
 | `POST` | `/api/phone-numbers/list` | SIP_TRUNK_READ | Kompaniyaga biriktirilgan raqamlar sahifasi |
 | `PUT` | `/api/phone-numbers/{id}/routing` | SIP_TRUNK_EDIT | Taxallus, kiruvchi yo'nalish va avto-uzaytirishni o'zgartirish |
+| `PUT` | `/api/phone-numbers/{id}/trunk` | SIP_TRUNK_EDIT | BYON raqamni boshqa o'z trunkiga o'tkazish — §6.1 |
 | `DELETE` | `/api/phone-numbers/{id}` | SIP_TRUNK_EDIT | Raqamni bo'shatish — u bozorga qaytadi |
 | `POST` | `/api/phone-numbers/test-connection` | SIP_TRUNK_EDIT | SIP hostga ulanishni sinash (BYON) |
 
@@ -43,7 +45,16 @@ Umumiy javob formati va xatolar uchun [README.md](README.md)ga qarang. Sxemalar:
 platforma qo'shadi ──▶ AVAILABLE ──purchase──▶ ASSIGNED ──DELETE /{id}──▶ AVAILABLE
                           │                                                  
                           └── DELETE /api/platform/phone-numbers/{id} (faqat AVAILABLE bo'lsa)
+
+kompaniya qo'shadi (POST /byo) ──▶ ASSIGNED (BYO_SIP_TRUNK) ──DELETE /{id}──▶ o'chiriladi
 ```
+
+- **BYON** (`type = BYO_SIP_TRUNK`): kompaniyaning o'z trunkidagi raqam. Bozorga hech qachon
+  chiqmaydi: `DELETE /{id}` uni butunlay o'chiradi.
+- **Ko'chirilgan raqamlar (V31):** migratsiya trunk `callerId` lari, caller ID pool raqamlari va
+  `inbound_route` DID'larini BYON qatorlar sifatida yozdi (DID'ning agenti/Call Flow'i bilan).
+  Trunki aniq bo'lmaganlarida `providerTrunkId = null` — ularni `withoutTrunk: true` filtri bilan
+  topib, `PUT /{id}/trunk` bilan biriktiring. Manba jadvallar o'zgarmagan.
 
 - **Sotib olish:** `status = ASSIGNED`, `companyId` — xaridor, `purchasedAt = hozir`,
   `expiresAt = hozir + 30 kun`. `nickname` berilmasa, raqamning o'zi yoziladi; `autoRenew`
@@ -57,10 +68,16 @@ platforma qo'shadi ──▶ AVAILABLE ──purchase──▶ ASSIGNED ──DE
 > **Hozircha faqat saqlanadi:**
 > - Xarid uchun balansdan pul yechilmaydi.
 > - `expiresAt`/`autoRenew` bo'yicha avtomatik uzaytiruvchi job yo'q.
-> - `inboundAgentId`/`inboundCallFlowId` kiruvchi qo'ng'iroq oqimida ishlatilmaydi — kiruvchi
->   qo'ng'iroqni haqiqatda [inbound-routes.md](inbound-routes.md) dagi DID marshrut yo'naltiradi.
 >
-> Ekranda buni "to'landi" yoki "ulandi" deb ko'rsatmang.
+> Ekranda buni "to'landi" deb ko'rsatmang.
+
+**Kiruvchi slot (`inboundAgentId`/`inboundCallFlowId`).** Raqamga [marshrut](inbound-routes.md)
+bo'lmasa, kiruvchi qo'ng'iroqqa shu slot javob beradi — soat cheklovisiz. Marshrut bo'lsa, u
+ustun (soatlar, after-hours, uning agenti). Ikkalasi ham bo'sh bo'lsa qo'ng'iroq qabul qilinmaydi.
+
+**Chiquvchi (`providerTrunkId`).** BYON raqam kampaniyaning `numbers.fromNumberId` yoki caller ID
+puli orqali ishlatilganda qo'ng'iroq shu trunkdan ketadi ([campaigns.md](campaigns.md#raqamlar--qaysi-raqamdan-qo'ng'iroq-qilinadi)).
+Bozor raqamining trunki platformaniki — u chiquvchi qo'ng'iroqda hali ishlatilmaydi.
 
 ---
 
@@ -88,6 +105,7 @@ Uchala ro'yxat endpointi (`marketplace`, `list`, platforma `list`) bir xil body 
 | `category` | `STANDARD` · `SILVER` · `GOLD` · `PLATINUM` |
 | `status` | `AVAILABLE` · `ASSIGNED`. `marketplace` doim faqat `AVAILABLE` ni qaytaradi |
 | `type` | `MARKETPLACE_PURCHASED` · `BYO_SIP_TRUNK` |
+| `withoutTrunk` | `true` — faqat `providerTrunkId = null` raqamlar; `null`/`false` toraytirmaydi |
 
 Javob — `PageableData<PhoneNumberRow>`.
 
@@ -109,6 +127,7 @@ Javob — `PageableData<PhoneNumberRow>`.
   "maxSupportedChannels": 20,
   "allocatedChannels": 5,
   "totalMonthlyCost": 75000.00,
+  "providerTrunkId": 3,
   "inboundAgentId": 1,
   "inboundAgentName": "Dilnavoz",
   "inboundCallFlowId": null,
@@ -124,6 +143,7 @@ Javob — `PageableData<PhoneNumberRow>`.
 |---|---|
 | `companyId` | Pulda turgan raqamda `null` |
 | `totalMonthlyCost` | `monthlyFee + pricePerChannel × allocatedChannels` |
+| `providerTrunkId` | Raqam turgan SIP trunk. Bozor raqamida — platformaning trunki (kompaniyaning trunk ro'yxatida yo'q); BYON'da — kompaniyaning o'z trunki; `null` — hali tanlanmagan |
 | `inboundAgentName`, `inboundCallFlowName` | Faqat kompaniya `list` va `purchase`/`routing` javoblarida to'ldiriladi; bozor va platforma ro'yxatlarida doim `null` |
 | `maxSupportedChannels` | Shu raqamda sotib olish mumkin bo'lgan kanallar chegarasi |
 
@@ -163,6 +183,30 @@ Javob — `PhoneNumberRow`.
 
 ---
 
+## 5.1. O'z trunkidagi raqam (BYON) — `POST /api/phone-numbers/byo`
+
+```json
+{ "phoneNumber": "+998712000201", "trunkId": 3, "nickname": "Savdo liniyasi" }
+```
+
+| Maydon | Majburiy | Izoh |
+|---|---|---|
+| `phoneNumber` | ha | Normallashtiriladi; noto'g'ri bo'lsa `400 PHONE_INVALID` |
+| `trunkId` | ha | Kompaniyaning o'z trunki |
+| `nickname` | — | ≤ 120 belgi; bo'sh bo'lsa, raqamning o'zi |
+
+Javob — `PhoneNumberRow`: `type = BYO_SIP_TRUNK`, `status = ASSIGNED`, narxlar `0`,
+`autoRenew = false`, `purchasedAt`/`expiresAt` — `null`. Kiruvchi agent/Call Flow keyin §6 orqali
+beriladi.
+
+| Xato | Qachon |
+|---|---|
+| `400 PHONE_INVALID` | Raqam noto'g'ri |
+| `404 SIP_TRUNK_NOT_FOUND` | Trunk yo'q yoki boshqa kompaniyaniki |
+| `409 PHONE_NUMBER_ALREADY_EXISTS` | Raqam allaqachon tizimda (bozorda, boshqa kompaniyada yoki o'zingizda) |
+
+---
+
 ## 6. Yo'naltirish — `PUT /api/phone-numbers/{id}/routing`
 
 ```json
@@ -184,10 +228,26 @@ Xatolar — §5 dagi agent va Call Flow xatolari, hamda `404 PHONE_NUMBER_NOT_FO
 
 ---
 
+## 6.1. Trunkni almashtirish — `PUT /api/phone-numbers/{id}/trunk`
+
+```json
+{ "trunkId": 4 }
+```
+
+Faqat BYON raqam uchun. Javob — `PhoneNumberRow`.
+
+| Xato | Qachon |
+|---|---|
+| `404 PHONE_NUMBER_NOT_FOUND` | Raqam yo'q yoki kompaniyaniki emas |
+| `404 SIP_TRUNK_NOT_FOUND` | Trunk yo'q yoki boshqa kompaniyaniki |
+| `409 PHONE_NUMBER_TRUNK_PLATFORM_MANAGED` | Bozordan olingan raqam — uning trunkini platforma belgilaydi |
+
+---
+
 ## 7. Bo'shatish — `DELETE /api/phone-numbers/{id}`
 
-Javob — `ResponseData<null>`. Raqam bozorga qaytadi (§2). Kompaniyaga tegishli bo'lmasa —
-`404 PHONE_NUMBER_NOT_FOUND`.
+Javob — `ResponseData<null>`. Bozor raqami bozorga qaytadi, BYON raqam butunlay o'chiriladi (§2).
+Kompaniyaga tegishli bo'lmasa — `404 PHONE_NUMBER_NOT_FOUND`.
 
 ---
 

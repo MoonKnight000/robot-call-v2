@@ -4,6 +4,7 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.shared.dialog.Disclosure;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.voice.domain.service.VoiceSettingsValidator;
 
 import java.util.*;
 import java.util.regex.Pattern;
@@ -32,6 +33,29 @@ public final class ScenarioValidator {
     private static final int MAX_SMS_TEXT_LENGTH = 1600;
 
     private static final int MAX_CODE_LENGTH = 20_000;
+
+    /** More passages than this only lengthens every turn of the stage without answering better. */
+    private static final int MAX_KNOWLEDGE_PASSAGES = 10;
+
+    /** A reminder sooner than this talks over a caller drawing breath; later than this, the line is dead. */
+    private static final int MIN_REMINDER_SECONDS = 3;
+    private static final int MAX_REMINDER_SECONDS = 120;
+    private static final int MAX_REMINDER_COUNT = 10;
+
+    /**
+     * Caller silence the agent waits before its turn — the same bounds the agent-level
+     * {@code callBehaviour.responseWaitMs} uses, so a stage cannot step outside them.
+     */
+    public static final int MIN_RESPONSE_WAIT_MS = 100;
+    public static final int MAX_RESPONSE_WAIT_MS = 3000;
+
+    /** Recogniser keyword boosting: more words than this, or longer ones, only dilute the bias. */
+    public static final int MAX_BOOSTED_KEYWORDS = 100;
+    public static final int MAX_BOOSTED_KEYWORD_LENGTH = 50;
+
+    private static final Pattern SIP_HEADER_NAME = Pattern.compile("X-[A-Za-z0-9-]{1,62}");
+    private static final int MAX_SIP_HEADERS = 10;
+    private static final int MAX_SIP_HEADER_VALUE_LENGTH = 256;
 
     private ScenarioValidator() {
     }
@@ -231,6 +255,89 @@ public final class ScenarioValidator {
                 errors.add("global stage " + s.id() + " needs a non-empty globalCondition and cannot be a NOTE");
             }
             checkStageAction(s, outcomes, errors);
+            checkStageOverrides(s, errors);
+            checkSipHeaders(s, errors);
+        }
+    }
+
+    /**
+     * Custom headers go onto a real INVITE, so a name is held to {@code X-} and a value to one
+     * line: a CR or LF in it would start a header of the tenant's choosing.
+     */
+    private static void checkSipHeaders(StageDef s, List<String> errors) {
+        Map<String, String> headers = s.action() != null ? s.action().sipHeaders() : null;
+        if (headers == null || headers.isEmpty()) {
+            return;
+        }
+        if (s.type() != StageType.CALL_TRANSFER) {
+            errors.add("only a CALL_TRANSFER stage can have action.sipHeaders, not " + s.type() + " stage " + s.id());
+            return;
+        }
+        if (headers.size() > MAX_SIP_HEADERS) {
+            errors.add("stage " + s.id() + " can have at most " + MAX_SIP_HEADERS + " sipHeaders");
+        }
+        for (Map.Entry<String, String> header : headers.entrySet()) {
+            if (header.getKey() == null || !SIP_HEADER_NAME.matcher(header.getKey()).matches()) {
+                errors.add("sip header " + header.getKey() + " of stage " + s.id()
+                        + " must start with X- and hold only letters, digits and dashes");
+            }
+            String value = header.getValue();
+            if (value == null || value.isBlank() || value.length() > MAX_SIP_HEADER_VALUE_LENGTH
+                    || value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0) {
+                errors.add("sip header " + header.getKey() + " of stage " + s.id() + " needs a one-line value of at most "
+                        + MAX_SIP_HEADER_VALUE_LENGTH + " characters");
+            }
+        }
+    }
+
+    private static void checkStageOverrides(StageDef s, List<String> errors) {
+        StageOverrides overrides = s.overrides();
+        if (overrides != null) {
+            Double speed = overrides.voiceSpeed();
+            if (speed != null && (speed < VoiceSettingsValidator.MIN_SPEED || speed > VoiceSettingsValidator.MAX_SPEED)) {
+                errors.add("stage " + s.id() + " overrides.voiceSpeed must be between "
+                        + VoiceSettingsValidator.MIN_SPEED + " and " + VoiceSettingsValidator.MAX_SPEED);
+            }
+            Integer passages = overrides.knowledgePassages();
+            if (passages != null && (passages < 1 || passages > MAX_KNOWLEDGE_PASSAGES)) {
+                errors.add("stage " + s.id() + " overrides.knowledgePassages must be between 1 and " + MAX_KNOWLEDGE_PASSAGES);
+            }
+            Integer reminderSeconds = overrides.reminderSeconds();
+            if (reminderSeconds != null && (reminderSeconds < MIN_REMINDER_SECONDS || reminderSeconds > MAX_REMINDER_SECONDS)) {
+                errors.add("stage " + s.id() + " overrides.reminderSeconds must be between "
+                        + MIN_REMINDER_SECONDS + " and " + MAX_REMINDER_SECONDS);
+            }
+            Integer reminderMaxCount = overrides.reminderMaxCount();
+            if (reminderMaxCount != null && (reminderMaxCount < 0 || reminderMaxCount > MAX_REMINDER_COUNT)) {
+                errors.add("stage " + s.id() + " overrides.reminderMaxCount must be between 0 and " + MAX_REMINDER_COUNT);
+            }
+            Integer responseWaitMs = overrides.responseWaitMs();
+            if (responseWaitMs != null && (responseWaitMs < MIN_RESPONSE_WAIT_MS || responseWaitMs > MAX_RESPONSE_WAIT_MS)) {
+                errors.add("stage " + s.id() + " overrides.responseWaitMs must be between "
+                        + MIN_RESPONSE_WAIT_MS + " and " + MAX_RESPONSE_WAIT_MS);
+            }
+            List<String> keywords = overrides.boostedKeywords();
+            if (keywords != null) {
+                if (keywords.size() > MAX_BOOSTED_KEYWORDS) {
+                    errors.add("stage " + s.id() + " overrides.boostedKeywords must have at most "
+                            + MAX_BOOSTED_KEYWORDS + " items");
+                }
+                if (keywords.stream().anyMatch(k -> k == null || k.isBlank() || k.length() > MAX_BOOSTED_KEYWORD_LENGTH)) {
+                    errors.add("stage " + s.id() + " overrides.boostedKeywords must be non-blank and at most "
+                            + MAX_BOOSTED_KEYWORD_LENGTH + " characters each");
+                }
+            }
+        }
+        if (s.knowledgeSourceIds() != null && s.knowledgeSourceIds().stream().anyMatch(id -> id == null || id <= 0)) {
+            errors.add("stage " + s.id() + " knowledgeSourceIds must be positive ids");
+        }
+        if (s.examples() != null) {
+            for (StyleExample example : s.examples()) {
+                if (example == null || example.wrong() == null || example.wrong().isBlank()
+                        || example.right() == null || example.right().isBlank()) {
+                    errors.add("an example of stage " + s.id() + " needs both 'wrong' and 'right'");
+                }
+            }
         }
     }
 

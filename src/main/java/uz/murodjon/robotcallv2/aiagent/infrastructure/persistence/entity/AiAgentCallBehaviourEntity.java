@@ -4,7 +4,7 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
+import uz.murodjon.robotcallv2.shared.dialog.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 
 /** The ai_agent columns behind {@code AiAgentCallBehaviour}: turn-taking, voicemail, SMS and transfer. */
@@ -49,6 +49,9 @@ public class AiAgentCallBehaviourEntity {
     @Column(name = "frustration_threshold")
     private Integer frustrationThreshold;
 
+    @Column(name = "response_wait_ms")
+    private Integer responseWaitMs;
+
     protected AiAgentCallBehaviourEntity() {
     }
 
@@ -58,7 +61,8 @@ public class AiAgentCallBehaviourEntity {
                                       String midCallSmsTemplate, String transferPhoneNumber,
                                       String transferMessage, Long transferQueueId,
                                       Long preConversationAudioFileId,
-                                      Boolean autoEscalateOnFrustration, Integer frustrationThreshold) {
+                                      Boolean autoEscalateOnFrustration, Integer frustrationThreshold,
+                                      Integer responseWaitMs) {
         this.interruptionSensitivity = interruptionSensitivity != null
                 ? interruptionSensitivity : InterruptionSensitivity.MEDIUM;
         this.dtmfInputEnabled = dtmfInputEnabled;
@@ -72,6 +76,7 @@ public class AiAgentCallBehaviourEntity {
         this.preConversationAudioFileId = preConversationAudioFileId;
         this.autoEscalateOnFrustration = autoEscalateOnFrustration;
         this.frustrationThreshold = frustrationThreshold;
+        this.responseWaitMs = responseWaitMs;
     }
 
     public InterruptionSensitivity getInterruptionSensitivity() {
@@ -120,5 +125,9 @@ public class AiAgentCallBehaviourEntity {
 
     public Integer getFrustrationThreshold() {
         return frustrationThreshold;
+    }
+
+    public Integer getResponseWaitMs() {
+        return responseWaitMs;
     }
 }

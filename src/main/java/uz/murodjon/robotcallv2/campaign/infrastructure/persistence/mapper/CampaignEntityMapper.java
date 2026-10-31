@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignAutoRetries;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialing;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
@@ -61,10 +62,12 @@ public class CampaignEntityMapper {
                         entity.getCronExpression(), entity.isAutoResetTargets()))
                 .dialing(new CampaignDialing(entity.getDialMode(), entity.getCallQueueId(),
                         entity.getMaxAiOverflowPercent(), entity.getTargetOrdering()))
-                .numbers(new CampaignNumbers(entity.getCallerIdPoolId(), entity.isLocalPresence()))
+                .numbers(new CampaignNumbers(entity.getCallerIdPoolId(), entity.isLocalPresence(),
+                        entity.getFromNumberId()))
                 .kind(entity.getKind())
                 .sequence(toSequence(entity.getSequence()))
                 .autoEnroll(toAutoEnrollment(entity.getAutoEnroll()))
+                .autoRetries(new CampaignAutoRetries(entity.isDoubleDial(), entity.isAutoScheduleCallbacks()))
                 .consentConfirmedAt(entity.getConsentConfirmedAt())
                 .lastRunAt(entity.getLastRunAt())
                 .version(entity.getVersion())
@@ -112,8 +115,11 @@ public class CampaignEntityMapper {
         entity.setRetryPolicy(toJson(campaign.retry().policy()));
         entity.setSequence(toJson(campaign.sequence()));
         entity.setAutoEnroll(campaign.autoEnroll().hasNoRules() ? null : toJson(campaign.autoEnroll()));
+        entity.setDoubleDial(campaign.autoRetries().doubleDial());
+        entity.setAutoScheduleCallbacks(campaign.autoRetries().autoScheduleCallbacks());
         entity.setCallerIdPoolId(campaign.numbers().callerIdPoolId());
         entity.setLocalPresence(campaign.numbers().localPresence());
+        entity.setFromNumberId(campaign.numbers().fromNumberId());
         entity.setStartAt(campaign.schedule().startAt());
         entity.setEndAt(campaign.schedule().endAt());
         entity.setBudgetUzs(campaign.limits().budgetUzs());

@@ -45,10 +45,14 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     @Query("SELECT count(t) FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.status IN :statuses")
     long countByCampaignIdAndStatusIn(@Param("campaignId") long campaignId, @Param("statuses") List<TargetStatus> statuses);
 
-    /** Rows of {@code [campaign id, targets]}: targets with a call that ended in one of {@code dispositions}. */
+    /**
+     * Rows of {@code [campaign id, targets]}: targets that left their sequence as a conversion, or
+     * with a call that ended in one of {@code dispositions}.
+     */
     @Query(value = "SELECT t.campaign_id, COUNT(DISTINCT t.id) FROM campaign_target t "
-            + "JOIN call_attempt a ON a.target_id = t.id "
-            + "WHERE t.campaign_id IN (:campaignIds) AND t.company_id = :companyId AND a.disposition IN (:dispositions) "
+            + "LEFT JOIN call_attempt a ON a.target_id = t.id AND a.disposition IN (:dispositions) "
+            + "WHERE t.campaign_id IN (:campaignIds) AND t.company_id = :companyId "
+            + "AND (t.converted OR a.id IS NOT NULL) "
             + "GROUP BY t.campaign_id", nativeQuery = true)
     List<Object[]> countSuccessfulByCampaignIds(@Param("campaignIds") Collection<Long> campaignIds,
                                                 @Param("companyId") long companyId,
@@ -173,8 +177,22 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
     @Modifying
     @Transactional
     @Query(value = "UPDATE campaign_target SET status = 'PENDING', attempts = 0, step_id = NULL, step_attempts = 0, "
-            + "next_attempt_at = NULL WHERE campaign_id = :campaignId AND do_not_call = false", nativeQuery = true)
+            + "next_attempt_at = NULL, redialed_at_attempt = NULL "
+            + "WHERE campaign_id = :campaignId AND do_not_call = false", nativeQuery = true)
     void resetTargetsForRecurrence(@Param("campaignId") long campaignId);
+
+    /**
+     * Double dial: back to PENDING at once with the attempt handed back, marked with the attempt it
+     * was taken on — every SET reads the row as it was, so {@code redialed_at_attempt} gets the
+     * attempt being redialled. Matches nothing when that attempt was already redialled.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE campaign_target SET status = 'PENDING', next_attempt_at = now(), "
+            + "attempts = GREATEST(attempts - 1, 0), step_attempts = GREATEST(step_attempts - 1, 0), "
+            + "redialed_at_attempt = attempts "
+            + "WHERE id = :id AND redialed_at_attempt IS DISTINCT FROM attempts", nativeQuery = true)
+    int redialOnce(@Param("id") long id);
 
     /** A target moves to {@code stepId} and waits there with no attempt spent on it yet. */
     @Modifying
@@ -183,6 +201,12 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
             + "next_attempt_at = :nextAttemptAt WHERE id = :id", nativeQuery = true)
     void moveToStep(@Param("id") long id, @Param("stepId") String stepId,
                     @Param("nextAttemptAt") Instant nextAttemptAt);
+
+    @Modifying
+    @Transactional
+    @Query(value = "UPDATE campaign_target SET outcome = :outcome, converted = :converted WHERE id = :id",
+            nativeQuery = true)
+    void recordOutcome(@Param("id") long id, @Param("outcome") String outcome, @Param("converted") boolean converted);
 
     /** Targets never dialled — PENDING with no attempt spent; nothing points at them yet. */
     @Modifying

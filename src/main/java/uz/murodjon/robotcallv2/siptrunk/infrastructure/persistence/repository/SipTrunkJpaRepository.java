@@ -10,7 +10,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity.SipTrunkEntity;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,8 +30,6 @@ public interface SipTrunkJpaRepository extends JpaRepository<SipTrunkEntity, Lon
     Optional<SipTrunkEntity> findByCompanyIdAndIsDefaultTrueAndEnabledTrue(long companyId);
 
     List<SipTrunkEntity> findByCompanyIdAndEnabledTrue(long companyId);
-
-    List<SipTrunkEntity> findByIdInAndCompanyIdAndEnabledTrue(Collection<Long> ids, long companyId);
 
     @Modifying
     @Transactional

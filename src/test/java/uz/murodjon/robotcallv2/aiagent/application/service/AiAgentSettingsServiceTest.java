@@ -17,7 +17,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentLimits;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentScript;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
+import uz.murodjon.robotcallv2.shared.dialog.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
@@ -28,7 +28,6 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.exception.*;
-import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
 import java.util.List;
 
@@ -54,7 +53,7 @@ class AiAgentSettingsServiceTest {
         aiModelConfigUseCase = mock(AiModelConfigUseCase.class);
         auditUseCase = mock(AuditUseCase.class);
         AiAgentDrafts drafts = new AiAgentDrafts(repository, mock(AiAgentVersionRepository.class),
-                aiModelConfigUseCase, mock(SipTrunkUseCase.class), mock(CompanyConfigUseCase.class));
+                aiModelConfigUseCase, mock(CompanyConfigUseCase.class));
         service = new AiAgentSettingsService(drafts, auditUseCase);
         when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(AGENT);
         when(repository.update(eq(COMPANY_ID), eq(AGENT_ID), any())).thenReturn(true);
@@ -222,7 +221,7 @@ class AiAgentSettingsServiceTest {
                 null, null,
                 null, null,
                 null,
-                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null),
+                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null, null, null, null),
                 new AgentDataPolicyDto(zeroPiiRetention, storeCallAudio, null, null));
     }
 

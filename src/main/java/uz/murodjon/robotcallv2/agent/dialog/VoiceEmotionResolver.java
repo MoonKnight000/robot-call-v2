@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.Locale;
@@ -35,7 +36,10 @@ public class VoiceEmotionResolver {
         EffectiveVoiceSettings base = s.voiceSettings() != null ? s.voiceSettings() : EffectiveVoiceSettings.NONE;
         VoiceEmotion emotion = determineEmotion(s);
 
-        Double effectiveSpeed = agentSpeed(s, base.speed());
+        StageOverrides overrides = SystemPromptFactory.overridesOf(s);
+        Double effectiveSpeed = overrides != null && overrides.voiceSpeed() != null
+                ? overrides.voiceSpeed()
+                : agentSpeed(s, base.speed());
         if (s.emotionAdaptiveVoice()) {
             if (s.lastCustomerSentiment() == CustomerSentiment.FRUSTRATED) {
                 // Calm, softer, slightly slower pace during customer frustration

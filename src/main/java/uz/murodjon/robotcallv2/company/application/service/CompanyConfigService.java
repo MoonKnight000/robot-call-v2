@@ -15,9 +15,6 @@ import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
-import java.time.LocalDate;
-import java.util.List;
-
 @Service
 public class CompanyConfigService implements CompanyConfigUseCase {
 
@@ -46,11 +43,11 @@ public class CompanyConfigService implements CompanyConfigUseCase {
 
     @Override
     public CompanyConfig requireConfig(long companyId) {
-        CompanyConfig row = companyConfigRepository.find(companyId);
-        if (row == null) {
+        CompanyConfig config = companyConfigRepository.find(companyId);
+        if (config == null) {
             throw new NotFoundException(ErrorCode.COMPANY_CONFIG_NOT_FOUND, companyId);
         }
-        return row;
+        return config;
     }
 
     @Override
@@ -77,21 +74,19 @@ public class CompanyConfigService implements CompanyConfigUseCase {
         if (humanLike != existing.humanLikePersonaAllowed() && !currentUser.hasPermission(Permission.PLATFORM_ADMIN)) {
             throw new ForbiddenException(ErrorCode.HUMAN_LIKE_PERSONA_PLATFORM_ONLY);
         }
-        List<LocalDate> holidays = request.holidays() != null ? request.holidays() : existing.holidays();
         int reviewThreshold = request.scorecardReviewThreshold() != null
                 ? request.scorecardReviewThreshold() : existing.scorecardReviewThreshold();
 
         companyConfigRepository.update(companyId, CompanyConfig.settings(
                 request.dialWindowStart(), request.dialWindowEnd(), request.timezone(),
-                maxAttempts, quietDays, respectPromise, humanLike, holidays, reviewThreshold,
+                maxAttempts, quietDays, respectPromise, humanLike, reviewThreshold,
                 existing.telephonyEngine()));
         // Who allowed the company's agents to pass as a person is the one line in this
         // record a regulator would ask for, so it is written out whenever it changes.
         String persona = humanLike != existing.humanLikePersonaAllowed()
                 ? " humanLikePersonaAllowed=" + humanLike : "";
         audit.record(companyId, "COMPANY_CONFIG_UPDATE", "company_config", String.valueOf(companyId),
-                "contactPolicy=" + maxAttempts + "/7d,quiet=" + quietDays + "d,promise=" + respectPromise
-                        + ",holidays=" + holidays.size() + persona);
+                "contactPolicy=" + maxAttempts + "/7d,quiet=" + quietDays + "d,promise=" + respectPromise + persona);
         return requireConfig(companyId);
     }
 
@@ -108,7 +103,7 @@ public class CompanyConfigService implements CompanyConfigUseCase {
         companyConfigRepository.update(companyId, CompanyConfig.settings(
                 existing.dialWindowStart(), existing.dialWindowEnd(), existing.timezone(),
                 existing.maxAttemptsPerPhonePerWeek(), existing.quietDaysAfterConversation(),
-                existing.respectPromisedDate(), existing.humanLikePersonaAllowed(), existing.holidays(),
+                existing.respectPromisedDate(), existing.humanLikePersonaAllowed(),
                 existing.scorecardReviewThreshold(), request.telephonyEngine()));
         audit.record(companyId, "COMPANY_TELEPHONY_ENGINE_UPDATE", "company_config", String.valueOf(companyId),
                 existing.telephonyEngine() + " -> " + request.telephonyEngine());

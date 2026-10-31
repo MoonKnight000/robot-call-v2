@@ -472,6 +472,8 @@ paths:
     $ref: paths/pack.yaml#/~1api~1packs~1install-draft
   /api/packs/{key}/install:
     $ref: paths/pack.yaml#/~1api~1packs~1%7Bkey%7D~1install
+  /api/phone-numbers/byo:
+    $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1byo
   /api/phone-numbers/list:
     $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1list
   /api/phone-numbers/marketplace:
@@ -484,6 +486,8 @@ paths:
     $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1%7Bid%7D
   /api/phone-numbers/{id}/routing:
     $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1%7Bid%7D~1routing
+  /api/phone-numbers/{id}/trunk:
+    $ref: paths/phoneNumber.yaml#/~1api~1phone-numbers~1%7Bid%7D~1trunk
   /api/platform/phone-numbers:
     $ref: paths/platformPhoneNumber.yaml#/~1api~1platform~1phone-numbers
   /api/platform/phone-numbers/batch:

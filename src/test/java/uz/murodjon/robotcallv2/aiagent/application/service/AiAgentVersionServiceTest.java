@@ -24,7 +24,6 @@ import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.exception.*;
-import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.time.Instant;
@@ -67,7 +66,7 @@ class AiAgentVersionServiceTest {
         currentUser = mock(CurrentUser.class);
         when(currentUser.id()).thenReturn(Optional.of(PUBLISHER_ID));
         drafts = new AiAgentDrafts(repository, versionRepository,
-                mock(AiModelConfigUseCase.class), mock(SipTrunkUseCase.class), companyConfigUseCase);
+                mock(AiModelConfigUseCase.class), companyConfigUseCase);
         service = serviceWithGate(null);
         when(userUseCase.findNamesByIds(COMPANY_ID, List.of(PUBLISHER_ID))).thenReturn(Map.of(PUBLISHER_ID, "Aziz"));
     }

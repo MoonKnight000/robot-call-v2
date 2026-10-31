@@ -28,8 +28,18 @@ public class PhoneNumberControllerImpl implements PhoneNumberController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<PhoneNumberRow>> createByoNumber(long companyId, CreateByoNumberRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(phoneNumberUseCase.createByoNumber(companyId, request)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<PageableData<PhoneNumberRow>>> findCompanyNumbers(long companyId, PhoneNumberFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(phoneNumberUseCase.findCompanyNumbers(companyId, filter)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<PhoneNumberRow>> updateTrunk(long companyId, long id, UpdatePhoneNumberTrunkRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(phoneNumberUseCase.updateTrunk(companyId, id, request)));
     }
 
     @Override

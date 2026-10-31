@@ -157,13 +157,13 @@ class FlowCallService {
             current.bridges().addChannel(legs.bridgeId(), channelId).execute();
 
             attemptId = callAttemptUseCase.startAttempt(companyId, CallAttempt.NO_TARGET, channelId,
-                    callerNumber != null ? callerNumber : "INBOUND", language, route.id(), null);
+                    callerNumber != null ? callerNumber : "INBOUND", language, route.storedId(), null);
             callAttemptUseCase.markAnswered(attemptId);
 
             // The flow call before the session: a StasisEnd from here on finds the flow call and
             // marks it gone, and one that came earlier has left the call for the register below.
             call = new FlowCall(channelId, legs.bridgeId(), legs.endpoint(), companyId, attemptId, callerNumber, did,
-                    route.id(), language, knownLanguage != null, List.of(legs.audioMonitor()));
+                    route.storedId(), language, knownLanguage != null, List.of(legs.audioMonitor()));
             call.setVip(decision.vip());
             call.setClientName(crm != null && crm.name() != null ? crm.name()
                     : memory != null ? memory.preferredName() : null);

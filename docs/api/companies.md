@@ -1,4 +1,4 @@
-﻿# Kompaniyalar API
+# Kompaniyalar API
 
 `uz.murodjon.robotcallv2.company` · huquq: **COMPANY_READ** / **COMPANY_EDIT**; kompaniya yaratish, ro'yxati va statusi — **PLATFORM_ADMIN** (pastga qarang)
 
@@ -237,7 +237,6 @@ bir xil scoping — boshqa kompaniyaniki so'ralsa `404`).
   "quietDaysAfterConversation": 1,
   "respectPromisedDate": true,
   "humanLikePersonaAllowed": false,
-  "holidays": ["2026-03-21", "2026-09-01"],
   "scorecardReviewThreshold": 60,
   "createdAt": "2026-08-01T09:00:00Z"
 }
@@ -307,7 +306,6 @@ yaratilganda avtomatik config oladi.
 | `quietDaysAfterConversation` | ❌ | `0..90`; `null` — o'zgarmaydi |
 | `respectPromisedDate` | ❌ | `null` — o'zgarmaydi |
 | `humanLikePersonaAllowed` | ❌ | `null` — o'zgarmaydi. Qiymatni faqat platform admin o'zgartira oladi, aks holda `403 HUMAN_LIKE_PERSONA_PLATFORM_ONLY`. O'zgarishi audit log'ga yoziladi |
-| `holidays` | ❌ | Sanalar (`YYYY-MM-DD`, ko'pi bilan 366 ta). Shu kunlari kampaniyalar umuman termaydi, retry va callback esa keyingi ruxsat etilgan kunga suriladi. Kun kompaniyaning `timezone`ida hisoblanadi. `null` — o'zgarmaydi, `[]` — tozalaydi |
 | `scorecardReviewThreshold` | ❌ | `0..100`, standart `60`; `null` — o'zgarmaydi. Operator qo'ng'irog'i bahosi shundan past bo'lsa, tekshiruv inbox'iga tushadi ([scorecards.md](scorecards.md)). `0` — faqat norozi mijozli qo'ng'iroqlar tushadi |
 
 **Response** — yangilangan `CompanyConfig`.

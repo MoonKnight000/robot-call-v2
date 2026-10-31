@@ -16,7 +16,9 @@ public record PhoneNumberFilter(
         String search,
         PhoneNumberCategory category,
         PhoneNumberStatus status,
-        PhoneNumberType type
+        PhoneNumberType type,
+        /** true: only numbers with no trunk yet (left so by the V31 backfill); null or false does not narrow. */
+        Boolean withoutTrunk
 ) implements FilterInterface<PhoneNumberTableField> {
 
     public PhoneNumberFilter {

@@ -26,6 +26,11 @@ public class StageDefBuilder {
     private StagePosition position;
     private String globalCondition;
     private StageAction action;
+    private String title;
+    private StageOverrides overrides;
+    private List<StyleExample> examples;
+    private Boolean skipWhenKnown;
+    private List<Long> knowledgeSourceIds;
 
     StageDefBuilder() {
     }
@@ -45,6 +50,11 @@ public class StageDefBuilder {
         this.position = source.position();
         this.globalCondition = source.globalCondition();
         this.action = source.action();
+        this.title = source.title();
+        this.overrides = source.overrides();
+        this.examples = source.examples();
+        this.skipWhenKnown = source.skipWhenKnown();
+        this.knowledgeSourceIds = source.knowledgeSourceIds();
     }
 
     public StageDefBuilder id(String id) {
@@ -117,8 +127,34 @@ public class StageDefBuilder {
         return this;
     }
 
+    public StageDefBuilder title(String title) {
+        this.title = title;
+        return this;
+    }
+
+    public StageDefBuilder overrides(StageOverrides overrides) {
+        this.overrides = overrides;
+        return this;
+    }
+
+    public StageDefBuilder examples(List<StyleExample> examples) {
+        this.examples = examples;
+        return this;
+    }
+
+    public StageDefBuilder skipWhenKnown(Boolean skipWhenKnown) {
+        this.skipWhenKnown = skipWhenKnown;
+        return this;
+    }
+
+    public StageDefBuilder knowledgeSourceIds(List<Long> knowledgeSourceIds) {
+        this.knowledgeSourceIds = knowledgeSourceIds;
+        return this;
+    }
+
     public StageDef build() {
         return new StageDef(id, purpose, allowedTransitions, allowedTools, emotion, model, branches,
-                transitionConditions, staticLine, requiredOutcomes, type, position, globalCondition, action);
+                transitionConditions, staticLine, requiredOutcomes, type, position, globalCondition, action, title,
+                overrides, examples, skipWhenKnown, knowledgeSourceIds);
     }
 }

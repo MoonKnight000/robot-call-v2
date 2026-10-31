@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.adapter;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
+import uz.murodjon.robotcallv2.phonenumber.infrastructure.persistence.entity.PhoneNumberEntity;
+import uz.murodjon.robotcallv2.phonenumber.infrastructure.persistence.repository.PhoneNumberJpaRepository;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.CallerIdPoolRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.CallerIdPool;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.CallerIdPoolNumber;
@@ -24,15 +26,18 @@ public class CallerIdPoolRepositoryAdapter implements CallerIdPoolRepository {
     private final CallerIdPoolNumberJpaRepository callerIdPoolNumberJpaRepository;
     private final CallerIdPoolEntityMapper callerIdPoolEntityMapper;
     private final CompanyJpaRepository companyJpaRepository;
+    private final PhoneNumberJpaRepository phoneNumberJpaRepository;
 
     public CallerIdPoolRepositoryAdapter(CallerIdPoolJpaRepository callerIdPoolJpaRepository,
                                          CallerIdPoolNumberJpaRepository callerIdPoolNumberJpaRepository,
                                          CallerIdPoolEntityMapper callerIdPoolEntityMapper,
-                                         CompanyJpaRepository companyJpaRepository) {
+                                         CompanyJpaRepository companyJpaRepository,
+                                         PhoneNumberJpaRepository phoneNumberJpaRepository) {
         this.callerIdPoolJpaRepository = callerIdPoolJpaRepository;
         this.callerIdPoolNumberJpaRepository = callerIdPoolNumberJpaRepository;
         this.callerIdPoolEntityMapper = callerIdPoolEntityMapper;
         this.companyJpaRepository = companyJpaRepository;
+        this.phoneNumberJpaRepository = phoneNumberJpaRepository;
     }
 
     @Override
@@ -86,6 +91,11 @@ public class CallerIdPoolRepositoryAdapter implements CallerIdPoolRepository {
         if (pool == null) {
             return null;
         }
+        PhoneNumberEntity phoneNumber = phoneNumberJpaRepository.findByPhoneNumberAndCompanyId(phone, companyId)
+                .orElse(null);
+        if (phoneNumber == null) {
+            return null;
+        }
         CallerIdPoolNumberEntity numberEntity = callerIdPoolNumberJpaRepository
                 .findByPoolIdAndPhone(poolId, phone)
                 .orElseGet(() -> {
@@ -95,6 +105,7 @@ public class CallerIdPoolRepositoryAdapter implements CallerIdPoolRepository {
                     created.setCreatedAt(Instant.now());
                     return created;
                 });
+        numberEntity.setPhoneNumber(phoneNumber);
         numberEntity.setLabel(label);
         numberEntity.setStatus(CallerIdNumberStatus.ACTIVE);
         numberEntity.setCoolingUntil(null);

@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.entity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 
+import java.util.Objects;
+
 /** One row of call_queue_member, owned by its queue. */
 @Embeddable
 public class CallQueueMemberEntity {
@@ -13,17 +15,12 @@ public class CallQueueMemberEntity {
     @Column(nullable = false)
     private int priority;
 
-    /** Comma-separated tags. */
-    @Column
-    private String skills;
-
     protected CallQueueMemberEntity() {
     }
 
-    public CallQueueMemberEntity(Long userId, int priority, String skills) {
+    public CallQueueMemberEntity(Long userId, int priority) {
         this.userId = userId;
         this.priority = priority;
-        this.skills = skills;
     }
 
     public Long getUserId() {
@@ -34,7 +31,15 @@ public class CallQueueMemberEntity {
         return priority;
     }
 
-    public String getSkills() {
-        return skills;
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof CallQueueMemberEntity that
+                && Objects.equals(userId, that.userId)
+                && priority == that.priority;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(userId, priority);
     }
 }

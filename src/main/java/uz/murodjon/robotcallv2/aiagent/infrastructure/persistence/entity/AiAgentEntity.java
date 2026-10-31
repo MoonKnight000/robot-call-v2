@@ -6,24 +6,27 @@ import org.hibernate.annotations.FetchMode;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentTemplate;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
-import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity.SipTrunkEntity;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.TtsVoiceEntity;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /** JPA entity for ai_agent (V12). */
 @Entity
 @Table(name = "ai_agent")
+@SecondaryTable(name = "ai_agent_ambience", pkJoinColumns = @PrimaryKeyJoinColumn(name = "ai_agent_id", referencedColumnName = "id"))
 public class AiAgentEntity {
 
     @Id
@@ -148,8 +151,10 @@ public class AiAgentEntity {
     private String greeting;
 
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "pronunciation_rules", columnDefinition = "jsonb")
-    private String pronunciationRules = "[]";
+    @ElementCollection(fetch = FetchType.EAGER)
+    @Fetch(FetchMode.SUBSELECT)
+    @CollectionTable(name = "ai_agent_pronunciation_rule", joinColumns = @JoinColumn(name = "ai_agent_id"))
+    private List<PronunciationRuleEmbeddable> pronunciationRules = new ArrayList<>();
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "post_call_actions", columnDefinition = "jsonb")
@@ -159,19 +164,14 @@ public class AiAgentEntity {
     @Column(name = "pre_call_functions", columnDefinition = "jsonb")
     private String preCallFunctions = "[]";
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "handbook", columnDefinition = "jsonb")
-    private String handbook = "[]";
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "ai_agent_handbook_rule", joinColumns = @JoinColumn(name = "ai_agent_id"))
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rule", nullable = false)
+    private Set<HandbookRule> handbook = EnumSet.noneOf(HandbookRule.class);
 
     @Column(name = "timezone", length = 64)
     private String timezone;
-
-    @ManyToMany(fetch = FetchType.EAGER)
-    @Fetch(FetchMode.SUBSELECT)
-    @JoinTable(name = "ai_agent_sip_trunk",
-            joinColumns = @JoinColumn(name = "ai_agent_id"),
-            inverseJoinColumns = @JoinColumn(name = "sip_trunk_id"))
-    private Set<SipTrunkEntity> sipTrunks = new LinkedHashSet<>();
 
     @Column(nullable = false)
     private boolean enabled = true;
@@ -405,12 +405,12 @@ public class AiAgentEntity {
         this.greeting = greeting;
     }
 
-    public String getPronunciationRules() {
+    public List<PronunciationRuleEmbeddable> getPronunciationRules() {
         return pronunciationRules;
     }
 
-    public void setPronunciationRules(String pronunciationRules) {
-        this.pronunciationRules = pronunciationRules;
+    public void setPronunciationRules(List<PronunciationRuleEmbeddable> pronunciationRules) {
+        this.pronunciationRules = pronunciationRules != null ? pronunciationRules : new ArrayList<>();
     }
 
     public String getPostCallActions() {
@@ -429,12 +429,12 @@ public class AiAgentEntity {
         this.preCallFunctions = preCallFunctions;
     }
 
-    public String getHandbook() {
+    public Set<HandbookRule> getHandbook() {
         return handbook;
     }
 
-    public void setHandbook(String handbook) {
-        this.handbook = handbook;
+    public void setHandbook(Set<HandbookRule> handbook) {
+        this.handbook = handbook != null ? handbook : EnumSet.noneOf(HandbookRule.class);
     }
 
     public String getTimezone() {
@@ -443,30 +443,6 @@ public class AiAgentEntity {
 
     public void setTimezone(String timezone) {
         this.timezone = timezone;
-    }
-
-    public Set<SipTrunkEntity> getSipTrunks() {
-        return sipTrunks;
-    }
-
-    /** The ids of {@link #getSipTrunks()}, which is what the domain and the dialer carry. */
-    public Set<Long> getSipTrunkIds() {
-        Set<Long> ids = new LinkedHashSet<>();
-        for (SipTrunkEntity trunk : sipTrunks) {
-            ids.add(trunk.getId());
-        }
-        return ids;
-    }
-
-    /** In place, for the reason {@link #setLanguageVoices(Map)} gives. */
-    public void setSipTrunks(Set<SipTrunkEntity> sipTrunks) {
-        if (sipTrunks == this.sipTrunks) {
-            return;
-        }
-        this.sipTrunks.clear();
-        if (sipTrunks != null) {
-            this.sipTrunks.addAll(sipTrunks);
-        }
     }
 
     public boolean isEnabled() {

@@ -116,6 +116,8 @@ BatchCallRequest:
       description: the target file, as `POST /api/campaigns/{id}/targets/csv` takes it
     schedule:
       $ref: '#/CampaignScheduleDto'
+    numbers:
+      $ref: '#/CampaignNumbers'
     immediate:
       type: boolean
       description: as `start?immediate=true` — a future `schedule.startAt` is ignored
@@ -124,6 +126,23 @@ BatchCallRequest:
   - type
   - aiAgentId
   - csv
+CampaignNumbers:
+  type: object
+  description: Which number the campaign's calls present. At most one of `fromNumberId` and `callerIdPoolId`; with neither, calls go out over the agent's trunks with the trunk's own caller ID.
+  properties:
+    callerIdPoolId:
+      type: integer
+      format: int64
+      nullable: true
+      description: a caller ID pool of the company's; each call presents one of its numbers, over that number's own trunk
+    localPresence:
+      type: boolean
+      description: pick the pool number closest to the callee's; needs `callerIdPoolId`
+    fromNumberId:
+      type: integer
+      format: int64
+      nullable: true
+      description: one of the company's BYON phone numbers with a trunk; every call presents it, over its trunk
 BatchCallResponse:
   type: object
   description: '`POST /api/campaigns/batch-call` response.'

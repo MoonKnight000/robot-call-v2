@@ -70,6 +70,12 @@ AgentCallBehaviourDto:
     preConversationAudioFileId:
       type: integer
       format: int64
+    responseWaitMs:
+      type: integer
+      format: int32
+      minimum: 100
+      maximum: 3000
+      description: caller silence (ms) the agent waits after the caller stops speaking before its turn (cascade only); null = deployment default
 AgentClearableField:
   type: string
   enum:
@@ -81,6 +87,9 @@ AgentClearableField:
   - FAST_LLM_MODEL
   - GREETING_PAUSE
   - SPEECH_LANGUAGES
+  - RESPONSE_WAIT_MS
+  - TRANSCRIPTION_MODE
+  - BOOSTED_KEYWORDS
   description: Optional agent setting `PUT /api/ai-agents/{id}` can remove through `clearFields`.
 AgentGreetingDto:
   type: object
@@ -180,6 +189,17 @@ AgentSpeechEngineDto:
       type: string
     ttsModel:
       type: string
+    transcriptionMode:
+      type: string
+      enum: [FAST, ACCURATE]
+      description: how the recogniser trades latency for accuracy (cascade only); null = deployment default
+    boostedKeywords:
+      type: array
+      maxItems: 100
+      items:
+        type: string
+        maxLength: 50
+      description: words the recogniser should favour (cascade only); an empty list on a write clears them
 AgentVoiceDto:
   type: object
   description: '`AiAgentVoice` as the agent endpoints read and write it. On a write a null field keeps what the agent has (or the create default).'
@@ -662,12 +682,6 @@ AiAgentRow:
       type: array
       items:
         $ref: '#/WorkflowFunction'
-    sipTrunkIds:
-      type: array
-      items:
-        type: integer
-        format: int64
-      uniqueItems: true
     enabled:
       type: boolean
     createdAt:
@@ -830,12 +844,6 @@ CreateAiAgentRequest:
       $ref: '#/AgentWebhookConfig'
     postCallWebhook:
       $ref: '#/AgentWebhookConfig'
-    sipTrunkIds:
-      type: array
-      items:
-        type: integer
-        format: int64
-      uniqueItems: true
     enabled:
       type: boolean
   required:
@@ -1170,12 +1178,6 @@ UpdateAiAgentRequest:
       $ref: '#/AgentWebhookConfig'
     postCallWebhook:
       $ref: '#/AgentWebhookConfig'
-    sipTrunkIds:
-      type: array
-      items:
-        type: integer
-        format: int64
-      uniqueItems: true
     enabled:
       type: boolean
     version:

@@ -4,6 +4,15 @@ Bu modul kompaniyalarga chiquvchi qo'ng'iroqlar uchun telefon raqamlari pulini (
 turli rotatsiya strategiyalari (ROUND_ROBIN, RANDOM, LEAST_USED, HIGHEST_ANSWER_RATE) orqali raqamlarni
 avtomatik almashtirish va spamlardan himoya qilish imkonini beradi.
 
+**Pul a'zosi — kompaniyaning ro'yxatdan o'tgan raqami.** Pulga faqat kompaniyaning
+[phone-numbers.md](phone-numbers.md) dagi raqami qo'shiladi (BYON yoki sotib olingan). Kampaniya puldan
+raqam tanlaganda qo'ng'iroq **shu raqamning o'z trunki** (`providerTrunkId`) orqali ketadi. Raqam faqat trunki kompaniyaning
+yoqilgan, ishlayotgan va bo'sh kanali bor trunki bo'lsa tanlanadi; bunday raqam bo'lmasa target 5 daqiqaga
+kutadi (urinish hisoblanmaydi) — boshqa raqam yoki platformaning raqami bilan qo'ng'iroq qilinmaydi.
+Hozircha faqat AI dialer shunday ishlaydi; predictive (operator) kampaniyalar pulni ishlatmaydi.
+
+> Bozordan sotib olingan raqamning trunki platformaniki, shuning uchun u puldan hali tanlanmaydi.
+
 ---
 
 ## Endpointlar
@@ -24,6 +33,8 @@ Ruxsat: `SIP_TRUNK_EDIT`
   ]
 }
 ```
+
+`initialPhones` dagi har bir raqam §6 dagi qoidaga bo'ysunadi; bittasi o'tmasa, pul ham yaratilmaydi.
 
 ### 2. Pullar ro'yxatini olish
 `GET /api/caller-id-pools`  
@@ -52,6 +63,14 @@ Ruxsat: `SIP_TRUNK_EDIT`
   "label": "Zaxira raqam"
 }
 ```
+
+`phone` normallashtiriladi va kompaniyaning ro'yxatdan o'tgan raqami bo'lishi shart.
+
+| Xato | Qachon |
+|---|---|
+| `400 PHONE_INVALID` | Raqam noto'g'ri |
+| `404 CALLER_ID_POOL_NOT_FOUND` | Pul yo'q yoki boshqa kompaniyaniki |
+| `409 CALLER_ID_NUMBER_NOT_REGISTERED` | Raqam kompaniyaning telefon raqamlari orasida yo'q — avval `POST /api/phone-numbers/byo` (yoki sotib olish) |
 
 ### 7. Raqamni puldan o'chirish
 `DELETE /api/caller-id-pools/{id}/numbers/{numberId}`  

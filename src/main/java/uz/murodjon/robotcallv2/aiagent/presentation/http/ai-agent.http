@@ -106,7 +106,6 @@ Authorization: Bearer {{auth_token}}
     "midCallSmsEnabled": false,
     "midCallSmsTemplate": null
   },
-  "sipTrunkIds": [1],
   "enabled": true
 }
 

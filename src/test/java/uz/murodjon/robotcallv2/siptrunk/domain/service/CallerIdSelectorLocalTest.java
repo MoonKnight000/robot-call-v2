@@ -18,7 +18,7 @@ class CallerIdSelectorLocalTest {
 
     private CallerIdPoolNumber number(long id, String phone, CallerIdNumberStatus status) {
         return new CallerIdPoolNumber(id, 10, phone, "n" + id, 0, 0, status, null,
-                now.minus(id, ChronoUnit.HOURS), now);
+                now.minus(id, ChronoUnit.HOURS), now, 1L);
     }
 
     @Test

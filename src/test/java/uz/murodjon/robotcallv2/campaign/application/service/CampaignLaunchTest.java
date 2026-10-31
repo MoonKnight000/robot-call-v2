@@ -26,13 +26,13 @@ import uz.murodjon.robotcallv2.notification.application.port.input.NotificationU
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.phonenumber.application.port.input.PhoneNumberUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -64,7 +64,7 @@ class CampaignLaunchTest {
                 mock(UserUseCase.class), mock(CompanyConfigUseCase.class), mock(AuditUseCase.class),
                 mock(NotificationUseCase.class), mock(TtsWarmup.class), mock(CampaignTargetService.class),
                 mock(CampaignOutcomeService.class), new CampaignValidator(), new SequenceValidator(),
-                mock(CallerIdPoolUseCase.class), mock(CallQueueLookupPort.class), mock(AutoEnrollService.class), Clock.systemUTC());
+                mock(CallerIdPoolUseCase.class), mock(PhoneNumberUseCase.class), mock(CallQueueLookupPort.class), mock(AutoEnrollService.class), Clock.systemUTC());
         when(targets.countByCampaign(COMPANY_ID, CAMPAIGN_ID)).thenReturn(5L);
         when(targets.findStatsByCampaignId(anyLong(), anyLong())).thenReturn(CampaignTargetStats.ZERO);
         givenAgent(AGENT_ID, true);
@@ -84,8 +84,8 @@ class CampaignLaunchTest {
     }
 
     private static SequenceStep conversation(String id, Long agentId) {
-        return new SequenceStep(id, SequenceStepType.CONVERSATION, id, new ConversationStepConfig(agentId, 3, 0),
-                null, null, Map.of(), null, null);
+        return new SequenceStep(id, SequenceStepType.CONVERSATION, id, new ConversationStepConfig(agentId, ConversationStepConfig.DEFAULT_ATTEMPTS),
+                null, null, null, null, null);
     }
 
     @Test
@@ -126,7 +126,7 @@ class CampaignLaunchTest {
     @Test
     void everyConversationStepNeedsAnAgentToLaunch() {
         givenCampaign(CampaignStatus.DRAFT, AGENT_ID, Instant.now(),
-                new CampaignSequence("c1", List.of(conversation("c1", AGENT_ID), conversation("c2", null))));
+                new CampaignSequence("c1", List.of(conversation("c1", AGENT_ID), conversation("c2", null)), null));
 
         assertThatThrownBy(() -> service.start(COMPANY_ID, CAMPAIGN_ID, true))
                 .isInstanceOfSatisfying(ValidationException.class,
@@ -137,7 +137,7 @@ class CampaignLaunchTest {
     void aDisabledAgentOfAStepBlocksTheLaunch() {
         givenAgent(8L, false);
         givenCampaign(CampaignStatus.DRAFT, AGENT_ID, Instant.now(),
-                new CampaignSequence("c1", List.of(conversation("c1", AGENT_ID), conversation("c2", 8L))));
+                new CampaignSequence("c1", List.of(conversation("c1", AGENT_ID), conversation("c2", 8L)), null));
 
         assertThatThrownBy(() -> service.start(COMPANY_ID, CAMPAIGN_ID, true))
                 .isInstanceOfSatisfying(ConflictException.class,

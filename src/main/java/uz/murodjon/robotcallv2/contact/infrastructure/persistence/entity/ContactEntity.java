@@ -4,6 +4,10 @@ import jakarta.persistence.*;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /** JPA entity for contact (§10.8). */
 @Entity
@@ -27,8 +31,10 @@ public class ContactEntity {
     @Column
     private String address;
 
-    @Column
-    private String tags;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "contact_tag", joinColumns = @JoinColumn(name = "contact_id"))
+    @Column(name = "tag", nullable = false)
+    private Set<String> tags = new LinkedHashSet<>();
 
     @Column
     private String notes;
@@ -80,12 +86,27 @@ public class ContactEntity {
         this.address = address;
     }
 
-    public String getTags() {
+    public Set<String> getTags() {
         return tags;
     }
 
-    public void setTags(String tags) {
-        this.tags = tags;
+    public void setTags(Set<String> tags) {
+        this.tags = tags != null ? tags : new LinkedHashSet<>();
+    }
+
+    public String getTagsString() {
+        return tags == null || tags.isEmpty() ? null : String.join(",", tags);
+    }
+
+    public void setTagsFromString(String tagsStr) {
+        if (tagsStr == null || tagsStr.isBlank()) {
+            this.tags = new LinkedHashSet<>();
+        } else {
+            this.tags = Arrays.stream(tagsStr.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+        }
     }
 
     public String getNotes() {

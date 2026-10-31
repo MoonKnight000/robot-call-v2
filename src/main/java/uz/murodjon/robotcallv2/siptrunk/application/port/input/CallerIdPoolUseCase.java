@@ -1,8 +1,10 @@
 package uz.murodjon.robotcallv2.siptrunk.application.port.input;
 
 import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.CallerIdPoolNumber;
 
 import java.util.List;
+import java.util.Set;
 
 /**
  * Use case interface for managing Caller ID pools and number rotation.
@@ -29,10 +31,12 @@ public interface CallerIdPoolUseCase {
 
     void disableNumber(long companyId, long poolId, long numberId);
 
-    String acquireCallerId(long companyId, long poolId);
-
-    /** {@link #acquireCallerId} preferring the pool number closest to {@code calleePhone}'s own. */
-    String acquireLocalCallerId(long companyId, long poolId, String calleePhone);
+    /**
+     * The pool's next number whose own trunk is one of {@code trunkIds}, with its use recorded — the
+     * one closest to {@code calleePhone}'s own when that is given (local presence). Null when no such
+     * number can be dialled from now; the call then waits rather than going out under another number.
+     */
+    CallerIdPoolNumber acquireCallerIdOnTrunks(long companyId, long poolId, String calleePhone, Set<Long> trunkIds);
 
     void recordCallAnswer(long poolId, String phone);
 }

@@ -55,6 +55,13 @@ public class SpeechGate {
     private double emaHangoverSamples;
 
     /**
+     * The long-utterance wait the agent or its current stage asked for, or {@code -1} to
+     * leave the configured and learned hangover in charge. Written by the dialog when the
+     * stage changes and read on the audio thread, hence volatile.
+     */
+    private volatile int responseWaitSamples = -1;
+
+    /**
      * Audio seen since the gate last shut, or {@code -1} when nothing is being judged.
      */
     private int sinceCloseSamples = -1;
@@ -134,6 +141,17 @@ public class SpeechGate {
      */
     public void setTranscriptCues(int completeSilenceMs) {
         this.completeHangoverSamples = Math.max(0, completeSilenceMs) * sampleRate / 1000;
+    }
+
+    /**
+     * The silence a finished long utterance waits out, as the agent ({@code responseWaitMs})
+     * or its current stage set it. It replaces the configured and learned hangover; the
+     * short-answer and finished-sentence waits still apply but never exceed it, and the
+     * turn detector may still extend it. Null hands the wait back to the configuration and
+     * whatever the adaptation has learned meanwhile. Safe to call from any thread.
+     */
+    public void setResponseWaitMs(Integer responseWaitMs) {
+        this.responseWaitSamples = responseWaitMs == null ? -1 : Math.max(0, responseWaitMs) * sampleRate / 1000;
     }
 
     /**
@@ -353,17 +371,20 @@ public class SpeechGate {
      * already on the aggressive path and has nothing left to learn.
      */
     private int hangoverForCurrentUtterance() {
+        int requested = responseWaitSamples;
+        int shortWait = requested >= 0 ? Math.min(shortHangoverSamples, requested) : shortHangoverSamples;
         if (confirmedQuickAnswer && shortHangoverSamples > 0) {
-            return shortHangoverSamples;
+            return shortWait;
         }
         // A short run that reads as unfinished ("men…") is the start of an answer, not one:
         // the short wait answered half a sentence instead of the caller.
         boolean shortAnswer = shortHangoverSamples > 0 && speechSamples <= shortUtteranceSamples
                 && !continuationClause;
         if (shortAnswer) {
-            return shortHangoverSamples;
+            return shortWait;
         }
-        int wait = dynamic ? (int) Math.round(emaHangoverSamples) : hangoverSamples;
+        int wait = requested >= 0 ? requested
+                : dynamic ? (int) Math.round(emaHangoverSamples) : hangoverSamples;
         // A finished-sounding sentence does not wait out a budget sized for the caller who
         // might still be mid-thought — the words already said they are not.
         if (completeCue && completeHangoverSamples > 0) {
@@ -388,6 +409,10 @@ public class SpeechGate {
      * number that says whether the learning is landing anywhere sensible.
      */
     public int hangoverMs() {
+        int requested = responseWaitSamples;
+        if (requested >= 0) {
+            return (int) Math.round(requested * 1000d / sampleRate);
+        }
         return (int) Math.round((dynamic ? emaHangoverSamples : hangoverSamples) * 1000d / sampleRate);
     }
 

@@ -7,9 +7,11 @@ import uz.murodjon.robotcallv2.schedule.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Set;
 
 public interface BusinessScheduleUseCase {
 
@@ -35,6 +37,12 @@ public interface BusinessScheduleUseCase {
 
     /** Adds the year's fixed-date public holidays the company does not have yet; returns the new rows. */
     List<Holiday> createFixedHolidays(long companyId, int year);
+
+    /** Closed holiday dates between from and to, inclusive. */
+    Set<LocalDate> findHolidayDates(long companyId, LocalDate from, LocalDate to);
+
+    /** Whether {@code date} is a closed holiday for the company. */
+    boolean isHoliday(long companyId, LocalDate date);
 
     /** Whether the schedule is open at {@code now}; a schedule that no longer exists is always open. */
     BusinessHoursVerdict evaluate(long companyId, long scheduleId, Instant now);

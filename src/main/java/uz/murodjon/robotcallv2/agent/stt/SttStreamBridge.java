@@ -83,14 +83,28 @@ public class SttStreamBridge implements AudioListener, Closeable {
     private final TranscriptListener listener;
     /** Who the transcripts are for, once this bridge has had its say — the dialog side. */
     private final TranscriptListener downstream;
-    /** Words this call is likely to contain, for a provider that can be biased ({@link SttHints}). */
-    private final List<String> hints;
+    /** The call's own hints ({@link SttHints#of}), before any boosted keywords are put in front. */
+    private final List<String> callHints;
+    /** {@link #callHints} behind the agent's boosted keywords — what a stage without its own list uses. */
+    private final List<String> agentHints;
+    /**
+     * Words this call is likely to contain, for a provider that can be biased ({@link SttHints}).
+     * Replaced by {@link #retune} when a stage brings keywords of its own.
+     */
+    private volatile List<String> hints;
     /**
      * The recognition model the agent asked for ({@code ai_agent.stt_model}), or null for the
      * provider's configured one. Cleared by {@link #failOver()}: a model name belongs to the
      * vendor it was chosen for, and Deepgram's would be rejected outright by Yandex.
      */
     private volatile String model;
+    /** The model the call started with — what a stage without a model of its own goes back to. */
+    private volatile String agentModel;
+    /**
+     * Set by {@link #retune} when a stage wants another model or other hints; the stream is
+     * swapped on the audio thread's next frame, never on the caller of {@code retune}.
+     */
+    private volatile boolean retunePending;
     /** Told when an utterance is declared over, with the silence that closed it. */
     private final IntConsumer onUtteranceEnd;
     /** Whether this call ends its own utterances rather than letting the provider do it. */
@@ -167,11 +181,30 @@ public class SttStreamBridge implements AudioListener, Closeable {
                            SpeechGate gate, SttMetrics metrics, EndpointingProperties endpointing,
                            int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints,
                            SttProviderSelector selector, String model, SttStreamProperties streamProperties) {
+        this(provider, targetSampleRate, sourceSampleRate, channelId, language, alternativeLanguages, listener,
+                gate, metrics, endpointing, responseTimeoutMs, onUtteranceEnd, hints, null, selector, model,
+                streamProperties);
+    }
+
+    /**
+     * @param keywords the agent's boosted keywords, put in front of {@code hints}; null or
+     *                 empty for none. A stage may replace them later ({@link #retune})
+     */
+    public SttStreamBridge(SttProvider provider, int targetSampleRate, int sourceSampleRate, String channelId,
+                           String language, List<String> alternativeLanguages, TranscriptListener listener,
+                           SpeechGate gate, SttMetrics metrics, EndpointingProperties endpointing,
+                           int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints,
+                           List<String> keywords, SttProviderSelector selector, String model,
+                           SttStreamProperties streamProperties) {
         this.streamProperties = streamProperties;
         this.selector = selector;
         this.model = (model == null || model.isBlank()) ? null : model.trim();
+        this.agentModel = this.model;
         this.channelId = channelId;
-        this.hints = hints == null ? List.of() : List.copyOf(hints);
+        this.callHints = hints == null ? List.of() : List.copyOf(hints);
+        this.agentHints = keywords == null || keywords.isEmpty()
+                ? this.callHints : SttHints.withKeywords(keywords, this.callHints);
+        this.hints = this.agentHints;
         this.onUtteranceEnd = onUtteranceEnd != null ? onUtteranceEnd : ms -> { };
         this.targetSampleRate = targetSampleRate;
         this.upsampler = upsamplerFor(targetSampleRate);
@@ -220,6 +253,9 @@ public class SttStreamBridge implements AudioListener, Closeable {
 
     @Override
     public void onAudio(short[] pcm, int length) {
+        if (retunePending) {
+            applyRetune();
+        }
         if (gate != null && !gate.isOpen()) {
             gate.buffer(pcm, length);
             metrics.sttAudioSkipped(seconds(length));
@@ -480,28 +516,8 @@ public class SttStreamBridge implements AudioListener, Closeable {
                 failOver();
             }
             try {
-                utteranceSamples = 0;
-                upsampler = upsamplerFor(targetSampleRate);
-                session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing, hints, model);
-                lastResponseAt = now;
-                streamOpenedAt = now;
-                everReady = false;
-                droppedFrames = 0;
-                heardSinceOpen = false;
-                sentSinceOpen = 0;
-                chargedThisStream = false;
+                openStream(now);
                 log.warn("[{}] STT stream had died — reopened on {}", channelId, provider.name());
-
-                // Replay buffered audio into the fresh stream so speech mid-sentence is not lost!
-                if (!replayBuffer.isEmpty()) {
-                    log.info("[{}] replaying {} ms of speech into reopened STT stream to prevent lost turn",
-                            channelId, replayBufferedSamples * 1000 / sourceSampleRate);
-                    List<short[]> toReplay = new ArrayList<>(replayBuffer);
-                    for (short[] chunk : toReplay) {
-                        sendDirect(chunk, chunk.length);
-                    }
-                    replayedLastReopen = true;
-                }
                 return true;
             } catch (Exception e) {
                 // A reopen that fails outright is this provider failing too. Uncounted, a
@@ -513,6 +529,115 @@ public class SttStreamBridge implements AudioListener, Closeable {
                         channelId, providerFailures, provider.name(), e.getMessage());
                 return false;
             }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Open a fresh stream on the provider in hand, with the current model and hints, and
+     * replay the speech still waiting for a final into it. Lock held by the caller.
+     */
+    private void openStream(long now) {
+        utteranceSamples = 0;
+        upsampler = upsamplerFor(targetSampleRate);
+        session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing, hints, model);
+        lastResponseAt = now;
+        streamOpenedAt = now;
+        everReady = false;
+        droppedFrames = 0;
+        heardSinceOpen = false;
+        sentSinceOpen = 0;
+        chargedThisStream = false;
+
+        // Replay buffered audio into the fresh stream so speech mid-sentence is not lost!
+        if (!replayBuffer.isEmpty()) {
+            log.info("[{}] replaying {} ms of speech into reopened STT stream to prevent lost turn",
+                    channelId, replayBufferedSamples * 1000 / sourceSampleRate);
+            List<short[]> toReplay = new ArrayList<>(replayBuffer);
+            for (short[] chunk : toReplay) {
+                sendDirect(chunk, chunk.length);
+            }
+            replayedLastReopen = true;
+        }
+    }
+
+    /** The vendor recognizing this call right now — it changes on {@link #failOver()}. */
+    public String providerName() {
+        return provider.name();
+    }
+
+    /**
+     * Hand the call's speech gate the wait the agent or its current stage asked for
+     * ({@link SpeechGate#setResponseWaitMs}); null restores the configured one.
+     *
+     * @return false when this call has no gate, so the wait cannot be applied
+     */
+    public boolean setResponseWaitMs(Integer responseWaitMs) {
+        if (gate == null) {
+            return false;
+        }
+        gate.setResponseWaitMs(responseWaitMs);
+        return true;
+    }
+
+    /**
+     * Point the recognizer at what the current stage asks for. A stream cannot change its
+     * model or hints once open, so a change means a new stream — opened on the audio
+     * thread's next frame with the unanswered speech replayed, never here: the caller is
+     * the dialog, and opening a stream is a network round trip.
+     *
+     * @param forProvider   the provider {@code stageModel} was resolved for; on any other
+     *                      (the call failed over meanwhile) the stage model is ignored
+     * @param stageModel    the stage's model, or null for the one the call started with
+     * @param stageKeywords the stage's boosted keywords, replacing the agent's (empty clears
+     *                      them), or null for the agent's
+     * @return whether the stream is going to be reopened
+     */
+    public boolean retune(String forProvider, String stageModel, List<String> stageKeywords) {
+        lock.lock();
+        try {
+            if (closed) {
+                return false;
+            }
+            String nextModel = stageModel != null && !stageModel.isBlank() && provider.name().equals(forProvider)
+                    ? stageModel.trim() : agentModel;
+            List<String> nextHints = stageKeywords == null ? agentHints
+                    : stageKeywords.isEmpty() ? callHints : SttHints.withKeywords(stageKeywords, callHints);
+            if (Objects.equals(nextModel, model) && nextHints.equals(hints)) {
+                return false;
+            }
+            model = nextModel;
+            hints = nextHints;
+            retunePending = true;
+            return true;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Swap the stream for one with the model and hints {@link #retune} chose. Audio thread only. */
+    private void applyRetune() {
+        lock.lock();
+        try {
+            retunePending = false;
+            if (closed) {
+                return;
+            }
+            // Closed on purpose, not failing: not charged to the provider.
+            chargedThisStream = true;
+            try {
+                session.close();
+            } catch (Exception e) {
+                log.debug("[{}] closing the STT session before a retune failed: {}", channelId, e.getMessage());
+            }
+            openStream(System.currentTimeMillis());
+            log.info("[{}] STT stream reopened on {} for the new stage (model={}, {} hint(s))",
+                    channelId, provider.name(), model != null ? model : "default", hints.size());
+        } catch (Exception e) {
+            // The session in hand is closed: the next frame reopens it the usual way.
+            metrics.sttError();
+            log.warn("[{}] STT stream retune failed on {}: {}", channelId, provider.name(), e.getMessage());
         } finally {
             lock.unlock();
         }
@@ -551,6 +676,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         provider = replacement;
         targetSampleRate = replacement.sampleRate();
         model = null;
+        agentModel = null;
         providerFailures = 0;
     }
 

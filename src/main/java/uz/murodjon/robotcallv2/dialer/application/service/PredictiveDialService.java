@@ -219,8 +219,7 @@ public class PredictiveDialService {
         try {
             OutboundCall aiCall = outboundCallPreparer.prepare(new CallTask(campaign.id(), target.id(),
                     target.clientId(), target.phone(), language, target.contextData(), companyId, agent.id(),
-                    null, null, null, null, null, campaign.numbers().callerIdPoolId(),
-                    campaign.numbers().localPresence()));
+                    null, null, null, null, null, campaign.numbers().callerIdPoolId(), null));
             predictiveDialer.dial(campaign.dialing().callQueueId(), aiCall);
             log.info("Predictive: target {} ({}) of campaign {} dialled", target.id(),
                     PhoneMasker.mask(target.phone()), campaign.id());

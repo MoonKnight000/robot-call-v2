@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.scenario.domain.entity;
 import uz.murodjon.robotcallv2.scenario.domain.enums.TransferMode;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The settings of a stage that does one thing instead of talking ({@code StageType}). Each
@@ -20,6 +21,9 @@ import java.util.List;
  * @param extractFields   EXTRACT_VARIABLE: names from the scenario's {@code outcomeSchema}
  * @param code            CODE: the script to run
  * @param mcpConnectionId MCP: the company's MCP connection {@code toolName} belongs to
+ * @param sipHeaders      CALL_TRANSFER: custom headers on the INVITE of the transferred leg, name → value,
+ *                        {@code {{fact}}} templates in values filled in by the code; names start with
+ *                        {@code X-}; null or empty = none
  */
 public record StageAction(
         String toolName,
@@ -30,7 +34,8 @@ public record StageAction(
         String smsText,
         List<String> extractFields,
         String code,
-        Long mcpConnectionId
+        Long mcpConnectionId,
+        Map<String, String> sipHeaders
 ) {
     public StageAction {
         if (transferMode == null) {

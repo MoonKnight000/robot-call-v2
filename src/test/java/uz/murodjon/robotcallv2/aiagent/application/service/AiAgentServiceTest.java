@@ -40,7 +40,6 @@ import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.*;
-import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 import uz.murodjon.robotcallv2.voice.application.port.input.TtsVoiceUseCase;
 
@@ -78,7 +77,7 @@ class AiAgentServiceTest {
         eventPublisher = mock(ApplicationEventPublisher.class);
         catalogUseCase = mock(AiAgentCatalogUseCase.class);
         AiAgentDrafts drafts = new AiAgentDrafts(repository, versionRepository,
-                mock(AiModelConfigUseCase.class), mock(SipTrunkUseCase.class), companyConfigUseCase);
+                mock(AiModelConfigUseCase.class), companyConfigUseCase);
         AiAgentEngineGuard engineGuard = new AiAgentEngineGuard(mock(SttProviderSelector.class),
                 mock(TtsProviderSelector.class), mock(RealtimeProviderRegistry.class), mock(TtsVoiceUseCase.class),
                 mock(AiModelUseCase.class));
@@ -344,13 +343,13 @@ class AiAgentServiceTest {
                 null, null,
                 null, null, null, null,
                 null, null,
-                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null, null, null),
+                new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null, null, null, null),
                 null,
                 new AgentDataPolicyDto(zeroPiiRetention, null, null, null),
                 null,
                 null, null,
                 null, null,
-                null, null, null, null);
+                null, null, null);
     }
 
     /** Only the name and the lock version; everything else left as the agent has it. */
@@ -369,7 +368,7 @@ class AiAgentServiceTest {
                 null,
                 null, null,
                 null, postCallWebhook,
-                null, null, null, null,
+                null, null, null,
                 version,
                 clearFields);
     }

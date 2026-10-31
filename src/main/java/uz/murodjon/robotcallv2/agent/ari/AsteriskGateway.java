@@ -83,7 +83,7 @@ public class AsteriskGateway implements TelephonyGateway {
             SipTrunkRow trunk = candidateTrunks.get(i);
             String endpoint = outboundRouting.findEndpoint(number, trunk);
             lastEndpoint = endpoint;
-            String callerId = outboundRouting.findCallerId(trunk, outboundCall, dial.companyId());
+            String callerId = outboundRouting.findCallerId(trunk, outboundCall);
             String dialNumber = !outboundRouting.isLocalNumber(number) && number.startsWith("+")
                     ? number.substring(1)
                     : number;

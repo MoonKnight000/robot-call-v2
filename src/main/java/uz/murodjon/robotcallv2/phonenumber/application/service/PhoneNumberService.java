@@ -20,6 +20,8 @@ import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
+import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -37,15 +39,18 @@ public class PhoneNumberService implements PhoneNumberUseCase {
     private final SipProbePort sipProbePort;
     private final AiAgentUseCase aiAgentUseCase;
     private final CallFlowUseCase callFlowUseCase;
+    private final SipTrunkUseCase sipTrunkUseCase;
 
     public PhoneNumberService(PhoneNumberRepository phoneNumberRepository,
                               SipProbePort sipProbePort,
                               AiAgentUseCase aiAgentUseCase,
-                              CallFlowUseCase callFlowUseCase) {
+                              CallFlowUseCase callFlowUseCase,
+                              SipTrunkUseCase sipTrunkUseCase) {
         this.phoneNumberRepository = phoneNumberRepository;
         this.sipProbePort = sipProbePort;
         this.aiAgentUseCase = aiAgentUseCase;
         this.callFlowUseCase = callFlowUseCase;
+        this.sipTrunkUseCase = sipTrunkUseCase;
     }
 
     @Override
@@ -84,6 +89,32 @@ public class PhoneNumberService implements PhoneNumberUseCase {
         return PhoneNumberMapper.toRow(saved, agentName, flowName);
     }
 
+    /**
+     * A number the company brings on its own trunk: assigned to it at once, nothing to pay the
+     * platform. The trunk must be the company's own — never another company's or the platform's.
+     */
+    @Override
+    @Transactional
+    public PhoneNumberRow createByoNumber(long companyId, CreateByoNumberRequest request) {
+        String phone = PhoneNumbers.require(request.phoneNumber());
+        sipTrunkUseCase.requireTrunk(companyId, request.trunkId());
+        if (phoneNumberRepository.existsByPhoneNumber(phone)) {
+            throw new ConflictException(ErrorCode.PHONE_NUMBER_ALREADY_EXISTS, phone);
+        }
+        PhoneNumber saved = phoneNumberRepository.save(PhoneNumber.builder()
+                .companyId(companyId)
+                .phoneNumber(phone)
+                .nickname(request.nickname() != null && !request.nickname().isBlank()
+                        ? request.nickname().trim() : phone)
+                .type(PhoneNumberType.BYO_SIP_TRUNK)
+                .status(PhoneNumberStatus.ASSIGNED)
+                .providerTrunkId(request.trunkId())
+                .autoRenew(false)
+                .build());
+        log.info("Company {} added BYON phone number {} on trunk {}", companyId, saved.phoneNumber(), request.trunkId());
+        return PhoneNumberMapper.toRow(saved, null, null);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public PageableData<PhoneNumberRow> findCompanyNumbers(long companyId, PhoneNumberFilter filter) {
@@ -117,6 +148,47 @@ public class PhoneNumberService implements PhoneNumberUseCase {
                 .build());
         log.info("Updated inbound routing for phone number {} (company {})", saved.phoneNumber(), companyId);
         return PhoneNumberMapper.toRow(saved, agentName, flowName);
+    }
+
+    /** A marketplace number's trunk is the platform's (set when it was added to the pool), so only BYON moves. */
+    @Override
+    @Transactional
+    public PhoneNumberRow updateTrunk(long companyId, long id, UpdatePhoneNumberTrunkRequest request) {
+        PhoneNumber number = requireOwnedNumber(companyId, id);
+        if (number.type() != PhoneNumberType.BYO_SIP_TRUNK) {
+            throw new ConflictException(ErrorCode.PHONE_NUMBER_TRUNK_PLATFORM_MANAGED, number.phoneNumber());
+        }
+        sipTrunkUseCase.requireTrunk(companyId, request.trunkId());
+        PhoneNumber saved = phoneNumberRepository.save(number.toBuilder()
+                .providerTrunkId(request.trunkId())
+                .build());
+        log.info("Phone number {} (company {}) moved to trunk {}", saved.phoneNumber(), companyId, request.trunkId());
+        String agentName = saved.inboundAgentId() != null
+                ? aiAgentUseCase.findNamesByIds(Set.of(saved.inboundAgentId())).get(saved.inboundAgentId()) : null;
+        String flowName = saved.inboundCallFlowId() != null
+                ? callFlowUseCase.findNamesByIds(companyId, Set.of(saved.inboundCallFlowId())).get(saved.inboundCallFlowId())
+                : null;
+        return PhoneNumberMapper.toRow(saved, agentName, flowName);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PhoneNumber findCompanyNumber(long companyId, long id) {
+        return phoneNumberRepository.findById(id)
+                .filter(number -> number.isAssignedToCompany(companyId))
+                .orElse(null);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PhoneNumber findAssignedByPhoneNumber(String did) {
+        String phone = PhoneNumbers.normalize(did);
+        if (phone == null) {
+            return null;
+        }
+        return phoneNumberRepository.findByPhoneNumber(phone)
+                .filter(number -> number.companyId() != null && number.status() == PhoneNumberStatus.ASSIGNED)
+                .orElse(null);
     }
 
     @Override

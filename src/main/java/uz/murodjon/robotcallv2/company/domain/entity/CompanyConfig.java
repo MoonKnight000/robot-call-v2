@@ -6,7 +6,6 @@ import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.time.*;
-import java.util.List;
 
 /**
  * Domain record for company operational settings (ROADMAP B.1/B.3).
@@ -40,7 +39,6 @@ public record CompanyConfig(
         int quietDaysAfterConversation,
         boolean respectPromisedDate,
         boolean humanLikePersonaAllowed,
-        List<LocalDate> holidays,
         int scorecardReviewThreshold,
         @JsonIgnore TelephonyEngine telephonyEngine,
         Instant createdAt
@@ -49,7 +47,6 @@ public record CompanyConfig(
     public static final int DEFAULT_SCORECARD_REVIEW_THRESHOLD = 60;
 
     public CompanyConfig {
-        holidays = holidays == null ? List.of() : List.copyOf(holidays);
         if (telephonyEngine == null) {
             telephonyEngine = TelephonyEngine.ASTERISK;
         }
@@ -81,32 +78,27 @@ public record CompanyConfig(
                                          boolean humanLikePersonaAllowed) {
         return new CompanyConfig(0, 0, dialWindowStart, dialWindowEnd, timezone,
                 maxAttemptsPerPhonePerWeek, quietDaysAfterConversation, respectPromisedDate,
-                humanLikePersonaAllowed, List.of(), DEFAULT_SCORECARD_REVIEW_THRESHOLD, null, null);
+                humanLikePersonaAllowed, DEFAULT_SCORECARD_REVIEW_THRESHOLD, null, null);
     }
 
     /**
-     * The same, with the days the company does not call at all (NEXT-PLAN C.4) and the score
-     * below which an operator call is reviewed, and the telephony engine (null = the default one).
+     * The same, with the score below which an operator call is reviewed, and the telephony
+     * engine (null = the default one).
      */
     public static CompanyConfig settings(LocalTime dialWindowStart, LocalTime dialWindowEnd, String timezone,
                                          int maxAttemptsPerPhonePerWeek,
                                          int quietDaysAfterConversation, boolean respectPromisedDate,
-                                         boolean humanLikePersonaAllowed, List<LocalDate> holidays,
+                                         boolean humanLikePersonaAllowed,
                                          int scorecardReviewThreshold, TelephonyEngine telephonyEngine) {
         return new CompanyConfig(0, 0, dialWindowStart, dialWindowEnd, timezone,
                 maxAttemptsPerPhonePerWeek, quietDaysAfterConversation, respectPromisedDate,
-                humanLikePersonaAllowed, holidays, scorecardReviewThreshold,
+                humanLikePersonaAllowed, scorecardReviewThreshold,
                 telephonyEngine, null);
     }
 
     /** Whether any contact-frequency rule is switched on, so the dialer has history to read. */
     public boolean limitsContactFrequency() {
         return maxAttemptsPerPhonePerWeek > 0 || quietDaysAfterConversation > 0 || respectPromisedDate;
-    }
-
-    /** Whether {@code day}, on the company's own calendar, is one it does not call on. */
-    public boolean isHoliday(LocalDate day) {
-        return holidays.contains(day);
     }
 
     /**

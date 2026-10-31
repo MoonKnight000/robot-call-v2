@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRe
 import uz.murodjon.robotcallv2.campaign.application.port.output.TargetSourceRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignAutoRetries;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialing;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignFilter;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
@@ -37,6 +38,8 @@ import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.phonenumber.application.port.input.PhoneNumberUseCase;
+import uz.murodjon.robotcallv2.phonenumber.domain.entity.PhoneNumber;
 import uz.murodjon.robotcallv2.shared.exception.AppException;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -80,6 +83,7 @@ public class CampaignService implements CampaignUseCase {
     private final CampaignValidator campaignValidator;
     private final SequenceValidator sequenceValidator;
     private final CallerIdPoolUseCase callerIdPoolUseCase;
+    private final PhoneNumberUseCase phoneNumberUseCase;
     private final CallQueueLookupPort callQueueLookupPort;
     private final Clock clock;
 
@@ -89,8 +93,9 @@ public class CampaignService implements CampaignUseCase {
                            AuditUseCase auditUseCase, NotificationUseCase notificationUseCase, TtsWarmup ttsWarmup,
                            CampaignTargetService campaignTargetService, CampaignOutcomeService campaignOutcomeService,
                            CampaignValidator campaignValidator, SequenceValidator sequenceValidator,
-                           CallerIdPoolUseCase callerIdPoolUseCase,
+                           CallerIdPoolUseCase callerIdPoolUseCase, PhoneNumberUseCase phoneNumberUseCase,
                            CallQueueLookupPort callQueueLookupPort, AutoEnrollService autoEnrollService, Clock clock) {
+        this.phoneNumberUseCase = phoneNumberUseCase;
         this.autoEnrollService = autoEnrollService;
         this.campaignRepository = campaignRepository;
         this.campaignTargetRepository = campaignTargetRepository;
@@ -111,6 +116,8 @@ public class CampaignService implements CampaignUseCase {
     }
 
     private static final Set<DayOfWeek> DEFAULT_DIAL_DAYS = EnumSet.allOf(DayOfWeek.class);
+    private static final LocalTime DRAFT_WINDOW_START = LocalTime.of(9, 0);
+    private static final LocalTime DRAFT_WINDOW_END = LocalTime.of(18, 0);
     /** A group the request left out: every field empty, read exactly like the omitted fields it stands for. */
     private static final CampaignScheduleDto NO_SCHEDULE = new CampaignScheduleDto(null, null, null, null, null);
     private static final CampaignRetryDto NO_RETRY = new CampaignRetryDto(0, 0, null);
@@ -126,17 +133,28 @@ public class CampaignService implements CampaignUseCase {
         CampaignRecurrenceDto recurrence = request.recurrence() != null ? request.recurrence() : NO_RECURRENCE;
         CampaignDialingDto dialing = request.dialing() != null ? request.dialing() : NO_DIALING;
         DialMode dialMode = dialing.mode() != null ? dialing.mode() : DialMode.AI;
-        AiAgent agent = requireDialers(companyId, dialMode, resolveAiAgentId(request.aiAgentId(), request.sequence()),
+        // An empty AI draft (Retell's "Untitled campaign") starts with the default sequence. A request that
+        // names an agent but no sequence (batch call, older clients) keeps the pre-sequence dialing path.
+        boolean emptyDraft = request.sequence() == null && request.aiAgentId() == null && dialMode == DialMode.AI;
+        CampaignSequence sequence = emptyDraft ? CampaignSequence.createDefault() : request.sequence();
+        AiAgent agent = requireDialers(companyId, dialMode, resolveAiAgentId(request.aiAgentId(), sequence),
                 dialing.callQueueId(), true);
         int dailyCallCap = Math.max(0, limits.dailyCallCap());
         CompanyConfig companyConfig = companyConfigUseCase.find(companyId);
-        LocalTime dialWindowStart = resolveWindowBound(schedule.dialWindowStart(),
-                companyConfig != null ? companyConfig.dialWindowStart() : null, LocalTime.of(9, 0));
-        LocalTime dialWindowEnd = resolveWindowBound(schedule.dialWindowEnd(),
-                companyConfig != null ? companyConfig.dialWindowEnd() : null, LocalTime.of(20, 0));
+        LocalTime companyStart = companyConfig != null ? companyConfig.dialWindowStart() : null;
+        LocalTime companyEnd = companyConfig != null ? companyConfig.dialWindowEnd() : null;
+        // Retell's default calling window, 09:00–18:00 every day, kept inside the company's own hours.
+        LocalTime draftStart = emptyDraft ? latest(DRAFT_WINDOW_START, companyStart) : companyStart;
+        LocalTime draftEnd = emptyDraft ? earliest(DRAFT_WINDOW_END, companyEnd) : companyEnd;
+        if (draftStart != null && draftEnd != null && !draftStart.isBefore(draftEnd)) {
+            draftStart = companyStart;
+            draftEnd = companyEnd;
+        }
+        LocalTime dialWindowStart = resolveWindowBound(schedule.dialWindowStart(), draftStart, LocalTime.of(9, 0));
+        LocalTime dialWindowEnd = resolveWindowBound(schedule.dialWindowEnd(), draftEnd, LocalTime.of(20, 0));
         requireWindowWithinCompany(companyId, dialWindowStart, dialWindowEnd);
         campaignValidator.validateRetryPolicy(retry.policyOrNone());
-        requireSequence(companyId, request.sequence());
+        requireSequence(companyId, sequence);
         requireNumbers(companyId, request.numbers());
         AutoEnrollment autoEnroll = request.autoEnroll() != null ? request.autoEnroll() : AutoEnrollment.NONE;
         campaignValidator.validateAutoEnroll(request.kind(), autoEnroll);
@@ -147,7 +165,10 @@ public class CampaignService implements CampaignUseCase {
                 .companyId(companyId)
                 .kind(request.kind())
                 .autoEnroll(autoEnroll)
-                .sequence(request.sequence())
+                .sequence(sequence)
+                // Retell turns both on for a new campaign; anything else asks for them explicitly.
+                .autoRetries(request.autoRetries() != null ? request.autoRetries()
+                        : emptyDraft ? CampaignAutoRetries.DEFAULT : CampaignAutoRetries.NONE)
                 .numbers(request.numbers())
                 .priority(request.priorityOrDefault())
                 .schedule(new CampaignSchedule(schedule.startAt(), schedule.endAt(), dialWindowStart, dialWindowEnd,
@@ -219,6 +240,8 @@ public class CampaignService implements CampaignUseCase {
                 .sequence(sequence)
                 .numbers(numbers)
                 .autoEnroll(autoEnroll)
+                // Not sent: what the campaign has, as with the sequence.
+                .autoRetries(request.autoRetries() != null ? request.autoRetries() : existing.autoRetries())
                 .priority(request.priorityOrDefault())
                 .schedule(new CampaignSchedule(schedule.startAt(), schedule.endAt(), dialWindowStart, dialWindowEnd,
                         schedule.dialDays()))
@@ -278,7 +301,11 @@ public class CampaignService implements CampaignUseCase {
                 .orElse(null);
     }
 
-    /** The pool must be the company's own, and local presence has to have a pool to choose from. */
+    /**
+     * The pool must be the company's own, and local presence has to have a pool to choose from. A
+     * fixed number is either the pool's alternative or nothing: it must be the company's, on a trunk
+     * of the company's own, and never set together with a pool.
+     */
     private void requireNumbers(long companyId, CampaignNumbers numbers) {
         if (numbers == null) {
             return;
@@ -286,8 +313,20 @@ public class CampaignService implements CampaignUseCase {
         if (numbers.localPresence() && numbers.callerIdPoolId() == null) {
             throw new ValidationException(ErrorCode.CAMPAIGN_LOCAL_PRESENCE_NEEDS_POOL);
         }
+        if (numbers.fromNumberId() != null && numbers.callerIdPoolId() != null) {
+            throw new ValidationException(ErrorCode.CAMPAIGN_FROM_NUMBER_WITH_POOL);
+        }
         if (numbers.callerIdPoolId() != null) {
             callerIdPoolUseCase.getPool(companyId, numbers.callerIdPoolId());
+        }
+        if (numbers.fromNumberId() != null) {
+            PhoneNumber fromNumber = phoneNumberUseCase.findCompanyNumber(companyId, numbers.fromNumberId());
+            if (fromNumber == null) {
+                throw new NotFoundException(ErrorCode.PHONE_NUMBER_NOT_FOUND, numbers.fromNumberId());
+            }
+            if (!fromNumber.hasOwnTrunk()) {
+                throw new ConflictException(ErrorCode.CAMPAIGN_FROM_NUMBER_UNUSABLE, fromNumber.phoneNumber());
+            }
         }
     }
 
@@ -327,6 +366,14 @@ public class CampaignService implements CampaignUseCase {
      * One end of a campaign's dial window: the one asked for, else the fallback — on create the
      * company's own dial window, so a campaign that names no hours calls in the company's.
      */
+    private static LocalTime latest(LocalTime a, LocalTime b) {
+        return b == null || a.isAfter(b) ? a : b;
+    }
+
+    private static LocalTime earliest(LocalTime a, LocalTime b) {
+        return b == null || a.isBefore(b) ? a : b;
+    }
+
     private static LocalTime resolveWindowBound(LocalTime requested, LocalTime fallback, LocalTime lastResort) {
         if (requested != null) {
             return requested;

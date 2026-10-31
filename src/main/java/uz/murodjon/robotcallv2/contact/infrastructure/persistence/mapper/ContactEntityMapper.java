@@ -18,7 +18,7 @@ public class ContactEntityMapper {
                 entity.getName(),
                 entity.getPhone(),
                 entity.getAddress(),
-                entity.getTags(),
+                entity.getTagsString(),
                 entity.getNotes(),
                 entity.getCreatedAt()
         );
@@ -34,7 +34,7 @@ public class ContactEntityMapper {
         entity.setName(domain.name());
         entity.setPhone(domain.phone());
         entity.setAddress(domain.address());
-        entity.setTags(domain.tags());
+        entity.setTagsFromString(domain.tags());
         entity.setNotes(domain.notes());
         entity.setCreatedAt(domain.createdAt());
         return entity;

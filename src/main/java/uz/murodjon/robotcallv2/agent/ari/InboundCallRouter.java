@@ -119,7 +119,7 @@ class InboundCallRouter {
         InboundRoute route = decision.route();
         InboundCallerRule rule = decision.rule();
         long attemptId = callAttemptUseCase.startAttempt(route.companyId(), CallAttempt.NO_TARGET, channelId,
-                callerNumber != null ? callerNumber : "ANONYMOUS", decision.language(), route.id(), null);
+                callerNumber != null ? callerNumber : "ANONYMOUS", decision.language(), route.storedId(), null);
         callAttemptUseCase.recordError(attemptId,
                 "refused by caller rule " + rule.phonePrefix() + " (" + rule.action() + ")");
         callEventUseCase.record(route.companyId(), attemptId, CallEventType.REJECTED,
@@ -143,7 +143,7 @@ class InboundCallRouter {
         InboundRoute route = decision.route();
         long companyId = route.companyId();
         long attemptId = callAttemptUseCase.startAttempt(companyId, CallAttempt.NO_TARGET, channelId,
-                callerNumber != null ? callerNumber : "INBOUND", decision.language(), route.id(), null);
+                callerNumber != null ? callerNumber : "INBOUND", decision.language(), route.storedId(), null);
         Instant started = Instant.now();
         log.info("Inbound call {} to route {}: {} — {}", channelId, route.id(),
                 decision.afterHours() ? "outside business hours" : "nobody to answer",
@@ -159,7 +159,7 @@ class InboundCallRouter {
         if (decision.afterHours() && callerNumber != null) {
             try {
                 missedCallUseCase.record(companyId, new MissedCallOccurrence(callerNumber, MissedCallReason.AFTER_HOURS,
-                        null, route.id(), attemptId != 0 ? attemptId : null, null));
+                        null, route.storedId(), attemptId != 0 ? attemptId : null, null));
             } catch (Exception e) {
                 log.warn("[{}] missed call not recorded: {}", channelId, e.getMessage());
             }

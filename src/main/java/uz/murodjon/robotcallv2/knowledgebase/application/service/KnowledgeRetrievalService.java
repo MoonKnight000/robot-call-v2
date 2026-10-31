@@ -77,10 +77,16 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
 
     @Override
     public List<KnowledgePassage> findRelevantPassages(long companyId, Long agentId, String question, int limit) {
+        return findRelevantPassagesIncludingSources(companyId, agentId, List.of(), question, limit);
+    }
+
+    @Override
+    public List<KnowledgePassage> findRelevantPassagesIncludingSources(long companyId, Long agentId, List<Long> extraSourceIds,
+                                                                       String question, int limit) {
         if (question == null || question.trim().length() < MIN_QUERY_CHARS || limit <= 0) {
             return List.of();
         }
-        List<IndexedChunk> chunks = visibleChunks(companyId, agentId);
+        List<IndexedChunk> chunks = visibleChunks(companyId, agentId, extraSourceIds == null ? List.of() : extraSourceIds);
         if (chunks.isEmpty()) {
             return List.of();
         }
@@ -100,7 +106,7 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
         cache.remove(companyId);
     }
 
-    private List<IndexedChunk> visibleChunks(long companyId, Long agentId) {
+    private List<IndexedChunk> visibleChunks(long companyId, Long agentId, List<Long> extraSourceIds) {
         // Read outside the map's lock rather than inside computeIfAbsent. The cache has to
         // be guarded to stay access-ordered, and holding that guard across a query would
         // stall every other call's lookup behind one company's read — on a path where a
@@ -117,7 +123,9 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
         }
         // The cache holds the whole company; narrowing to this agent's own sources plus
         // the company-wide ones happens here, on a list that is already in memory.
-        return all.stream().filter(chunk -> chunk.visibleTo(agentId)).toList();
+        return all.stream()
+                .filter(chunk -> chunk.visibleTo(agentId) || extraSourceIds.contains(chunk.sourceId()))
+                .toList();
     }
 
     private static List<KnowledgePassage> byScore(List<KnowledgePassage> hits) {

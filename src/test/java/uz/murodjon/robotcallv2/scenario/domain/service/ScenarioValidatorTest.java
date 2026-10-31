@@ -316,17 +316,17 @@ class ScenarioValidatorTest {
                                 new StageBranch("debtAmount", BranchOperator.GREATER, "0", "LOOKUP"),
                                 new StageBranch(null, BranchOperator.ALWAYS, null, "BYE")))
                         .allowedTransitions(List.of("LOOKUP", "BYE")).build(),
-                action("LOOKUP", StageType.FUNCTION, "IVR", new StageAction("lookupDebt", null, null, null, null, null, null, null, null)),
-                action("IVR", StageType.PRESS_DIGIT, "SMS", new StageAction(null, null, null, "1w2#", null, null, null, null, null)),
-                action("SMS", StageType.SMS, "EXTRACT", new StageAction(null, null, null, null, null, "Karta: {{card}}", null, null, null)),
-                action("EXTRACT", StageType.EXTRACT_VARIABLE, "CODE", new StageAction(null, null, null, null, null, null, List.of("res"), null, null)),
-                action("CODE", StageType.CODE, "MCP", new StageAction(null, null, null, null, null, null, null, "return 1;", null)),
-                action("MCP", StageType.MCP, "BYE", new StageAction("crm.lookup", null, null, null, null, null, null, null, 7L)),
+                action("LOOKUP", StageType.FUNCTION, "IVR", new StageAction("lookupDebt", null, null, null, null, null, null, null, null, null)),
+                action("IVR", StageType.PRESS_DIGIT, "SMS", new StageAction(null, null, null, "1w2#", null, null, null, null, null, null)),
+                action("SMS", StageType.SMS, "EXTRACT", new StageAction(null, null, null, null, null, "Karta: {{card}}", null, null, null, null)),
+                action("EXTRACT", StageType.EXTRACT_VARIABLE, "CODE", new StageAction(null, null, null, null, null, null, List.of("res"), null, null, null)),
+                action("CODE", StageType.CODE, "MCP", new StageAction(null, null, null, null, null, null, null, "return 1;", null, null)),
+                action("MCP", StageType.MCP, "BYE", new StageAction("crm.lookup", null, null, null, null, null, null, null, 7L, null)),
                 StageDef.builder().id("HUMAN").type(StageType.CALL_TRANSFER).globalCondition("Mijoz operator so'raydi")
-                        .action(new StageAction(null, "+998901234567", TransferMode.WARM, null, null, null, null, null, null))
+                        .action(new StageAction(null, "+998901234567", TransferMode.WARM, null, null, null, null, null, null, null))
                         .allowedTransitions(List.of("BYE")).build(),
                 StageDef.builder().id("SALES").type(StageType.AGENT_TRANSFER)
-                        .action(new StageAction(null, null, null, null, 42L, null, null, null, null)).build(),
+                        .action(new StageAction(null, null, null, null, 42L, null, null, null, null, null)).build(),
                 StageDef.builder().id("BYE").type(StageType.ENDING).staticLine("Xayr!").build(),
                 StageDef.builder().id("TODO").type(StageType.NOTE).purpose("Keyin FAQ qo'shamiz").build());
 
@@ -338,7 +338,7 @@ class ScenarioValidatorTest {
         ScenarioDefinition def = flow(
                 new StageDef("GREETING", "Salom", List.of("SMS", "END"), List.of()),
                 StageDef.builder().id("SMS").type(StageType.SMS)
-                        .action(new StageAction(null, null, null, null, null, "Salom", null, null, null)).build(),
+                        .action(new StageAction(null, null, null, null, null, "Salom", null, null, null, null)).build(),
                 new StageDef("END", "Yakunla", List.of(), List.of()));
 
         assertThat(ScenarioValidator.validate(def)).contains("SMS stage SMS needs a transition to pass the call on");
@@ -349,9 +349,9 @@ class ScenarioValidatorTest {
         ScenarioDefinition def = flow(
                 new StageDef("GREETING", "Salom", List.of("XFER", "IVR", "LOOKUP"), List.of()),
                 StageDef.builder().id("XFER").type(StageType.CALL_TRANSFER)
-                        .action(new StageAction(null, "operator", null, null, null, null, null, null, null)).build(),
-                action("IVR", StageType.PRESS_DIGIT, "END", new StageAction(null, null, null, "1-2", null, null, null, null, null)),
-                action("LOOKUP", StageType.FUNCTION, "END", new StageAction(" ", null, null, null, null, null, null, null, null)),
+                        .action(new StageAction(null, "operator", null, null, null, null, null, null, null, null)).build(),
+                action("IVR", StageType.PRESS_DIGIT, "END", new StageAction(null, null, null, "1-2", null, null, null, null, null, null)),
+                action("LOOKUP", StageType.FUNCTION, "END", new StageAction(" ", null, null, null, null, null, null, null, null, null)),
                 new StageDef("END", "Yakunla", List.of(), List.of()));
 
         assertThat(ScenarioValidator.validate(def)).contains(
@@ -364,7 +364,7 @@ class ScenarioValidatorTest {
     void aFunctionStageMayCallACompanyToolTheScenarioDoesNotDeclare() {
         ScenarioDefinition def = flow(
                 new StageDef("GREETING", "Salom", List.of("LOOKUP"), List.of()),
-                action("LOOKUP", StageType.FUNCTION, "END", new StageAction("crm_find_client", null, null, null, null, null, null, null, null)),
+                action("LOOKUP", StageType.FUNCTION, "END", new StageAction("crm_find_client", null, null, null, null, null, null, null, null, null)),
                 new StageDef("END", "Yakunla", List.of(), List.of()));
 
         assertThat(ScenarioValidator.validate(def)).isEmpty();
@@ -374,7 +374,7 @@ class ScenarioValidatorTest {
     void theStartStageMustBeAConversation() {
         ScenarioDefinition def = flow(
                         new StageDef("GREETING", "Salom", List.of("END"), List.of()),
-                        action("IVR", StageType.PRESS_DIGIT, "GREETING", new StageAction(null, null, null, "1", null, null, null, null, null)),
+                        action("IVR", StageType.PRESS_DIGIT, "GREETING", new StageAction(null, null, null, "1", null, null, null, null, null, null)),
                         new StageDef("END", "Yakunla", List.of(), List.of()))
                 .toBuilder().startStageId("IVR").build();
 

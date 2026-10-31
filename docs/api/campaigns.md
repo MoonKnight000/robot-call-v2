@@ -81,7 +81,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `dialing.mode` | `DialMode` | ❌ | Mijoz bilan kim gaplashadi: `AI` (standart) — kampaniya agenti; `PREVIEW` — operator mijoz kartasini ko'rib o'zi teradi; `PROGRESSIVE` — har bo'sh operatorga bitta qo'ng'iroq; `PREDICTIVE` — bo'sh operatorlardan ko'proq qo'ng'iroq, operator yetmasa mijozni AI agent qabul qiladi. **Yaratilgandan keyin o'zgarmaydi.** `AI` kampaniyalarni dialer teradi, `PREVIEW` ni operatorlar ([preview-dialing.md](preview-dialing.md)), `PROGRESSIVE` ni dialer navbatning bo'sh operatorlari uchun ([pastda](#progressive-kampaniya-qanday-teriladi)); `PREDICTIVE` ni dialer javob ulushiga qarab oldindan ([pastda](#predictive-kampaniya-qanday-teriladi)) |
 | `aiAgentId` | `number` | `AI` da ✅ | [`GET /api/ai-agents`](ai-agents.md) dagi agent. **Senariy, ovoz, persona, LLM model va SIP trunklar shu agentdan olinadi.** Keyin `PUT` bilan boshqa agentga o'tkazsa bo'ladi. **DRAFT'ni agentsiz saqlash mumkin** (Retell'dagidek "No agent selected"), lekin `start` da `dialMode` `AI`/`PREDICTIVE` bo'lsa agent shart — `400 CAMPAIGN_AI_AGENT_REQUIRED`; operator rejimlarida ixtiyoriy |
 | `dialing.callQueueId` | `number` | `AI` dan boshqasida ✅ | Qo'ng'iroqlarni oladigan operatorlar navbati ([call-queues.md](call-queues.md)). `dialMode` `AI` bo'lmasa va berilmasa — `400 CAMPAIGN_CALL_QUEUE_REQUIRED`; boshqa kompaniyaning yoki mavjud bo'lmagan navbat — `404 CALL_QUEUE_NOT_FOUND`. Navbat o'chirilsa, maydon `null` bo'lib qoladi |
-| `schedule.dialWindowStart` / `schedule.dialWindowEnd` | `string` (`HH:mm:ss`) | ❌ | Kunlik qo'ng'iroq oynasi. **Berilmasa — kompaniyaning ish soatlari** (`company_config.dialWindowStart/End`, yaratish paytidagi qiymati nusxalanadi; kompaniyada sozlama bo'lmasa 09:00–20:00). `PUT` da berilmasa — kampaniyaning mavjud oynasi qoladi. UI bu maydonni "Kompaniya ish soatlari" (default) / "Boshqa vaqt" tanlovi sifatida ko'rsatishi mumkin. Kompaniyaning `company_config` oynasidan **tashqariga chiqa olmaydi** ([companies.md](companies.md)). Shuningdek, `DialerService` har bir qabul qiluvchining mahalliy vaqt zonasini (quiet hours / TCPA: 08:00–20:00) hisobga oladi — uning mahalliy vaqtida tun bo'lsa, nishon avtomatik +30 daqiqaga kechiktiriladi |
+| `schedule.dialWindowStart` / `schedule.dialWindowEnd` | `string` (`HH:mm:ss`) | ❌ | Kunlik qo'ng'iroq oynasi. **Berilmasa — kompaniyaning ish soatlari**; bo'sh AI qoralamada (`sequence` va `aiAgentId` berilmagan) — Retell kabi **09:00–18:00**, kompaniya oynasi ichiga qisilgan (`company_config.dialWindowStart/End`, yaratish paytidagi qiymati nusxalanadi; kompaniyada sozlama bo'lmasa 09:00–20:00). `PUT` da berilmasa — kampaniyaning mavjud oynasi qoladi. UI bu maydonni "Kompaniya ish soatlari" (default) / "Boshqa vaqt" tanlovi sifatida ko'rsatishi mumkin. Kompaniyaning `company_config` oynasidan **tashqariga chiqa olmaydi** ([companies.md](companies.md)). Shuningdek, `DialerService` har bir qabul qiluvchining mahalliy vaqt zonasini (quiet hours / TCPA: 08:00–20:00) hisobga oladi — uning mahalliy vaqtida tun bo'lsa, nishon avtomatik +30 daqiqaga kechiktiriladi |
 | `schedule.dialDays` | `array<DayOfWeek>` | ❌ | `["MONDAY", ...]`. Bo'sh/berilmasa — barcha kunlar |
 | `retry.maxAttempts` | `number` | ❌ | Bitta nishonga urinishlar soni |
 | `retry.intervalMinutes` | `number` | ❌ | Javob bo'lmagan nishonni qayta terishgacha daqiqa. `0` — disposition bo'yicha standartlar (avtootvetchikdan keyin uzoqroq, bandlikdan keyin qisqaroq) |
@@ -102,15 +102,18 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `dialing.targetOrdering` | `string` | ❌ | Kutayotgan nishonlardan qaysilari birinchi teriladi: `FIFO` (standart — navbatga eng oldin tushgani) yoki `SCORE` (to'lash ehtimoli yuqorisi birinchi, raqam odatda gaplashadigan soatda bonus bilan) — [SCORE tartibi](#score-tartibi--nishonlar-qaysi-tartibda-teriladi). `AI` va `PREDICTIVE` kampaniyalarda ishlaydi. `PUT` da berilmasa — avvalgi qiymat qoladi |
 | `numbers.callerIdPoolId` | `number` | ❌ | Qo'ng'iroqlar qaysi raqamdan chiqishi: [Caller ID pul](caller-id-pools.md) (`GET /api/caller-id-pools`). Kompaniyaning o'z puli bo'lishi shart (`404 CALLER_ID_POOL_NOT_FOUND`). `null` — trunkning o'z caller ID'si. `PUT` da `numbers` berilmasa — avvalgisi qoladi |
 | `numbers.localPresence` | `boolean` | ❌ | Local presence dialing: puldan **chaqirilayotgan raqamga eng yaqin** raqam tanlanadi — [Raqamlar](#raqamlar--qaysi-raqamdan-qo'ng'iroq-qilinadi). `callerIdPoolId`siz `400 CAMPAIGN_LOCAL_PRESENCE_NEEDS_POOL` |
+| `numbers.fromNumberId` | `number` | ❌ | Pul o'rniga **bitta qat'iy raqam** ([phone-numbers.md](phone-numbers.md), `POST /api/phone-numbers/list` dagi `id`). Kompaniyaniki bo'lishi shart (`404 PHONE_NUMBER_NOT_FOUND`), trunki tanlangan BYON raqam bo'lishi shart (`409 CAMPAIGN_FROM_NUMBER_UNUSABLE` — trunksiz yoki bozordan olingan raqam). `callerIdPoolId` bilan birga — `400 CAMPAIGN_FROM_NUMBER_WITH_POOL` |
 | `kind` | `CampaignKind` | ❌ | Kontaktlar kampaniyaga qanday tushadi: `STANDARD` (standart — ro'yxat qo'lda: kontaktlar, CSV yoki target source) yoki `AUTO_ENROLL` (qoidaga mos kontaktlar o'zi qo'shiladi — [Auto-enroll](#auto-enroll--kontaktlar-qoida-bilan-qo'shiladi)). **Faqat yaratishda** beriladi; `PUT` da e'tiborga olinmaydi |
-| `sequence` | `object` | ❌ | Kontakt kampaniyaga tushgach o'tadigan qadamlar — [Sequence](#sequence--kontakt-qaysi-qadamlardan-o'tadi). `null` — Sequence'dan oldin yaratilgan kampaniya (bitta Conversation qadami, `aiAgentId` agenti). `PUT` da berilmasa — avvalgisi qoladi |
+| `sequence` | `object` | ❌ | Kontakt kampaniyaga tushgach o'tadigan qadamlar — [Sequence](#sequence--kontakt-qaysi-qadamlardan-o'tadi). `null` — Sequence'dan oldin yaratilgan kampaniya (bitta Conversation qadami, `aiAgentId` agenti). `PUT` da berilmasa — avvalgisi qoladi. **`POST` da `sequence` ham, `aiAgentId` ham berilmasa** (AI rejim, Retell "Untitled campaign" qoralamasi) — default sequence yoziladi: `{"startStepId":"step1","steps":[{"id":"step1","type":"CONVERSATION","name":"Suhbat 1","conversation":{"aiAgentId":null,"attempts":[{"delay":0,"unit":"MINUTES"},{"delay":3,"unit":"DAYS"},{"delay":7,"unit":"DAYS"},{"delay":10,"unit":"DAYS"}]},"outcomes":{"outcomes":[],"other":{"exit":"END"},"noResponse":{"exit":"END"}}}],"globalOutcomes":[…]}` (`globalOutcomes` — Do Not Call, Success, Not Interested; pastda Sequence bo'limi); agent ishga tushirishdan oldin qadamga tanlanadi (`CAMPAIGN_SEQUENCE_INVALID`). `aiAgentId` berilib `sequence` berilmasa — avvalgidek `null` |
+| `autoRetries` | `object` | ❌ | Retell "Automatic retries": `{ "doubleDial": true, "autoScheduleCallbacks": true }` — faqat `sequence` bor kampaniyada ishlaydi ([Sequence](#sequence--kontakt-qaysi-qadamlardan-o'tadi), 2–3-band). `PUT` da berilmasa — avvalgisi qoladi. `POST` da berilmasa: bo'sh AI qoralama (yuqoridagi default sequence holati) — ikkalasi `true`, qolgan hammasi — `false`. V40 dan oldingi kampaniyalarda `doubleDial: false`; `sequence` bori `autoScheduleCallbacks: true` (avvalgi xatti-harakat saqlanadi). Javobda (`CampaignRow`) doim bor |
 | `autoEnroll` | `object` | ❌ | Kontaktlar qaysi shart bilan olinadi: `{ "matchAll": true, "rules": [{ "field": "TAG", "operator": "EQUALS", "value": "qarzdor" }] }`. `AUTO_ENROLL` da — doimiy trigger ([Auto-enroll](#auto-enroll--kontaktlar-qoida-bilan-qo'shiladi)); `STANDARD` da — "Filter contacts", ishga tushirishda bir marta olinadi ([pastda](#standard--filter-contacts)), qo'shimcha `excludedContactIds` (ro'yxatda belgisi olingan kontaktlar; `AUTO_ENROLL` da bo'sh bo'lishi shart — `400 CAMPAIGN_AUTO_ENROLL_INVALID`). `PUT` da berilmasa — avvalgisi qoladi |
 
 > ⚠️ **Muhim o'zgarish.** Kampaniya endi faqat *kimga va qachon* qo'ng'iroq qilishni
 > ushlaydi. `scenarioId`, `defaultLanguage`, `ttsVoice`, `languageVoices`, `agentPersona`,
 > `ambientSound`, `emotionAdaptiveVoice`, `dtmfInputEnabled`, `voicemailAction`,
-> `voicemailMessage`, `midCallSmsEnabled`, `midCallSmsTemplate`, `sipTrunkIds` maydonlari
-> kampaniyadan olib tashlandi va [AI agent](ai-agents.md)ga ko'chdi. Ular hozir
+> `voicemailMessage`, `midCallSmsEnabled`, `midCallSmsTemplate` maydonlari
+> kampaniyadan olib tashlandi va [AI agent](ai-agents.md)ga ko'chdi (`sipTrunkIds` ham ko'chgan edi,
+> 2026-10-31 da agentdan ham olib tashlandi — trunk endi [raqamdan](#raqamlar--qaysi-raqamdan-qongiroq-qilinadi)). Ular hozir
 > `POST /api/ai-agents` tanasida. Mavjud kampaniyalar migratsiya paytida avtomatik
 > ravishda o'z sozlamalari bilan bitta agentga bog'landi.
 >
@@ -317,6 +320,7 @@ ketma-ket bajariladi: `POST /api/campaigns` → `POST /api/campaigns/{id}/target
 | `aiAgentId` | ha | Qo'ng'iroq qiladigan agent (`dialing.mode` doim `AI`) |
 | `csv` | ha | CSV fayl matni — `targets/csv` bilan bir xil format, JSON satr sifatida (`\n` bilan); ko'pi bilan 5 000 000 belgi |
 | `schedule` | yo'q | `POST /api/campaigns` dagi `schedule` guruhi; berilmasa kompaniya oynasi, har kuni |
+| `numbers` | yo'q | `POST /api/campaigns` dagi `numbers` guruhi — `fromNumberId` yoki `callerIdPoolId`(+`localPresence`), xatolari ham o'sha. Berilmasa qo'ng'iroqlar agent trunklaridan, trunkning caller ID'si bilan ketadi |
 | `immediate` | yo'q | `start?immediate=` bilan bir xil; standart `false` |
 | `consentConfirmed` | ha, `true` | `POST /campaigns/{id}/consent` bilan bir xil tasdiq; `false` bo'lsa `400 CAMPAIGN_CONSENT_REQUIRED` |
 
@@ -426,21 +430,45 @@ mijoz teriladi (30 s)
 > doim `CONVERSATION`). Har qo'ng'iroq shu qadamning `conversation.aiAgentId` agenti bilan
 > teriladi (A/B variant agenti yoki ovozi bo'lsa — u ustun). Qo'ng'iroq tugagach:
 >
-> 1. **Hal qiluvchi natija** (`PROMISE_TO_PAY`, `REFUSED`, `TRANSFERRED`, `WRONG_NUMBER`,
->    `COMPLETED`, `GOAL_REACHED`, `GOAL_NOT_REACHED`, `DO_NOT_CALL`) — darhol yo'naladi.
-> 2. **Boshqa natija** (javob yo'q, avtootvetchik, uzildi, xato, qayta qo'ng'iroq) — qadam ichida
->    qayta teriladi: `conversation.maxAttempts` gacha, kechikish `retryDelayMinutes` (0 bo'lsa
->    `retry.intervalMinutes` va disposition standartlari). Urinishlar tugagach yo'naladi.
-> 3. **Yo'nalish.** Disposition → `SequenceOutcome`: `PROMISE_TO_PAY`/`COMPLETED`/`GOAL_REACHED` →
->    `SUCCESS`; `REFUSED`/`GOAL_NOT_REACHED` → `NOT_INTERESTED`; `DO_NOT_CALL` → `DO_NOT_CALL`;
->    `NO_ANSWER`/`CARRIER_REJECTED`/`HUNG_UP`/`VOICEMAIL`/`FAILED` → `NO_RESPONSE`;
->    `TRANSFERRED`/`WRONG_NUMBER`/`CALLBACK_REQUESTED`/`PAYMENT_CLAIMED` → `OTHER`. `routes` da
->    shu natija bo'lmasa nishon tugaydi (`DONE` — hal qiluvchi natijada, `EXHAUSTED` — urinishlar
->    tugab). `DO_NOT_CALL` va `WRONG_NUMBER` har doim tugatadi, `routes` nima desa ham.
-> 4. **SMS qadami** yo'lda yuboriladi (raqam `doNotCall` bo'lsa yuborilmaydi), **WAIT qadami**
+> 1. **Raqam yaroqsiz yoki DNC** (`DO_NOT_CALL`, `WRONG_NUMBER`, `CARRIER_REJECTED`) — nishon darhol
+>    tugaydi, outcome'lar baholanmaydi (`DO_NOT_CALL` raqami go'shak qo'yilganda DNC'ga yozilgan).
+> 2. **Double dial** (`autoRetries.doubleDial`, faqat kampaniya `ACTIVE` bo'lsa): `NO_ANSWER` bo'lgan
+>    qo'ng'iroq **darhol yana bir marta** teriladi — shu urinishning bir qismi sifatida (urinish sanalmaydi,
+>    follow-up SMS yuborilmaydi). Ikkinchi teruv ham javobsiz qolsa — oddiy yo'l (3-band). Avtojavobchik
+>    (`VOICEMAIL`), rad etilgan raqam va to'xtatilgan kampaniyada qilinmaydi; bitta urinish bir martadan
+>    ortiq ikkilanmaydi.
+> 3. **Qayta qo'ng'iroq so'raldi** (`CALLBACK_REQUESTED`): `autoRetries.autoScheduleCallbacks` yoqilgan
+>    bo'lsa — agent callback vositasi bilan yozgan vaqtda, vaqt aytilmagan bo'lsa 24 soatdan keyingi
+>    birinchi oyna vaqtida qayta teriladi; qadamning urinishlari **1-urinishdan qayta boshlanadi**.
+>    Vaqt doim qo'ng'iroq oynasi ichida bo'ladi (Retell'dan farqi: dialer oynadan tashqarida termaydi).
+>    O'chiq bo'lsa — oddiy javob berilgan qo'ng'iroq kabi outcome'lar baholanadi (masalan "Callback"
+>    outcome'i yo'naltiradi).
+> 4. **Javob berilmagan** (`NO_ANSWER`, `VOICEMAIL`, `HUNG_UP`, `FAILED`) —
+>    qadamning keyingi urinishi teriladi — `conversation.attempts[N].delay` dan keyin, **oldingi
+>    urinishdan hisoblab** (qo'ng'iroq oynasidan tashqariga tushsa — keyingi ochilishda; bayramlar
+>    o'tkazib yuboriladi). Kechikishi `0` bo'lgan keyingi urinish `retry.intervalMinutes` va
+>    disposition standartlari bilan kutadi. Urinishlar tugagach —
+>    qadamning **No Response** yo'nalishi (`outcomes.noResponse`).
+> 5. **Javob berilgan** (qolgan hammasi) — **outcome'lar baholanadi** (Retell kabi): avval
+>    qadamning o'z `outcomes.outcomes`i, keyin `globalOutcomes`. Ro'yxat tartibida birinchi mos
+>    `METRICS` outcome yutadi; hech biri mos kelmasa, barcha `PROMPT` outcome'lar bitta so'rovda
+>    LLM'ga (summary modeli; kompaniyaning o'z LLM'i bo'lsa — o'sha) transkript bilan beriladi va u
+>    bittasini tanlaydi. Hech biri mos kelmasa — qadamning **Other** yo'nalishi (`outcomes.other`).
+>    Transkript faqat AI agent gapirgan qo'ng'iroqda bor; operator qo'ng'iroqlarida faqat `METRICS`
+>    ishlaydi.
+> 6. **Mos kelgan outcome:** `saveToContact.doNotCall` — raqam DNC ro'yxatiga, `saveToContact.tags` —
+>    shu raqamli kontakt(lar)ga teg qo'shiladi (auto-enroll / filtr uchun). Keyin `next`:
+>    `STEP` — boshqa qadamga (`delayMinutes` dan keyin), `END` — tugaydi, `END_SUCCESSFUL` — tugaydi
+>    va **konversiya** sanaladi. Global outcome nishon turgan qadamning o'ziga olib borsa — tugaydi.
+>    Nishon tugaganda holati `DONE` (javob berilgan) yoki `EXHAUSTED` (No Response).
+> 7. **SMS qadami** yo'lda yuboriladi (raqam `doNotCall` bo'lsa yuborilmaydi), **WAIT qadami**
 >    keyingi qadamning birinchi qo'ng'irog'ini kechiktiradi (dial oynasi va bayramlar hisobga
 >    olinadi); nishon doim keyingi `CONVERSATION` qadamiga tushadi. Zanjir `CONVERSATION` ga
 >    yetmasa, nishon `DONE` bo'ladi.
+>
+> Nishon yetgan outcome nomi (`Other`, `No Response` yoki outcome `name`i) va konversiya belgisi
+> `campaign_target.outcome` / `converted` ga yoziladi. `stats.successfulTargets` = `converted`
+> nishonlar + konversiya disposition'li qo'ng'irog'i bor nishonlar.
 >
 > `retry.policy` qoidalari (jumladan `smsText`) sequence kampaniyasida ham ishlaydi, `maxAttempts`i
 > qadamning urinishlarini kamaytirishi mumkin, oshirolmaydi. Agent qadamda o'chirilgan yoki
@@ -452,13 +480,44 @@ mijoz teriladi (30 s)
   "startStepId": "s1",
   "steps": [
     {
-      "id": "s1", "type": "CONVERSATION", "name": "Conversation 1",
-      "conversation": { "aiAgentId": 12, "maxAttempts": 4, "retryDelayMinutes": 0 },
-      "routes": { "NO_RESPONSE": "s2", "NOT_INTERESTED": "s3" },
+      "id": "s1", "type": "CONVERSATION", "name": "Suhbat 1",
+      "conversation": {
+        "aiAgentId": 12,
+        "attempts": [
+          { "delay": 0, "unit": "MINUTES" },
+          { "delay": 3, "unit": "DAYS" },
+          { "delay": 7, "unit": "DAYS" },
+          { "delay": 10, "unit": "DAYS" }
+        ]
+      },
+      "outcomes": {
+        "outcomes": [
+          {
+            "id": "callback", "name": "Qayta qo'ng'iroq", "evaluation": "PROMPT",
+            "prompt": "Mijoz keyinroq qo'ng'iroq qilishni so'radi.",
+            "saveToContact": { "doNotCall": false, "tags": ["callback"] },
+            "next": { "exit": "STEP", "stepId": "s3", "delayMinutes": 1440 }
+          }
+        ],
+        "other": { "exit": "END" },
+        "noResponse": { "exit": "STEP", "stepId": "s2" }
+      },
       "position": { "x": 0, "y": 120 }
     },
     { "id": "s2", "type": "SMS", "name": "SMS", "smsText": "Salom! Sizga qo'ng'iroq qildik.", "next": "s3" },
-    { "id": "s3", "type": "WAIT", "name": "Wait", "waitMinutes": 1440 }
+    { "id": "s3", "type": "CONVERSATION", "name": "Suhbat 2", "conversation": { "aiAgentId": 12, "attempts": [ { "delay": 0, "unit": "MINUTES" }, { "delay": 2, "unit": "HOURS" } ] } }
+  ],
+  "globalOutcomes": [
+    {
+      "id": "do_not_call", "name": "Do Not Call", "evaluation": "PROMPT",
+      "prompt": "The lead asked not to be called or contacted again.",
+      "saveToContact": { "doNotCall": true, "tags": [] }, "next": { "exit": "END" }
+    },
+    {
+      "id": "big_debt", "name": "Katta qarz", "evaluation": "METRICS", "match": "ALL",
+      "conditions": [ { "variable": "debt", "operator": "GREATER_THAN", "value": "10000000" } ],
+      "next": { "exit": "END_SUCCESSFUL" }
+    }
   ]
 }
 ```
@@ -468,22 +527,48 @@ mijoz teriladi (30 s)
 | `startStepId` | `string` | Kontakt boshlaydigan qadam; `steps` ichidagi `id` bo'lishi shart |
 | `steps[].id` | `string` | Sequence ichida noyob; yo'nalishlar shunga ishora qiladi |
 | `steps[].type` | `SequenceStepType` | `CONVERSATION` (agent qo'ng'iroq qiladi), `SMS`, `WAIT` |
-| `steps[].conversation` | `object` | Faqat `CONVERSATION`: `aiAgentId`, `maxAttempts` (1–10, berilmasa 3), `retryDelayMinutes` (0 — standart kechikishlar). Draft'da `aiAgentId` bo'sh bo'lishi mumkin |
+| `steps[].conversation.aiAgentId` | `number` | Faqat `CONVERSATION`: gapiradigan agent. Draft'da bo'sh bo'lishi mumkin, ishga tushirishda majburiy |
+| `steps[].conversation.attempts[]` | `{delay, unit}` | Qadamning qo'ng'iroqlari tartib bo'yicha (Retell "Attempt N"): kamida 1, ko'pi bilan 50. `unit`: `MINUTES` \| `HOURS` \| `DAYS` (berilmasa `MINUTES`); `delay` ≥ 0, ko'pi bilan 365 kun — **oldingi urinishdan** keyin. Birinchi urinish kontakt qadamga yetishi bilan teriladi — uning `delay`i doim `0` ga keltiriladi (qadamga kirishdan oldingi kutish — outcome'ning `delayMinutes`i). Keyingi urinishda `0` — kampaniyaning standart retry kechikishi. Default: 0, +3, +7, +10 kun (0/3/10/20-kunlar). `retry.policy[...].maxAttempts` urinishlar sonini kamaytirishi mumkin |
 | `steps[].smsText` | `string` | Faqat `SMS`, ko'pi bilan 459 belgi; `{{fakt}}` / `{{fakt \| zaxira}}` shablonlari |
 | `steps[].waitMinutes` | `number` | Faqat `WAIT`: 1 … 43200 (30 kun) |
-| `steps[].routes` | `object` | Faqat `CONVERSATION`: `SequenceOutcome` → keyingi qadam `id`si. Yozuvi yo'q natija kontaktning sequence'ini **tugatadi** |
+| `steps[].outcomes.outcomes` | `SequenceOutcome[]` | Faqat `CONVERSATION`: qadamning o'z outcome'lari (Retell "node outcomes"), global'lardan oldin baholanadi |
+| `steps[].outcomes.other` | `OutcomeRoute` | Javob berilib, hech bir outcome mos kelmaganda. Berilmasa — `END` |
+| `steps[].outcomes.noResponse` | `OutcomeRoute` | Oxirgi urinishga ham javob berilmaganda. Berilmasa — `END` (konversiya emas) |
 | `steps[].next` | `string` | Faqat `SMS` va `WAIT`: keyingi qadam; `null` — tugaydi |
 | `steps[].position` | `{x, y}` | Canvas'dagi joyi; dialer o'qimaydi |
+| `globalOutcomes` | `SequenceOutcome[]` | Har bir `CONVERSATION` qadamida baholanadi (Retell "Global outcomes"). Yangi qoralamada: Do Not Call, Success (`END_SUCCESSFUL`), Not Interested |
 
-`SequenceOutcome`: `SUCCESS`, `NOT_INTERESTED`, `DO_NOT_CALL`, `NO_RESPONSE`, `OTHER`.
+**`SequenceOutcome`:**
+
+| Maydon | Tur | Izoh |
+|---|---|---|
+| `id` | `string` | Sequence ichida noyob (qadam outcome'i global bilan bir xil `id` olmaydi) |
+| `name` | `string` | Majburiy; nishonga yoziladigan nom |
+| `evaluation` | `PROMPT` \| `METRICS` | Berilmasa `PROMPT` |
+| `prompt` | `string` | `PROMPT` da majburiy, ko'pi bilan 2000 belgi — qo'ng'iroq qachon shu outcome'ga tushadi |
+| `match` | `ALL` \| `ANY` | `METRICS`: shartlarning hammasi yoki bittasi. Berilmasa `ALL` |
+| `conditions[]` | `{variable, operator, value}` | `METRICS` da kamida bitta. `variable` — nishon faktlari (`contextData`) nomi, `phone` yoki `disposition`. `operator`: `EQUALS`, `NOT_EQUALS`, `CONTAINS`, `NOT_CONTAINS` (katta-kichik harf farqsiz), `GREATER_THAN`, `GREATER_OR_EQUAL`, `LESS_THAN`, `LESS_OR_EQUAL` (ikkala tomon son bo'lishi shart), `IS_SET`, `IS_NOT_SET` |
+| `saveToContact` | `{doNotCall, tags[]}` | Kontaktga yoziladigan qat'iy qiymatlar (qo'ng'iroqdan olingan ma'lumot emas). Teg: 1–50 belgi, vergulsiz |
+| `next` | `OutcomeRoute` | Berilmasa `END` |
+
+**`OutcomeRoute`:** `{ "exit": "STEP" | "END" | "END_SUCCESSFUL", "stepId": "...", "delayMinutes": 0 }` —
+`stepId` faqat `STEP` da; `delayMinutes` (0 … 43200) faqat qadamning o'z outcome'i `STEP` ga olib borganda.
 
 **Qoidalar** (`400 CAMPAIGN_SEQUENCE_INVALID`, har bir muammo `errors` ro'yxatida):
 `steps` bo'sh emas va ko'pi bilan 20 ta; `id` lar noyob; `startStepId` mavjud **`CONVERSATION`** qadamga ishora qiladi;
-barcha yo'nalishlar mavjud qadamga olib boradi; `routes` faqat `CONVERSATION` da, `next` faqat
-`SMS`/`WAIT` da; **`DO_NOT_CALL` yo'nalishi bo'lmaydi** — qo'ng'iroq qilmaslikni so'ragan kontakt
-boshqa qadamga o'tmaydi; yo'nalishlar qaytib kelmaydi (sikl yo'q). Hech narsa olib kelmaydigan
-qadam xato emas (draft tugun). `conversation.aiAgentId` kompaniyaning o'z agenti bo'lishi kerak
-(boshqasiniki — `404`).
+barcha yo'nalishlar mavjud qadamga olib boradi; `outcomes` faqat `CONVERSATION` da, `next` faqat
+`SMS`/`WAIT` da; outcome'lar ro'yxati ko'pi bilan 20 ta, `id`/`name` majburiy; **`saveToContact.doNotCall`
+bo'lgan outcome `STEP` ga olib bormaydi**; global outcome `delayMinutes` olmaydi; qadamlarning o'z
+yo'nalishlari qaytib kelmaydi (sikl yo'q). Hech narsa olib kelmaydigan qadam xato emas (draft tugun).
+`conversation.aiAgentId` kompaniyaning o'z agenti bo'lishi kerak (boshqasiniki — `404`).
+
+> **Migratsiya (V38):** eski `steps[].routes` xaritasi olib tashlandi; mavjud sequence'larga
+> default `globalOutcomes` qo'shildi. `routes` bilan yo'naltirilgan qadamlar endi hamma natijada
+> tugaydi — qayta sozlash kerak.
+>
+> **Migratsiya (V39):** `conversation.maxAttempts` + `retryDelayMinutes` → `conversation.attempts`
+> (shuncha urinish, birinchisi darhol, qolganlari `retryDelayMinutes` daqiqa oralig'ida). Eski
+> maydonlar endi o'qilmaydi.
 
 ### Auto-enroll — kontaktlar qoida bilan qo'shiladi
 
@@ -572,10 +657,25 @@ o'tish uchun. Javob — o'chirilgan nishonlar soni (`data: 120`).
 
 ### Raqamlar — qaysi raqamdan qo'ng'iroq qilinadi
 
-Kampaniya `numbers.callerIdPoolId` orqali caller ID pulini tanlaydi; har qo'ng'iroqda raqam
-pulning strategiyasi bo'yicha olinadi (`ROUND_ROBIN`, `RANDOM`, `LEAST_USED`,
-`HIGHEST_ANSWER_RATE`; dam olayotgan va o'chirilgan raqamlar o'tkazib yuboriladi). Pul bo'sh
-bo'lsa yoki olib bo'lmasa, qo'ng'iroq trunkning o'z caller ID'si bilan ketadi.
+Raqam tanlashning uch yo'li bor — **trunk har doim raqamdan kelib chiqadi**, agentdan emas
+(`docs/PHONE-NUMBER-BINDING.md`):
+
+| `numbers` | Caller ID | Trunk |
+|---|---|---|
+| `fromNumberId` | shu raqam, har qo'ng'iroqda | raqamning o'z trunki (`providerTrunkId`); uning bo'sh kanallari partiyani cheklaydi |
+| `callerIdPoolId` | pul raqamlaridan biri (pastda) | tanlangan raqamning o'z trunki |
+| ikkalasi ham yo'q | trunkning `callerId` si | kompaniyaning barcha yoqilgan trunklari (round-robin) |
+
+Agent (kampaniyaniki ham, sequence qadamining yoki A/B variantning ham) trunkka hech qachon ta'sir
+qilmaydi — agentda trunk maydoni yo'q. `fromNumberId` ning raqami endi kompaniyaniki bo'lmasa yoki trunki
+o'chirilgan/yo'q bo'lsa, kampaniya `PAUSED` ga o'tadi (sababi bilan) — boshqa raqam bilan
+qo'ng'iroq qilinmaydi. Raqam o'chirilsa, `fromNumberId` `null` bo'ladi (pul kabi).
+
+Pul ishlatilganda har qo'ng'iroqda raqam pulning strategiyasi bo'yicha olinadi (`ROUND_ROBIN`,
+`RANDOM`, `LEAST_USED`, `HIGHEST_ANSWER_RATE`; dam olayotgan va o'chirilgan raqamlar o'tkazib
+yuboriladi), faqat trunki ishlayotgan va bo'sh kanali bor raqamlar orasidan. Bunday raqam bo'lmasa,
+nishon 5 daqiqaga kutadi (urinish hisoblanmaydi) — trunkning yoki platformaning raqami bilan
+qo'ng'iroq qilinmaydi.
 
 **`numbers.localPresence: true`.** Strategiyadan oldin pul raqamlari chaqirilayotgan raqamga
 yaqinligi bo'yicha toraytiriladi: raqamlarning **boshidan eng ko'p mos tushadigan** raqamlari
@@ -586,8 +686,9 @@ AQSh/NANP (`1415…`) kabi 3 xonali hudud kodlari uchun 5 raqam yetarli darajada
 emas — bu hozircha O'zbekiston raqamlariga moslangan.
 
 Javob olingan raqam pul statistikasiga (`answerRate`) o'sha qo'ng'iroqda ishlatilgan raqam
-bo'yicha yoziladi. PREDICTIVE kampaniyada AI overflow qo'ng'iroqlari ham shu pulni ishlatadi;
-operator rejimlari (PREVIEW/PROGRESSIVE) hozircha trunkning o'z caller ID'sini ishlatadi.
+bo'yicha yoziladi. Faqat AI rejimi (`dialing.mode: AI`) raqam/pulni ishlatadi; operator
+rejimlari (PREVIEW/PROGRESSIVE/PREDICTIVE, jumladan PREDICTIVE'ning AI overflow'i) hozircha
+kompaniyaning default trunki va uning caller ID'si bilan teradi.
 
 ### SCORE tartibi — nishonlar qaysi tartibda teriladi
 
@@ -812,7 +913,11 @@ Javob — `PageableData<CampaignTarget>`:
   "doNotCall": false,
   "nextAttemptAt": null,
   "score": 63,
-  "bestCallHour": 10
+  "bestCallHour": 10,
+  "stepId": "step1",
+  "stepAttempts": 2,
+  "outcome": "Success",
+  "converted": true
 }
 ```
 
@@ -820,6 +925,10 @@ Javob — `PageableData<CampaignTarget>`:
 (urinishlar limiti tugadi). `contextData` — **string** ichidagi JSON, obyekt emas.
 `score` (0–100) va `bestCallHour` (0–23) — `SCORE` kampaniyada nishon baholangandan keyin to'ladi
 ([SCORE tartibi](#score-tartibi--nishonlar-qaysi-tartibda-teriladi)), aks holda `null`.
+`stepId` / `stepAttempts` — nishon turgan sequence qadami (`null` — boshlang'ich qadam) va unda sarflangan
+qo'ng'iroqlar. `outcome` — oxirgi javob berilgan qo'ng'iroq tushgan sequence natijasining nomi (`"Other"`,
+`"No Response"` ham bo'ladi); hali baholanmagan bo'lsa `null`. `converted` — nishon **End successful** yo'li
+bilan chiqqan (kampaniyaning "muvaffaqiyatli" hisobiga kiradi).
 
 ---
 

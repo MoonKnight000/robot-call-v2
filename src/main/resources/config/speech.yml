@@ -94,6 +94,14 @@ voice-agent:
       replay-buffer-samples: ${STT_REPLAY_BUFFER_SAMPLES:16000}
       promoted-final-ttl-ms: ${STT_PROMOTED_FINAL_TTL_MS:2500}
       failover-after-failures: ${STT_FAILOVER_AFTER_FAILURES:2}
+    # Model per provider for an agent's or stage's transcriptionMode (FAST / ACCURATE),
+    # keyed by provider name (yandex, deepgram, openai, gemini, aisha). An unmapped provider
+    # or mode keeps the agent's sttModel or the provider default. Empty: no verified
+    # fast/accurate model pairs yet. Example:
+    #   deepgram:
+    #     fast: nova-3
+    #     accurate: nova-3
+    transcription-modes: {}
     vad-gating:
       enabled: ${STT_VAD_GATING:true}
       pre-roll-ms: ${STT_VAD_PRE_ROLL_MS:800}

@@ -7,7 +7,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 
 import java.util.List;
-import java.util.Set;
 
 /**
  * Dedicated request for creating a Retell-style Single-Prompt Agent.
@@ -28,7 +27,6 @@ public record CreateSinglePromptAgentRequest(
         Integer maxOutputTokens,
         AgentAmbienceDto ambience,
         List<DataExtractionField> dataNeeded,
-        List<DataEvaluationCriterion> dataEvaluation,
-        Set<Long> sipTrunkIds
+        List<DataEvaluationCriterion> dataEvaluation
 ) {
 }

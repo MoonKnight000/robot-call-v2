@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.campaign.application.dto;
 
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignAutoRetries;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignNumbers;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
@@ -35,6 +36,7 @@ public record CampaignRow(
         CampaignKind kind,
         CampaignSequence sequence,
         AutoEnrollment autoEnroll,
+        CampaignAutoRetries autoRetries,
         CampaignTargetStats stats,
         Instant lastRunAt,
         Instant consentConfirmedAt,
@@ -60,6 +62,7 @@ public record CampaignRow(
                 c.kind(),
                 c.sequence(),
                 c.autoEnroll(),
+                c.autoRetries(),
                 stats != null ? stats : CampaignTargetStats.ZERO,
                 c.lastRunAt(),
                 c.consentConfirmedAt(),

@@ -12,7 +12,6 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 
 import java.time.*;
-import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -54,13 +53,10 @@ class DialWindowTest {
         Clock clock = Clock.fixed(now, tashkentZone);
 
         Campaign campaign = createCampaign(LocalTime.of(9, 0), LocalTime.of(20, 0));
-        CompanyConfig config = CompanyConfig.settings(
-                LocalTime.of(9, 0), LocalTime.of(20, 0), "Asia/Tashkent",
-                3, 1, true, false,
-                List.of(today), 60, null
-        );
+        CompanyConfig config = CompanyConfig.defaults();
 
-        assertFalse(DialWindow.isOpen(campaign, config, clock));
+        assertFalse(DialWindow.isOpen(campaign, config, Set.of(today), clock));
+        assertTrue(DialWindow.isOpen(campaign, config, Set.of(), clock));
     }
 
     @Test

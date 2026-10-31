@@ -230,6 +230,16 @@ public class SystemPromptFactory {
     }
 
     /**
+     * The agent settings the call's current stage replaces ({@link StageOverrides}), or null
+     * when it keeps the agent's. Read at the moment of use — a barge-in, an utterance, a
+     * search — so a stage change takes effect on the next one.
+     */
+    public static StageOverrides overridesOf(DialogSession s) {
+        StageDef stage = stageOf(s.scenario(), s.state());
+        return stage != null ? stage.overrides() : null;
+    }
+
+    /**
      * The unchanging half of the prompt: who the agent is, the facts it may state, and
      * the rules it must not break. Cache this per call ({@link DialogSession#systemPrefix()}) —
      * rebuilding it produces the same string and only risks breaking the cached prefix
@@ -675,6 +685,25 @@ public class SystemPromptFactory {
     }
 
     /**
+     * The current stage's own ✗ → ✓ pairs ({@code StageDef.examples}) for the call's language.
+     * In the turn annex, not the cached prefix with the scenario's pairs: they change with the stage.
+     */
+    private static void appendStageExamples(StringBuilder sb, StageDef stage, String language) {
+        if (stage == null || stage.examples() == null) {
+            return;
+        }
+        StringBuilder pairs = new StringBuilder();
+        for (StyleExample example : stage.examples()) {
+            if (example.appliesTo(language)) {
+                pairs.append("✗ ").append(example.wrong()).append(" → ✓ ").append(example.right()).append('\n');
+            }
+        }
+        if (!pairs.isEmpty()) {
+            sb.append("HOW TO PHRASE IT IN THIS STAGE:\n").append(pairs);
+        }
+    }
+
+    /**
      * The dynamic tail of the prompt: moves with the FSM, and is appended to the message
      * sequence as a system aside rather than baked into {@link #stablePrefix}.
      */
@@ -686,6 +715,12 @@ public class SystemPromptFactory {
         sb.append("Allowed next stages: ").append(allowedNext(s.scenario(), stage)).append('\n');
         appendStaticLines(sb, s.scenario(), stage, s.context() != null ? s.context().facts() : Map.of());
         appendRecorded(sb, s.outcome());
+        appendStageExamples(sb, stage, s.language());
+        if (stage != null && Boolean.TRUE.equals(stage.skipWhenKnown())) {
+            sb.append("ALREADY KNOWN IS NOT ASKED: before asking anything this stage collects, check the client's ")
+                    .append("memory, the FACTS and ALREADY ESTABLISHED. Whatever is already there — do not ask for it ")
+                    .append("again; confirm it in one short sentence and move on to the next allowed stage.\n");
+        }
         // The FSM refuses an edge that is not in `allowedNext`, and a model that spoke a
         // later stage's content first then tried to jump there got the refusal mid-turn
         // and started reasoning aloud about which tool to call instead — the caller heard

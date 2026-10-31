@@ -195,7 +195,7 @@ class OutboundDialService {
                 ? number.substring(1) : number;
         outboundRouting.awaitTrunkSlot(number, endpoint, trunk);
         return ariClient.originateToStasis("PJSIP/" + dialNumber + "@" + endpoint, appArgs, timeoutSec,
-                outboundRouting.findCallerId(trunk, null, companyId));
+                outboundRouting.findCallerId(trunk, null));
     }
 
     /** An outside number dialled for an operator (a callback, a softphone call, a preview card) — booked as a call from the start. */

@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -426,13 +427,25 @@ public class TurnRunner {
      * without it, not a call that stops.
      */
     private void retrieveKnowledge(DialogSession s, String clientText, boolean fromClient) {
-        if (!fromClient || s.agent() == null || !s.agent().useRag()) {
+        // The stage may switch the search on or off, size it for its own turns, and add sources
+        // of its own — which switch it on unless the stage says otherwise.
+        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        StageOverrides overrides = stage != null ? stage.overrides() : null;
+        List<Long> stageSources = stage != null && stage.knowledgeSourceIds() != null
+                ? stage.knowledgeSourceIds() : List.of();
+        boolean enabled = s.agent() != null && (overrides != null && overrides.knowledgeRetrieval() != null
+                ? overrides.knowledgeRetrieval()
+                : s.agent().useRag() || !stageSources.isEmpty());
+        if (!fromClient || !enabled) {
             s.setKnowledgePassages(List.of());
             return;
         }
+        int limit = overrides != null && overrides.knowledgePassages() != null
+                ? overrides.knowledgePassages()
+                : dialogProperties.knowledgePassages();
         try {
-            List<KnowledgePassage> passages = knowledgeRetrieval.findRelevantPassages(
-                    s.companyId(), TurnShortcuts.findAgentId(s), clientText, dialogProperties.knowledgePassages());
+            List<KnowledgePassage> passages = knowledgeRetrieval.findRelevantPassagesIncludingSources(
+                    s.companyId(), TurnShortcuts.findAgentId(s), stageSources, clientText, limit);
             s.setKnowledgePassages(passages);
             if (!passages.isEmpty()) {
                 log.debug("[{}] knowledge base contributed {} passages (best {})",

@@ -102,4 +102,90 @@ class SttStreamBridgeTest {
         assertThat(backupSession.sent).hasSize(3);
         bridge.close();
     }
+
+    /** Records the model and hints of every stream it opens; each stream stays alive. */
+    private static final class RecordingProvider implements SttProvider {
+        final List<String> models = new ArrayList<>();
+        final List<List<String>> hints = new ArrayList<>();
+
+        @Override
+        public String name() {
+            return "rec";
+        }
+
+        @Override
+        public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                      TranscriptListener listener, boolean externalEndpointing) {
+            return startStream(languageCode, alternativeLanguages, listener, externalEndpointing, List.of(), null);
+        }
+
+        @Override
+        public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                      TranscriptListener listener, boolean externalEndpointing,
+                                      List<String> hints, String model) {
+            this.models.add(model);
+            this.hints.add(hints);
+            return new FakeSession(true);
+        }
+
+        @Override
+        public int sampleRate() {
+            return 8000;
+        }
+    }
+
+    private static SttStreamBridge recordingBridge(RecordingProvider provider) {
+        return new SttStreamBridge(provider, 8000, 8000, "test-channel", "uz-UZ", List.of(),
+                (text, isFinal, confidence) -> { }, null, mock(SttMetrics.class), null, 0, null,
+                List.of("Payme"), List.of("Nido"), null, "agent-model", SttStreamProperties.DEFAULTS);
+    }
+
+    @Test
+    void theAgentsKeywordsGoInFrontOfTheCallsHints() {
+        RecordingProvider provider = new RecordingProvider();
+
+        recordingBridge(provider);
+
+        assertThat(provider.hints.getFirst()).containsExactly("Nido", "Payme");
+        assertThat(provider.models.getFirst()).isEqualTo("agent-model");
+    }
+
+    @Test
+    void aStageThatChangesNothingDoesNotReopenTheStream() {
+        RecordingProvider provider = new RecordingProvider();
+        SttStreamBridge bridge = recordingBridge(provider);
+
+        boolean reopening = bridge.retune("rec", null, null);
+        bridge.onAudio(new short[160], 160);
+
+        assertThat(reopening).isFalse();
+        assertThat(provider.models).hasSize(1);
+    }
+
+    @Test
+    void aStageModelAndKeywordsReopenTheStreamOnTheNextFrameAndLeavingTheStageRestoresTheAgents() {
+        RecordingProvider provider = new RecordingProvider();
+        SttStreamBridge bridge = recordingBridge(provider);
+
+        assertThat(bridge.retune("rec", "stage-model", List.of("Click"))).isTrue();
+        assertThat(provider.models).hasSize(1); // not on the dialog's thread
+        bridge.onAudio(new short[160], 160);
+
+        assertThat(provider.models.getLast()).isEqualTo("stage-model");
+        assertThat(provider.hints.getLast()).containsExactly("Click", "Payme");
+
+        assertThat(bridge.retune("rec", null, null)).isTrue();
+        bridge.onAudio(new short[160], 160);
+
+        assertThat(provider.models.getLast()).isEqualTo("agent-model");
+        assertThat(provider.hints.getLast()).containsExactly("Nido", "Payme");
+    }
+
+    @Test
+    void aStageModelResolvedForAnotherProviderIsIgnored() {
+        RecordingProvider provider = new RecordingProvider();
+        SttStreamBridge bridge = recordingBridge(provider);
+
+        assertThat(bridge.retune("someone-else", "stage-model", null)).isFalse();
+    }
 }

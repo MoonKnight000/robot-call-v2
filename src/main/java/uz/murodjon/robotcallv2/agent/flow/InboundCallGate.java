@@ -15,6 +15,8 @@ import uz.murodjon.robotcallv2.inbound.domain.entity.InboundCallerRule;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.inbound.domain.enums.CallerRuleAction;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
+import uz.murodjon.robotcallv2.phonenumber.application.port.input.PhoneNumberUseCase;
+import uz.murodjon.robotcallv2.phonenumber.domain.entity.PhoneNumber;
 import uz.murodjon.robotcallv2.schedule.application.port.input.BusinessScheduleUseCase;
 import uz.murodjon.robotcallv2.schedule.domain.entity.BusinessHoursVerdict;
 
@@ -30,6 +32,10 @@ import java.time.Instant;
  * <p>The hours are the route's schedule if it names one, else its own daily window, read
  * in the company's time zone and with the company's holidays: the old check had no
  * weekday, no zone and called every overnight window closed.
+ *
+ * <p>A number no stored route answers falls back to the phone number's own inbound slot
+ * ({@code phone_number.inbound_agent_id} / {@code inbound_call_flow_id}), which has no hours. A
+ * stored route always wins over the slot.
  */
 @Component
 public class InboundCallGate {
@@ -42,12 +48,14 @@ public class InboundCallGate {
     private final BusinessScheduleUseCase businessScheduleUseCase;
     private final CompanyUseCase companyUseCase;
     private final CallBillingUseCase callBillingUseCase;
+    private final PhoneNumberUseCase phoneNumberUseCase;
     private final Clock clock;
 
     public InboundCallGate(InboundRouteUseCase inboundRouteUseCase, InboundCallerRuleUseCase callerRuleUseCase,
                            CallFlowUseCase callFlowUseCase, BusinessScheduleUseCase businessScheduleUseCase,
                            CompanyUseCase companyUseCase,
-                           CallBillingUseCase callBillingUseCase, Clock clock) {
+                           CallBillingUseCase callBillingUseCase, PhoneNumberUseCase phoneNumberUseCase, Clock clock) {
+        this.phoneNumberUseCase = phoneNumberUseCase;
         this.inboundRouteUseCase = inboundRouteUseCase;
         this.callerRuleUseCase = callerRuleUseCase;
         this.callFlowUseCase = callFlowUseCase;
@@ -59,6 +67,9 @@ public class InboundCallGate {
 
     public InboundDecision decide(String did, String callerNumber) {
         InboundRoute route = did != null ? inboundRouteUseCase.resolveByDid(did) : null;
+        if (route == null && did != null) {
+            route = findPhoneNumberRoute(did);
+        }
         if (route == null) {
             return InboundDecision.noRoute();
         }
@@ -85,6 +96,12 @@ public class InboundCallGate {
             }
             log.warn("Route {} names call flow {}, which has nothing published — answering with its agent",
                     route.id(), route.callFlowId());
+        }
+        if (route.storedId() == null) {
+            // A number's own slot keeps no hours: its agent answers whenever the number is called.
+            return route.aiAgentId() != null
+                    ? InboundDecision.agent(route, language, vip)
+                    : InboundDecision.closed(route, null, language, vip, false);
         }
         Instant now = clock.instant();
         BusinessHoursVerdict verdict = route.scheduleId() != null
@@ -125,6 +142,21 @@ public class InboundCallGate {
         }
 
         return InboundDecision.agent(route, language, vip);
+    }
+
+    /**
+     * For a number no stored route answers: the number's own inbound slot (its agent or call flow),
+     * as a route that is never saved. Null when no company holds the number or its slot is empty —
+     * the call then has no route, as before.
+     */
+    private InboundRoute findPhoneNumberRoute(String did) {
+        PhoneNumber number = phoneNumberUseCase.findAssignedByPhoneNumber(did);
+        if (number == null || number.inboundAgentId() == null && number.inboundCallFlowId() == null) {
+            return null;
+        }
+        log.debug("Inbound call to {} has no route — answered by the number's own slot", did);
+        return InboundRoute.ofPhoneNumber(number.companyId(), number.phoneNumber(), number.inboundAgentId(),
+                number.inboundCallFlowId());
     }
 
     private static Long parseLongOrNull(String s) {

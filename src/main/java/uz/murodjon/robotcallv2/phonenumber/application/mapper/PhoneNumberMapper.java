@@ -27,6 +27,7 @@ public final class PhoneNumberMapper {
                 number.maxSupportedChannels(),
                 number.allocatedChannels(),
                 number.calculateTotalMonthlyCost(),
+                number.providerTrunkId(),
                 number.inboundAgentId(),
                 agentName,
                 number.inboundCallFlowId(),

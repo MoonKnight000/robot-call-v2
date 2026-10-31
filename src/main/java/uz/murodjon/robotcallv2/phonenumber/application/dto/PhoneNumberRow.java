@@ -20,6 +20,7 @@ public record PhoneNumberRow(
         int maxSupportedChannels,
         int allocatedChannels,
         BigDecimal totalMonthlyCost,
+        Long providerTrunkId,
         Long inboundAgentId,
         String inboundAgentName,
         Long inboundCallFlowId,

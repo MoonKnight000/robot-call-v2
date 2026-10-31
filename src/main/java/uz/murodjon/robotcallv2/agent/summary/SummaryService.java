@@ -113,6 +113,35 @@ public class SummaryService {
         }
     }
 
+    /**
+     * One more question about a finished call, on the summary's model and under its rules: a
+     * company on its own LLM is asked there, never on the platform's model.
+     *
+     * @return the model's JSON answer, or null when summaries are off, the transcript is empty,
+     *         no model is available or the request failed
+     */
+    public Map<String, Object> askAboutCall(long companyId, String system, String transcript) {
+        if (!enabled || transcript == null || transcript.isBlank()) {
+            return null;
+        }
+        try {
+            OwnLlmEndpoint ownLlm = aiModelConfigUseCase.findEffectiveByCompanyId(companyId).ownLlm();
+            ChatClient client = ownLlm != null
+                    ? ChatClient.create(ownLlmChatModels.createChatModel(companyId, ownLlm))
+                    : chatClient;
+            if (client == null) {
+                return null;
+            }
+            ChatOptions options = ownLlm != null
+                    ? OpenAiChatOptions.builder().model(ownLlm.model()).maxTokens(maxTokens).build()
+                    : options();
+            return ask(client, options, system, transcript, new TokenUsage());
+        } catch (Exception e) {
+            log.warn("Question about a call failed (company {}): {}", companyId, e.getMessage());
+            return null;
+        }
+    }
+
     /** Whether summaries can be made at all: enabled, with a chat model to make them. */
     public boolean isAvailable() {
         return chatClient != null;

@@ -1,6 +1,6 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
-import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
+import uz.murodjon.robotcallv2.shared.dialog.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 
 /**
@@ -27,6 +27,9 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
  *                                null = disabled (RETELL_AI_GAP_ANALYSIS.md #1)
  * @param frustrationThreshold how many consecutive FRUSTRATED turns before auto-escalation triggers;
  *                                default 2 if null
+ * @param responseWaitMs           caller silence, after the caller stops speaking, the agent waits before
+ *                                taking its turn; null = deployment default. Cascade pipeline only; a
+ *                                scenario stage may replace it ({@code StageOverrides.responseWaitMs})
  */
 public record AiAgentCallBehaviour(
         InterruptionSensitivity interruptionSensitivity,
@@ -42,7 +45,8 @@ public record AiAgentCallBehaviour(
         /** Auto-transfer to operator when sentiment drops to FRUSTRATED; null = disabled */
         Boolean autoEscalateOnFrustration,
         /** How many consecutive FRUSTRATED turns before auto-escalation triggers; default 2 */
-        Integer frustrationThreshold
+        Integer frustrationThreshold,
+        Integer responseWaitMs
 ) {
     public AiAgentCallBehaviour {
         if (interruptionSensitivity == null) {
@@ -58,7 +62,7 @@ public record AiAgentCallBehaviour(
                                 boolean midCallSmsEnabled, String midCallSmsTemplate, String transferPhoneNumber,
                                 String transferMessage, Long transferQueueId) {
         this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage,
-                midCallSmsEnabled, midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, null, null, null);
+                midCallSmsEnabled, midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, null, null, null, null);
     }
 
     public AiAgentCallBehaviour(InterruptionSensitivity interruptionSensitivity,
@@ -67,7 +71,7 @@ public record AiAgentCallBehaviour(
                                 String transferMessage, Long transferQueueId, Long preConversationAudioFileId) {
         this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage,
                 midCallSmsEnabled, midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId,
-                preConversationAudioFileId, null, null);
+                preConversationAudioFileId, null, null, null);
     }
 
     /** Whether this agent can hand the caller to a person at all. */

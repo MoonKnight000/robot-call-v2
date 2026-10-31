@@ -18,11 +18,10 @@ SELECT setval(pg_get_serial_sequence('company', 'id'),
 
 -- human_like_persona_allowed is on so the HUMAN_LIKE test agent below can be tried; the
 -- contact-frequency caps stay off so the softphone test campaign can be run again and again.
--- holidays are days the dialer skips.
 INSERT INTO company_config (id, company_id, dial_window_start, dial_window_end, timezone,
-                            human_like_persona_allowed, holidays)
+                            human_like_persona_allowed)
 VALUES (1, 1, '07:00:00', '23:00:00', 'Asia/Tashkent',
-        true, '2026-10-01,2026-12-08')
+        true)
 ON CONFLICT (company_id) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('company_config', 'id'),
               GREATEST((SELECT COALESCE(MAX(id), 0) FROM company_config), 1), true);
@@ -742,7 +741,7 @@ ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
 -- OMNICHANNEL: the same agent answers the phone, the website widget and the Telegram bot.
 INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language, persona,
                       first_message, pipeline_mode, stt_provider, tts_provider, llm_model, tts_voice,
-                      ambient_sound, use_rag, voicemail_action, transfer_message)
+                      use_rag, voicemail_action, transfer_message)
 SELECT 1, 'Kiruvchi qabulxona',
        'Kiruvchi qo''ng''iroqlarga javob beradi: savolga bilim bazasidan javob, kerak bo''lsa operatorga uzatadi.',
        'OMNICHANNEL', 'CONVERSATIONAL_FLOW',
@@ -752,45 +751,57 @@ SELECT 1, 'Kiruvchi qabulxona',
        -- spoken from code just before this, and it already says hello.
        'Sizni tinglayapman, qanday yordam bera olaman?',
        'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'nigora',
-       'OFFICE', false, 'IGNORE',
+       false, 'IGNORE',
        'Hozir sizni operatorga ulayman, bir daqiqa kuting.'
 WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona');
+
+INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
+SELECT id, 'OFFICE' FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona'
+ON CONFLICT (ai_agent_id) DO UPDATE SET ambient_sound = EXCLUDED.ambient_sound;
 
 -- Outbound collections, cascade pipeline: Yandex recognition, Gemini for the turn,
 -- Yandex synthesis. The default for placed calls — every tuning knob in
 -- config/speech.yml is calibrated against this chain.
 INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language, persona,
                       pipeline_mode, stt_provider, tts_provider, llm_model, tts_voice,
-                      ambient_sound, use_rag, voicemail_action, voicemail_message, transfer_message)
+                      use_rag, voicemail_action, voicemail_message, transfer_message)
 SELECT 1, 'Qarzdorlik (cascade)',
        'Chiquvchi qarzdorlik qo''ng''irog''i: STT + LLM + TTS zanjiri (Yandex + Gemini).',
        'VOICE', 'CONVERSATIONAL_FLOW',
        (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
        'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'nigora',
-       'OFFICE', false, 'LEAVE_MESSAGE',
+       false, 'LEAVE_MESSAGE',
        -- No amount and no deadline in the machine message: the scenario guardrails forbid
        -- saying either without the client on the line to confirm who is listening.
        'Assalomu alaykum. Shartnomangiz bo''yicha savol bilan qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.',
        'Hozir sizni operatorga ulayman, bir daqiqa kuting.'
 WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)');
 
+INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
+SELECT id, 'OFFICE' FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)'
+ON CONFLICT (ai_agent_id) DO UPDATE SET ambient_sound = EXCLUDED.ambient_sound;
+
 -- The same call on a speech-to-speech engine. llm_model is the realtime model here, not
 -- a text one (RealtimeCallConfig#modelOr), and tts_voice must be a catalog id owned by
 -- the same provider or the engine falls back to the voice it was deployed with.
 INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language, persona,
                       pipeline_mode, realtime_provider, llm_model, tts_voice,
-                      ambient_sound, use_rag, voicemail_action, voicemail_message, transfer_message)
+                      use_rag, voicemail_action, voicemail_message, transfer_message)
 SELECT 1, 'Qarzdorlik (realtime)',
        'Chiquvchi qarzdorlik qo''ng''irog''i: Gemini Live nativ audio (speech-to-speech).',
        'VOICE', 'CONVERSATIONAL_FLOW',
        (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
        'REALTIME', 'gemini-live', 'gemini-3.8-live', 'gemini-aoede-uz',
-       'OFFICE', false, 'LEAVE_MESSAGE',
+       false, 'LEAVE_MESSAGE',
        'Assalomu alaykum. Shartnomangiz bo''yicha savol bilan qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.',
        'Hozir sizni operatorga ulayman, bir daqiqa kuting.'
 WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (realtime)');
+
+INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
+SELECT id, 'OFFICE' FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (realtime)'
+ON CONFLICT (ai_agent_id) DO UPDATE SET ambient_sound = EXCLUDED.ambient_sound;
 
 -- Which voice each cascade agent speaks a given call language in. The realtime agent is
 -- left out on purpose: its voice has to belong to gemini-live, and one Gemini voice
@@ -884,11 +895,10 @@ ON CONFLICT (company_id) DO NOTHING;
 -- constraint, so a rerun must not add a second copy.
 -- ---------------------------------------------------------------------------
 INSERT INTO campaign (company_id, name, type, status, ai_agent_id,
-                      dial_window_start, dial_window_end, max_attempts, retry_interval_minutes,
-                      max_concurrent_calls, daily_call_cap, recurrence_type, auto_reset_targets, retry_policy)
+                      max_attempts, retry_interval_minutes, retry_policy)
 SELECT 1, 'Qarzdorlik — kunlik', 'DEBT_COLLECTION', 'DRAFT',
        (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1),
-       '09:00:00', '18:00:00', 3, 120, 10, 200, 'DAILY', false,
+       3, 120,
        -- What the scenario's outcome tools leave behind, answered per disposition: nobody picked up
        -- or hung up — try again later the same day; "I already paid" (recordPaymentClaim) — three
        -- days off while the company checks it. A promise (PROMISE_TO_PAY) and a requested callback
@@ -896,6 +906,14 @@ SELECT 1, 'Qarzdorlik — kunlik', 'DEBT_COLLECTION', 'DRAFT',
        -- at the time the client named.
        '{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}, "HUNG_UP": {"maxAttempts": 2, "delayMinutes": 60}, "PAYMENT_CLAIMED": {"maxAttempts": 2, "delayMinutes": 4320}}'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik');
+
+INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls, daily_call_cap)
+SELECT id, 10, 200 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik'
+ON CONFLICT (campaign_id) DO UPDATE SET max_concurrent_calls = EXCLUDED.max_concurrent_calls, daily_call_cap = EXCLUDED.daily_call_cap;
+
+INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end, recurrence_type, auto_reset_targets)
+SELECT id, '09:00:00', '18:00:00', 'DAILY', false FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik'
+ON CONFLICT (campaign_id) DO UPDATE SET dial_window_start = EXCLUDED.dial_window_start, dial_window_end = EXCLUDED.dial_window_end, recurrence_type = EXCLUDED.recurrence_type;
 
 -- Every day, including the weekend, because that is what was asked for. Drop SATURDAY and
 -- SUNDAY from this list to leave the weekend alone; the campaign then simply is not due on
@@ -941,12 +959,14 @@ ON CONFLICT (campaign_id) DO NOTHING;
 -- whichever collected variable is not named as the phone, the client id or the language
 -- becomes one of the target's facts.
 -- ---------------------------------------------------------------------------
-INSERT INTO campaign (company_id, name, type, status, ai_agent_id,
-                      dial_window_start, dial_window_end, recurrence_type)
+INSERT INTO campaign (company_id, name, type, status, ai_agent_id)
 SELECT 1, 'Namuna — CHAINED manba', 'DEBT_COLLECTION', 'DRAFT',
-       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1),
-       '09:00:00', '18:00:00', 'ONCE'
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1)
 WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Namuna — CHAINED manba');
+
+INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end, recurrence_type)
+SELECT id, '09:00:00', '18:00:00', 'ONCE' FROM campaign WHERE company_id = 1 AND name = 'Namuna — CHAINED manba'
+ON CONFLICT (campaign_id) DO UPDATE SET dial_window_start = EXCLUDED.dial_window_start, dial_window_end = EXCLUDED.dial_window_end, recurrence_type = EXCLUDED.recurrence_type;
 
 INSERT INTO campaign_target_source (campaign_id, provider, phone_field, client_id_field,
                                     auth_header_name, replace_targets, sync_on_recurrence, enabled, steps)
@@ -994,63 +1014,56 @@ ON CONFLICT (campaign_id) DO NOTHING;
 --
 -- DO NOTHING, not DO UPDATE: unlike the built-in scenarios above, these rows are editable
 -- through the API, and rerunning this file must not overwrite what an operator rewrote.
-INSERT INTO knowledge_base_item (company_id, item_key, topic, title, answer_uz, answer_ru, answer_en, keywords)
+INSERT INTO knowledge_base_item (company_id, item_key, topic, title, keywords)
 VALUES
-(1, 'payment_methods', 'payment', 'To''lov usullari',
- 'To''lovni Click, Payme, Uzum Bank ilovalari orqali yoki bank kassalarida shartnoma raqamingizni ko''rsatib amalga oshirishingiz mumkin.',
- 'Оплату можно произвести через приложения Click, Payme, Uzum Bank или в кассах банков, указав номер договора.',
- 'You can make payments via Click, Payme, Uzum Bank mobile apps or at bank branches using your contract number.',
- 'click,payme,to''lash,qayerga,qanday to''layman,оплатить,как оплатить,how to pay'),
-
-(1, 'court_mib', 'legal', 'MIB va sud choralari',
- 'To''lov kechiktirilsa, qonunchilikka asosan ish Majburiy ijro byurosiga (MIB) yoki sudga oshirilishi va hisob raqamlarga taqiq qo''yilishi mumkin.',
- 'В случае задержки оплаты дело в соответствии с законом может быть передано в БПИ или суд с наложением ареста на счета.',
- 'In case of prolonged non-payment, the case may be escalated to the enforcement bureau or court with account freezes.',
- 'mib,sud,qonun,sudga,бпи,суд,court'),
-
-(1, 'restructuring', 'terms', 'Qayta ko''rib chiqish va restrukturizatsiya',
- 'Agar moliyaviy qiyinchilik bo''lsa, bank filialiga ariza bilan murojaat qilib, to''lov muddatini uzaytirish yoki qayta ko''rib chiqishni so''rashingiz mumkin.',
- 'При финансовых трудностях вы можете обратиться в филиал банка с заявлением о реструктуризации или продлении срока долга.',
- 'If experiencing financial distress, you can visit a branch to request loan restructuring or installment adjustments.',
- 'bo''lib to''lash,imtiyoz,sharoit,qiyin,рассрочка,реструктуризация'),
-
-(1, 'branch_locations', 'locations', 'Filial manzillari va ish tartibi',
- 'Barcha filiallar dushanbadan jumagacha soat 9:00 dan 18:00 gacha ishlaydi. Eng yaqin filialni rasmiy veb-saytdan topishingiz mumkin.',
- 'Все филиалы работают с понедельника по пятницу с 9:00 до 18:00. Ближайший филиал можно найти на официальном сайте.',
- 'All branches operate Monday through Friday from 9:00 to 18:00. The nearest branch can be found on our official website.',
- 'filial,manzil,ofis,филиал,адрес,branch,office'),
-
--- "I already paid" is the commonest objection in collections, and the agent must not
--- argue with it: the answer sends the receipt somewhere a human can check it.
-(1, 'already_paid', 'payment', 'To''lov qilinganini bildirish',
- 'To''lovni allaqachon amalga oshirgan bo''lsangiz, tushunmovchilik uchun uzr. To''lov cheki bankka kelib tushishi bir necha ish kunini olishi mumkin. Chek yoki to''lov tasdig''ini filialga yoki qo''llab-quvvatlash xizmatiga yuborsangiz, mutaxassis tekshirib chiqadi.',
- 'Если вы уже произвели оплату, приносим извинения за беспокойство. Зачисление платежа может занять несколько рабочих дней. Отправьте чек или подтверждение оплаты в филиал или в службу поддержки — специалист проверит.',
- 'If you have already paid, we apologise for the call. A payment can take a few business days to post. Send the receipt to a branch or to support and a specialist will verify it.',
- 'to''ladim,to''lab bo''ldim,chek,kvitansiya,уже оплатил,заплатил,чек,квитанция,already paid,receipt'),
-
--- The agent may never restate or renegotiate the amount (scenario guardrails), so a
--- caller who disputes it has to be pointed at the people who can.
-(1, 'amount_dispute', 'terms', 'Summa bo''yicha kelishmovchilik',
- 'Summa bo''yicha savolingiz bo''lsa, men uni o''zgartira olmayman. Shartnoma bo''yicha batafsil hisob-kitobni filialda yoki qo''llab-quvvatlash xizmatidan olishingiz mumkin — ular har bir to''lovni ko''rsatib beradi.',
- 'Если у вас есть вопросы по сумме, я не могу её изменить. Подробный расчёт по договору можно получить в филиале или в службе поддержки — там покажут каждый платёж.',
- 'If you disagree with the amount, I am not able to change it. A detailed breakdown of the contract is available at a branch or from support, where every payment is itemised.',
- 'summa,noto''g''ri,hisob,kelishmayman,сумма,неверно,расчёт,не согласен,amount,wrong'),
-
--- Asking for a human is a request the agent honours, not one it talks the caller out of.
-(1, 'operator_transfer', 'general', 'Operator bilan bog''lanish',
- 'Albatta, sizni jonli operatorga ulashim mumkin. Agar hozir band bo''lsalar, qo''llab-quvvatlash xizmatiga ish vaqtida — dushanbadan jumagacha 9:00 dan 18:00 gacha qo''ng''iroq qilishingiz mumkin.',
- 'Конечно, я могу соединить вас с живым оператором. Если сейчас все заняты, вы можете позвонить в службу поддержки в рабочее время — с понедельника по пятницу с 9:00 до 18:00.',
- 'Of course, I can transfer you to a live operator. If none is free, you can call support during business hours, Monday to Friday from 9:00 to 18:00.',
- 'operator,odam,jonli,ulang,оператор,человек,живой,соедините,operator,human'),
-
--- Pairs with the §11.1 disclosure: the call opens by saying it is recorded, so
--- "why are you recording me" is a question this agent will be asked.
-(1, 'call_recording', 'legal', 'Suhbat yozib olinishi va shaxsiy ma''lumotlar',
- 'Suhbat xizmat sifatini nazorat qilish uchun yozib olinadi va shaxsiy ma''lumotlar to''g''risidagi qonunchilikka muvofiq saqlanadi. Yozuvni o''chirish yoki nusxasini olish uchun qo''llab-quvvatlash xizmatiga yozma murojaat qilishingiz mumkin.',
- 'Разговор записывается для контроля качества обслуживания и хранится в соответствии с законодательством о персональных данных. Для удаления записи или получения копии направьте письменное обращение в службу поддержки.',
- 'The call is recorded for quality assurance and stored in line with personal data legislation. To request deletion or a copy, send a written request to support.',
- 'yozib,yozuv,nega yozyapsiz,shaxsiy ma''lumot,запись,записываете,персональные данные,recording,privacy')
+(1, 'payment_methods', 'payment', 'To''lov usullari', 'click,payme,to''lash,qayerga,qanday to''layman,оплатить,как оплатить,how to pay'),
+(1, 'court_mib', 'legal', 'MIB va sud choralari', 'mib,sud,qonun,sudga,бпи,суд,court'),
+(1, 'restructuring', 'terms', 'Qayta ko''rib chiqish va restrukturizatsiya', 'bo''lib to''lash,imtiyoz,sharoit,qiyin,рассрочка,реструктуризация'),
+(1, 'branch_locations', 'locations', 'Filial manzillari va ish tartibi', 'filial,manzil,ofis,филиал,адрес,branch,office'),
+(1, 'already_paid', 'payment', 'To''lov qilinganini bildirish', 'to''ladim,to''lab bo''ldim,chek,kvitansiya,уже оплатил,заплатил,чек,квитанция,already paid,receipt'),
+(1, 'amount_dispute', 'terms', 'Summa bo''yicha kelishmovchilik', 'summa,noto''g''ri,hisob,kelishmayman,сумма,неверно,расчёт,не согласен,amount,wrong'),
+(1, 'operator_transfer', 'general', 'Operator bilan bog''lanish', 'operator,odam,jonli,ulang,оператор,человек,живой,соедините,operator,human'),
+(1, 'call_recording', 'legal', 'Suhbat yozib olinishi va shaxsiy ma''lumotlar', 'yozib,yozuv,nega yozyapsiz,shaxsiy ma''lumot,запись,записываете,персональные данные,recording,privacy')
 ON CONFLICT (company_id, item_key) DO NOTHING;
+
+INSERT INTO knowledge_item_translation (item_id, language, answer)
+SELECT k.id, t.lang, t.ans
+FROM (
+    VALUES
+    ('payment_methods', 'uz', 'To''lovni Click, Payme, Uzum Bank ilovalari orqali yoki bank kassalarida shartnoma raqamingizni ko''rsatib amalga oshirishingiz mumkin.'),
+    ('payment_methods', 'ru', 'Оплату можно произвести через приложения Click, Payme, Uzum Bank или в кассах банков, указав номер договора.'),
+    ('payment_methods', 'en', 'You can make payments via Click, Payme, Uzum Bank mobile apps or at bank branches using your contract number.'),
+
+    ('court_mib', 'uz', 'To''lov kechiktirilsa, qonunchilikka asosan ish Majburiy ijro byurosiga (MIB) yoki sudga oshirilishi va hisob raqamlarga taqiq qo''yilishi mumkin.'),
+    ('court_mib', 'ru', 'В случае задержки оплаты дело в соответствии с законом может быть передано в БПИ или суд с наложением ареста на счета.'),
+    ('court_mib', 'en', 'In case of prolonged non-payment, the case may be escalated to the enforcement bureau or court with account freezes.'),
+
+    ('restructuring', 'uz', 'Agar moliyaviy qiyinchilik bo''lsa, bank filialiga ariza bilan murojaat qilib, to''lov muddatini uzaytirish yoki qayta ko''rib chiqishni so''rashingiz mumkin.'),
+    ('restructuring', 'ru', 'При финансовых трудностях вы можете обратиться в филиал банка с заявлением о реструктуризации или продлении срока долга.'),
+    ('restructuring', 'en', 'If experiencing financial distress, you can visit a branch to request loan restructuring or installment adjustments.'),
+
+    ('branch_locations', 'uz', 'Barcha filiallar dushanbadan jumagacha soat 9:00 dan 18:00 gacha ishlaydi. Eng yaqin filialni rasmiy veb-saytdan topishingiz mumkin.'),
+    ('branch_locations', 'ru', 'Все филиалы работают с понедельника по пятницу с 9:00 до 18:00. Ближайший филиал можно найти на официальном сайте.'),
+    ('branch_locations', 'en', 'All branches operate Monday through Friday from 9:00 to 18:00. The nearest branch can be found on our official website.'),
+
+    ('already_paid', 'uz', 'To''lovni allaqachon amalga oshirgan bo''lsangiz, tushunmovchilik uchun uzr. To''lov cheki bankka kelib tushishi bir necha ish kunini olishi mumkin. Chek yoki to''lov tasdig''ini filialga yoki qo''llab-quvvatlash xizmatiga yuborsangiz, mutaxassis tekshirib chiqadi.'),
+    ('already_paid', 'ru', 'Если вы уже произвели оплату, приносим извинения за беспокойство. Зачисление платежа может занять несколько рабочих дней. Отправьте чек или подтверждение оплаты в филиал или в службу поддержки — специалист проверит.'),
+    ('already_paid', 'en', 'If you have already paid, we apologise for the call. A payment can take a few business days to post. Send the receipt to a branch or to support and a specialist will verify it.'),
+
+    ('amount_dispute', 'uz', 'Summa bo''yicha savolingiz bo''lsa, men uni o''zgartira olmayman. Shartnoma bo''yicha batafsil hisob-kitobni filialda yoki qo''llab-quvvatlash xizmatidan olishingiz mumkin — ular har bir to''lovni ko''rsatib beradi.'),
+    ('amount_dispute', 'ru', 'Если у вас есть вопросы по сумме, я не могу её изменить. Подробный расчёт по договору можно получить в филиале или в службе поддержки — там покажут каждый платёж.'),
+    ('amount_dispute', 'en', 'If you disagree with the amount, I am not able to change it. A detailed breakdown of the contract is available at a branch or from support, where every payment is itemised.'),
+
+    ('operator_transfer', 'uz', 'Albatta, sizni jonli operatorga ulashim mumkin. Agar hozir band bo''lsalar, qo''llab-quvvatlash xizmatiga ish vaqtida — dushanbadan jumagacha 9:00 dan 18:00 gacha qo''ng''iroq qilishingiz mumkin.'),
+    ('operator_transfer', 'ru', 'Конечно, я могу соединить вас с живым оператором. Если сейчас все заняты, вы можете позвонить в службу поддержки в рабочее время — с понедельника по пятницу с 9:00 до 18:00.'),
+    ('operator_transfer', 'en', 'Of course, I can transfer you to a live operator. If none is free, you can call support during business hours, Monday to Friday from 9:00 to 18:00.'),
+
+    ('call_recording', 'uz', 'Suhbat xizmat sifatini nazorat qilish uchun yozib olinadi va shaxsiy ma''lumotlar to''g''risidagi qonunchilikka muvofiq saqlanadi. Yozuvni o''chirish yoki nusxasini olish uchun qo''llab-quvvatlash xizmatiga yozma murojaat qilishingiz mumkin.'),
+    ('call_recording', 'ru', 'Разговор записывается для контроля качества обслуживания и хранится в соответствии с законодательством о персональных данных. Для удаления записи или получения копии направьте письменное обращение в службу поддержки.'),
+    ('call_recording', 'en', 'The call is recorded for quality assurance and stored in line with personal data legislation. To request deletion or a copy, send a written request to support.')
+) AS t(key, lang, ans)
+JOIN knowledge_base_item k ON k.company_id = 1 AND k.item_key = t.key
+ON CONFLICT (item_id, language) DO NOTHING;
 
 -- ===========================================================================
 -- TEST DATA
@@ -1299,7 +1312,6 @@ DECLARE
     v_prompt    BIGINT;
     v_embedded  BIGINT;
     v_onboard   BIGINT;
-    v_trunk     BIGINT;
     v_sup       BIGINT;
     v_op1       BIGINT;
     v_op2       BIGINT;
@@ -1319,7 +1331,6 @@ BEGIN
 
     SELECT id INTO v_reception FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona';
     SELECT id INTO v_debt FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)';
-    SELECT id INTO v_trunk FROM sip_trunk WHERE company_id = 1 AND pjsip_endpoint = 'trunk-endpoint';
     SELECT id INTO v_sup FROM app_user WHERE username = 'supervisor';
     SELECT id INTO v_op1 FROM app_user WHERE username = 'operator1';
     SELECT id INTO v_op2 FROM app_user WHERE username = 'operator2';
@@ -1331,21 +1342,17 @@ BEGIN
     INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona,
                           pipeline_mode, stt_provider, stt_model, tts_provider, tts_model, tts_voice,
                           llm_model, fast_llm_model, temperature, max_output_tokens,
-                          ambient_sound, ambient_sound_volume, thinking_sound, thinking_sound_volume,
                           interruption_sensitivity, voicemail_action, voicemail_message,
-                          transfer_message, pronunciation_rules, post_call_actions, data_needed, data_evaluation,
+                          transfer_message, post_call_actions, data_needed, data_evaluation,
                           max_conversation_duration_seconds, concurrent_calls_limit, daily_calls_limit, created_by)
     VALUES (1, 'Sotuv menejeri', 'Chiquvchi sotuv: qiziqish, byudjet va uchrashuv vaqtini aniqlaydi (Gemini STT/LLM/TTS).',
             (SELECT id FROM scenario WHERE scenario_key = 'lead-qualification' AND is_active),
             'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
             'CASCADE', 'gemini', 'gemini-3.5-transcribe-live', 'gemini', 'gemini-3.8-flash-tts', 'gemini-tts-kore-uz',
             'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.4, 250,
-            'CALL_CENTER', 0.8, 'KEYBOARD_TYPING', 0.6,
             'HIGH', 'LEAVE_MESSAGE',
             'Assalomu alaykum. Siz qiziqqan xizmat bo''yicha qo''ng''iroq qildik. Qulay vaqtda qayta bog''laning.',
             'Sizni sotuv bo''limi mutaxassisiga ulayman.',
-            $j$[{"word": "MChJ", "replacement": "mas'uliyati cheklangan jamiyat", "caseSensitive": false, "language": "uz-UZ"},
-                {"word": "CRM", "replacement": "si-ar-em", "caseSensitive": true, "language": "*"}]$j$::jsonb,
             $j$[{"id": "sms-demo", "name": "Demo eslatma SMS", "actionType": "SEND_SMS", "triggerDisposition": "COMPLETED",
                  "onlyOnSuccess": true, "template": "{{client_name}}, demo uchrashuvingiz tasdiqlandi. Uysot jamoasi.",
                  "webhookUrl": null, "headers": {}, "enabled": false}]$j$::jsonb,
@@ -1354,69 +1361,90 @@ BEGIN
             $j$[{"id": "needs_follow_up", "name": "Qayta aloqa kerak", "criteria": "Mijoz qo'shimcha ma'lumot yoki qayta qo'ng'iroq so'radimi?"}]$j$::jsonb,
             300, 5, 300, v_sup)
     RETURNING id INTO v_sales;
+    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound, ambient_sound_volume, thinking_sound, thinking_sound_volume)
+    VALUES (v_sales, 'CALL_CENTER', 0.8, 'KEYBOARD_TYPING', 0.6)
+    ON CONFLICT (ai_agent_id) DO NOTHING;
+    INSERT INTO ai_agent_pronunciation_rule (ai_agent_id, word, replacement, case_sensitive, language)
+    VALUES (v_sales, 'MChJ', 'mas''uliyati cheklangan jamiyat', false, 'uz-UZ'),
+           (v_sales, 'CRM', 'si-ar-em', true, '*');
 
     -- A short survey, Yandex recognition with Aisha's cheerful Uzbek voice.
     INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, first_message,
                           pipeline_mode, stt_provider, tts_provider, tts_voice, llm_model,
-                          ambient_sound, emotion_adaptive_voice, voicemail_action, created_by)
+                          emotion_adaptive_voice, voicemail_action, created_by)
     VALUES (1, 'So''rovnoma (NPS)', 'Xizmat sifati bo''yicha 3 savollik so''rovnoma (Yandex STT + Aisha TTS).',
             (SELECT id FROM scenario WHERE scenario_key = 'survey' AND is_active),
             'STRUCTURED_STEPS', 'uz-UZ',
             'Assalomu alaykum! Xizmatimiz haqida bir daqiqalik so''rovnomada qatnashishga rozimisiz?',
             'CASCADE', 'yandex', 'aisha', 'gulnoza-cheerful', 'gemini-3.6-flash',
-            'OFF', false, 'HANGUP', v_sup)
+            false, 'HANGUP', v_sup)
     RETURNING id INTO v_survey;
+    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
+    VALUES (v_survey, 'OFF')
+    ON CONFLICT (ai_agent_id) DO NOTHING;
 
     -- Russian first, Uzbek when the call is in Uzbek; each language at its own pace.
     INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, first_message,
                           pipeline_mode, stt_provider, tts_provider, tts_voice, llm_model,
                           voice_speed, voice_speed_per_language, interruption_sensitivity,
-                          noise_cancellation_mode, ambient_sound, voicemail_action, voicemail_message, created_by)
+                          voicemail_action, voicemail_message, created_by)
     VALUES (1, 'Uchrashuv eslatmasi (ru)', 'Uchrashuvni rus tilida eslatadi, tasdiqlash yoki ko''chirishni yozib oladi.',
             (SELECT id FROM scenario WHERE scenario_key = 'appointment-reminder' AND is_active),
             'STRUCTURED_STEPS', 'ru-RU',
             'Здравствуйте! Напоминаем о вашей записи. Удобно сейчас говорить?',
             'CASCADE', 'yandex', 'yandex', 'alena', 'gemini-3.8-flash',
             1.1, '{"ru-RU": 1.1, "uz-UZ": 0.95}'::jsonb, 'LOW',
-            'VOICE_ISOLATION', 'NATURAL_LINE', 'LEAVE_MESSAGE',
+            'LEAVE_MESSAGE',
             'Здравствуйте. Напоминаем о вашей записи. Пожалуйста, перезвоните нам для подтверждения.', v_sup)
     RETURNING id INTO v_reminder;
+    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound, noise_cancellation_mode)
+    VALUES (v_reminder, 'NATURAL_LINE', 'VOICE_ISOLATION')
+    ON CONFLICT (ai_agent_id) DO NOTHING;
 
     -- OpenAI recognition and synthesis around a Gemini turn.
     INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language,
                           pipeline_mode, stt_provider, stt_model, tts_provider, tts_model, tts_voice, llm_model,
-                          ambient_sound, voicemail_action, created_by)
+                          voicemail_action, created_by)
     VALUES (1, 'Buyurtma tasdiqlash (OpenAI ovoz)', 'Do''kon buyurtmasini, manzil va vaqtni tasdiqlaydi (OpenAI STT/TTS, Gemini LLM).',
             (SELECT id FROM scenario WHERE scenario_key = 'order-confirmation' AND is_active),
             'STRUCTURED_STEPS', 'uz-UZ',
             'CASCADE', 'openai', 'gpt-live-transcribe', 'openai', 'gpt-4o-mini-tts', 'openai-nova-uz', 'gemini-3.8-flash',
-            'NATURAL_LINE', 'HANGUP', v_sup)
+            'HANGUP', v_sup)
     RETURNING id INTO v_order;
+    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
+    VALUES (v_order, 'NATURAL_LINE')
+    ON CONFLICT (ai_agent_id) DO NOTHING;
 
     -- Speech-to-speech on OpenAI's realtime engine, facts fetched by tool rather than
     -- written into its instructions. No tts_voice: the catalog has no openai-realtime voice.
     INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language,
                           pipeline_mode, realtime_provider, llm_model, realtime_facts_delivery,
-                          ambient_sound, voicemail_action, created_by)
+                          voicemail_action, created_by)
     VALUES (1, 'Bildirishnoma (OpenAI realtime)', 'Bir tomonlama xabar yetkazadi: OpenAI Realtime, faktlar tool orqali.',
             (SELECT id FROM scenario WHERE scenario_key = 'notification' AND is_active),
             'STRUCTURED_STEPS', 'uz-UZ',
             'REALTIME', 'openai-realtime', 'gpt-realtime-2.1', 'TOOL',
-            'OFF', 'HANGUP', v_sup)
+            'HANGUP', v_sup)
     RETURNING id INTO v_notify;
+    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
+    VALUES (v_notify, 'OFF')
+    ON CONFLICT (ai_agent_id) DO NOTHING;
 
     -- After hours, presenting as a person: allowed only because company_config says so,
     -- and it skips the automated-call disclosure — which is exactly what to test.
     INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona, first_message,
                           pipeline_mode, stt_provider, tts_provider, tts_voice, llm_model,
-                          ambient_sound, voicemail_action, transfer_message, created_by)
+                          voicemail_action, transfer_message, created_by)
     VALUES (1, 'Kechki navbatchi', 'Ish vaqtidan keyin kiruvchi qo''ng''iroqqa javob beradi va qayta qo''ng''iroq vaqtini yozib oladi (HUMAN_LIKE).',
             (SELECT id FROM scenario WHERE scenario_key = 'callback-request' AND is_active),
             'STRUCTURED_STEPS', 'uz-UZ', 'HUMAN_LIKE',
             'Assalomu alaykum, men Nilufar, navbatchi yordamchiman. Sizga qanday yordam bera olaman?',
             'CASCADE', 'yandex', 'yandex', 'yulduz', 'gemini-3.8-flash',
-            'OFFICE', 'IGNORE', 'Hozir navbatchi mutaxassisga ulayman.', v_sup)
+            'IGNORE', 'Hozir navbatchi mutaxassisga ulayman.', v_sup)
     RETURNING id INTO v_night;
+    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
+    VALUES (v_night, 'OFFICE')
+    ON CONFLICT (ai_agent_id) DO NOTHING;
 
     -- PROMPT mode: no scenario at all, the system prompt is the whole script. Engines left
     -- NULL run on whatever speech.yml / the company settings say; RAG is on.
@@ -1492,40 +1520,52 @@ $j${"stages": [
         (v_night,    'uz-UZ', 'yulduz'),
         (v_night,    'ru-RU', 'jane');
 
-    INSERT INTO ai_agent_sip_trunk (ai_agent_id, sip_trunk_id) VALUES (v_debt, v_trunk), (v_sales, v_trunk);
-
-    -- Queues. overflow_target is an id or a number, as text (see call_queue in V1).
+    -- Queues. overflow targets are typed foreign keys and external phone.
     INSERT INTO call_queue (company_id, name, strategy, ring_timeout_sec, wrap_up_sec, max_wait_sec, max_length,
                             announce_position_every_sec, announce_wait_time, periodic_announce_text,
-                            periodic_announce_every_sec, callback_offer_after_sec, overflow_action, overflow_target,
+                            periodic_announce_every_sec, callback_offer_after_sec, overflow_action, overflow_voicemail_id,
                             service_level_sec, post_call_survey, waiting_agent_id)
     VALUES (1, 'Qo''llab-quvvatlash', 'LEAST_RECENT', 15, 10, 300, 20, 60, true,
             'Qo''ng''iroqingiz biz uchun muhim. Birinchi bo''sh operator sizga javob beradi.', 90, 120,
-            'VOICEMAIL', (SELECT id::text FROM voicemail_box WHERE company_id = 1 AND name = 'Umumiy ovozli pochta'),
+            'VOICEMAIL', (SELECT id FROM voicemail_box WHERE company_id = 1 AND name = 'Umumiy ovozli pochta'),
             20, true, v_reception)
     RETURNING id INTO v_q_support;
 
     INSERT INTO call_queue (company_id, name, strategy, ring_timeout_sec, wrap_up_sec, max_wait_sec,
-                            announce_position_every_sec, overflow_action, overflow_target, service_level_sec, sticky_seconds)
-    VALUES (1, 'Sotuv', 'SKILL_BASED', 20, 15, 180, 45, 'AI_AGENT', v_sales::text, 30, 86400)
+                            announce_position_every_sec, overflow_action, overflow_agent_id, service_level_sec, sticky_seconds)
+    VALUES (1, 'Sotuv', 'SKILL_BASED', 20, 15, 180, 45, 'AI_AGENT', v_sales, 30, 86400)
     RETURNING id INTO v_q_sales;
 
     INSERT INTO call_queue (company_id, name, strategy, ring_timeout_sec, wrap_up_sec, max_wait_sec,
-                            announce_position_every_sec, announce_wait_time, overflow_action, overflow_target, service_level_sec)
+                            announce_position_every_sec, announce_wait_time, overflow_action, overflow_external_phone, service_level_sec)
     VALUES (1, 'VIP liniya', 'RING_ALL', 20, 5, 120, 0, false, 'EXTERNAL_NUMBER', '+998901110003', 10)
     RETURNING id INTO v_q_vip;
 
     INSERT INTO call_queue (company_id, name, strategy, overflow_action, enabled)
     VALUES (1, 'Eski navbat (o''chiq)', 'ROUND_ROBIN', 'HANGUP', false);
 
-    INSERT INTO call_queue_member (queue_id, user_id, priority, skills) VALUES
-        (v_q_support, v_sup, 0, 'uz-UZ,ru-RU'),
-        (v_q_support, v_op1, 1, 'uz-UZ'),
-        (v_q_support, v_op2, 1, 'uz-UZ,ru-RU'),
-        (v_q_sales,   v_op2, 0, 'uz-UZ,sales'),
-        (v_q_sales,   v_op3, 0, 'ru-RU,sales'),
-        (v_q_vip,     v_sup, 0, 'uz-UZ,ru-RU'),
-        (v_q_vip,     v_op1, 1, 'uz-UZ');
+    INSERT INTO call_queue_member (queue_id, user_id, priority) VALUES
+        (v_q_support, v_sup, 0),
+        (v_q_support, v_op1, 1),
+        (v_q_support, v_op2, 1),
+        (v_q_sales,   v_op2, 0),
+        (v_q_sales,   v_op3, 0),
+        (v_q_vip,     v_sup, 0),
+        (v_q_vip,     v_op1, 1);
+
+    INSERT INTO call_queue_member_skill (queue_id, user_id, skill) VALUES
+        (v_q_support, v_sup, 'uz-UZ'),
+        (v_q_support, v_sup, 'ru-RU'),
+        (v_q_support, v_op1, 'uz-UZ'),
+        (v_q_support, v_op2, 'uz-UZ'),
+        (v_q_support, v_op2, 'ru-RU'),
+        (v_q_sales,   v_op2, 'uz-UZ'),
+        (v_q_sales,   v_op2, 'sales'),
+        (v_q_sales,   v_op3, 'ru-RU'),
+        (v_q_sales,   v_op3, 'sales'),
+        (v_q_vip,     v_sup, 'uz-UZ'),
+        (v_q_vip,     v_sup, 'ru-RU'),
+        (v_q_vip,     v_op1, 'uz-UZ');
 
     UPDATE ai_agent SET transfer_queue_id = v_q_support WHERE id IN (v_reception, v_debt, v_night, v_prompt);
     UPDATE ai_agent SET transfer_queue_id = v_q_sales WHERE id = v_sales;
@@ -1609,20 +1649,30 @@ $j${"stages": [
             false);
 
     -- Knowledge only the sales agent answers from, and a switched-off company-wide item.
-    INSERT INTO knowledge_base_item (company_id, agent_id, item_key, topic, title, answer_uz, answer_ru, answer_en, keywords, is_active) VALUES
-        (1, v_sales, 'sales_pricing', 'pricing', 'Tariflar',
-         'Uchta tarif bor: Start — oyiga 1 000 daqiqa, Pro — 5 000 daqiqa, Enterprise — kelishuv asosida. Aniq narxni menejer taklifnomada yuboradi.',
-         'Есть три тарифа: Start — 1 000 минут в месяц, Pro — 5 000 минут, Enterprise — по договорённости. Точную цену менеджер пришлёт в предложении.',
-         'There are three plans: Start (1,000 minutes a month), Pro (5,000 minutes) and Enterprise (by agreement). The manager sends the exact price in a proposal.',
-         'narx,tarif,qancha,цена,тариф,сколько,price,plan', true),
-        (1, v_sales, 'sales_demo', 'sales', 'Demo uchrashuv',
-         'Demo 30 daqiqa davom etadi, onlayn yoki ofisimizda. Qulay kun va vaqtni aytsangiz, yozib qo''yaman.',
-         'Демо длится 30 минут, онлайн или у нас в офисе. Назовите удобный день и время — я запишу.',
-         'The demo takes 30 minutes, online or at our office. Tell me a convenient day and time and I will book it.',
-         'demo,taqdimot,ko''rsatib bering,демо,презентация,demo', true),
-        (1, NULL, 'old_promo', 'general', 'Yozgi aksiya (tugagan)',
-         'Yozgi aksiya 31-avgustda tugagan.', 'Летняя акция завершилась 31 августа.', 'The summer promotion ended on 31 August.',
-         'aksiya,chegirma,акция,скидка,promo', false);
+    INSERT INTO knowledge_base_item (company_id, agent_id, item_key, topic, title, keywords, is_active) VALUES
+        (1, v_sales, 'sales_pricing', 'pricing', 'Tariflar', 'narx,tarif,qancha,цена,тариф,сколько,price,plan', true),
+        (1, v_sales, 'sales_demo', 'sales', 'Demo uchrashuv', 'demo,taqdimot,ko''rsatib bering,демо,презентация,demo', true),
+        (1, NULL, 'old_promo', 'general', 'Yozgi aksiya (tugagan)', 'aksiya,chegirma,акция,скидка,promo', false)
+    ON CONFLICT (company_id, item_key) DO NOTHING;
+
+    INSERT INTO knowledge_item_translation (item_id, language, answer)
+    SELECT k.id, t.lang, t.ans
+    FROM (
+        VALUES
+        ('sales_pricing', 'uz', 'Uchta tarif bor: Start — oyiga 1 000 daqiqa, Pro — 5 000 daqiqa, Enterprise — kelishuv asosida. Aniq narxni menejer taklifnomada yuboradi.'),
+        ('sales_pricing', 'ru', 'Есть три тарифа: Start — 1 000 минут в месяц, Pro — 5 000 минут, Enterprise — по договорённости. Точную цену менеджер пришлёт в предложении.'),
+        ('sales_pricing', 'en', 'There are three plans: Start (1,000 minutes a month), Pro (5,000 minutes) and Enterprise (by agreement). The manager sends the exact price in a proposal.'),
+
+        ('sales_demo', 'uz', 'Demo 30 daqiqa davom etadi, onlayn yoki ofisimizda. Qulay kun va vaqtni aytsangiz, yozib qo''yaman.'),
+        ('sales_demo', 'ru', 'Демо длится 30 минут, онлайн или у нас в офисе. Назовите удобный день и время — я запишу.'),
+        ('sales_demo', 'en', 'The demo takes 30 minutes, online or at our office. Tell me a convenient day and time and I will book it.'),
+
+        ('old_promo', 'uz', 'Yozgi aksiya 31-avgustda tugagan.'),
+        ('old_promo', 'ru', 'Летняя акция завершилась 31 августа.'),
+        ('old_promo', 'en', 'The summer promotion ended on 31 August.')
+    ) AS t(key, lang, ans)
+    JOIN knowledge_base_item k ON k.company_id = 1 AND k.item_key = t.key
+    ON CONFLICT (item_id, language) DO NOTHING;
 END
 $seed$;
 
@@ -1656,32 +1706,73 @@ BEGIN
     SELECT id INTO v_notify FROM ai_agent WHERE company_id = 1 AND name = 'Bildirishnoma (OpenAI realtime)';
     SELECT id INTO v_night FROM ai_agent WHERE company_id = 1 AND name = 'Kechki navbatchi';
 
-    INSERT INTO contact (company_id, name, phone, address, tags, notes, created_at) VALUES
-        (1, 'Aziz Karimov',        '+998901230001', 'Toshkent, Chilonzor 9-kvartal',   'qarzdor,vip',   'Odatda oyning 10-sanasida to''laydi.', now() - interval '40 days'),
-        (1, 'Dilnoza Rashidova',   '+998901230002', 'Toshkent, Yunusobod 4',          'qarzdor',       NULL, now() - interval '40 days'),
-        (1, 'Bekzod Nazarov',      '+998901230003', 'Samarqand, Registon ko''chasi',  'qarzdor',       NULL, now() - interval '38 days'),
-        (1, 'Gulnora Ismoilova',   '+998901230004', 'Buxoro',                         'qarzdor',       NULL, now() - interval '38 days'),
-        (1, 'Sherzod Mahmudov',    '+998901230005', NULL,                             'qarzdor',       'Raqam eskirgan bo''lishi mumkin.', now() - interval '35 days'),
-        (1, 'Kamola Xolmatova',    '+998901230006', 'Toshkent, Sergeli',              'qarzdor',       NULL, now() - interval '35 days'),
-        (1, 'Rustam Qodirov',      '+998901230007', 'Namangan',                       'qarzdor,nizo',  'Summa bo''yicha e''tiroz bildirgan.', now() - interval '30 days'),
-        (1, 'Feruza Olimova',      '+998901230008', 'Andijon',                        'qarzdor',       NULL, now() - interval '30 days'),
-        (1, 'Otabek Yo''ldoshev',  '+998901230009', 'Farg''ona',                      'qarzdor,dnc',   'Qo''ng''iroq qilmaslikni so''ragan.', now() - interval '28 days'),
-        (1, 'Zarina Abdullayeva',  '+998901230010', 'Toshkent, Mirzo Ulug''bek',      'qarzdor',       NULL, now() - interval '28 days'),
-        (1, 'Ulug''bek Saidov',    '+998901230011', 'Qarshi',                         'qarzdor',       NULL, now() - interval '25 days'),
-        (1, 'Mohira Ergasheva',    '+998901230012', 'Termiz',                         'qarzdor',       NULL, now() - interval '25 days'),
-        (1, 'Jamshid Rahmonov',    '+998901230013', 'Toshkent, Olmazor',              'qarzdor',       NULL, now() - interval '20 days'),
-        (1, 'Нигина Собирова',     '+998901230014', 'Ташкент, Мирабад',               'qarzdor,ru',    'Предпочитает русский язык.', now() - interval '20 days'),
-        (1, 'Lola Hamidova',       '+998901230015', NULL,                             'nps',           NULL, now() - interval '15 days'),
-        (1, 'Тимур Асадов',        '+998901230016', NULL,                             'nps,ru',        NULL, now() - interval '15 days'),
-        (1, 'Sevara Nurmatova',    '+998901230017', NULL,                             'nps',           NULL, now() - interval '15 days'),
-        (1, 'Akmal Toshpulatov',   '+998901230018', 'Jizzax',                         'qarzdor',       NULL, now() - interval '10 days'),
-        (1, 'Madina Qosimova',     '+998901230019', 'Navoiy',                         'qarzdor',       NULL, now() - interval '10 days'),
-        (1, 'Anvar Jo''rayev',     '+998901230020', 'Urganch',                        'qarzdor',       NULL, now() - interval '10 days'),
-        (1, 'Ирина Петрова',       '+998901230021', 'Ташкент, Юнусабад',              'uchrashuv,ru',  NULL, now() - interval '7 days'),
-        (1, 'Сергей Ким',          '+998901230022', 'Ташкент, Чиланзар',              'uchrashuv,ru',  NULL, now() - interval '7 days'),
-        (1, 'Shahzod Umarov',      '+998901230023', 'Toshkent, Shayxontohur',         'lead',          'Reklamadan kelgan.', now() - interval '5 days'),
-        (1, 'Yulduz Berdiyeva',    '+998901230024', NULL,                             'lead,vip',      NULL, now() - interval '3 days'),
-        (1, 'Softfon (test)',      '600',           NULL,                             'test',          'Mahalliy softfon: "Softfon test" kampaniyasi shu raqamga qo''ng''iroq qiladi.', now() - interval '1 day');
+    INSERT INTO contact (company_id, name, phone, address, notes, created_at) VALUES
+        (1, 'Aziz Karimov',        '+998901230001', 'Toshkent, Chilonzor 9-kvartal',   'Odatda oyning 10-sanasida to''laydi.', now() - interval '40 days'),
+        (1, 'Dilnoza Rashidova',   '+998901230002', 'Toshkent, Yunusobod 4',          NULL, now() - interval '40 days'),
+        (1, 'Bekzod Nazarov',      '+998901230003', 'Samarqand, Registon ko''chasi',  NULL, now() - interval '38 days'),
+        (1, 'Gulnora Ismoilova',   '+998901230004', 'Buxoro',                         NULL, now() - interval '38 days'),
+        (1, 'Sherzod Mahmudov',    '+998901230005', NULL,                             'Raqam eskirgan bo''lishi mumkin.', now() - interval '35 days'),
+        (1, 'Kamola Xolmatova',    '+998901230006', 'Toshkent, Sergeli',              NULL, now() - interval '35 days'),
+        (1, 'Rustam Qodirov',      '+998901230007', 'Namangan',                       'Summa bo''yicha e''tiroz bildirgan.', now() - interval '30 days'),
+        (1, 'Feruza Olimova',      '+998901230008', 'Andijon',                        NULL, now() - interval '30 days'),
+        (1, 'Otabek Yo''ldoshev',  '+998901230009', 'Farg''ona',                      'Qo''ng''iroq qilmaslikni so''ragan.', now() - interval '28 days'),
+        (1, 'Zarina Abdullayeva',  '+998901230010', 'Toshkent, Mirzo Ulug''bek',      NULL, now() - interval '28 days'),
+        (1, 'Ulug''bek Saidov',    '+998901230011', 'Qarshi',                         NULL, now() - interval '25 days'),
+        (1, 'Mohira Ergasheva',    '+998901230012', 'Termiz',                         NULL, now() - interval '25 days'),
+        (1, 'Jamshid Rahmonov',    '+998901230013', 'Toshkent, Olmazor',              NULL, now() - interval '20 days'),
+        (1, 'Нигина Собирова',     '+998901230014', 'Ташкент, Мирабад',               'Предпочитает русский язык.', now() - interval '20 days'),
+        (1, 'Lola Hamidova',       '+998901230015', NULL,                             NULL, now() - interval '15 days'),
+        (1, 'Тимур Асадов',        '+998901230016', NULL,                             NULL, now() - interval '15 days'),
+        (1, 'Sevara Nurmatova',    '+998901230017', NULL,                             NULL, now() - interval '15 days'),
+        (1, 'Akmal Toshpulatov',   '+998901230018', 'Jizzax',                         NULL, now() - interval '10 days'),
+        (1, 'Madina Qosimova',     '+998901230019', 'Navoiy',                         NULL, now() - interval '10 days'),
+        (1, 'Anvar Jo''rayev',     '+998901230020', 'Urganch',                        NULL, now() - interval '10 days'),
+        (1, 'Ирина Петрова',       '+998901230021', 'Ташкент, Юнусабад',              NULL, now() - interval '7 days'),
+        (1, 'Сергей Ким',          '+998901230022', 'Ташкент, Чиланзар',              NULL, now() - interval '7 days'),
+        (1, 'Shahzod Umarov',      '+998901230023', 'Toshkent, Shayxontohur',         'Reklamadan kelgan.', now() - interval '5 days'),
+        (1, 'Yulduz Berdiyeva',    '+998901230024', NULL,                             NULL, now() - interval '3 days'),
+        (1, 'Softfon (test)',      '600',           NULL,                             'Mahalliy softfon: "Softfon test" kampaniyasi shu raqamga qo''ng''iroq qiladi.', now() - interval '1 day');
+
+    INSERT INTO contact_tag (contact_id, tag)
+    SELECT c.id, t.tag
+    FROM (
+        VALUES
+            ('+998901230001', 'qarzdor'),
+            ('+998901230001', 'vip'),
+            ('+998901230002', 'qarzdor'),
+            ('+998901230003', 'qarzdor'),
+            ('+998901230004', 'qarzdor'),
+            ('+998901230005', 'qarzdor'),
+            ('+998901230006', 'qarzdor'),
+            ('+998901230007', 'qarzdor'),
+            ('+998901230007', 'nizo'),
+            ('+998901230008', 'qarzdor'),
+            ('+998901230009', 'qarzdor'),
+            ('+998901230009', 'dnc'),
+            ('+998901230010', 'qarzdor'),
+            ('+998901230011', 'qarzdor'),
+            ('+998901230012', 'qarzdor'),
+            ('+998901230013', 'qarzdor'),
+            ('+998901230014', 'qarzdor'),
+            ('+998901230014', 'ru'),
+            ('+998901230015', 'nps'),
+            ('+998901230016', 'nps'),
+            ('+998901230016', 'ru'),
+            ('+998901230017', 'nps'),
+            ('+998901230018', 'qarzdor'),
+            ('+998901230019', 'qarzdor'),
+            ('+998901230020', 'qarzdor'),
+            ('+998901230021', 'uchrashuv'),
+            ('+998901230021', 'ru'),
+            ('+998901230022', 'uchrashuv'),
+            ('+998901230022', 'ru'),
+            ('+998901230023', 'lead'),
+            ('+998901230024', 'lead'),
+            ('+998901230024', 'vip'),
+            ('600', 'test')
+    ) AS t(phone, tag)
+    JOIN contact c ON c.company_id = 1 AND c.phone = t.phone
+    ON CONFLICT (contact_id, tag) DO NOTHING;
 
     INSERT INTO do_not_call_list (company_id, phone, reason, source, removed_at, removed_by, created_at) VALUES
         (1, '+998901230009', 'Mijoz suhbatda qo''ng''iroq qilmaslikni so''radi', 'CALL',   NULL, NULL, now() - interval '2 days'),
@@ -1714,14 +1805,20 @@ BEGIN
 
     -- ACTIVE, split A/B between the cascade pipeline and the realtime one. The targets still
     -- waiting are due 30 days out, so this campaign is live on every screen without dialling.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
-                          max_attempts, retry_interval_minutes, max_concurrent_calls, daily_call_cap, priority, retry_policy,
-                          budget_uzs, daily_budget_uzs, last_run_at, created_at, created_by)
-    VALUES (1, v_debt, 'Qarzdorlik — sentabr', 'DEBT_COLLECTION', 'ACTIVE', '09:00', '19:00',
-            3, 120, 10, 150, 4,
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
+                          max_attempts, retry_interval_minutes, priority, retry_policy,
+                          last_run_at, created_at, created_by)
+    VALUES (1, v_debt, 'Qarzdorlik — sentabr', 'DEBT_COLLECTION', 'ACTIVE',
+            3, 120, 4,
             '{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}, "HUNG_UP": {"maxAttempts": 2, "delayMinutes": 60}}'::jsonb,
-            2000000, 300000, now() - interval '1 day', now() - interval '6 days', v_admin)
+            now() - interval '1 day', now() - interval '6 days', v_admin)
     RETURNING id INTO v_camp;
+    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls, daily_call_cap, budget_uzs, daily_budget_uzs)
+    VALUES (v_camp, 10, 150, 2000000, 300000)
+    ON CONFLICT (campaign_id) DO NOTHING;
+    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
+    VALUES (v_camp, '09:00', '19:00')
+    ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']) AS d;
 
@@ -1768,11 +1865,15 @@ BEGIN
             'phone', 'id', 'lang', false, false, false, now() - interval '6 days', 14);
 
     -- PAUSED on the realtime agent; resuming it dials nothing for 30 days.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
-                          max_attempts, retry_interval_minutes, max_concurrent_calls, created_at, created_by)
-    VALUES (1, v_debt_rt, 'Qarzdorlik — realtime test', 'DEBT_COLLECTION', 'PAUSED', '09:00', '18:00',
-            2, 60, 5, now() - interval '4 days', v_admin)
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
+                          max_attempts, retry_interval_minutes, created_at, created_by)
+    VALUES (1, v_debt_rt, 'Qarzdorlik — realtime test', 'DEBT_COLLECTION', 'PAUSED',
+            2, 60, now() - interval '4 days', v_admin)
     RETURNING id INTO v_camp;
+    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
+    VALUES (v_camp, 5) ON CONFLICT (campaign_id) DO NOTHING;
+    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
+    VALUES (v_camp, '09:00', '18:00') ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
     INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts, next_attempt_at)
@@ -1785,11 +1886,15 @@ BEGIN
 
     -- The one campaign meant to be started: its only target is 600, which the dialer rings
     -- on the local softphone endpoint instead of the trunk — the whole outbound path, free.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
-                          max_attempts, retry_interval_minutes, max_concurrent_calls, priority, created_at, created_by)
-    VALUES (1, v_debt, 'Softfon test', 'DEBT_COLLECTION', 'PAUSED', '00:00', '23:59',
-            1, 0, 1, 5, now() - interval '1 day', v_admin)
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
+                          max_attempts, retry_interval_minutes, priority, created_at, created_by)
+    VALUES (1, v_debt, 'Softfon test', 'DEBT_COLLECTION', 'PAUSED',
+            1, 0, 5, now() - interval '1 day', v_admin)
     RETURNING id INTO v_camp;
+    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
+    VALUES (v_camp, 1) ON CONFLICT (campaign_id) DO NOTHING;
+    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
+    VALUES (v_camp, '00:00', '23:59') ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']) AS d;
     INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts)
@@ -1798,11 +1903,15 @@ BEGIN
            'PENDING', 0
     FROM contact c WHERE c.company_id = 1 AND c.phone = '600';
 
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
-                          max_attempts, max_concurrent_calls, last_run_at, created_at, created_by)
-    VALUES (1, v_survey, 'Mijozlar so''rovnomasi (NPS)', 'SURVEY', 'COMPLETED', '10:00', '19:00',
-            2, 5, now() - interval '4 days', now() - interval '8 days', v_admin)
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
+                          max_attempts, last_run_at, created_at, created_by)
+    VALUES (1, v_survey, 'Mijozlar so''rovnomasi (NPS)', 'SURVEY', 'COMPLETED',
+            2, now() - interval '4 days', now() - interval '8 days', v_admin)
     RETURNING id INTO v_camp;
+    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
+    VALUES (v_camp, 5) ON CONFLICT (campaign_id) DO NOTHING;
+    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
+    VALUES (v_camp, '10:00', '19:00') ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
     INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts, created_at)
@@ -1811,11 +1920,15 @@ BEGIN
     JOIN contact c ON c.company_id = 1 AND c.phone = t.phone;
 
     -- SCHEDULED: goes ACTIVE by itself at start_at, 30 days from the day the database was seeded.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
-                          max_attempts, max_concurrent_calls, start_at, end_at, created_at, created_by)
-    VALUES (1, v_reminder, 'Uchrashuv eslatmasi — oktabr', 'SURVEY', 'SCHEDULED', '10:00', '18:00',
-            2, 3, v_later, v_later + interval '7 days', now() - interval '2 days', v_admin)
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
+                          max_attempts, created_at, created_by)
+    VALUES (1, v_reminder, 'Uchrashuv eslatmasi — oktabr', 'SURVEY', 'SCHEDULED',
+            2, now() - interval '2 days', v_admin)
     RETURNING id INTO v_camp;
+    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
+    VALUES (v_camp, 3) ON CONFLICT (campaign_id) DO NOTHING;
+    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end, start_at, end_at)
+    VALUES (v_camp, '10:00', '18:00', v_later, v_later + interval '7 days') ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
     INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts, next_attempt_at)
@@ -1825,30 +1938,37 @@ BEGIN
     JOIN contact c ON c.company_id = 1 AND c.phone = t.phone;
 
     -- Recurring shapes, none of which can dial: no targets, or ARCHIVED.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, recurrence_type, created_at, created_by)
-    VALUES (1, v_notify, 'Haftalik to''lov eslatmasi', 'DEBT_COLLECTION', 'ARCHIVED', 'WEEKLY', now() - interval '60 days', v_admin)
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, created_at, created_by)
+    VALUES (1, v_notify, 'Haftalik to''lov eslatmasi', 'DEBT_COLLECTION', 'ARCHIVED', now() - interval '60 days', v_admin)
     RETURNING id INTO v_camp;
+    INSERT INTO campaign_schedule (campaign_id, recurrence_type)
+    VALUES (v_camp, 'WEEKLY') ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day) VALUES (v_camp, 'MONDAY');
 
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, recurrence_type, recurring_day_of_month,
-                          dial_window_start, dial_window_end, created_at, created_by)
-    VALUES (1, v_notify, 'Oylik eslatma (5-sana)', 'SURVEY', 'DRAFT', 'MONTHLY', 5, '10:00', '17:00',
-            now() - interval '14 days', v_admin)
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, created_at, created_by)
+    VALUES (1, v_notify, 'Oylik eslatma (5-sana)', 'SURVEY', 'DRAFT', now() - interval '14 days', v_admin)
     RETURNING id INTO v_camp;
+    INSERT INTO campaign_schedule (campaign_id, recurrence_type, recurring_day_of_month, dial_window_start, dial_window_end)
+    VALUES (v_camp, 'MONTHLY', 5, '10:00', '17:00') ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']) AS d;
 
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, recurrence_type, cron_expression,
-                          created_at, created_by)
-    VALUES (1, v_debt, 'CRON — dushanba 10:00', 'DEBT_COLLECTION', 'ARCHIVED', 'CRON', '0 0 10 * * MON',
-            now() - interval '30 days', v_admin);
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, created_at, created_by)
+    VALUES (1, v_debt, 'CRON — dushanba 10:00', 'DEBT_COLLECTION', 'ARCHIVED', now() - interval '30 days', v_admin)
+    RETURNING id INTO v_camp;
+    INSERT INTO campaign_schedule (campaign_id, recurrence_type, cron_expression)
+    VALUES (v_camp, 'CRON', '0 0 10 * * MON') ON CONFLICT (campaign_id) DO NOTHING;
 
     -- Where callers who ask to be called back land: the queues and the sales route point here.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
-                          max_attempts, retry_interval_minutes, max_concurrent_calls, created_at, created_by)
-    VALUES (1, v_night, 'Qayta qo''ng''iroqlar (callback)', 'SURVEY', 'DRAFT', '09:00', '18:00',
-            2, 30, 2, now() - interval '10 days', v_admin)
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
+                          max_attempts, retry_interval_minutes, created_at, created_by)
+    VALUES (1, v_night, 'Qayta qo''ng''iroqlar (callback)', 'SURVEY', 'DRAFT',
+            2, 30, now() - interval '10 days', v_admin)
     RETURNING id INTO v_callback;
+    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
+    VALUES (v_callback, 2) ON CONFLICT (campaign_id) DO NOTHING;
+    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
+    VALUES (v_callback, '09:00', '18:00') ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_callback, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
 
@@ -2730,11 +2850,14 @@ BEGIN
 
     -- llm_model NULL: this agent runs on the company's own ai_model_config below.
     INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language,
-                          pipeline_mode, stt_provider, tts_provider, tts_voice, ambient_sound, voicemail_action, created_by)
+                          pipeline_mode, stt_provider, tts_provider, tts_voice, voicemail_action, created_by)
     VALUES (v_c2, 'Демо-агент (продажи)', 'Обзвон лидов на кассовое оборудование (второй тенант).',
             (SELECT id FROM scenario WHERE scenario_key = 'lead-qualification' AND is_active),
-            'STRUCTURED_STEPS', 'ru-RU', 'CASCADE', 'yandex', 'yandex', 'filipp', 'OFFICE', 'HANGUP', v_admin)
+            'STRUCTURED_STEPS', 'ru-RU', 'CASCADE', 'yandex', 'yandex', 'filipp', 'HANGUP', v_admin)
     RETURNING id INTO v_agent;
+    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
+    VALUES (v_agent, 'OFFICE')
+    ON CONFLICT (ai_agent_id) DO NOTHING;
     INSERT INTO ai_agent_voice (ai_agent_id, language, voice_id) VALUES (v_agent, 'ru-RU', 'filipp'), (v_agent, 'uz-UZ', 'nigora');
 
     INSERT INTO ai_model_config (company_id, model, temperature, max_output_tokens, max_call_seconds, max_tokens_per_call)
@@ -2746,16 +2869,26 @@ BEGIN
     INSERT INTO secret (company_id, key, value, description)
     VALUES (v_c2, 'DEMO_CRM_TOKEN', 'ktvSe8QNVQ7vcPih/J7MWqESNNd+RUv4uQg4KiyYRIdDaQ5ILfS8HuLxB2m625w=', 'amoCRM API tokeni (demo)');
 
-    INSERT INTO contact (company_id, name, phone, tags, notes) VALUES
-        (v_c2, 'Aziz Karimov (demo)', '+998901230001', 'lead', 'Company 1 da ham shu raqam bor — izolyatsiya testi.'),
-        (v_c2, 'Олег Петров',         '+998712345601', 'lead', NULL),
-        (v_c2, 'Анна Ли',             '+998712345602', 'lead', NULL),
-        (v_c2, 'Dilshod Rahimov',     '+998712345603', 'lead', NULL);
+    INSERT INTO contact (company_id, name, phone, notes) VALUES
+        (v_c2, 'Aziz Karimov (demo)', '+998901230001', 'Company 1 da ham shu raqam bor — izolyatsiya testi.'),
+        (v_c2, 'Олег Петров',         '+998712345601', NULL),
+        (v_c2, 'Анна Ли',             '+998712345602', NULL),
+        (v_c2, 'Dilshod Rahimov',     '+998712345603', NULL);
 
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, dial_window_start, dial_window_end,
-                          max_attempts, max_concurrent_calls, created_at, created_by)
-    VALUES (v_c2, v_agent, 'Демо: обзвон лидов', 'SURVEY', 'PAUSED', '10:00', '19:00', 2, 3, now() - interval '3 days', v_admin)
+    INSERT INTO contact_tag (contact_id, tag)
+    SELECT c.id, 'lead'
+    FROM contact c
+    WHERE c.company_id = v_c2 AND c.phone IN ('+998901230001', '+998712345601', '+998712345602', '+998712345603')
+    ON CONFLICT (contact_id, tag) DO NOTHING;
+
+    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
+                          max_attempts, created_at, created_by)
+    VALUES (v_c2, v_agent, 'Демо: обзвон лидов', 'SURVEY', 'PAUSED', 2, now() - interval '3 days', v_admin)
     RETURNING id INTO v_camp;
+    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
+    VALUES (v_camp, 3) ON CONFLICT (campaign_id) DO NOTHING;
+    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
+    VALUES (v_camp, '10:00', '19:00') ON CONFLICT (campaign_id) DO NOTHING;
     INSERT INTO campaign_dial_day (campaign_id, day)
     SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
     INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts, next_attempt_at)
@@ -2768,10 +2901,19 @@ BEGIN
     INSERT INTO inbound_route (company_id, did_number, ai_agent_id, enabled)
     VALUES (v_c2, '+998712345600', v_agent, true);
 
-    INSERT INTO knowledge_base_item (company_id, item_key, topic, title, answer_uz, answer_ru, keywords) VALUES
-        (v_c2, 'delivery', 'delivery', 'Yetkazib berish',
-         'Toshkent bo''ylab yetkazib berish 1–2 ish kuni, bepul.', 'Доставка по Ташкенту 1–2 рабочих дня, бесплатно.',
-         'yetkazib,dostavka,доставка,когда привезут');
+    INSERT INTO knowledge_base_item (company_id, item_key, topic, title, keywords) VALUES
+        (v_c2, 'delivery', 'delivery', 'Yetkazib berish', 'yetkazib,dostavka,доставка,когда привезут')
+    ON CONFLICT (company_id, item_key) DO NOTHING;
+
+    INSERT INTO knowledge_item_translation (item_id, language, answer)
+    SELECT k.id, t.lang, t.ans
+    FROM (
+        VALUES
+        ('delivery', 'uz', 'Toshkent bo''ylab yetkazib berish 1–2 ish kuni, bepul.'),
+        ('delivery', 'ru', 'Доставка по Ташкенту 1–2 рабочих дня, бесплатно.')
+    ) AS t(key, lang, ans)
+    JOIN knowledge_base_item k ON k.company_id = v_c2 AND k.item_key = t.key
+    ON CONFLICT (item_id, language) DO NOTHING;
 
     -- One finished call, with its whole trail: transcript, result, metrics, charge.
     INSERT INTO call_attempt (company_id, target_id, phone, sip_call_id, asterisk_channel, language, started_at, answered_at,
@@ -3009,12 +3151,12 @@ BEGIN
         (v_c21.id, 'kutish vaqti'), (v_c21.id, 'to''lov'), (v_c21.id, 'shikoyat');
 
     -- The quality judge's verdict on the AI calls, and what a person made of the flagged ones.
-    INSERT INTO call_quality (company_id, call_attempt_id, ai_agent_id, agent_version, disposition, score,
+    INSERT INTO call_quality (company_id, call_attempt_id, score,
                               guardrail_violation, language_mismatch, talked_over_client, outcome_correct, goal_reached,
                               unanswered_question, tool_misuse, note, needs_review, turn_count, repair_count,
                               tool_error_count, barge_in_count, no_input_prompt_count, low_confidence_count, repeat_call,
                               review_status, review_reason, reviewed_by, reviewed_at, knowledge_item_id, created_at)
-    SELECT 1, c.id, c.ai_agent_id, NULL, c.disposition, q.score,
+    SELECT 1, c.id, q.score,
            q.guardrail, false, q.talked_over, q.outcome_ok, q.goal, q.unanswered, false, q.note, q.review IS NOT NULL,
            q.turns, q.repairs, 0, q.barge, 0, q.lowconf, false,
            q.review, q.reason,

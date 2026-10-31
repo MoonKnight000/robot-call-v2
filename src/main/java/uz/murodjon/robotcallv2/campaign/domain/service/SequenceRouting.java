@@ -1,11 +1,10 @@
 package uz.murodjon.robotcallv2.campaign.domain.service;
 
-import uz.murodjon.robotcallv2.campaign.domain.enums.SequenceOutcome;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 /**
- * How a finished call is read by a campaign sequence: whether it settled the conversation or
- * the contact may be tried again, and which {@link SequenceOutcome} it routes on.
+ * How a finished call is read: whether it settled the conversation, whether somebody answered
+ * it, and whether the number is unusable.
  */
 public final class SequenceRouting {
 
@@ -13,9 +12,9 @@ public final class SequenceRouting {
     }
 
     /**
-     * Whether the call settled the conversation for good. Any other disposition — no answer,
-     * voicemail, a hang-up, a failure, a callback — leaves the contact to be tried again until
-     * the step's attempts run out.
+     * Whether the call settled the conversation for good, for a campaign without a sequence. Any
+     * other disposition — no answer, voicemail, a hang-up, a failure, a callback — leaves the
+     * contact to be tried again until its attempts run out.
      */
     public static boolean isFinal(Disposition disposition) {
         return switch (disposition) {
@@ -26,21 +25,22 @@ public final class SequenceRouting {
     }
 
     /**
-     * Whether the contact must not be taken to any further step, whatever the routes say: one who
-     * asked not to be called again, and a number that is somebody else's.
+     * Whether a person answered, so the sequence's outcomes are judged (Retell: voicemail, no
+     * answer, busy and a failed dial count as unanswered and move on to the next attempt).
      */
-    public static boolean endsSequence(Disposition disposition) {
-        return disposition == Disposition.DO_NOT_CALL || disposition == Disposition.WRONG_NUMBER;
+    public static boolean isAnswered(Disposition disposition) {
+        return switch (disposition) {
+            case NO_ANSWER, CARRIER_REJECTED, HUNG_UP, VOICEMAIL, FAILED -> false;
+            default -> true;
+        };
     }
 
-    /** The outcome a call routes on once it is final or its step's attempts are spent. */
-    public static SequenceOutcome outcomeOf(Disposition disposition) {
-        return switch (disposition) {
-            case PROMISE_TO_PAY, COMPLETED, GOAL_REACHED -> SequenceOutcome.SUCCESS;
-            case REFUSED, GOAL_NOT_REACHED -> SequenceOutcome.NOT_INTERESTED;
-            case DO_NOT_CALL -> SequenceOutcome.DO_NOT_CALL;
-            case NO_ANSWER, CARRIER_REJECTED, HUNG_UP, VOICEMAIL, FAILED -> SequenceOutcome.NO_RESPONSE;
-            case TRANSFERRED, WRONG_NUMBER, CALLBACK_REQUESTED, PAYMENT_CLAIMED -> SequenceOutcome.OTHER;
-        };
+    /**
+     * Whether the number must not be tried again, whatever the outcomes say: one the carrier
+     * rejects, one that is somebody else's, and one that asked not to be called.
+     */
+    public static boolean endsSequence(Disposition disposition) {
+        return disposition == Disposition.CARRIER_REJECTED || disposition == Disposition.WRONG_NUMBER
+                || disposition == Disposition.DO_NOT_CALL;
     }
 }

@@ -56,7 +56,7 @@ class AgentCostEstimatorTest {
         return AiAgent.builder()
                 .name("Agent")
                 .script(new AiAgentScript(null, null, null, null, null, systemPrompt))
-                .speechEngine(new AiAgentSpeechEngine(mode, null, null, null, null, null, null, null, null))
+                .speechEngine(new AiAgentSpeechEngine(mode, null, null, null, null, null, null, null, null, null, null))
                 .build();
     }
 }

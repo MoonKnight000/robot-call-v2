@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour;
-import uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity;
+import uz.murodjon.robotcallv2.shared.dialog.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 
 import java.util.ArrayList;

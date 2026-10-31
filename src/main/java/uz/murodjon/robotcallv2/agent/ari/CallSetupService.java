@@ -402,7 +402,7 @@ class CallSetupService {
             attemptId = callAttemptUseCase.findAttemptIdByChannel(channelId);
             if (attemptId == 0) {
                 attemptId = callAttemptUseCase.startAttempt(companyId, targetId, channelId, phone, language,
-                        inboundRoute != null ? inboundRoute.id() : null,
+                        inboundRoute != null ? inboundRoute.storedId() : null,
                         outbound != null ? outbound.variantId() : null);
             }
             callAttemptUseCase.markAnswered(attemptId);

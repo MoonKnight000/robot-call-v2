@@ -37,6 +37,42 @@ AddPoolNumberRequest:
   - phoneNumber
   - monthlyFee
 
+CreateByoNumberRequest:
+  type: object
+  description: Kompaniyaning o'z SIP trunkidagi raqamni qo'shish so'rovi (BYON)
+  properties:
+    phoneNumber:
+      type: string
+      minLength: 1
+      example: "+998712000201"
+      description: Telefon raqami; E.164 ga normallashtiriladi
+    trunkId:
+      type: integer
+      format: int64
+      example: 3
+      description: Kompaniyaning o'z SIP trunki; raqamning qo'ng'iroqlari shu trunk orqali ketadi
+    nickname:
+      type: string
+      nullable: true
+      maxLength: 120
+      example: "Savdo liniyasi"
+      description: Bo'sh bo'lsa, raqamning o'zi
+  required:
+  - phoneNumber
+  - trunkId
+
+UpdatePhoneNumberTrunkRequest:
+  type: object
+  description: BYON raqamni kompaniyaning boshqa trunkiga o'tkazish
+  properties:
+    trunkId:
+      type: integer
+      format: int64
+      example: 4
+      description: Kompaniyaning o'z SIP trunki
+  required:
+  - trunkId
+
 PhoneNumberCategory:
   type: string
   enum:
@@ -92,6 +128,10 @@ PhoneNumberFilter:
       $ref: '#/PhoneNumberStatus'
     type:
       $ref: '#/PhoneNumberType'
+    withoutTrunk:
+      type: boolean
+      nullable: true
+      description: true — faqat trunki hali tanlanmagan raqamlar (V31 ko'chirishdan qolganlar); null/false toraytirmaydi
 
 PhoneNumberRow:
   type: object
@@ -147,6 +187,12 @@ PhoneNumberRow:
       format: double
       example: 75000.00
       description: Jami oylik to'lov (monthlyFee + pricePerChannel * allocatedChannels)
+    providerTrunkId:
+      type: integer
+      format: int64
+      nullable: true
+      example: 3
+      description: Raqam turgan SIP trunk. Bozor raqamida — platformaning trunki; null — trunk hali tanlanmagan
     inboundAgentId:
       type: integer
       format: int64

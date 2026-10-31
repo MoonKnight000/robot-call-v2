@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.ari;
 
+import ch.loway.oss.ari4java.generated.actions.requests.ChannelsOriginatePostRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,8 @@ import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * An AI call handed to a person: the agent's transfer queue, its transfer number, the
@@ -118,13 +121,22 @@ class OperatorTransferService {
             ariClient.hangup(channelId);
             return;
         }
+        // The CALL_TRANSFER stage's own SIP headers ride on the new leg's INVITE; Asterisk adds a
+        // header for each PJSIP_HEADER(add,…) variable set on the channel it originates.
+        Map<String, String> sipVariables = new LinkedHashMap<>();
+        if (toStageNumber) {
+            snapshot.transferHeaders().forEach((name, value) -> sipVariables.put("PJSIP_HEADER(add," + name + ")", value));
+        }
         try {
-            ariClient.requireConnection().channels()
+            ChannelsOriginatePostRequest originate = ariClient.requireConnection().channels()
                     .originate(targetEndpoint)
                     .setApp(asteriskProperties.appName())
                     .setAppArgs("operator," + session.bridgeId() + "," + channelId)
-                    .setTimeout(operatorProperties.answerTimeoutSec())
-                    .execute();
+                    .setTimeout(operatorProperties.answerTimeoutSec());
+            if (!sipVariables.isEmpty()) {
+                originate.setVariables(sipVariables);
+            }
+            originate.execute();
             // A supervisor asked for the call; anyone else may still not take it.
             operatorAcceptance.onOperatorDialled(channelId, !toOperator);
             log.info("Transferring {} to target {} (bridge {})",

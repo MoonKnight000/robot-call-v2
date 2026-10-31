@@ -2,6 +2,9 @@ package uz.murodjon.robotcallv2.aiagent.application.dto;
 
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentSpeechEngine;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.TranscriptionMode;
+
+import java.util.List;
 
 /**
  * {@link AiAgentSpeechEngine} as the agent endpoints read and write it. On a write a null
@@ -16,12 +19,15 @@ public record AgentSpeechEngineDto(
         String sttProvider,
         String sttModel,
         String ttsProvider,
-        String ttsModel
+        String ttsModel,
+        TranscriptionMode transcriptionMode,
+        /** On a write an empty list clears the agent's keywords; null keeps them. */
+        List<String> boostedKeywords
 ) {
 
     public static AgentSpeechEngineDto of(AiAgentSpeechEngine engine) {
         return new AgentSpeechEngineDto(engine.mode(), engine.realtimeProvider(), engine.pipecatStt(),
                 engine.pipecatLlm(), engine.pipecatTts(), engine.sttProvider(), engine.sttModel(),
-                engine.ttsProvider(), engine.ttsModel());
+                engine.ttsProvider(), engine.ttsModel(), engine.transcriptionMode(), engine.boostedKeywords());
     }
 }

@@ -243,7 +243,7 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
                                                 @Param("leaseUntil") Instant leaseUntil, @Param("limit") int limit);
 
     @Modifying @Transactional
-    @Query("UPDATE CallAttemptEntity a SET a.aiAgentId = :agentId, a.agentVersion = :version WHERE a.id = :id")
+    @Query("UPDATE CallAttemptEntity a SET a.aiAgent.id = :agentId, a.agentVersion = :version WHERE a.id = :id")
     void recordAgent(@Param("id") long id, @Param("agentId") Long agentId, @Param("version") Integer version);
 
     /** Up to {@code batchSize} recordings of calls whose conversation is past its retention. */

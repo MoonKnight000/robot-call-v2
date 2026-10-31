@@ -42,8 +42,8 @@ class StageEntryTest {
                                 new StageBranch("debtAmount", BranchOperator.GREATER, "0", "IVR"),
                                 new StageBranch(null, BranchOperator.ALWAYS, null, "BYE")))
                         .allowedTransitions(List.of("IVR", "BYE")).build(),
-                action("IVR", StageType.PRESS_DIGIT, "SMS", new StageAction(null, null, null, "12#", null, null, null, null, null)),
-                action("SMS", StageType.SMS, "NOTICE", new StageAction(null, null, null, null, null, "{{clientName}}, karta: 8600", null, null, null)),
+                action("IVR", StageType.PRESS_DIGIT, "SMS", new StageAction(null, null, null, "12#", null, null, null, null, null, null)),
+                action("SMS", StageType.SMS, "NOTICE", new StageAction(null, null, null, null, null, "{{clientName}}, karta: 8600", null, null, null, null)),
                 new StageDef("NOTICE", "Qarzni ayting", List.of("BYE"), List.of()),
                 StageDef.builder().id("BYE").type(StageType.ENDING).staticLine("Xayr!").build()));
 
@@ -71,7 +71,7 @@ class StageEntryTest {
     void anEndingReachedThroughAnotherStageAsksTheModelToSayItsLine() {
         DialogSession session = session(flow(
                 new StageDef("GREETING", "Salom", List.of("SMS"), List.of()),
-                action("SMS", StageType.SMS, "BYE", new StageAction(null, null, null, null, null, "Rahmat", null, null, null)),
+                action("SMS", StageType.SMS, "BYE", new StageAction(null, null, null, null, null, "Rahmat", null, null, null, null)),
                 StageDef.builder().id("BYE").type(StageType.ENDING).staticLine("Xayr, {{clientName}}!").build()));
 
         String result = new DialogTools(session).transitionTo(null, "SMS");
@@ -86,7 +86,7 @@ class StageEntryTest {
         DialogSession session = session(flow(
                 new StageDef("GREETING", "Salom", List.of("HUMAN"), List.of()),
                 StageDef.builder().id("HUMAN").type(StageType.CALL_TRANSFER)
-                        .action(new StageAction(null, "+998712000000", null, null, null, null, null, null, null)).build()));
+                        .action(new StageAction(null, "+998712000000", null, null, null, null, null, null, null, null)).build()));
 
         new DialogTools(session).transitionTo(null, "HUMAN");
 
@@ -137,7 +137,7 @@ class StageEntryTest {
         DialogSession session = session(flow(
                 new StageDef("GREETING", "Salom", List.of("SCORE"), List.of()),
                 StageDef.builder().id("SCORE").type(StageType.CODE)
-                        .action(new StageAction(null, null, null, null, null, null, null, "return {segment: 'vip'};", null))
+                        .action(new StageAction(null, null, null, null, null, null, null, "return {segment: 'vip'};", null, null))
                         .branches(List.of(new StageBranch("segment", BranchOperator.EQUALS, "vip", "VIP")))
                         .allowedTransitions(List.of("VIP", "END")).build(),
                 new StageDef("VIP", "VIP taklif", List.of("END"), List.of()),
@@ -154,7 +154,7 @@ class StageEntryTest {
         DialogSession session = session(flow(
                 new StageDef("GREETING", "Salom", List.of("SALES"), List.of()),
                 StageDef.builder().id("SALES").type(StageType.AGENT_TRANSFER)
-                        .action(new StageAction(null, null, null, null, 7L, null, null, null, null))
+                        .action(new StageAction(null, null, null, null, 7L, null, null, null, null, null))
                         .allowedTransitions(List.of("END")).build(),
                 new StageDef("END", "Yakunla", List.of(), List.of())));
         session.setAgentScenarioResolver(agentId -> null);
@@ -168,7 +168,7 @@ class StageEntryTest {
     void aFunctionStageIsLeftForTheModelWithItsTask() {
         DialogSession session = session(flow(
                 new StageDef("GREETING", "Salom", List.of("LOOKUP"), List.of()),
-                action("LOOKUP", StageType.FUNCTION, "END", new StageAction("lookupDebt", null, null, null, null, null, null, null, null)),
+                action("LOOKUP", StageType.FUNCTION, "END", new StageAction("lookupDebt", null, null, null, null, null, null, null, null, null)),
                 new StageDef("END", "Yakunla", List.of(), List.of())));
 
         String result = new DialogTools(session).transitionTo(null, "LOOKUP");
@@ -184,7 +184,7 @@ class StageEntryTest {
         ScenarioDefinition scenario = flow(
                 new StageDef("GREETING", "Salom", List.of("READ"), List.of()),
                 action("READ", StageType.EXTRACT_VARIABLE, "END",
-                        new StageAction(null, null, null, null, null, null, List.of("promisedDate"), null, null)),
+                        new StageAction(null, null, null, null, null, null, List.of("promisedDate"), null, null, null)),
                 new StageDef("END", "Yakunla", List.of(), List.of()));
 
         ToolDef tool = StageEntry.findExtractionTool(scenario, scenario.findStage("READ"));

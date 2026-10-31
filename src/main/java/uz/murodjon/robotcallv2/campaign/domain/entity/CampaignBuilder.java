@@ -27,6 +27,7 @@ public class CampaignBuilder {
     private CampaignKind kind;
     private CampaignSequence sequence;
     private AutoEnrollment autoEnroll;
+    private CampaignAutoRetries autoRetries;
     private Instant consentConfirmedAt;
     private long version;
 
@@ -51,6 +52,7 @@ public class CampaignBuilder {
         this.kind = source.kind();
         this.sequence = source.sequence();
         this.autoEnroll = source.autoEnroll();
+        this.autoRetries = source.autoRetries();
         this.consentConfirmedAt = source.consentConfirmedAt();
         this.version = source.version();
     }
@@ -140,6 +142,11 @@ public class CampaignBuilder {
         return this;
     }
 
+    public CampaignBuilder autoRetries(CampaignAutoRetries autoRetries) {
+        this.autoRetries = autoRetries;
+        return this;
+    }
+
     public CampaignBuilder consentConfirmedAt(Instant consentConfirmedAt) {
         this.consentConfirmedAt = consentConfirmedAt;
         return this;
@@ -152,6 +159,7 @@ public class CampaignBuilder {
 
     public Campaign build() {
         return new Campaign(id, name, status, aiAgentId, companyId, createdBy, priority,
-                schedule, retry, limits, recurrence, dialing, numbers, lastRunAt, kind, sequence, autoEnroll, consentConfirmedAt, version);
+                schedule, retry, limits, recurrence, dialing, numbers, lastRunAt, kind, sequence, autoEnroll, autoRetries, consentConfirmedAt,
+                version);
     }
 }

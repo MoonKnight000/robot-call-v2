@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.campaign.domain.service;
 
 import org.junit.jupiter.api.Test;
-import uz.murodjon.robotcallv2.campaign.domain.enums.SequenceOutcome;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -9,17 +8,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SequenceRoutingTest {
 
     @Test
-    void everyDispositionRoutesOnSomeOutcome() {
-        for (Disposition disposition : Disposition.values()) {
-            assertThat(SequenceRouting.outcomeOf(disposition)).isNotNull();
-        }
-    }
-
-    @Test
-    void aConversionIsASuccessAndARefusalIsNotInterested() {
-        assertThat(SequenceRouting.outcomeOf(Disposition.PROMISE_TO_PAY)).isEqualTo(SequenceOutcome.SUCCESS);
-        assertThat(SequenceRouting.outcomeOf(Disposition.REFUSED)).isEqualTo(SequenceOutcome.NOT_INTERESTED);
-        assertThat(SequenceRouting.outcomeOf(Disposition.DO_NOT_CALL)).isEqualTo(SequenceOutcome.DO_NOT_CALL);
+    void outcomesAreJudgedOnlyWhenSomebodyAnswered() {
+        assertThat(SequenceRouting.isAnswered(Disposition.NO_ANSWER)).isFalse();
+        assertThat(SequenceRouting.isAnswered(Disposition.VOICEMAIL)).isFalse();
+        assertThat(SequenceRouting.isAnswered(Disposition.FAILED)).isFalse();
+        assertThat(SequenceRouting.isAnswered(Disposition.REFUSED)).isTrue();
+        assertThat(SequenceRouting.isAnswered(Disposition.PROMISE_TO_PAY)).isTrue();
     }
 
     @Test
@@ -31,9 +25,10 @@ class SequenceRoutingTest {
     }
 
     @Test
-    void aWrongNumberAndADoNotCallNeverGoOnToAnotherStep() {
+    void anUnusableNumberAndADoNotCallNeverGoOnToAnotherStep() {
         assertThat(SequenceRouting.endsSequence(Disposition.WRONG_NUMBER)).isTrue();
         assertThat(SequenceRouting.endsSequence(Disposition.DO_NOT_CALL)).isTrue();
+        assertThat(SequenceRouting.endsSequence(Disposition.CARRIER_REJECTED)).isTrue();
         assertThat(SequenceRouting.endsSequence(Disposition.REFUSED)).isFalse();
     }
 }

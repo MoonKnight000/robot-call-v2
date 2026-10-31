@@ -5,7 +5,6 @@ import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkCredentials;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 
-import java.util.Collection;
 import java.util.List;
 
 public interface SipTrunkUseCase {
@@ -25,8 +24,6 @@ public interface SipTrunkUseCase {
     SipTrunkCredentials requireCredentialsForCall(long companyId, long id);
 
     SipTrunkRow findDefaultForCall(long companyId);
-
-    List<SipTrunkRow> findTrunksForCall(long companyId, Collection<Long> candidateTrunkIds);
 
     List<SipTrunkRow> findAllEnabledForCompany(long companyId);
 

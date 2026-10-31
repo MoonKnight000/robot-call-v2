@@ -8,11 +8,16 @@ import uz.murodjon.robotcallv2.phonenumber.infrastructure.persistence.entity.Pho
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface PhoneNumberJpaRepository extends JpaRepository<PhoneNumberEntity, Long>,
         JpaSpecificationExecutor<PhoneNumberEntity> {
 
     boolean existsByPhoneNumber(String phoneNumber);
+
+    Optional<PhoneNumberEntity> findByPhoneNumber(String phoneNumber);
+
+    Optional<PhoneNumberEntity> findByPhoneNumberAndCompanyId(String phoneNumber, Long companyId);
 
     @Query("SELECT p.phoneNumber FROM PhoneNumberEntity p WHERE p.phoneNumber IN :phoneNumbers")
     List<String> findPhoneNumbersIn(@Param("phoneNumbers") Collection<String> phoneNumbers);

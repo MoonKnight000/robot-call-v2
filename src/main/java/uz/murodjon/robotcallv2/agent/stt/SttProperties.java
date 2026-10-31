@@ -2,7 +2,10 @@ package uz.murodjon.robotcallv2.agent.stt;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import uz.murodjon.robotcallv2.shared.dialog.TranscriptionMode;
+
 import java.util.List;
+import java.util.Map;
 
 /**
  * Speech-to-text settings. Bound from {@code voice-agent.stt.*} (PROJECT.md §12).
@@ -35,6 +38,10 @@ import java.util.List;
  * @param yandex            Yandex-specific settings
  * @param aisha             Aisha-specific settings
  * @param deepgram          Deepgram-specific settings
+ * @param openAi            OpenAI-specific settings
+ * @param transcriptionModes the model each provider (keyed by its {@link SttProvider#name()})
+ *                          uses for an agent's or stage's {@code transcriptionMode}; a provider
+ *                          or mode missing here leaves the call on its usual model
  */
 @ConfigurationProperties(prefix = "voice-agent.stt")
 public record SttProperties(
@@ -51,12 +58,29 @@ public record SttProperties(
         YandexSttProperties yandex,
         AishaSttProperties aisha,
         DeepgramSttProperties deepgram,
-        OpenAiSttProperties openAi
+        OpenAiSttProperties openAi,
+        Map<String, SttTranscriptionModels> transcriptionModes
 ) {
 
     public SttProperties {
         if (stream == null) {
             stream = SttStreamProperties.DEFAULTS;
         }
+        if (transcriptionModes == null) {
+            transcriptionModes = Map.of();
+        }
+    }
+
+    /**
+     * The model {@code provider} uses for {@code mode}.
+     *
+     * @return null when the mode is null or not mapped for that provider
+     */
+    public String findTranscriptionModel(String provider, TranscriptionMode mode) {
+        if (provider == null || mode == null) {
+            return null;
+        }
+        SttTranscriptionModels models = transcriptionModes.get(provider);
+        return models != null ? models.findModel(mode) : null;
     }
 }

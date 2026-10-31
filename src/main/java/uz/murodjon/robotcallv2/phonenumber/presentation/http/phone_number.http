@@ -91,3 +91,34 @@ Content-Type: application/json
 ### 8. Tenant - Release Number back to pool
 DELETE {{host}}/api/phone-numbers/1
 Authorization: Bearer {{tenantToken}}
+
+### 9. Tenant - Add a number on the company's own SIP trunk (BYON)
+POST {{host}}/api/phone-numbers/byo
+Authorization: Bearer {{tenantToken}}
+Content-Type: application/json
+
+{
+  "phoneNumber": "+998712000201",
+  "trunkId": 3,
+  "nickname": "Savdo liniyasi"
+}
+
+### 10. Tenant - Numbers still without a trunk (left so by the V31 backfill)
+POST {{host}}/api/phone-numbers/list
+Authorization: Bearer {{tenantToken}}
+Content-Type: application/json
+
+{
+  "page": 0,
+  "size": 50,
+  "withoutTrunk": true
+}
+
+### 11. Tenant - Move a BYON number to another own trunk
+PUT {{host}}/api/phone-numbers/2/trunk
+Authorization: Bearer {{tenantToken}}
+Content-Type: application/json
+
+{
+  "trunkId": 4
+}

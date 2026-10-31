@@ -124,7 +124,7 @@ public class SttComparisonTool {
             try {
                 GeminiSttProperties geminiSttProperties = new GeminiSttProperties(geminiKey, null, "gemini-3.5-transcribe-live", 16000, 10);
                 SttProperties sttProperties = new SttProperties(true, "gemini", language, List.of(), null, null, 0, null,
-                        geminiSttProperties, null, null, null, null, null);
+                        geminiSttProperties, null, null, null, null, null, null);
                 GeminiSttProvider gemini = new GeminiSttProvider(sttProperties, metrics, new ObjectMapper());
                 gemini.init();
                 list.add(gemini);
@@ -142,7 +142,7 @@ public class SttComparisonTool {
                         yandexKey, yandexFolder, "stt.api.cloud.yandex.net", 443, 8000, "general",
                         null, true, EouSensitivity.DEFAULT, 0, 0, true, true);
                 SttProperties sttProperties = new SttProperties(true, "yandex", language, List.of(), null, null, 0, null,
-                        null, null, yandexSttProperties, null, null, null);
+                        null, null, yandexSttProperties, null, null, null, null);
                 YandexSttProvider yandex = new YandexSttProvider(sttProperties, metrics);
                 yandex.init();
                 list.add(yandex);
@@ -158,7 +158,7 @@ public class SttComparisonTool {
                 AishaSttProperties aishaSttProperties = new AishaSttProperties(
                         aishaKey, "https://back.aisha.group/api/v1/stt/realtime", true);
                 SttProperties sttProperties = new SttProperties(true, "aisha", language, List.of(), null, null, 0, null,
-                        null, null, null, aishaSttProperties, null, null);
+                        null, null, null, aishaSttProperties, null, null, null);
                 AishaSttProvider aisha = new AishaSttProvider(sttProperties, metrics, new ObjectMapper());
                 aisha.init();
                 list.add(aisha);

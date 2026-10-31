@@ -4,7 +4,6 @@ import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunkFilter;
 import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 
-import java.util.Collection;
 import java.util.List;
 
 public interface SipTrunkRepository {
@@ -34,8 +33,6 @@ public interface SipTrunkRepository {
     SipTrunk findDefaultForCompany(long companyId);
 
     List<SipTrunk> findAllEnabledByCompany(long companyId);
-
-    List<SipTrunk> findEnabledByIdsAndCompany(Collection<Long> ids, long companyId);
 
     List<SipTrunk> findAllManagedEnabled();
 }

@@ -4,7 +4,12 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.TranscriptionMode;
+
+import java.util.List;
 
 /** The ai_agent columns behind {@code AiAgentSpeechEngine}: which pipeline and vendors carry the call. */
 @Embeddable
@@ -38,12 +43,21 @@ public class AiAgentSpeechEngineEntity {
     @Column(name = "tts_model")
     private String ttsModel;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "transcription_mode", length = 16)
+    private TranscriptionMode transcriptionMode;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "boosted_keywords", columnDefinition = "jsonb")
+    private List<String> boostedKeywords;
+
     protected AiAgentSpeechEngineEntity() {
     }
 
     public AiAgentSpeechEngineEntity(PipelineMode pipelineMode, String realtimeProvider,
                                      String pipecatStt, String pipecatLlm, String pipecatTts,
-                                     String sttProvider, String sttModel, String ttsProvider, String ttsModel) {
+                                     String sttProvider, String sttModel, String ttsProvider, String ttsModel,
+                                     TranscriptionMode transcriptionMode, List<String> boostedKeywords) {
         this.pipelineMode = pipelineMode != null ? pipelineMode : PipelineMode.CASCADE;
         this.realtimeProvider = realtimeProvider;
         this.pipecatStt = pipecatStt;
@@ -53,6 +67,8 @@ public class AiAgentSpeechEngineEntity {
         this.sttModel = sttModel;
         this.ttsProvider = ttsProvider;
         this.ttsModel = ttsModel;
+        this.transcriptionMode = transcriptionMode;
+        this.boostedKeywords = boostedKeywords;
     }
 
     public PipelineMode getPipelineMode() {
@@ -89,5 +105,13 @@ public class AiAgentSpeechEngineEntity {
 
     public String getTtsModel() {
         return ttsModel;
+    }
+
+    public TranscriptionMode getTranscriptionMode() {
+        return transcriptionMode;
+    }
+
+    public List<String> getBoostedKeywords() {
+        return boostedKeywords;
     }
 }

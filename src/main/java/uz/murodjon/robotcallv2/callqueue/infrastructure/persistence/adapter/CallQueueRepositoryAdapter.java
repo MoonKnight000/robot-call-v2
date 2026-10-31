@@ -5,21 +5,28 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.callqueue.application.port.output.CallQueueRepository;
 import uz.murodjon.robotcallv2.callqueue.domain.entity.CallQueue;
 import uz.murodjon.robotcallv2.callqueue.domain.entity.CallQueueFilter;
+import uz.murodjon.robotcallv2.callqueue.domain.entity.CallQueueMember;
 import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.entity.CallQueueEntity;
+import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.entity.CallQueueMemberSkillEntity;
 import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.mapper.CallQueueEntityMapper;
 import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.repository.CallQueueJpaRepository;
+import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.repository.CallQueueMemberSkillJpaRepository;
 
 import java.time.Instant;
-import java.util.List;
+import java.util.*;
 
 @Component
 public class CallQueueRepositoryAdapter implements CallQueueRepository {
 
     private final CallQueueJpaRepository jpaRepository;
+    private final CallQueueMemberSkillJpaRepository skillJpaRepository;
     private final CallQueueEntityMapper mapper;
 
-    public CallQueueRepositoryAdapter(CallQueueJpaRepository jpaRepository, CallQueueEntityMapper mapper) {
+    public CallQueueRepositoryAdapter(CallQueueJpaRepository jpaRepository,
+                                      CallQueueMemberSkillJpaRepository skillJpaRepository,
+                                      CallQueueEntityMapper mapper) {
         this.jpaRepository = jpaRepository;
+        this.skillJpaRepository = skillJpaRepository;
         this.mapper = mapper;
     }
 
@@ -30,7 +37,9 @@ public class CallQueueRepositoryAdapter implements CallQueueRepository {
         entity.setCompanyId(companyId);
         entity.setCreatedAt(Instant.now());
         copy(queue, entity);
-        return jpaRepository.save(entity).getId();
+        long queueId = jpaRepository.save(entity).getId();
+        saveSkills(queueId, queue.members());
+        return queueId;
     }
 
     @Override
@@ -39,23 +48,35 @@ public class CallQueueRepositoryAdapter implements CallQueueRepository {
         jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
             copy(queue, entity);
             jpaRepository.save(entity);
+            skillJpaRepository.deleteByIdQueueId(id);
+            saveSkills(id, queue.members());
         });
     }
 
     @Override
     @Transactional
     public void delete(long companyId, long id) {
-        jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(jpaRepository::delete);
+        jpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
+            skillJpaRepository.deleteByIdQueueId(id);
+            jpaRepository.delete(entity);
+        });
     }
 
     @Override
     public CallQueue find(long companyId, long id) {
-        return jpaRepository.findByIdAndCompanyId(id, companyId).map(mapper::toCallQueue).orElse(null);
+        return jpaRepository.findByIdAndCompanyId(id, companyId)
+                .map(entity -> {
+                    List<CallQueueMemberSkillEntity> skills = skillJpaRepository.findByIdQueueId(id);
+                    Map<Long, Set<String>> userSkills = groupSkillsByUser(skills);
+                    return mapper.toCallQueue(entity, userSkills);
+                })
+                .orElse(null);
     }
 
     @Override
     public List<CallQueue> findAll(long companyId, CallQueueFilter filter) {
-        return jpaRepository.findByCompanyId(companyId, filter.pageable()).stream().map(mapper::toCallQueue).toList();
+        List<CallQueueEntity> entities = jpaRepository.findByCompanyId(companyId, filter.pageable());
+        return mapEntities(entities);
     }
 
     @Override
@@ -65,7 +86,58 @@ public class CallQueueRepositoryAdapter implements CallQueueRepository {
 
     @Override
     public List<CallQueue> findEnabledByCompanyId(long companyId) {
-        return jpaRepository.findByCompanyIdAndEnabledTrue(companyId).stream().map(mapper::toCallQueue).toList();
+        List<CallQueueEntity> entities = jpaRepository.findByCompanyIdAndEnabledTrue(companyId);
+        return mapEntities(entities);
+    }
+
+    private List<CallQueue> mapEntities(List<CallQueueEntity> entities) {
+        if (entities.isEmpty()) {
+            return List.of();
+        }
+        List<Long> queueIds = entities.stream().map(CallQueueEntity::getId).toList();
+        List<CallQueueMemberSkillEntity> allSkills = skillJpaRepository.findByIdQueueIdIn(queueIds);
+        Map<Long, Map<Long, Set<String>>> queueUserSkills = groupSkillsByQueueAndUser(allSkills);
+        return entities.stream()
+                .map(e -> mapper.toCallQueue(e, queueUserSkills.getOrDefault(e.getId(), Map.of())))
+                .toList();
+    }
+
+    private static Map<Long, Map<Long, Set<String>>> groupSkillsByQueueAndUser(List<CallQueueMemberSkillEntity> skills) {
+        Map<Long, Map<Long, Set<String>>> result = new HashMap<>();
+        for (CallQueueMemberSkillEntity entity : skills) {
+            result.computeIfAbsent(entity.getQueueId(), k -> new HashMap<>())
+                    .computeIfAbsent(entity.getUserId(), k -> new LinkedHashSet<>())
+                    .add(entity.getSkill());
+        }
+        return result;
+    }
+
+    private static Map<Long, Set<String>> groupSkillsByUser(List<CallQueueMemberSkillEntity> skills) {
+        Map<Long, Set<String>> result = new HashMap<>();
+        for (CallQueueMemberSkillEntity entity : skills) {
+            result.computeIfAbsent(entity.getUserId(), k -> new LinkedHashSet<>())
+                    .add(entity.getSkill());
+        }
+        return result;
+    }
+
+    private void saveSkills(long queueId, List<CallQueueMember> members) {
+        if (members == null || members.isEmpty()) {
+            return;
+        }
+        List<CallQueueMemberSkillEntity> skillEntities = new ArrayList<>();
+        for (CallQueueMember member : members) {
+            if (member.skills() != null) {
+                for (String skill : member.skills()) {
+                    if (skill != null && !skill.isBlank()) {
+                        skillEntities.add(new CallQueueMemberSkillEntity(queueId, member.userId(), skill.trim()));
+                    }
+                }
+            }
+        }
+        if (!skillEntities.isEmpty()) {
+            skillJpaRepository.saveAll(skillEntities);
+        }
     }
 
     private void copy(CallQueue q, CallQueueEntity e) {

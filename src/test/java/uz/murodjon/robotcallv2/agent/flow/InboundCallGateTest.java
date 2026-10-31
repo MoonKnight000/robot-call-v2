@@ -15,6 +15,10 @@ import uz.murodjon.robotcallv2.inbound.application.port.input.InboundCallerRuleU
 import uz.murodjon.robotcallv2.inbound.application.port.input.InboundRouteUseCase;
 import uz.murodjon.robotcallv2.inbound.domain.entity.InboundRoute;
 import uz.murodjon.robotcallv2.inbound.domain.enums.InboundAfterHoursAction;
+import uz.murodjon.robotcallv2.phonenumber.application.port.input.PhoneNumberUseCase;
+import uz.murodjon.robotcallv2.phonenumber.domain.entity.PhoneNumber;
+import uz.murodjon.robotcallv2.phonenumber.domain.enums.PhoneNumberStatus;
+import uz.murodjon.robotcallv2.phonenumber.domain.enums.PhoneNumberType;
 import uz.murodjon.robotcallv2.schedule.application.port.input.BusinessScheduleUseCase;
 import uz.murodjon.robotcallv2.schedule.domain.entity.BusinessHoursVerdict;
 
@@ -43,6 +47,8 @@ class InboundCallGateTest {
     private CompanyUseCase companyUseCase;
     @Mock
     private CallBillingUseCase callBillingUseCase;
+    @Mock
+    private PhoneNumberUseCase phoneNumberUseCase;
 
     private Clock clock;
     private InboundCallGate gate;
@@ -53,7 +59,7 @@ class InboundCallGateTest {
         gate = new InboundCallGate(
                 inboundRouteUseCase, callerRuleUseCase, callFlowUseCase,
                 businessScheduleUseCase, companyUseCase,
-                callBillingUseCase, clock
+                callBillingUseCase, phoneNumberUseCase, clock
         );
         when(companyUseCase.isFeatureAvailable(anyLong(), any())).thenReturn(true);
         when(callBillingUseCase.hasBalanceForCall(anyLong())).thenReturn(true);
@@ -111,5 +117,54 @@ class InboundCallGateTest {
         assertTrue(decision.afterHours());
         assertNotNull(decision.message());
         assertTrue(decision.message().contains("xabar"));
+    }
+
+    private static PhoneNumber number(Long inboundAgentId) {
+        return PhoneNumber.builder()
+                .id(20L)
+                .companyId(1L)
+                .phoneNumber("+998712001122")
+                .type(PhoneNumberType.BYO_SIP_TRUNK)
+                .status(PhoneNumberStatus.ASSIGNED)
+                .inboundAgentId(inboundAgentId)
+                .build();
+    }
+
+    @Test
+    @DisplayName("A number with no route is answered by its own slot's agent, at any hour")
+    void routesToTheNumbersOwnAgentWhenThereIsNoRoute() {
+        when(phoneNumberUseCase.findAssignedByPhoneNumber("+998712001122")).thenReturn(number(7L));
+        when(businessScheduleUseCase.evaluateDailyWindow(anyLong(), any(), any(), any()))
+                .thenReturn(new BusinessHoursVerdict(false, null, null));
+
+        InboundDecision decision = gate.decide("+998712001122", "+998901234567");
+
+        assertEquals(InboundDecisionKind.AGENT, decision.kind());
+        assertEquals(7L, decision.route().aiAgentId());
+        assertEquals(1L, decision.route().companyId());
+        assertNull(decision.route().storedId());
+    }
+
+    @Test
+    @DisplayName("A stored route wins over the number's own slot")
+    void aStoredRouteWinsOverTheNumbersSlot() {
+        when(inboundRouteUseCase.resolveByDid("+998712001122"))
+                .thenReturn(createRoute(InboundAfterHoursAction.PLAY_MESSAGE_AND_HANGUP, null));
+        when(phoneNumberUseCase.findAssignedByPhoneNumber("+998712001122")).thenReturn(number(7L));
+        when(businessScheduleUseCase.evaluateDailyWindow(eq(1L), any(), any(), any()))
+                .thenReturn(new BusinessHoursVerdict(true, null, null));
+
+        InboundDecision decision = gate.decide("+998712001122", "+998901234567");
+
+        assertEquals(5L, decision.route().aiAgentId());
+        assertEquals(10L, decision.route().storedId());
+    }
+
+    @Test
+    @DisplayName("A number whose slot is empty, and no route, has no route")
+    void anEmptySlotHasNoRoute() {
+        when(phoneNumberUseCase.findAssignedByPhoneNumber("+998712001122")).thenReturn(number(null));
+
+        assertEquals(InboundDecisionKind.NO_ROUTE, gate.decide("+998712001122", "+998901234567").kind());
     }
 }

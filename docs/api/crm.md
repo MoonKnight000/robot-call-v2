@@ -2,8 +2,9 @@
 
 Kompaniyaning **o'z** CRM sozlamalari. Har bir quruvchining Uysot voronkasi o'ziga xos, shuning
 uchun "uchrashuv belgilandi" yoki "to'lov va'dasi" bosqichining ID'si ham har kompaniyada boshqa.
-Ilgari bu ID'lar platforma konfiguratsiyasida (`voice-agent.crm.*-status-id`) **bitta** edi —
-endi har kompaniya o'zinikini saqlaydi; saqlanmagan maydon uchun platforma qiymati zaxira bo'lib qoladi.
+Ilgarigi qat'iy ustunlar o'rniga relyatsion `crm_status_mapping` jadvali ishlatiladi — har qanday
+qo'ng'iroq natijasi (`Disposition`) yoki maxsus outcome kaliti CRM bosqichiga bog'lanadi.
+Saqlanmagan maydon uchun platforma qiymati zaxira bo'lib qoladi.
 
 Huquq: `INTEGRATION_READ` (`GET`) / `INTEGRATION_EDIT` (`PUT`).
 
@@ -19,12 +20,19 @@ Kompaniya hali hech narsa saqlamagan bo'lsa ham `200`: hamma maydon `null`, `upd
   "data": {
     "companyId": 1,
     "aiEmployeeId": 252,
+    "taskTypeId": 7,
+    "statusMappings": {
+      "MEETING_BOOKED": 15,
+      "PROMISE_TO_PAY": 22,
+      "NOT_INTERESTED": 19,
+      "CALLBACK_REQUESTED": 12,
+      "NEW_LEAD": 11
+    },
     "meetingBookedStatusId": 15,
     "promiseToPayStatusId": 22,
     "notInterestedStatusId": 19,
     "callbackStatusId": 12,
     "newLeadStatusId": 11,
-    "taskTypeId": 7,
     "updatedAt": "2026-10-29T10:15:00Z"
   },
   "message": null, "messageCode": null, "errors": null
@@ -34,12 +42,13 @@ Kompaniya hali hech narsa saqlamagan bo'lsa ham `200`: hamma maydon `null`, `upd
 | Maydon | Ma'nosi |
 |---|---|
 | `aiEmployeeId` | AI qo'ng'iroqlari (call-history), task'lar va yangi lidlar yoziladigan CRM xodimi. Mas'ul menejer ma'lum bo'lsa task o'shanga yoziladi |
-| `meetingBookedStatusId` | Natija `meetingBooked=true` → lid shu bosqichga |
-| `promiseToPayStatusId` | `PROMISE_TO_PAY` yoki `promisedDate` bor → shu bosqich |
-| `notInterestedStatusId` | `REFUSED` / `DO_NOT_CALL` → shu bosqich |
-| `callbackStatusId` | `NO_ANSWER` / `CALLBACK_REQUESTED` / `CARRIER_REJECTED` → shu bosqich |
-| `newLeadStatusId` | Chat yoki kiruvchi qo'ng'iroqdan yaratilgan yangi lid boshlanadigan bosqich. Bo'sh bo'lsa — chatdan lid yaratilmaydi |
 | `taskTypeId` | AI ochadigan task turi (`GET /v1/open-api/lead-task/types`). Bo'sh bo'lsa — CRM'dagi birinchi tur |
+| `statusMappings` | Qo'ng'iroq natijasi (disposition yoki maxsus outcome kaliti) ➔ CRM voronkasi bosqich ID'si xaritasi |
+| `meetingBookedStatusId` | Moslik uchun: `statusMappings["MEETING_BOOKED"]` qiymati |
+| `promiseToPayStatusId` | Moslik uchun: `statusMappings["PROMISE_TO_PAY"]` qiymati |
+| `notInterestedStatusId` | Moslik uchun: `statusMappings["NOT_INTERESTED"]` qiymati |
+| `callbackStatusId` | Moslik uchun: `statusMappings["CALLBACK_REQUESTED"]` qiymati |
+| `newLeadStatusId` | Chat yoki kiruvchi qo'ng'iroqdan yaratilgan yangi lid boshlanadigan bosqich (`statusMappings["NEW_LEAD"]`) |
 
 Ssenariy `outcomeSchema`sida `targetStatusId` qaytarsa — u hammasidan ustun.
 
@@ -47,7 +56,23 @@ Ssenariy `outcomeSchema`sida `targetStatusId` qaytarsa — u hammasidan ustun.
 
 Butun obyekt almashtiriladi: yuborilmagan (yoki `null`) maydon tozalanadi va platforma qiymatiga qaytadi.
 Har bir ID musbat butun son bo'lishi shart (aks holda `400 VALIDATION_FAILED`).
+Dinamik `statusMappings` xaritasi yoki klassik maydonlar (`meetingBookedStatusId`, `promiseToPayStatusId` va h.k.) qabul qilinadi.
 
+```json
+{
+  "aiEmployeeId": 252,
+  "taskTypeId": 7,
+  "statusMappings": {
+    "MEETING_BOOKED": 15,
+    "PROMISE_TO_PAY": 22,
+    "NOT_INTERESTED": 19,
+    "CALLBACK_REQUESTED": 12,
+    "NEW_LEAD": 11
+  }
+}
+```
+
+Yoki klassik formatda (moslik uchun):
 ```json
 {
   "aiEmployeeId": 252,

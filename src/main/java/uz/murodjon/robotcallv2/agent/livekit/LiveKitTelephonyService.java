@@ -151,9 +151,11 @@ public class LiveKitTelephonyService {
      * @param callerId A-number shown to the callee; blank leaves the trunk's own
      * @param trunk    the company's own trunk, sent inline with the call so nothing is kept in
      *                 LiveKit; null dials the platform's LiveKit trunk ({@code LIVEKIT_SIP_TRUNK_ID})
+     * @param sipHeaders custom headers put on the leg's INVITE as they are; empty for none
      */
     public LiveKitDialOutcome dialAndWaitForAnswer(String roomName, String identity, String calleeNumber,
-                                                   String callerId, SipTrunkCredentials trunk) {
+                                                   String callerId, SipTrunkCredentials trunk,
+                                                   Map<String, String> sipHeaders) {
         requireEnabled();
         Map<String, Object> body = new HashMap<>();
         if (trunk != null) {
@@ -171,6 +173,9 @@ public class LiveKitTelephonyService {
         body.put("ringingTimeout", properties.answerTimeoutSec() + "s");
         if (callerId != null && !callerId.isBlank()) {
             body.put("sipNumber", callerId);
+        }
+        if (sipHeaders != null && !sipHeaders.isEmpty()) {
+            body.put("headers", sipHeaders);
         }
         log.info("LiveKit: dialling {} from {} in room {} over {}", PhoneMasker.mask(calleeNumber), callerId, roomName,
                 trunk != null ? "company trunk " + trunk.trunkId() : "trunk " + properties.sipTrunkId());

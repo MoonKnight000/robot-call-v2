@@ -86,7 +86,7 @@ A/B variantlar (`CampaignVariant`) kampaniya sahifasida emas, alohida "Tajriba" 
 `callBehaviour`, `limits`, `dataPolicy` guruhlari; `script.scenarioId`, `script.mode`,
 `script.definition`; `persona`, `llmModel`, `fastLlmModel`, `temperature`,
 `maxOutputTokens` (profil bilan almashadi), `dataNeeded`, `dataEvaluation`, webhook'lar,
-`sipTrunkIds`, `useRag`.
+`useRag`.
 
 > Ro'yxat `CreateAiAgentRequest` / `CreateCampaignRequest` dan olingan; yangi maydon
 > qo'shilganda bu yerga ham yoziladi.

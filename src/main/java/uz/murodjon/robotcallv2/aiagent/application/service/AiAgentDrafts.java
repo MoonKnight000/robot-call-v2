@@ -17,7 +17,6 @@ import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
-import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
 /**
  * An agent's draft row as every writer of it sees it — the agent service, the section
@@ -30,17 +29,14 @@ class AiAgentDrafts {
     private final AiAgentVersionRepository versionRepository;
     /** The company call cap an agent's own duration limit may not exceed. */
     private final AiModelConfigUseCase aiModelConfigUseCase;
-    private final SipTrunkUseCase sipTrunkUseCase;
     /** Whether the company may run a human-like persona at all. */
     private final CompanyConfigUseCase companyConfigUseCase;
 
     AiAgentDrafts(AiAgentRepository repository, AiAgentVersionRepository versionRepository,
-                  AiModelConfigUseCase aiModelConfigUseCase, SipTrunkUseCase sipTrunkUseCase,
-                  CompanyConfigUseCase companyConfigUseCase) {
+                  AiModelConfigUseCase aiModelConfigUseCase, CompanyConfigUseCase companyConfigUseCase) {
         this.repository = repository;
         this.versionRepository = versionRepository;
         this.aiModelConfigUseCase = aiModelConfigUseCase;
-        this.sipTrunkUseCase = sipTrunkUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
     }
 
@@ -64,11 +60,6 @@ class AiAgentDrafts {
     AiAgent validate(long companyId, AiAgent agent) {
         AiModelConfig companyConfig = aiModelConfigUseCase.findByCompanyId(companyId);
         AiAgentValidator.validate(agent, companyConfig != null ? companyConfig.maxCallSeconds() : null);
-        // Every trunk the agent may dial over has to be this company's own: the ids were
-        // stored as sent, so an agent could name another tenant's trunk.
-        for (Long trunkId : agent.sipTrunkIds()) {
-            sipTrunkUseCase.requireTrunk(companyId, trunkId);
-        }
         return agent;
     }
 

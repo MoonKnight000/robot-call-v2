@@ -216,6 +216,9 @@ class AudioPipelineAssembler {
                             learning ? dynamic.emaAlpha() : 0d,
                             learning ? dynamic.reopenGraceMs() : 0);
                     speechGate.setTranscriptCues(adaptive ? endpointing.completeSilenceMs() : 0);
+                    // The agent's own wait from the first utterance; a stage may change it later
+                    // (StageSpeechTuner).
+                    speechGate.setResponseWaitMs(agent != null ? agent.callBehaviour().responseWaitMs() : null);
                     speechGate.setCloseListener((text, waitMs, continued) -> {
                         sttMetrics.gateCloseJudged(continued);
                         turnDatasetRecorder.record(language, text, waitMs, continued);
@@ -263,7 +266,7 @@ class AudioPipelineAssembler {
                 };
                 SttStreamBridge stt = null;
                 try {
-                    stt = openSttBridge(channelId, companyId, language, context, agent, callerListener, null, null);
+                    stt = openSttBridge(channelId, companyId, language, context, agent, callerListener, null, null, false);
                 } catch (Exception e) {
                     if (sttDriven) {
                         throw new ExternalServiceException(ErrorCode.STT_START_FAILED, "stt", e, e.getMessage());
@@ -302,7 +305,7 @@ class AudioPipelineAssembler {
             try {
                 SttStreamBridge bridge = openSttBridge(channelId, companyId, language, context, agent,
                         listener, speechGate,
-                        dialog ? eouWaitMs -> dialogEngine.notifyUtteranceEnd(channelId, eouWaitMs) : null);
+                        dialog ? eouWaitMs -> dialogEngine.notifyUtteranceEnd(channelId, eouWaitMs) : null, true);
                 if (bridge != null) {
                     listeners.add(bridge);
                 }
@@ -322,11 +325,14 @@ class AudioPipelineAssembler {
     /**
      * The call's speech recognizer on the agent's (or the deployment's) STT vendor.
      *
+     * @param cascade whether this is a cascade call's recognizer, which also takes the agent's
+     *                {@code transcriptionMode} and {@code boostedKeywords}; a realtime call's
+     *                transcript recognizer keeps the plain model and hints
      * @return null when no STT vendor is available
      */
     private SttStreamBridge openSttBridge(String channelId, long companyId, String language, CallContext context,
                                           AiAgent agent, TranscriptListener listener, SpeechGate speechGate,
-                                          IntConsumer onUtteranceEnd) {
+                                          IntConsumer onUtteranceEnd, boolean cascade) {
         String preferredSttProvider = (agent != null && agent.speechEngine().sttProvider() != null && !agent.speechEngine().sttProvider().isBlank())
                 ? agent.speechEngine().sttProvider().trim()
                 : sttProperties.provider();
@@ -340,6 +346,13 @@ class AudioPipelineAssembler {
         String agentSttModel = (agent != null && sttProviderSelector.exists(preferredSttProvider))
                 ? agent.speechEngine().sttModel()
                 : null;
+        boolean tuned = cascade && agent != null;
+        // An explicit model wins over the agent's transcriptionMode; the mode only picks a
+        // model where the deployment mapped one for this vendor (stt.transcription-modes).
+        if (tuned && (agentSttModel == null || agentSttModel.isBlank())) {
+            agentSttModel = sttProperties.findTranscriptionModel(stt.name(), agent.speechEngine().transcriptionMode());
+        }
+        List<String> keywords = tuned ? agent.speechEngine().boostedKeywords() : null;
         String sttLanguage = (language == null || language.isBlank())
                 ? sttProperties.defaultLanguage() : language;
         // The agent's own languages; the deployment list only for a call with no agent.
@@ -348,7 +361,7 @@ class AudioPipelineAssembler {
         return new SttStreamBridge(stt, stt.sampleRate(), CallMediaFactory.SAMPLE_RATE,
                 channelId, sttLanguage, detectLangs, listener, speechGate, sttMetrics,
                 sttProperties.endpointing(), sttProperties.responseTimeoutMs(), onUtteranceEnd,
-                SttHints.of(context, agent != null ? agent.pronunciationRules() : List.of()),
+                SttHints.of(context, agent != null ? agent.pronunciationRules() : List.of()), keywords,
                 sttProviderSelector, agentSttModel, sttProperties.stream());
     }
 

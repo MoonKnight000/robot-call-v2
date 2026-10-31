@@ -1,6 +1,9 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
+import uz.murodjon.robotcallv2.shared.dialog.TranscriptionMode;
+
+import java.util.List;
 
 /**
  * Which engines run the call.
@@ -14,6 +17,12 @@ import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
  *
  * <p>A null provider or model means "the configured default for this deployment"; nothing
  * here is defaulted to a name, because the names belong to configuration, not to an agent.
+ *
+ * <p>{@code transcriptionMode} and {@code boostedKeywords} tune the cascade recogniser; a
+ * scenario stage may replace either while the call is in it ({@code StageOverrides}).
+ *
+ * @param transcriptionMode how the recogniser trades latency for accuracy; null = deployment default
+ * @param boostedKeywords   words the recogniser should favour (names, product terms); null or empty = none
  */
 public record AiAgentSpeechEngine(
         PipelineMode mode,
@@ -24,11 +33,16 @@ public record AiAgentSpeechEngine(
         String sttProvider,
         String sttModel,
         String ttsProvider,
-        String ttsModel
+        String ttsModel,
+        TranscriptionMode transcriptionMode,
+        List<String> boostedKeywords
 ) {
     public AiAgentSpeechEngine {
         if (mode == null) {
             mode = PipelineMode.CASCADE;
+        }
+        if (boostedKeywords != null && boostedKeywords.isEmpty()) {
+            boostedKeywords = null;
         }
     }
 }

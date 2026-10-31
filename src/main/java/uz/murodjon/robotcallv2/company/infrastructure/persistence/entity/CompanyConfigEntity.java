@@ -43,10 +43,6 @@ public class CompanyConfigEntity {
     @Column(name = "human_like_persona_allowed", nullable = false)
     private boolean humanLikePersonaAllowed;
 
-    /** Days nothing is dialled on: ISO dates, comma-separated (NEXT-PLAN C.4). */
-    @Column(name = "holidays", nullable = false)
-    private String holidays = "";
-
     @Column(name = "scorecard_review_threshold", nullable = false)
     private int scorecardReviewThreshold = CompanyConfig.DEFAULT_SCORECARD_REVIEW_THRESHOLD;
 
@@ -131,14 +127,6 @@ public class CompanyConfigEntity {
 
     public void setHumanLikePersonaAllowed(boolean humanLikePersonaAllowed) {
         this.humanLikePersonaAllowed = humanLikePersonaAllowed;
-    }
-
-    public String getHolidays() {
-        return holidays;
-    }
-
-    public void setHolidays(String holidays) {
-        this.holidays = holidays;
     }
 
     public int getScorecardReviewThreshold() {

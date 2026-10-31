@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignAutoRetries;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignNumbers;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
@@ -32,7 +33,8 @@ public record UpdateCampaignRequest(
         CampaignNumbers numbers,
         CampaignSequence sequence,
         AutoEnrollment autoEnroll,
-        Long version) {
+        Long version,
+        CampaignAutoRetries autoRetries) {
 
     public int priorityOrDefault() {
         return priority != null ? priority : Campaign.DEFAULT_PRIORITY;

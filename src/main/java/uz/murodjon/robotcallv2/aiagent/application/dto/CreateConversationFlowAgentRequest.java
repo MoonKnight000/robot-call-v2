@@ -9,7 +9,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 
 import java.util.List;
-import java.util.Set;
 
 /**
  * Dedicated request for creating a Retell-style Conversational Flow (Graph/FSM) Agent.
@@ -30,7 +29,6 @@ public record CreateConversationFlowAgentRequest(
         Integer maxOutputTokens,
         AgentAmbienceDto ambience,
         List<DataExtractionField> dataNeeded,
-        List<DataEvaluationCriterion> dataEvaluation,
-        Set<Long> sipTrunkIds
+        List<DataEvaluationCriterion> dataEvaluation
 ) {
 }

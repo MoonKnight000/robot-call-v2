@@ -31,7 +31,11 @@ Qo'ng'iroqqa javob berishdan **oldin** (mijoz hali gudok eshitayotganda), tartib
 (`InboundCallGate`):
 
 1. **Marshrut** — terilgan DID bo'yicha yoqilgan (`enabled: true`) marshrut. Topilmasa —
-   go'shak qo'yiladi.
+   DID kompaniyaga biriktirilgan [telefon raqami](phone-numbers.md) bo'lsa, uning **o'z sloti**
+   (`inboundAgentId` yoki `inboundCallFlowId`, `PUT /api/phone-numbers/{id}/routing`) javob beradi:
+   ish vaqti, after-hours va callback yo'q, agent har doim oladi; qo'ng'iroq tarixida
+   `inboundRouteId` bo'sh. Slot ham bo'sh bo'lsa — go'shak qo'yiladi. **Marshrut doim slotdan
+   ustun:** soatlar yoki after-hours kerak bo'lsa marshrut yarating.
 2. **Qo'ng'iroq qiluvchi qoidasi** — kompaniyaning qoidalaridan eng uzun mos prefiks.
    `BLOCK_HANGUP` / `BLOCK_BUSY` / `BLOCK_MESSAGE` bo'lsa — qo'ng'iroq rad etiladi
    (qo'ng'iroqlar tarixida `REFUSED` natijasi bilan yoziladi) va boshqa hech narsa

@@ -15,9 +15,6 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.exception.*;
-import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
-
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -30,7 +27,6 @@ class AiAgentDraftsTest {
     private AiAgentRepository repository;
     private AiAgentVersionRepository versionRepository;
     private AiModelConfigUseCase aiModelConfigUseCase;
-    private SipTrunkUseCase sipTrunkUseCase;
     private CompanyConfigUseCase companyConfigUseCase;
     private AiAgentDrafts drafts;
 
@@ -39,10 +35,8 @@ class AiAgentDraftsTest {
         repository = mock(AiAgentRepository.class);
         versionRepository = mock(AiAgentVersionRepository.class);
         aiModelConfigUseCase = mock(AiModelConfigUseCase.class);
-        sipTrunkUseCase = mock(SipTrunkUseCase.class);
         companyConfigUseCase = mock(CompanyConfigUseCase.class);
-        drafts = new AiAgentDrafts(repository, versionRepository, aiModelConfigUseCase, sipTrunkUseCase,
-                companyConfigUseCase);
+        drafts = new AiAgentDrafts(repository, versionRepository, aiModelConfigUseCase, companyConfigUseCase);
     }
 
     @Test
@@ -66,7 +60,7 @@ class AiAgentDraftsTest {
                         e -> assertThat(e.code()).isEqualTo(ErrorCode.AI_AGENT_HUMAN_LIKE_NOT_ALLOWED));
     }
 
-    /** Allows calls of up to 600 seconds and dials over no trunk of its own. */
+    /** Allows calls of up to 600 seconds. */
     private static AiAgent agent() {
         return AiAgentFixtures.agent(AGENT_ID, COMPANY_ID, 3L, "uz-UZ", null);
     }
@@ -121,18 +115,6 @@ class AiAgentDraftsTest {
         AiAgent agent = agent().withLimits(new AiAgentLimits(7200, null, null, null));
 
         assertThat(drafts.validate(COMPANY_ID, agent)).isSameAs(agent);
-    }
-
-    /** The trunk ids are stored as sent, so an agent could otherwise name another tenant's trunk. */
-    @Test
-    void everyTrunkTheAgentMayDialOverHasToBeTheCompanysOwn() {
-        when(sipTrunkUseCase.requireTrunk(COMPANY_ID, 9L))
-                .thenThrow(new NotFoundException(ErrorCode.SIP_TRUNK_NOT_FOUND, 9L));
-        AiAgent agent = AiAgentFixtures.withSipTrunkIds(agent(), Set.of(9L));
-
-        assertRefused(() -> drafts.update(COMPANY_ID, AGENT_ID, agent),
-                NotFoundException.class, ErrorCode.SIP_TRUNK_NOT_FOUND);
-        verify(repository, never()).update(anyLong(), anyLong(), any());
     }
 
     @Test

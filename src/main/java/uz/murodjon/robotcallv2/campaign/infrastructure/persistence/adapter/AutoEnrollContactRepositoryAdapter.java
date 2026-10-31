@@ -4,6 +4,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.campaign.application.port.output.AutoEnrollContactRepository;
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollCandidate;
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollRule;
@@ -24,9 +25,6 @@ import java.util.Map;
 @Component
 public class AutoEnrollContactRepositoryAdapter implements AutoEnrollContactRepository {
 
-    /** A contact's tags as {@code ,tag1,tag2,}, lower-cased, so a whole tag is a {@code ,tag,} substring. */
-    private static final String TAG_LIST =
-            "(',' || lower(regexp_replace(coalesce(c.tags, ''), '\\s*,\\s*', ',', 'g')) || ',')";
     private static final String PHONE_DIGITS = "regexp_replace(c.phone, '\\D', '', 'g')";
 
     @PersistenceContext
@@ -52,7 +50,9 @@ public class AutoEnrollContactRepositoryAdapter implements AutoEnrollContactRepo
         Map<String, Object> parameters = new HashMap<>();
         String where = buildWhere(companyId, autoEnroll, excludeEnrolledInCampaignId, parameters);
         Query query = entityManager.createNativeQuery(
-                "SELECT c.id, c.name, c.phone, c.address, c.tags FROM contact c WHERE " + where
+                "SELECT c.id, c.name, c.phone, c.address, "
+                        + "(SELECT string_agg(ct.tag, ',') FROM contact_tag ct WHERE ct.contact_id = c.id) AS tags "
+                        + "FROM contact c WHERE " + where
                         + " ORDER BY c.id LIMIT :limit OFFSET :offset");
         parameters.forEach(query::setParameter);
         query.setParameter("limit", limit);
@@ -75,6 +75,24 @@ public class AutoEnrollContactRepositoryAdapter implements AutoEnrollContactRepo
         Query query = entityManager.createNativeQuery("SELECT count(*) FROM contact c WHERE " + where);
         parameters.forEach(query::setParameter);
         return ((Number) query.getSingleResult()).longValue();
+    }
+
+    @Override
+    @Transactional
+    public void addTag(long companyId, String phone, String tag) {
+        String digits = phone == null ? "" : phone.replaceAll("\\D", "");
+        if (digits.isEmpty()) {
+            return;
+        }
+        entityManager.createNativeQuery(
+                "INSERT INTO contact_tag (contact_id, tag) "
+                        + "SELECT c.id, :tag FROM contact c "
+                        + "WHERE c.company_id = :companyId AND " + PHONE_DIGITS + " = :digits "
+                        + "ON CONFLICT (contact_id, tag) DO NOTHING")
+                .setParameter("tag", tag.trim())
+                .setParameter("companyId", companyId)
+                .setParameter("digits", digits)
+                .executeUpdate();
     }
 
     private static String buildWhere(long companyId, AutoEnrollment autoEnroll, Long excludeEnrolledInCampaignId,
@@ -108,9 +126,53 @@ public class AutoEnrollContactRepositoryAdapter implements AutoEnrollContactRepo
             return Boolean.parseBoolean(value) ? listed : "NOT " + listed;
         }
         String escaped = LikePatterns.escape(value);
+        if (rule.field() == AutoEnrollField.TAG) {
+            String tagLike = " LIKE :" + name + " ESCAPE '" + LikePatterns.ESCAPE + "'";
+            switch (rule.operator()) {
+                case EQUALS -> {
+                    parameters.put(name, value);
+                    return "EXISTS (SELECT 1 FROM contact_tag ct WHERE ct.contact_id = c.id AND lower(ct.tag) = :" + name + ")";
+                }
+                case NOT_EQUALS -> {
+                    parameters.put(name, value);
+                    return "NOT EXISTS (SELECT 1 FROM contact_tag ct WHERE ct.contact_id = c.id AND lower(ct.tag) = :" + name + ")";
+                }
+                case IS_ANY_OF -> {
+                    String[] tags = value.split(",");
+                    List<String> placeholders = new ArrayList<>();
+                    for (int index = 0; index < tags.length; index++) {
+                        String tag = tags[index].trim();
+                        if (tag.isEmpty()) {
+                            continue;
+                        }
+                        String part = name + "_" + index;
+                        parameters.put(part, tag);
+                        placeholders.add(":" + part);
+                    }
+                    return placeholders.isEmpty() ? "FALSE" :
+                            "EXISTS (SELECT 1 FROM contact_tag ct WHERE ct.contact_id = c.id AND lower(ct.tag) IN (" + String.join(", ", placeholders) + "))";
+                }
+                case CONTAINS -> {
+                    parameters.put(name, "%" + escaped + "%");
+                    return "EXISTS (SELECT 1 FROM contact_tag ct WHERE ct.contact_id = c.id AND lower(ct.tag)" + tagLike + ")";
+                }
+                case NOT_CONTAINS -> {
+                    parameters.put(name, "%" + escaped + "%");
+                    return "NOT EXISTS (SELECT 1 FROM contact_tag ct WHERE ct.contact_id = c.id AND lower(ct.tag)" + tagLike + ")";
+                }
+                case STARTS_WITH -> {
+                    parameters.put(name, escaped + "%");
+                    return "EXISTS (SELECT 1 FROM contact_tag ct WHERE ct.contact_id = c.id AND lower(ct.tag)" + tagLike + ")";
+                }
+                case ENDS_WITH -> {
+                    parameters.put(name, "%" + escaped);
+                    return "EXISTS (SELECT 1 FROM contact_tag ct WHERE ct.contact_id = c.id AND lower(ct.tag)" + tagLike + ")";
+                }
+                default -> throw new IllegalStateException("unhandled auto-enroll operator " + rule.operator());
+            }
+        }
         String column;
         switch (rule.field()) {
-            case TAG -> column = TAG_LIST;
             case PHONE -> {
                 column = PHONE_DIGITS;
                 value = value.replaceAll("\\D", "");
@@ -121,44 +183,18 @@ public class AutoEnrollContactRepositoryAdapter implements AutoEnrollContactRepo
             case NOTES -> column = "lower(coalesce(c.notes, ''))";
             default -> throw new IllegalStateException("unhandled auto-enroll field " + rule.field());
         }
-        boolean whole = rule.field() == AutoEnrollField.TAG;
         String like = " LIKE :" + name + " ESCAPE '" + LikePatterns.ESCAPE + "'";
         switch (rule.operator()) {
             case EQUALS -> {
-                // A tag is compared whole, between its commas; any other field outright.
-                if (whole) {
-                    parameters.put(name, "%," + escaped + ",%");
-                    return column + like;
-                }
                 parameters.put(name, value);
                 return column + " = :" + name;
             }
             case NOT_EQUALS -> {
-                if (whole) {
-                    parameters.put(name, "%," + escaped + ",%");
-                    return column + " NOT" + like;
-                }
                 parameters.put(name, value);
                 return column + " <> :" + name;
             }
-            case IS_ANY_OF -> {
-                // Tags only (the validator says so): any one of the listed whole tags.
-                List<String> anyOf = new ArrayList<>();
-                String[] tags = value.split(",");
-                for (int index = 0; index < tags.length; index++) {
-                    String tag = tags[index].trim();
-                    if (tag.isEmpty()) {
-                        continue;
-                    }
-                    String part = name + "_" + index;
-                    parameters.put(part, "%," + LikePatterns.escape(tag) + ",%");
-                    anyOf.add(column + " LIKE :" + part + " ESCAPE '" + LikePatterns.ESCAPE + "'");
-                }
-                return anyOf.isEmpty() ? "FALSE" : "(" + String.join(" OR ", anyOf) + ")";
-            }
             case ENDS_WITH -> {
-                // For tags: some tag ends with the value.
-                parameters.put(name, "%" + escaped + (whole ? ",%" : ""));
+                parameters.put(name, "%" + escaped);
                 return column + like;
             }
             case CONTAINS -> {
@@ -170,8 +206,7 @@ public class AutoEnrollContactRepositoryAdapter implements AutoEnrollContactRepo
                 return column + " NOT" + like;
             }
             case STARTS_WITH -> {
-                // For tags: some tag starts with the value.
-                parameters.put(name, (whole ? "%," : "") + escaped + "%");
+                parameters.put(name, escaped + "%");
                 return column + like;
             }
             default -> throw new IllegalStateException("unhandled auto-enroll operator " + rule.operator());

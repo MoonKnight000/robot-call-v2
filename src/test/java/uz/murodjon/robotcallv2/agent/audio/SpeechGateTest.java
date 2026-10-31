@@ -566,4 +566,53 @@ class SpeechGateTest {
 
         assertThat(verdicts).isEmpty();
     }
+
+    // responseWaitMs: the agent or its current stage sets the long-utterance wait at
+    // runtime; clearing it hands the wait back to the configuration and the learning.
+
+    @Test
+    void aRequestedWaitReplacesTheConfiguredHangover() {
+        SpeechGate gate = gate();
+        gate.setResponseWaitMs(400);
+
+        feed(gate, true, 1500);
+        feed(gate, false, 500);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.hangoverMs()).isEqualTo(400);
+    }
+
+    @Test
+    void aLongerRequestedWaitKeepsTheGateOpenPastThePostRoll() {
+        SpeechGate gate = gate();
+        gate.setResponseWaitMs(2000);
+
+        feed(gate, true, 1500);
+        feed(gate, false, 1500);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void aShortAnswerNeverWaitsLongerThanTheRequestedWait() {
+        SpeechGate gate = adaptiveGate();
+        gate.setResponseWaitMs(150);
+
+        feed(gate, true, 300);   // "ha"
+        feed(gate, false, 200);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void clearingTheRequestedWaitRestoresWhatWasLearned() {
+        SpeechGate gate = learningGate();
+        cleanTurn(gate);
+        gate.setResponseWaitMs(1500);
+        assertThat(gate.hangoverMs()).isEqualTo(1500);
+
+        gate.setResponseWaitMs(null);
+
+        assertThat(gate.hangoverMs()).isEqualTo(800);
+    }
 }

@@ -27,4 +27,11 @@ public interface AutoEnrollContactRepository {
 
     /** How many of the company's contacts meet the rules, less {@code excludedContactIds}. */
     long countMatching(long companyId, AutoEnrollment autoEnroll);
+
+    /**
+     * Adds {@code tag} to the company's contacts with this number (digits compared), unless they
+     * have it already — what a sequence outcome's "save to contact" writes, so auto-enroll rules
+     * and filters can pick those contacts up later.
+     */
+    void addTag(long companyId, String phone, String tag);
 }

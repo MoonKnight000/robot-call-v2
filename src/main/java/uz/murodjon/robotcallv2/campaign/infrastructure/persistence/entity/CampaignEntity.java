@@ -24,6 +24,10 @@ import java.util.Set;
  */
 @Entity
 @Table(name = "campaign")
+@SecondaryTables({
+    @SecondaryTable(name = "campaign_dialer_config", pkJoinColumns = @PrimaryKeyJoinColumn(name = "campaign_id", referencedColumnName = "id")),
+    @SecondaryTable(name = "campaign_schedule", pkJoinColumns = @PrimaryKeyJoinColumn(name = "campaign_id", referencedColumnName = "id"))
+})
 // An edit loads the row, changes the editable fields and saves it. Written in full, that
 // save put back the status and last_run_at it had loaded — undoing a dialer's
 // completeIfFinished or a platform pause that landed in between. Only changed columns now.
@@ -44,10 +48,10 @@ public class CampaignEntity {
     @Column(nullable = false)
     private CampaignStatus status;
 
-    @Column(name = "dial_window_start", nullable = false)
+    @Column(name = "dial_window_start", table = "campaign_schedule", nullable = false)
     private LocalTime dialWindowStart;
 
-    @Column(name = "dial_window_end", nullable = false)
+    @Column(name = "dial_window_end", table = "campaign_schedule", nullable = false)
     private LocalTime dialWindowEnd;
 
     @Column(name = "max_attempts", nullable = false)
@@ -56,7 +60,7 @@ public class CampaignEntity {
     @Column(name = "retry_interval_minutes", nullable = false)
     private int retryIntervalMinutes;
 
-    @Column(name = "max_concurrent_calls", nullable = false)
+    @Column(name = "max_concurrent_calls", table = "campaign_dialer_config", nullable = false)
     private int maxConcurrentCalls;
 
     @Column(name = "created_at", nullable = false)
@@ -75,7 +79,7 @@ public class CampaignEntity {
     @Column(name = "day", nullable = false)
     private Set<DayOfWeek> dialDays = EnumSet.noneOf(DayOfWeek.class);
 
-    @Column(name = "daily_call_cap", nullable = false)
+    @Column(name = "daily_call_cap", table = "campaign_dialer_config", nullable = false)
     private int dailyCallCap;
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -87,31 +91,31 @@ public class CampaignEntity {
     private AiAgentEntity aiAgent;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "dial_mode", nullable = false)
+    @Column(name = "dial_mode", table = "campaign_dialer_config", nullable = false)
     private DialMode dialMode = DialMode.AI;
 
     /** The operator queue of a non-AI campaign; a plain id, as {@code ai_agent.transfer_queue_id}. */
-    @Column(name = "call_queue_id")
+    @Column(name = "call_queue_id", table = "campaign_dialer_config")
     private Long callQueueId;
 
-    @Column(name = "max_ai_overflow_percent", nullable = false)
+    @Column(name = "max_ai_overflow_percent", table = "campaign_dialer_config", nullable = false)
     private int maxAiOverflowPercent = Campaign.DEFAULT_MAX_AI_OVERFLOW_PERCENT;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "target_ordering", nullable = false)
+    @Column(name = "target_ordering", table = "campaign_dialer_config", nullable = false)
     private TargetOrdering targetOrdering = TargetOrdering.FIFO;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "recurrence_type", nullable = false)
+    @Column(name = "recurrence_type", table = "campaign_schedule", nullable = false)
     private RecurrenceType recurrenceType = RecurrenceType.ONCE;
 
-    @Column(name = "recurring_day_of_month")
+    @Column(name = "recurring_day_of_month", table = "campaign_schedule")
     private Integer recurringDayOfMonth;
 
-    @Column(name = "cron_expression")
+    @Column(name = "cron_expression", table = "campaign_schedule")
     private String cronExpression;
 
-    @Column(name = "auto_reset_targets", nullable = false)
+    @Column(name = "auto_reset_targets", table = "campaign_schedule", nullable = false)
     private boolean autoResetTargets;
 
     @Column(name = "last_run_at")
@@ -126,13 +130,17 @@ public class CampaignEntity {
     private String retryPolicy;
 
     /** The caller ID pool the campaign's calls present numbers from; a plain id, as {@code callQueueId}. */
-    @Column(name = "caller_id_pool_id")
+    @Column(name = "caller_id_pool_id", table = "campaign_dialer_config")
     private Long callerIdPoolId;
 
-    @Column(name = "local_presence", nullable = false)
+    @Column(name = "local_presence", table = "campaign_dialer_config", nullable = false)
     private boolean localPresence;
 
-    @Column(name = "max_cps")
+    /** The one phone number the campaign's calls present instead of a pool; a plain id, as {@code callerIdPoolId}. */
+    @Column(name = "from_number_id", table = "campaign_dialer_config")
+    private Long fromNumberId;
+
+    @Column(name = "max_cps", table = "campaign_dialer_config")
     private Integer maxCps;
 
     @Enumerated(EnumType.STRING)
@@ -153,18 +161,24 @@ public class CampaignEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     private String autoEnroll;
 
+    @Column(name = "double_dial", nullable = false)
+    private boolean doubleDial;
+
+    @Column(name = "auto_schedule_callbacks", nullable = false)
+    private boolean autoScheduleCallbacks;
+
     /** When a SCHEDULED campaign goes ACTIVE; null starts on the operator's command. */
-    @Column(name = "start_at")
+    @Column(name = "start_at", table = "campaign_schedule")
     private Instant startAt;
 
     /** When an ACTIVE campaign is closed as COMPLETED regardless of targets left; null never. */
-    @Column(name = "end_at")
+    @Column(name = "end_at", table = "campaign_schedule")
     private Instant endAt;
 
-    @Column(name = "budget_uzs")
+    @Column(name = "budget_uzs", table = "campaign_dialer_config")
     private Long budgetUzs;
 
-    @Column(name = "daily_budget_uzs")
+    @Column(name = "daily_budget_uzs", table = "campaign_dialer_config")
     private Long dailyBudgetUzs;
 
     /**
@@ -420,6 +434,14 @@ public class CampaignEntity {
         this.localPresence = localPresence;
     }
 
+    public Long getFromNumberId() {
+        return fromNumberId;
+    }
+
+    public void setFromNumberId(Long fromNumberId) {
+        this.fromNumberId = fromNumberId;
+    }
+
     public Integer getMaxCps() {
         return maxCps;
     }
@@ -446,6 +468,22 @@ public class CampaignEntity {
 
     public void setAutoEnroll(String autoEnroll) {
         this.autoEnroll = autoEnroll;
+    }
+
+    public boolean isDoubleDial() {
+        return doubleDial;
+    }
+
+    public void setDoubleDial(boolean doubleDial) {
+        this.doubleDial = doubleDial;
+    }
+
+    public boolean isAutoScheduleCallbacks() {
+        return autoScheduleCallbacks;
+    }
+
+    public void setAutoScheduleCallbacks(boolean autoScheduleCallbacks) {
+        this.autoScheduleCallbacks = autoScheduleCallbacks;
     }
 
     public String getSequence() {

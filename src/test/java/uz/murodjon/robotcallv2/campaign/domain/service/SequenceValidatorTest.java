@@ -3,13 +3,17 @@ package uz.murodjon.robotcallv2.campaign.domain.service;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.ConversationStepConfig;
+import uz.murodjon.robotcallv2.campaign.domain.entity.OutcomeContactUpdate;
+import uz.murodjon.robotcallv2.campaign.domain.entity.OutcomeRoute;
+import uz.murodjon.robotcallv2.campaign.domain.entity.SequenceOutcome;
 import uz.murodjon.robotcallv2.campaign.domain.entity.SequenceStep;
-import uz.murodjon.robotcallv2.campaign.domain.enums.SequenceOutcome;
+import uz.murodjon.robotcallv2.campaign.domain.entity.StepOutcomes;
+import uz.murodjon.robotcallv2.campaign.domain.enums.OutcomeEvaluation;
+import uz.murodjon.robotcallv2.campaign.domain.enums.OutcomeExit;
 import uz.murodjon.robotcallv2.campaign.domain.enums.SequenceStepType;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -19,19 +23,32 @@ class SequenceValidatorTest {
 
     private final SequenceValidator validator = new SequenceValidator();
 
-    private static SequenceStep conversation(String id, Map<SequenceOutcome, String> routes) {
-        return new SequenceStep(id, SequenceStepType.CONVERSATION, id, new ConversationStepConfig(null, 3, 0),
-                null, null, routes, null, null);
+    private static OutcomeRoute toStep(String stepId) {
+        return new OutcomeRoute(OutcomeExit.STEP, stepId, 0);
+    }
+
+    private static SequenceStep conversation(String id, StepOutcomes outcomes) {
+        return new SequenceStep(id, SequenceStepType.CONVERSATION, id, new ConversationStepConfig(null, ConversationStepConfig.DEFAULT_ATTEMPTS),
+                null, null, outcomes, null, null);
+    }
+
+    private static SequenceStep conversationWithNoResponse(String id, String noResponseStepId) {
+        return conversation(id, new StepOutcomes(List.of(), null, toStep(noResponseStepId)));
     }
 
     private static SequenceStep sms(String id, String next) {
-        return new SequenceStep(id, SequenceStepType.SMS, id, null, "Salom", null, Map.of(), next, null);
+        return new SequenceStep(id, SequenceStepType.SMS, id, null, "Salom", null, null, next, null);
+    }
+
+    @Test
+    void theDefaultSequenceIsValid() {
+        assertThatCode(() -> validator.validate(CampaignSequence.createDefault())).doesNotThrowAnyException();
     }
 
     @Test
     void aDraftConversationWithNoAgentYetIsAccepted() {
         CampaignSequence sequence = new CampaignSequence("c1",
-                List.of(conversation("c1", Map.of(SequenceOutcome.NO_RESPONSE, "s1")), sms("s1", null)));
+                List.of(conversationWithNoResponse("c1", "s1"), sms("s1", null)), null);
 
         assertThatCode(() -> validator.validate(sequence)).doesNotThrowAnyException();
     }
@@ -43,8 +60,7 @@ class SequenceValidatorTest {
 
     @Test
     void aRouteToAMissingStepIsRejected() {
-        CampaignSequence sequence = new CampaignSequence("c1",
-                List.of(conversation("c1", Map.of(SequenceOutcome.NO_RESPONSE, "nowhere"))));
+        CampaignSequence sequence = new CampaignSequence("c1", List.of(conversationWithNoResponse("c1", "nowhere")), null);
 
         assertThatThrownBy(() -> validator.validate(sequence)).isInstanceOf(ValidationException.class)
                 .satisfies(e -> assertThat(((ValidationException) e).errors()).anyMatch(m -> m.contains("nowhere")));
@@ -53,22 +69,56 @@ class SequenceValidatorTest {
     @Test
     void aRouteLeadingBackIsRejected() {
         CampaignSequence sequence = new CampaignSequence("c1", List.of(
-                conversation("c1", Map.of(SequenceOutcome.NO_RESPONSE, "s1")), sms("s1", "c1")));
+                conversationWithNoResponse("c1", "s1"), sms("s1", "c1")), null);
 
         assertThatThrownBy(() -> validator.validate(sequence)).isInstanceOf(ValidationException.class);
     }
 
     @Test
-    void aDoNotCallRouteIsRejected() {
+    void aDoNotCallOutcomeThatLeadsToAStepIsRejected() {
+        SequenceOutcome doNotCall = new SequenceOutcome("dnc", "Do Not Call", OutcomeEvaluation.PROMPT, "stop",
+                null, null, new OutcomeContactUpdate(true, List.of()), toStep("s1"));
         CampaignSequence sequence = new CampaignSequence("c1", List.of(
-                conversation("c1", Map.of(SequenceOutcome.DO_NOT_CALL, "s1")), sms("s1", null)));
+                conversation("c1", new StepOutcomes(List.of(doNotCall), null, null)), sms("s1", null)), null);
 
         assertThatThrownBy(() -> validator.validate(sequence)).isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void aGlobalOutcomeMayNotDelayAndIdsMustBeUnique() {
+        SequenceOutcome delayed = new SequenceOutcome("a", "A", OutcomeEvaluation.PROMPT, "x", null, null, null,
+                new OutcomeRoute(OutcomeExit.STEP, "c1", 60));
+        SequenceOutcome duplicate = SequenceOutcome.ofPrompt("a", "A again", "y", OutcomeRoute.END);
+        CampaignSequence sequence = new CampaignSequence("c1", List.of(conversation("c1", null)),
+                List.of(delayed, duplicate));
+
+        assertThatThrownBy(() -> validator.validate(sequence)).isInstanceOf(ValidationException.class)
+                .satisfies(e -> assertThat(((ValidationException) e).errors())
+                        .anyMatch(m -> m.contains("delayMinutes"))
+                        .anyMatch(m -> m.contains("used by another outcome")));
+    }
+
+    @Test
+    void aPromptOutcomeNeedsItsPrompt() {
+        CampaignSequence sequence = new CampaignSequence("c1", List.of(conversation("c1", null)),
+                List.of(SequenceOutcome.ofPrompt("a", "A", " ", OutcomeRoute.END)));
+
+        assertThatThrownBy(() -> validator.validate(sequence)).isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void aConversationNeedsAtLeastOneAttempt() {
+        SequenceStep noAttempts = new SequenceStep("c1", SequenceStepType.CONVERSATION, "c1",
+                new ConversationStepConfig(null, List.of()), null, null, null, null, null);
+
+        assertThatThrownBy(() -> validator.validate(new CampaignSequence("c1", List.of(noAttempts), null)))
+                .isInstanceOf(ValidationException.class)
+                .satisfies(e -> assertThat(((ValidationException) e).errors()).anyMatch(m -> m.contains("attempts")));
     }
 
     @Test
     void theSequenceMustStartOnAConversation() {
-        CampaignSequence sequence = new CampaignSequence("s1", List.of(sms("s1", null)));
+        CampaignSequence sequence = new CampaignSequence("s1", List.of(sms("s1", null)), null);
 
         assertThatThrownBy(() -> validator.validate(sequence)).isInstanceOf(ValidationException.class);
     }

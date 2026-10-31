@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.aiagent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.*;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.InterruptionSensitivity;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 
 import java.util.List;
@@ -28,7 +29,7 @@ public final class AiAgentFixtures {
                 AgentPersona.AI_ASSISTANT,
                 new AiAgentScript(null, scenarioId, ScenarioMode.PROMPT, null, null, null),
                 new AiAgentSpeechEngine(PipelineMode.CASCADE, null, null, null, null,
-                        "yandex", null, "yandex", null),
+                        "yandex", null, "yandex", null, null, null),
                 new AiAgentVoice(ttsVoice, null, Map.of(), Map.of(), true),
                 new AiAgentAmbience(AmbientSound.OFF, 0.35, 1.5, AmbientSound.OFF, 0.35,
                         true, NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION),
@@ -51,18 +52,12 @@ public final class AiAgentFixtures {
                 List.of(),
                 Set.of(),
                 null,
-                Set.of(),
                 true,
                 null,
                 null,
                 null,
                 0L
         );
-    }
-
-    /** {@code agent} allowed to dial out over {@code sipTrunkIds} only. */
-    public static AiAgent withSipTrunkIds(AiAgent agent, Set<Long> sipTrunkIds) {
-        return agent.toBuilder().sipTrunkIds(sipTrunkIds).build();
     }
 
     /** {@code agent} speaking as {@code persona}. */

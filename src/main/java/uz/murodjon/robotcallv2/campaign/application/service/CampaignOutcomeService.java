@@ -7,31 +7,47 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import uz.murodjon.robotcallv2.agent.dialog.PromptTemplateEngine;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.output.AutoEnrollContactRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignRepository;
 import uz.murodjon.robotcallv2.campaign.application.port.output.CampaignTargetRepository;
+import uz.murodjon.robotcallv2.campaign.application.port.output.OutcomeClassifierPort;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
-import uz.murodjon.robotcallv2.campaign.domain.entity.ConversationStepConfig;
+import uz.murodjon.robotcallv2.campaign.domain.entity.StepAttempt;
+import uz.murodjon.robotcallv2.campaign.domain.entity.OutcomeContactUpdate;
+import uz.murodjon.robotcallv2.campaign.domain.entity.OutcomeRoute;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryRule;
+import uz.murodjon.robotcallv2.campaign.domain.entity.SequenceOutcome;
 import uz.murodjon.robotcallv2.campaign.domain.entity.SequenceStep;
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
+import uz.murodjon.robotcallv2.campaign.domain.enums.OutcomeEvaluation;
+import uz.murodjon.robotcallv2.campaign.domain.enums.OutcomeExit;
 import uz.murodjon.robotcallv2.campaign.domain.enums.SequenceStepType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetStatus;
+import uz.murodjon.robotcallv2.campaign.domain.service.OutcomeMatcher;
 import uz.murodjon.robotcallv2.campaign.domain.service.RetrySchedule;
 import uz.murodjon.robotcallv2.campaign.domain.service.SequenceRouting;
+import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
+import uz.murodjon.robotcallv2.donotcall.domain.enums.DoNotCallSource;
+import uz.murodjon.robotcallv2.shared.exception.AppException;
 import uz.murodjon.robotcallv2.campaign.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
+import uz.murodjon.robotcallv2.schedule.application.port.input.BusinessScheduleUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
 import uz.murodjon.robotcallv2.sms.application.port.input.SmsUseCase;
 
 import java.time.*;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -50,24 +66,42 @@ public class CampaignOutcomeService {
     private static final TypeReference<Map<String, Object>> FACTS = new TypeReference<>() {
     };
 
+    /** The built-in outcomes every CONVERSATION step has, as a target records them. */
+    static final String OTHER = "Other";
+    static final String NO_RESPONSE = "No Response";
+    /** A callback the lead gave no time for: Retell's "next business day", at least 24 hours on. */
+    private static final Duration CALLBACK_FALLBACK = Duration.ofHours(24);
+
     private final CampaignRepository campaignRepository;
     private final CampaignTargetRepository campaignTargetRepository;
     private final CompanyConfigUseCase companyConfigUseCase;
+    private final BusinessScheduleUseCase businessScheduleUseCase;
     private final RetryProperties retryProperties;
     private final AuditUseCase auditUseCase;
     private final NotificationUseCase notificationUseCase;
     private final SmsUseCase smsUseCase;
+    private final OutcomeClassifierPort outcomeClassifierPort;
+    private final AutoEnrollContactRepository autoEnrollContactRepository;
+    private final DoNotCallUseCase doNotCallUseCase;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public CampaignOutcomeService(CampaignRepository campaignRepository,
                                   CampaignTargetRepository campaignTargetRepository,
-                                  CompanyConfigUseCase companyConfigUseCase, RetryProperties retryProperties,
+                                  CompanyConfigUseCase companyConfigUseCase,
+                                  BusinessScheduleUseCase businessScheduleUseCase,
+                                  RetryProperties retryProperties,
                                   AuditUseCase auditUseCase, NotificationUseCase notificationUseCase,
-                                  SmsUseCase smsUseCase, ObjectMapper objectMapper, Clock clock) {
+                                  SmsUseCase smsUseCase, OutcomeClassifierPort outcomeClassifierPort,
+                                  AutoEnrollContactRepository autoEnrollContactRepository,
+                                  DoNotCallUseCase doNotCallUseCase, ObjectMapper objectMapper, Clock clock) {
+        this.outcomeClassifierPort = outcomeClassifierPort;
+        this.autoEnrollContactRepository = autoEnrollContactRepository;
+        this.doNotCallUseCase = doNotCallUseCase;
         this.campaignRepository = campaignRepository;
         this.campaignTargetRepository = campaignTargetRepository;
         this.companyConfigUseCase = companyConfigUseCase;
+        this.businessScheduleUseCase = businessScheduleUseCase;
         this.retryProperties = retryProperties;
         this.auditUseCase = auditUseCase;
         this.notificationUseCase = notificationUseCase;
@@ -76,15 +110,23 @@ public class CampaignOutcomeService {
         this.clock = clock;
     }
 
-    void applyOutcome(long companyId, long targetId, Disposition disposition) {
+    /**
+     * @param transcript the call's transcript, on which a sequence's PROMPT outcomes are judged; null
+     *                   when there is none — no AI agent spoke — and only METRICS outcomes can match
+     */
+    void applyOutcome(long companyId, long targetId, Disposition disposition, String transcript) {
         CampaignTarget t = campaignTargetRepository.find(companyId, targetId);
         if (t == null) {
             return;
         }
         Campaign c = campaignRepository.find(companyId, t.campaignId());
+        // Before the follow-up SMS: the second dial is part of the same attempt, not its end.
+        if (c != null && c.sequence() != null && doubleDial(c, t, disposition)) {
+            return;
+        }
         sendFollowUpSms(c, t, disposition);
         if (c != null && c.sequence() != null) {
-            applySequenceOutcome(c, t, disposition);
+            applySequenceOutcome(c, t, disposition, transcript);
             return;
         }
         if (SequenceRouting.isFinal(disposition)) {
@@ -118,48 +160,162 @@ public class CampaignOutcomeService {
     }
 
     /**
-     * A finished call on a campaign that has a sequence: the target retries its step until the
-     * step's attempts are spent, then follows the route of how the step ended — to the next
-     * step, or out of the sequence when no route is set for that outcome.
+     * A finished call on a campaign that has a sequence (Retell's outcome evaluation). An unanswered
+     * call retries the step until its attempts are spent, then follows the step's No Response route.
+     * An answered one is judged: the step's own outcomes and then the global ones, METRICS first in
+     * list order, then every PROMPT outcome together through the LLM classifier; nothing matching
+     * follows the step's Other route.
      */
-    private void applySequenceOutcome(Campaign campaign, CampaignTarget target, Disposition disposition) {
+    private void applySequenceOutcome(Campaign campaign, CampaignTarget target, Disposition disposition,
+                                      String transcript) {
         CampaignSequence sequence = campaign.sequence();
         SequenceStep step = currentStep(sequence, target);
-        if (step == null) {
-            // Nothing to route on (a sequence edited under a live campaign): the call's result stands.
+        if (step == null || SequenceRouting.endsSequence(disposition)) {
+            // No step to route on (a sequence edited under a live campaign), or a number never to be
+            // tried again: DO_NOT_CALL was listed at hang-up, a stranger or rejected number is dropped.
             finishTarget(campaign, target, disposition);
             return;
         }
-        if (!SequenceRouting.isFinal(disposition)) {
-            int maxAttempts = step.conversation() != null ? step.conversation().maxAttempts()
-                    : ConversationStepConfig.DEFAULT_MAX_ATTEMPTS;
-            RetryRule rule = campaign.retry().policy().ruleFor(disposition);
-            if (rule != null && rule.maxAttempts() != null && rule.maxAttempts() > 0) {
-                maxAttempts = Math.min(maxAttempts, rule.maxAttempts());
-            }
-            if (disposition == Disposition.CALLBACK_REQUESTED && target.nextAttemptAt() != null
-                    && target.nextAttemptAt().isAfter(Instant.now(clock))) {
-                log.info("Target {} already scheduled for smart callback at {}, preserving schedule",
-                        target.id(), target.nextAttemptAt());
-                return;
-            }
-            if (target.stepAttempts() < maxAttempts) {
-                int stepDelay = step.conversation() != null ? step.conversation().retryDelayMinutes() : 0;
-                Instant next = nextAttemptAt(disposition, campaign,
-                        stepDelay > 0 ? stepDelay : campaign.retry().intervalMinutes());
-                campaignTargetRepository.updateStatus(target.id(), TargetStatus.PENDING, next);
-                log.info("Target {} retries step {} ({}, attempt {}/{}) -> {}", target.id(), step.id(), disposition,
-                        target.stepAttempts(), maxAttempts, next);
-                return;
-            }
-        }
-        String nextStepId = SequenceRouting.endsSequence(disposition) ? null
-                : step.routes().get(SequenceRouting.outcomeOf(disposition));
-        if (nextStepId == null) {
-            finishTarget(campaign, target, disposition);
+        if (disposition == Disposition.CALLBACK_REQUESTED && campaign.autoRetries().autoScheduleCallbacks()) {
+            scheduleSequenceCallback(campaign, target, step);
             return;
         }
-        advanceTo(campaign, target, nextStepId, Duration.ZERO);
+        // With automatic callbacks off, a lead who asked to be called back is an answered call like
+        // any other: the outcomes decide (a "Callback" outcome can route it), as in Retell.
+        if (!SequenceRouting.isAnswered(disposition)) {
+            if (retryStep(campaign, target, step, disposition)) {
+                return;
+            }
+            follow(campaign, target, step, step.outcomes().noResponse(), NO_RESPONSE, false);
+            return;
+        }
+        SequenceOutcome reached = findReachedOutcome(campaign, target, step, disposition, transcript);
+        if (reached == null) {
+            follow(campaign, target, step, step.outcomes().other(), OTHER, true);
+            return;
+        }
+        saveToContact(campaign, target, reached);
+        follow(campaign, target, step, reached.next(), reached.name(), true);
+    }
+
+    /**
+     * Retell's double dial: an unanswered call gets one immediate second dial as part of the same
+     * attempt — the attempt is handed back, so the step's count does not move. Never after a
+     * voicemail (the disposition is not NO_ANSWER), on a campaign that is no longer running, or a
+     * second time on the same attempt.
+     *
+     * @return true when the second dial was queued and nothing else is to happen to the target
+     */
+    private boolean doubleDial(Campaign campaign, CampaignTarget target, Disposition disposition) {
+        if (disposition != Disposition.NO_ANSWER || !campaign.autoRetries().doubleDial()
+                || campaign.status() != CampaignStatus.ACTIVE) {
+            return false;
+        }
+        if (!campaignTargetRepository.redialOnce(target.id())) {
+            return false;
+        }
+        log.info("Target {} double dialled on attempt {}", target.id(), target.attempts());
+        return true;
+    }
+
+    /**
+     * Retell's auto-scheduled callback: at the time the lead asked for (the agent's callback tool put
+     * it on the target while the call was on), else at the first time in the calling window at least
+     * 24 hours later. The step's attempts start over from attempt 1.
+     */
+    private void scheduleSequenceCallback(Campaign campaign, CampaignTarget target, SequenceStep step) {
+        Instant now = Instant.now(clock);
+        Instant at = target.nextAttemptAt() != null && target.nextAttemptAt().isAfter(now)
+                ? target.nextAttemptAt()
+                : intoDialWindow(campaign, ZonedDateTime.now(clock).plus(CALLBACK_FALLBACK));
+        campaignTargetRepository.moveToStep(target.id(), step.id(), at);
+        log.info("Target {} asked for a callback on step {} -> {} (attempts start over)", target.id(), step.id(), at);
+    }
+
+    /**
+     * Places the step's next attempt, its own delay after this call (Retell: counted from the
+     * previous attempt, and moved to the next opening of the calling window); false when the
+     * step's attempts are spent.
+     */
+    private boolean retryStep(Campaign campaign, CampaignTarget target, SequenceStep step, Disposition disposition) {
+        List<StepAttempt> attempts = step.conversation() != null ? step.conversation().attempts() : List.of();
+        int maxAttempts = Math.max(1, attempts.size());
+        RetryRule rule = campaign.retry().policy().ruleFor(disposition);
+        if (rule != null && rule.maxAttempts() != null && rule.maxAttempts() > 0) {
+            maxAttempts = Math.min(maxAttempts, rule.maxAttempts());
+        }
+        if (target.stepAttempts() >= maxAttempts) {
+            return false;
+        }
+        // stepAttempts calls were placed on this step, so the next one is attempts[stepAttempts].
+        long delayMinutes = target.stepAttempts() < attempts.size()
+                ? attempts.get(target.stepAttempts()).computeDelayMinutes() : 0;
+        Instant next = delayMinutes > 0
+                ? intoDialWindow(campaign, ZonedDateTime.now(clock).plusMinutes(delayMinutes))
+                : nextAttemptAt(disposition, campaign, campaign.retry().intervalMinutes());
+        campaignTargetRepository.updateStatus(target.id(), TargetStatus.PENDING, next);
+        log.info("Target {} retries step {} ({}, attempt {}/{}) -> {}", target.id(), step.id(), disposition,
+                target.stepAttempts(), maxAttempts, next);
+        return true;
+    }
+
+    /** The outcome an answered call reached, or null when none matched (the step's Other). */
+    private SequenceOutcome findReachedOutcome(Campaign campaign, CampaignTarget target, SequenceStep step,
+                                               Disposition disposition, String transcript) {
+        List<SequenceOutcome> candidates = new ArrayList<>(step.outcomes().outcomes());
+        candidates.addAll(campaign.sequence().globalOutcomes());
+        Map<String, Object> variables = findFacts(target);
+        variables.put("disposition", disposition.name());
+        Optional<SequenceOutcome> byMetrics = OutcomeMatcher.findMetricsMatch(candidates, variables);
+        if (byMetrics.isPresent()) {
+            return byMetrics.get();
+        }
+        List<SequenceOutcome> prompts = candidates.stream()
+                .filter(outcome -> outcome.evaluation() == OutcomeEvaluation.PROMPT)
+                .toList();
+        if (prompts.isEmpty() || transcript == null || transcript.isBlank()) {
+            return null;
+        }
+        String id = outcomeClassifierPort.findMatchingOutcomeId(campaign.companyId(), transcript, prompts);
+        return id == null ? null : prompts.stream().filter(outcome -> outcome.id().equals(id)).findFirst().orElse(null);
+    }
+
+    /** What the outcome writes to the contact: the do-not-call list and its tags. Never fails the outcome. */
+    private void saveToContact(Campaign campaign, CampaignTarget target, SequenceOutcome outcome) {
+        OutcomeContactUpdate update = outcome.saveToContact();
+        if (update.doNotCall() && !target.doNotCall()) {
+            try {
+                doNotCallUseCase.add(campaign.companyId(), target.phone(), "sequence outcome " + outcome.name(),
+                        DoNotCallSource.CALL);
+                campaignTargetRepository.setDoNotCall(campaign.companyId(), target.id());
+            } catch (AppException e) {
+                log.warn("Target {}: do-not-call entry not recorded: {}", target.id(), e.getMessage());
+            }
+        }
+        for (String tag : update.tags()) {
+            autoEnrollContactRepository.addTag(campaign.companyId(), target.phone(), tag);
+        }
+    }
+
+    /**
+     * Records the outcome and takes the route: to a step, or out of the sequence — DONE when somebody
+     * answered, EXHAUSTED when nobody did. A global outcome that leads back to the step the target is
+     * on ends the sequence rather than run the step again.
+     */
+    private void follow(Campaign campaign, CampaignTarget target, SequenceStep step, OutcomeRoute route,
+                        String outcomeName, boolean answered) {
+        boolean converted = route.exit() == OutcomeExit.END_SUCCESSFUL;
+        campaignTargetRepository.recordOutcome(target.id(), outcomeName, converted);
+        if (route.exit() == OutcomeExit.STEP && route.stepId() != null && !route.stepId().equals(step.id())) {
+            log.info("Target {} reached '{}' on step {} -> step {}", target.id(), outcomeName, step.id(), route.stepId());
+            advanceTo(campaign, target, route.stepId(), Duration.ofMinutes(route.delayMinutes()));
+            return;
+        }
+        TargetStatus status = answered ? TargetStatus.DONE : TargetStatus.EXHAUSTED;
+        campaignTargetRepository.updateStatus(target.id(), status, null);
+        log.info("Target {} reached '{}' on step {} -> {}{}", target.id(), outcomeName, step.id(), status,
+                converted ? " (converted)" : "");
+        checkCompletion(campaign.companyId(), campaign.id());
     }
 
     /** The step the target is on; the start step when it has none yet or its step is gone. */
@@ -324,8 +480,8 @@ public class CampaignOutcomeService {
 
     /** The company's holidays, which the retry schedule steps over (NEXT-PLAN C.4). */
     private Set<LocalDate> holidaysOf(long companyId) {
-        CompanyConfig config = companyConfigUseCase.find(companyId);
-        return config != null ? Set.copyOf(config.holidays()) : Set.of();
+        LocalDate today = LocalDate.now(clock.withZone(zoneOf(companyId)));
+        return businessScheduleUseCase.findHolidayDates(companyId, today, today.plusDays(365));
     }
 
     private Instant nextAttemptAt(Disposition disposition, Campaign campaign) {

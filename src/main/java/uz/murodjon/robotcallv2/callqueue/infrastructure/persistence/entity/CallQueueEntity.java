@@ -66,8 +66,17 @@ public class CallQueueEntity {
     @Column(name = "overflow_action", nullable = false)
     private QueueOverflowAction overflowAction = QueueOverflowAction.CALLBACK;
 
-    @Column(name = "overflow_target")
-    private String overflowTarget;
+    @Column(name = "overflow_queue_id")
+    private Long overflowQueueId;
+
+    @Column(name = "overflow_agent_id")
+    private Long overflowAgentId;
+
+    @Column(name = "overflow_voicemail_id")
+    private Long overflowVoicemailId;
+
+    @Column(name = "overflow_external_phone", length = 32)
+    private String overflowExternalPhone;
 
     @Column(name = "service_level_sec", nullable = false)
     private int serviceLevelSec;
@@ -159,9 +168,60 @@ public class CallQueueEntity {
 
     public void setOverflowAction(QueueOverflowAction overflowAction) { this.overflowAction = overflowAction; }
 
-    public String getOverflowTarget() { return overflowTarget; }
+    public Long getOverflowQueueId() { return overflowQueueId; }
+    public void setOverflowQueueId(Long overflowQueueId) { this.overflowQueueId = overflowQueueId; }
 
-    public void setOverflowTarget(String overflowTarget) { this.overflowTarget = overflowTarget; }
+    public Long getOverflowAgentId() { return overflowAgentId; }
+    public void setOverflowAgentId(Long overflowAgentId) { this.overflowAgentId = overflowAgentId; }
+
+    public Long getOverflowVoicemailId() { return overflowVoicemailId; }
+    public void setOverflowVoicemailId(Long overflowVoicemailId) { this.overflowVoicemailId = overflowVoicemailId; }
+
+    public String getOverflowExternalPhone() { return overflowExternalPhone; }
+    public void setOverflowExternalPhone(String overflowExternalPhone) { this.overflowExternalPhone = overflowExternalPhone; }
+
+    public String getOverflowTarget() {
+        if (overflowAction == null) {
+            return null;
+        }
+        return switch (overflowAction) {
+            case QUEUE -> overflowQueueId != null ? String.valueOf(overflowQueueId) : null;
+            case AI_AGENT -> overflowAgentId != null ? String.valueOf(overflowAgentId) : null;
+            case VOICEMAIL -> overflowVoicemailId != null ? String.valueOf(overflowVoicemailId) : null;
+            case EXTERNAL_NUMBER -> overflowExternalPhone;
+            default -> null;
+        };
+    }
+
+    public void setOverflowTarget(String overflowTarget) {
+        setOverflowTargetForAction(this.overflowAction, overflowTarget);
+    }
+
+    public void setOverflowTargetForAction(QueueOverflowAction action, String target) {
+        this.overflowQueueId = null;
+        this.overflowAgentId = null;
+        this.overflowVoicemailId = null;
+        this.overflowExternalPhone = null;
+        if (target == null || target.isBlank() || action == null) {
+            return;
+        }
+        String trimmed = target.trim();
+        switch (action) {
+            case QUEUE -> this.overflowQueueId = parseLongOrNull(trimmed);
+            case AI_AGENT -> this.overflowAgentId = parseLongOrNull(trimmed);
+            case VOICEMAIL -> this.overflowVoicemailId = parseLongOrNull(trimmed);
+            case EXTERNAL_NUMBER -> this.overflowExternalPhone = trimmed;
+            default -> { /* no-op */ }
+        }
+    }
+
+    private static Long parseLongOrNull(String s) {
+        try {
+            return Long.parseLong(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 
     public int getServiceLevelSec() { return serviceLevelSec; }
 

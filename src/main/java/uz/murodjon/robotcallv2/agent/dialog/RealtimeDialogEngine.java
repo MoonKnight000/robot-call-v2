@@ -679,7 +679,8 @@ public class RealtimeDialogEngine implements CallDialog {
                 factText(c, "clientName"), factText(c, "debtAmount"), factText(c, "currency"),
                 factText(c, "dueDate"), factText(c, "contractNumber"),
                 s.state(), s.transferReason(), s.transcriptText(),
-                StageEntry.findTransferTarget(s.scenario(), s.state()));
+                StageEntry.findTransferTarget(s.scenario(), s.state()),
+                StageEntry.findTransferHeaders(s, s.scenario(), s.state()));
     }
 
     private static String factText(CallContext c, String factName) {

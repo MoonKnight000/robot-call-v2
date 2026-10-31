@@ -56,6 +56,11 @@ public class PhoneNumberRepositoryAdapter implements PhoneNumberRepository {
     }
 
     @Override
+    public Optional<PhoneNumber> findByPhoneNumber(String phoneNumber) {
+        return jpaRepository.findByPhoneNumber(phoneNumber).map(phoneNumberEntityMapper::toPhoneNumber);
+    }
+
+    @Override
     public Set<String> findExistingPhoneNumbers(Collection<String> phoneNumbers) {
         return phoneNumbers.isEmpty() ? Set.of() : Set.copyOf(jpaRepository.findPhoneNumbersIn(phoneNumbers));
     }
@@ -98,7 +103,7 @@ public class PhoneNumberRepositoryAdapter implements PhoneNumberRepository {
                 filter.pageOrDefault(), filter.sizeOrDefault(), page.getTotalElements());
     }
 
-    /** Search over the number and nickname, plus each enum the filter names; a null field does not narrow. */
+    /** Search over the number and nickname, plus each enum and flag the filter names; a null field does not narrow. */
     private static Specification<PhoneNumberEntity> filterSpecification(PhoneNumberFilter filter) {
         String pattern = filter.search() == null || filter.search().isBlank()
                 ? null : LikePatterns.buildContainsPattern(filter.search().toLowerCase());
@@ -108,6 +113,7 @@ public class PhoneNumberRepositoryAdapter implements PhoneNumberRepository {
                         cb.like(cb.lower(root.get("nickname")), pattern, LikePatterns.ESCAPE)),
                 filter.category() == null ? cb.conjunction() : cb.equal(root.get("category"), filter.category()),
                 filter.status() == null ? cb.conjunction() : cb.equal(root.get("status"), filter.status()),
-                filter.type() == null ? cb.conjunction() : cb.equal(root.get("type"), filter.type()));
+                filter.type() == null ? cb.conjunction() : cb.equal(root.get("type"), filter.type()),
+                Boolean.TRUE.equals(filter.withoutTrunk()) ? cb.isNull(root.get("providerTrunkId")) : cb.conjunction());
     }
 }

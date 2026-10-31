@@ -32,7 +32,7 @@ public class BatchCallService implements BatchCallUseCase {
     public BatchCallResponse startBatchCall(long companyId, BatchCallRequest request) {
         long campaignId = campaignUseCase.createCampaign(companyId, new CreateCampaignRequest(
                 request.name(), request.aiAgentId(), null, request.schedule(),
-                request.retry(), request.limits(), null, null, null, null, null, null)).id();
+                request.retry(), request.limits(), null, null, request.numbers(), null, null, null, null)).id();
 
         TargetImportResult imported;
         if (request.csv() != null && !request.csv().isBlank()) {

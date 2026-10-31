@@ -27,6 +27,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Business schedules and holidays (docs/INBOUND-PBX-PLAN.md §5): their CRUD, and the one
@@ -169,6 +171,20 @@ public class BusinessScheduleService implements BusinessScheduleUseCase {
         auditService.record(companyId, "HOLIDAY_FIXED_CREATE", "holiday", String.valueOf(year),
                 created.size() + " added");
         return created;
+    }
+
+    @Override
+    public Set<LocalDate> findHolidayDates(long companyId, LocalDate from, LocalDate to) {
+        return holidayRepository.findBetween(companyId, from, to).stream()
+                .filter(h -> h.kind() == HolidayKind.CLOSED)
+                .map(Holiday::date)
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public boolean isHoliday(long companyId, LocalDate date) {
+        return holidayRepository.findBetween(companyId, date, date).stream()
+                .anyMatch(h -> h.kind() == HolidayKind.CLOSED);
     }
 
     @Override

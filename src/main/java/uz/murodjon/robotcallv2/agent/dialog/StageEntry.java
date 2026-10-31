@@ -318,7 +318,7 @@ final class StageEntry {
             return null;
         }
         StageDef union = StageDef.builder().id("*").type(StageType.EXTRACT_VARIABLE)
-                .action(new StageAction(null, null, null, null, null, null, List.copyOf(fields), null, null))
+                .action(new StageAction(null, null, null, null, null, null, List.copyOf(fields), null, null, null))
                 .build();
         return findExtractionTool(scenario, union);
     }
@@ -330,6 +330,28 @@ final class StageEntry {
     static boolean sendsSms(ScenarioDefinition scenario) {
         return scenario != null && scenario.stages() != null
                 && scenario.stages().stream().anyMatch(stage -> stage.type() == StageType.SMS);
+    }
+
+    /**
+     * The custom SIP headers of the CALL_TRANSFER stage the call is in, {@code {{fact}}} templates
+     * filled in from {@code s}; empty when it is in no such stage or the stage sets none. A fact
+     * value is caller data, so line breaks in it are flattened: one would start a header of its own.
+     */
+    static Map<String, String> findTransferHeaders(DialogOutcomeSink s, ScenarioDefinition scenario, String state) {
+        StageDef stage = scenario == null ? null : scenario.findStage(state);
+        if (stage == null || stage.type() != StageType.CALL_TRANSFER || stage.action() == null
+                || stage.action().sipHeaders() == null || stage.action().sipHeaders().isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> variables = variables(s);
+        Map<String, String> headers = new LinkedHashMap<>();
+        stage.action().sipHeaders().forEach((name, template) -> {
+            String value = PromptTemplateEngine.render(template, variables);
+            if (value != null && !value.isBlank()) {
+                headers.put(name, value.replaceAll("[\\r\\n]+", " ").trim());
+            }
+        });
+        return headers;
     }
 
     /** The number a CALL_TRANSFER stage the call is in hands it to, or null when it is in no such stage. */

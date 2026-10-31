@@ -35,14 +35,12 @@ public class KnowledgeItemEntity {
     @Column(name = "title", nullable = false)
     private String title;
 
-    @Column(name = "answer_uz", nullable = false, columnDefinition = "TEXT")
-    private String answerUz;
-
-    @Column(name = "answer_ru", columnDefinition = "TEXT")
-    private String answerRu;
-
-    @Column(name = "answer_en", columnDefinition = "TEXT")
-    private String answerEn;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "knowledge_item_translation", joinColumns = @JoinColumn(name = "item_id"))
+    @MapKeyColumn(name = "language", length = 10)
+    @Column(name = "answer", columnDefinition = "TEXT", nullable = false)
+    @org.hibernate.annotations.BatchSize(size = 50)
+    private java.util.Map<String, String> answers = new java.util.LinkedHashMap<>();
 
     @Column(name = "keywords", nullable = false, columnDefinition = "TEXT")
     private String keywords;
@@ -116,27 +114,47 @@ public class KnowledgeItemEntity {
     }
 
     public String getAnswerUz() {
-        return answerUz;
+        return answers.get("uz");
     }
 
     public void setAnswerUz(String answerUz) {
-        this.answerUz = answerUz;
+        if (answerUz != null && !answerUz.isBlank()) {
+            answers.put("uz", answerUz);
+        } else {
+            answers.remove("uz");
+        }
     }
 
     public String getAnswerRu() {
-        return answerRu;
+        return answers.get("ru");
     }
 
     public void setAnswerRu(String answerRu) {
-        this.answerRu = answerRu;
+        if (answerRu != null && !answerRu.isBlank()) {
+            answers.put("ru", answerRu);
+        } else {
+            answers.remove("ru");
+        }
     }
 
     public String getAnswerEn() {
-        return answerEn;
+        return answers.get("en");
     }
 
     public void setAnswerEn(String answerEn) {
-        this.answerEn = answerEn;
+        if (answerEn != null && !answerEn.isBlank()) {
+            answers.put("en", answerEn);
+        } else {
+            answers.remove("en");
+        }
+    }
+
+    public java.util.Map<String, String> getAnswers() {
+        return answers;
+    }
+
+    public void setAnswers(java.util.Map<String, String> answers) {
+        this.answers = answers != null ? new java.util.LinkedHashMap<>(answers) : new java.util.LinkedHashMap<>();
     }
 
     public String getKeywords() {

@@ -268,6 +268,9 @@ public class DialogEngine implements CallDialog {
                 agentSttProvider != null && !agentSttProvider.isBlank() ? agentSttProvider.trim() : sttProperties.provider(),
                 voiceSettings.provider() != null ? voiceSettings.provider() : ttsProperties.provider());
         session.latency().callStartedAt(session.startedAt());
+        // The start stage's listening settings, then every later stage's (StageSpeechTuner).
+        session.setStageListener(s -> StageSpeechTuner.apply(s, sttProperties));
+        StageSpeechTuner.apply(session, sttProperties);
         sessions.put(channelId, session);
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
@@ -560,7 +563,8 @@ public class DialogEngine implements CallDialog {
                 s.state(),
                 s.transferReason(),
                 callTranscriptUseCase.findTranscriptText(s.callAttemptId()),
-                StageEntry.findTransferTarget(s.scenario(), s.state()));
+                StageEntry.findTransferTarget(s.scenario(), s.state()),
+                StageEntry.findTransferHeaders(s, s.scenario(), s.state()));
     }
 
     public DialogSession findSession(String channelId) {

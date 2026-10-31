@@ -534,7 +534,12 @@ public class CampaignTargetService implements CampaignTargetUseCase {
 
     @Override
     public void applyOutcome(long companyId, long targetId, Disposition disposition) {
-        campaignOutcomeService.applyOutcome(companyId, targetId, disposition);
+        campaignOutcomeService.applyOutcome(companyId, targetId, disposition, null);
+    }
+
+    @Override
+    public void applyCallOutcome(long companyId, long targetId, Disposition disposition, String transcript) {
+        campaignOutcomeService.applyOutcome(companyId, targetId, disposition, transcript);
     }
 
     @Override

@@ -20,6 +20,10 @@ public interface CallerIdPoolRepository {
 
     void delete(long companyId, long id);
 
+    /**
+     * Adds the company's registered number {@code phone} (already normalized) to the pool. Null when the
+     * pool is not the company's, or {@code phone} is not one of the company's phone numbers.
+     */
     CallerIdPoolNumber addNumber(long companyId, long poolId, String phone, String label);
 
     void removeNumber(long companyId, long poolId, long numberId);

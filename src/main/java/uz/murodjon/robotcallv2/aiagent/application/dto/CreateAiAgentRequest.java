@@ -46,7 +46,6 @@ public record CreateAiAgentRequest(
         AgentWebhookConfig postCallWebhook,
         Set<HandbookRule> handbook,
         @Size(max = 64) String timezone,
-        Set<Long> sipTrunkIds,
         Boolean enabled
 ) {
 }

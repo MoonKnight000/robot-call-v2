@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.*;
 import uz.murodjon.robotcallv2.siptrunk.application.mapper.CallerIdPoolMapper;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
@@ -22,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class CallerIdPoolService implements CallerIdPoolUseCase {
@@ -55,7 +57,7 @@ public class CallerIdPoolService implements CallerIdPoolUseCase {
         if (request.initialPhones() != null) {
             for (String phone : request.initialPhones()) {
                 if (phone != null && !phone.isBlank()) {
-                    callerIdPoolRepository.addNumber(companyId, saved.id(), phone.trim(), null);
+                    addRegisteredNumber(companyId, saved.id(), phone, null);
                 }
             }
         }
@@ -113,8 +115,20 @@ public class CallerIdPoolService implements CallerIdPoolUseCase {
         callerIdPoolRepository.findById(companyId, poolId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CALLER_ID_POOL_NOT_FOUND, poolId));
 
-        CallerIdPoolNumber number = callerIdPoolRepository.addNumber(companyId, poolId, request.phone().trim(), request.label());
-        return callerIdPoolMapper.toNumberRow(number);
+        return callerIdPoolMapper.toNumberRow(addRegisteredNumber(companyId, poolId, request.phone(), request.label()));
+    }
+
+    /**
+     * Only one of the company's own registered phone numbers joins a pool: its trunk is the one its
+     * calls go out on, which free text could not say. The pool is the caller's to have checked.
+     */
+    private CallerIdPoolNumber addRegisteredNumber(long companyId, long poolId, String rawPhone, String label) {
+        String phone = PhoneNumbers.require(rawPhone);
+        CallerIdPoolNumber number = callerIdPoolRepository.addNumber(companyId, poolId, phone, label);
+        if (number == null) {
+            throw new ConflictException(ErrorCode.CALLER_ID_NUMBER_NOT_REGISTERED, phone);
+        }
+        return number;
     }
 
     @Override
@@ -152,32 +166,22 @@ public class CallerIdPoolService implements CallerIdPoolUseCase {
 
     @Override
     @Transactional
-    public String acquireCallerId(long companyId, long poolId) {
-        return acquire(companyId, poolId, null);
-    }
-
-    @Override
-    @Transactional
-    public String acquireLocalCallerId(long companyId, long poolId, String calleePhone) {
-        return acquire(companyId, poolId, calleePhone);
-    }
-
-    /** The pool's next number; the one closest to {@code calleePhone}'s own when that is given. */
-    private String acquire(long companyId, long poolId, String calleePhone) {
+    public CallerIdPoolNumber acquireCallerIdOnTrunks(long companyId, long poolId, String calleePhone,
+                                                      Set<Long> trunkIds) {
         CallerIdPool pool = callerIdPoolRepository.findById(companyId, poolId)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.CALLER_ID_POOL_NOT_FOUND, poolId));
 
-        Optional<CallerIdPoolNumber> selected = calleePhone != null
-                ? CallerIdSelector.selectLocal(pool.numbers(), pool.strategy(), Instant.now(), calleePhone)
-                : CallerIdSelector.select(pool.numbers(), pool.strategy(), Instant.now());
+        Optional<CallerIdPoolNumber> selected =
+                CallerIdSelector.selectOnTrunks(pool.numbers(), pool.strategy(), Instant.now(), calleePhone, trunkIds);
         if (selected.isEmpty()) {
-            throw new ConflictException(ErrorCode.CALLER_ID_POOL_EMPTY, poolId);
+            return null;
         }
 
         CallerIdPoolNumber chosen = selected.get();
         callerIdPoolRepository.recordNumberUsage(pool.id(), chosen.id(), Instant.now());
-        log.debug("Acquired caller ID {} from pool {} using strategy {}", chosen.phone(), pool.name(), pool.strategy());
-        return chosen.phone();
+        log.debug("Acquired caller ID {} (trunk {}) from pool {} using strategy {}", chosen.phone(), chosen.trunkId(),
+                pool.name(), pool.strategy());
+        return chosen;
     }
 
     @Override

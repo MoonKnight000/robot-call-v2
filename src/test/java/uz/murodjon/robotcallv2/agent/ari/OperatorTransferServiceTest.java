@@ -101,7 +101,7 @@ class OperatorTransferServiceTest {
 
         OperatorSnapshot snapshot = new OperatorSnapshot(
                 CHANNEL_ID, "Vali Karimov", "500000", "UZS", "2026-11-01", "D-123",
-                "STAGE_2", "Mijoz operator talab qildi", "AI: Assalomu alaykum\nCLIENT: Operator kerak", null
+                "STAGE_2", "Mijoz operator talab qildi", "AI: Assalomu alaykum\nCLIENT: Operator kerak", null, null
         );
         when(dialogRouter.operatorSnapshot(CHANNEL_ID)).thenReturn(snapshot);
 
@@ -154,7 +154,7 @@ class OperatorTransferServiceTest {
         AiAgent baseAgent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null);
         AiAgent agent = baseAgent.toBuilder()
                 .callBehaviour(new uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour(
-                        uz.murodjon.robotcallv2.aiagent.domain.enums.InterruptionSensitivity.MEDIUM, 700, false,
+                        uz.murodjon.robotcallv2.shared.dialog.InterruptionSensitivity.MEDIUM, 700, false,
                         uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction.LEAVE_MESSAGE,
                         null, false, null, null, null, 999L, null
                 ))

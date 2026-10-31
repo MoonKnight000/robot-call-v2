@@ -44,7 +44,8 @@ public class CallerIdPoolEntityMapper {
                 entity.getStatus(),
                 entity.getCoolingUntil(),
                 entity.getLastUsedAt(),
-                entity.getCreatedAt()
+                entity.getCreatedAt(),
+                entity.getPhoneNumber() != null ? entity.getPhoneNumber().getProviderTrunkId() : null
         );
     }
 }

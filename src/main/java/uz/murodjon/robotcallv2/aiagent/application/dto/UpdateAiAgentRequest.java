@@ -60,7 +60,6 @@ public record UpdateAiAgentRequest(
         AgentWebhookConfig postCallWebhook,
         Set<HandbookRule> handbook,
         @Size(max = 64) String timezone,
-        Set<Long> sipTrunkIds,
         Boolean enabled,
         Long version,
         Set<AgentClearableField> clearFields

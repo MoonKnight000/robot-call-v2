@@ -30,16 +30,23 @@ import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.dialer.domain.service.ContactFrequencyPolicy;
 import uz.murodjon.robotcallv2.dialer.domain.service.DialWindow;
 import uz.murodjon.robotcallv2.dialer.infrastructure.config.DialerProperties;
+import uz.murodjon.robotcallv2.phonenumber.application.port.input.PhoneNumberUseCase;
+import uz.murodjon.robotcallv2.phonenumber.domain.entity.PhoneNumber;
+import uz.murodjon.robotcallv2.schedule.application.port.input.BusinessScheduleUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
+import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
+import uz.murodjon.robotcallv2.siptrunk.domain.entity.CallerIdPoolNumber;
 
 import java.time.*;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
@@ -61,6 +68,8 @@ public class DialerService {
 
     /** How long a target waits after the company's balance could not cover its call. */
     private static final Duration NO_BALANCE_RETRY = Duration.ofMinutes(15);
+    /** How long a target waits when its campaign's caller ID pool has no number it can be dialled from. */
+    private static final Duration NO_CALLER_ID_RETRY = Duration.ofMinutes(5);
     /** How long past its lease an IN_PROGRESS target may sit before {@link #reclaimExpiredClaims} takes it back. */
     private static final Duration CLAIM_GRACE = Duration.ofMinutes(30);
     /** How often a company is told its balance is holding calls back. */
@@ -72,6 +81,7 @@ public class DialerService {
     private final CampaignUseCase campaignUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
     private final CompanyConfigUseCase companyConfigUseCase;
+    private final BusinessScheduleUseCase businessScheduleUseCase;
     private final SipTrunkUseCase sipTrunkUseCase;
     private final RabbitTemplate rabbitTemplate;
     private final DialerState state;
@@ -88,6 +98,8 @@ public class DialerService {
     private final TrunkHealth trunkHealth;
     private final ClusterJobLock clusterJobLock;
     private final CompanyConcurrencyService companyConcurrency;
+    private final CallerIdPoolUseCase callerIdPoolUseCase;
+    private final PhoneNumberUseCase phoneNumberUseCase;
 
     private final Map<Long, AtomicInteger> campaignTrunkCounters = new ConcurrentHashMap<>();
     /** Company id → when it was last told its balance is holding calls. */
@@ -99,15 +111,19 @@ public class DialerService {
 
     public DialerService(DialerProperties dialerProperties, RtpProperties rtpProperties,
                          CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
-                         CompanyConfigUseCase companyConfigUseCase, SipTrunkUseCase sipTrunkUseCase,
+                         CompanyConfigUseCase companyConfigUseCase, BusinessScheduleUseCase businessScheduleUseCase,
+                         SipTrunkUseCase sipTrunkUseCase,
                          RabbitTemplate rabbitTemplate, DialerState state,
                          OutboundCallRegistry registry, AriService ariService,
                          GracefulShutdownManager shutdown, TtsWarmup ttsWarmup, Clock clock,
                          CampaignVariantUseCase campaignVariantUseCase, AiAgentUseCase aiAgentUseCase,
                          CallBillingUseCase callBilling, CallAttemptUseCase callAttemptUseCase, TrunkHealth trunkHealth,
                          ClusterJobLock clusterJobLock,
-                         CompanyConcurrencyService companyConcurrency) {
+                         CompanyConcurrencyService companyConcurrency,
+                         CallerIdPoolUseCase callerIdPoolUseCase, PhoneNumberUseCase phoneNumberUseCase) {
         this.companyConcurrency = companyConcurrency;
+        this.callerIdPoolUseCase = callerIdPoolUseCase;
+        this.phoneNumberUseCase = phoneNumberUseCase;
         this.callAttemptUseCase = callAttemptUseCase;
         this.trunkHealth = trunkHealth;
         this.clusterJobLock = clusterJobLock;
@@ -116,6 +132,7 @@ public class DialerService {
         this.campaignUseCase = campaignUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
+        this.businessScheduleUseCase = businessScheduleUseCase;
         this.sipTrunkUseCase = sipTrunkUseCase;
         this.rabbitTemplate = rabbitTemplate;
         this.state = state;
@@ -249,9 +266,19 @@ public class DialerService {
             // Before the targets are claimed, not after: a campaign whose selected trunks
             // are all disabled has nothing to dial with, and claiming first would leave
             // the batch marked as taken with no call ever placed for it.
+            // The line comes from the campaign's numbers, never from an agent: a pool or fixed-number
+            // campaign dials each number over that number's own trunk, any other over every trunk.
+            Long callerIdPoolId = campaign.numbers().callerIdPoolId();
+            Long fromNumberId = campaign.numbers().fromNumberId();
+            PhoneNumber fromNumber = null;
             List<SipTrunkRow> candidateTrunks;
             try {
-                candidateTrunks = sipTrunkUseCase.findTrunksForCall(campaign.companyId(), agent.sipTrunkIds());
+                candidateTrunks = sipTrunkUseCase.findAllEnabledForCompany(campaign.companyId());
+                if (fromNumberId != null) {
+                    fromNumber = requireFromNumber(campaign, candidateTrunks);
+                    long fromTrunkId = fromNumber.providerTrunkId();
+                    candidateTrunks = candidateTrunks.stream().filter(trunk -> trunk.id() == fromTrunkId).toList();
+                }
                 if (candidateTrunks.isEmpty()) {
                     ariService.requirePlatformTrunkAllowed(campaign.companyId());
                 }
@@ -320,7 +347,8 @@ public class DialerService {
                     continue;
                 }
                 // Check recipient's local timezone quiet hours (08:00 - 20:00)
-                if (!DialWindow.isOpenForRecipient(campaign, contactPolicy, t.phone(), clock)) {
+                Set<LocalDate> holidays = holidaysOf(campaign.companyId(), contactPolicy);
+                if (!DialWindow.isOpenForRecipient(campaign, contactPolicy, holidays, t.phone(), clock)) {
                     campaignTargetUseCase.releaseClaim(t.id(), Instant.now(clock).plus(Duration.ofMinutes(30)));
                     log.info("Target {} ({}) of campaign {} held: outside recipient local dial window",
                             t.id(), PhoneMasker.mask(t.phone()), campaign.id());
@@ -334,6 +362,20 @@ public class DialerService {
                     log.warn("Target {} of campaign {} held: the agent of its sequence step is unavailable",
                             t.id(), campaign.id());
                     continue;
+                }
+                // Number and trunk are chosen together for a pool campaign: a pool number goes out
+                // only on its own trunk, so it is picked among those whose trunk has a free channel.
+                // With none the call waits, like a held number — it never goes out under the
+                // trunk's or the platform's number instead.
+                CallerIdPoolNumber callerIdNumber = null;
+                if (callerIdPoolId != null) {
+                    callerIdNumber = acquireCallerId(campaign, t, freeByTrunk);
+                    if (callerIdNumber == null) {
+                        campaignTargetUseCase.releaseClaim(t.id(), Instant.now(clock).plus(NO_CALLER_ID_RETRY));
+                        log.warn("Target {} of campaign {} held: caller ID pool {} has no number on a trunk with a free channel",
+                                t.id(), campaign.id(), callerIdPoolId);
+                        continue;
+                    }
                 }
                 // The money before the slot: a hold that cannot be taken means this number
                 // is not dialled at all, and holding a concurrency slot for it would keep
@@ -364,7 +406,9 @@ public class DialerService {
                 String language = t.language() != null ? t.language() : stepAgent.language();
 
                 // Never null while there are trunks: the batch was capped at their free channels.
-                Long selectedTrunkId = selectTrunk(candidateTrunks, counter, freeByTrunk);
+                Long selectedTrunkId = callerIdNumber != null
+                        ? takeChannel(callerIdNumber.trunkId(), freeByTrunk)
+                        : selectTrunk(candidateTrunks, counter, freeByTrunk);
                 state.reserveTrunk(selectedTrunkId);
 
                 // Assigned here rather than when the task is consumed: this is the one place
@@ -395,7 +439,8 @@ public class DialerService {
                         new CallTask(campaign.id(), t.id(), t.clientId(), t.phone(), language,
                                 t.contextData(), campaign.companyId(), aiAgentId, selectedTrunkId,
                                 variantId, ttsVoiceOverride, promptOverride, pipelineOverride,
-                                campaign.numbers().callerIdPoolId(), campaign.numbers().localPresence()));
+                                callerIdPoolId, callerIdNumber != null ? callerIdNumber.phone()
+                                        : fromNumber != null ? fromNumber.phoneNumber() : null));
                 log.info("Dispatched target {} ({}) of campaign {} via trunk {}{}", t.id(),
                         PhoneMasker.mask(t.phone()), campaign.id(),
                         selectedTrunkId, variantId != null ? ", variant " + variant.name() : "");
@@ -406,7 +451,7 @@ public class DialerService {
     /**
      * The agent that speaks on this target's next call: the one named by the sequence step it is
      * on, else the campaign's own. Null when that agent cannot be read as a published one.
-     * Trunks, TTS warm-up and the enabled check stay the campaign agent's.
+     * TTS warm-up and the enabled check stay the campaign agent's.
      */
     private AiAgent findStepAgent(Campaign campaign, CampaignTarget target, AiAgent campaignAgent,
                                   Map<Long, AiAgent> cache) {
@@ -430,6 +475,51 @@ public class DialerService {
                     step.id(), e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * The campaign's fixed number, which must still be the company's and sit on one of its enabled
+     * trunks ({@code companyTrunks}). Otherwise the campaign cannot place a call as it was set up,
+     * and it is paused like a campaign with no trunk — never dialled under another number.
+     */
+    private PhoneNumber requireFromNumber(Campaign campaign, List<SipTrunkRow> companyTrunks) {
+        long fromNumberId = campaign.numbers().fromNumberId();
+        PhoneNumber number = phoneNumberUseCase.findCompanyNumber(campaign.companyId(), fromNumberId);
+        if (number == null || !number.hasOwnTrunk()
+                || companyTrunks.stream().noneMatch(trunk -> trunk.id() == number.providerTrunkId())) {
+            throw new ConflictException(ErrorCode.CAMPAIGN_FROM_NUMBER_UNUSABLE,
+                    number != null ? number.phoneNumber() : fromNumberId);
+        }
+        return number;
+    }
+
+    /**
+     * The campaign pool's next number whose trunk still has a free channel this tick — the one
+     * closest to the callee's when the campaign asks for local presence. Null when there is none,
+     * or the pool cannot be read (the target then waits, as for none).
+     */
+    private CallerIdPoolNumber acquireCallerId(Campaign campaign, CampaignTarget target, Map<Long, Integer> freeByTrunk) {
+        Set<Long> trunksWithFreeChannel = new HashSet<>();
+        freeByTrunk.forEach((trunkId, free) -> {
+            if (free > 0) {
+                trunksWithFreeChannel.add(trunkId);
+            }
+        });
+        try {
+            return callerIdPoolUseCase.acquireCallerIdOnTrunks(campaign.companyId(),
+                    campaign.numbers().callerIdPoolId(),
+                    campaign.numbers().localPresence() ? target.phone() : null, trunksWithFreeChannel);
+        } catch (RuntimeException e) {
+            log.error("Campaign {}: caller ID pool {} could not be read: {}", campaign.id(),
+                    campaign.numbers().callerIdPoolId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** One of {@code trunkId}'s free channels, which the caller ID pool only offered because it had one. */
+    private static Long takeChannel(long trunkId, Map<Long, Integer> freeByTrunk) {
+        freeByTrunk.merge(trunkId, -1, Integer::sum);
+        return trunkId;
     }
 
     /**
@@ -482,6 +572,15 @@ public class DialerService {
     private int companyHour(long companyId) {
         CompanyConfig config = companyConfigUseCase.find(companyId);
         return LocalTime.now(config != null ? clock.withZone(config.zoneId()) : clock).getHour();
+    }
+
+    private Set<LocalDate> holidaysOf(long companyId, CompanyConfig config) {
+        if (businessScheduleUseCase == null) {
+            return Set.of();
+        }
+        ZoneId zone = config != null ? config.zoneId() : clock.getZone();
+        LocalDate today = LocalDate.now(clock.withZone(zone));
+        return businessScheduleUseCase.findHolidayDates(companyId, today, today);
     }
 
     private int remainingToday(Campaign campaign, LocalDate today) {
@@ -593,11 +692,15 @@ public class DialerService {
 
     /** Also read by CallTaskConsumer, which re-checks it just before dialling a queued task. */
     boolean isWithinDialWindow(Campaign campaign) {
-        return DialWindow.isOpen(campaign, companyConfigUseCase.find(campaign.companyId()), clock);
+        CompanyConfig config = companyConfigUseCase.find(campaign.companyId());
+        Set<LocalDate> holidays = holidaysOf(campaign.companyId(), config);
+        return DialWindow.isOpen(campaign, config, holidays, clock);
     }
 
     /** Re-checks dial window considering both company configuration and recipient's local timezone. */
     boolean isWithinDialWindowForRecipient(Campaign campaign, String recipientPhone) {
-        return DialWindow.isOpenForRecipient(campaign, companyConfigUseCase.find(campaign.companyId()), recipientPhone, clock);
+        CompanyConfig config = companyConfigUseCase.find(campaign.companyId());
+        Set<LocalDate> holidays = holidaysOf(campaign.companyId(), config);
+        return DialWindow.isOpenForRecipient(campaign, config, holidays, recipientPhone, clock);
     }
 }

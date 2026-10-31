@@ -264,7 +264,7 @@ public class LiveKitCallService {
             boolean last = i == routes.size() - 1;
             try {
                 LiveKitDialOutcome dial = liveKitTelephonyService.dialAndWaitForAnswer(roomName,
-                        LiveKitTelephonyService.CALLEE_IDENTITY, number, route.callerId().get(), route.credentials());
+                        LiveKitTelephonyService.CALLEE_IDENTITY, number, route.callerId().get(), route.credentials(), Map.of());
                 if (last || !dial.failedAtTrunk()) {
                     return dial;
                 }
@@ -315,7 +315,7 @@ public class LiveKitCallService {
                     context = context.withPhone(phone);
                 }
                 startSession(roomName, new SessionPlan(companyId, agent, scenario, scenario.definition(), language,
-                        agent.voiceFor(language), context, phone, route.id(), null, false, null));
+                        agent.voiceFor(language), context, phone, route.storedId(), null, false, null));
             } catch (Exception e) {
                 log.error("[{}] LiveKit inbound call could not be started: {}", roomName, e.getMessage(), e);
                 liveKitTelephonyService.hangUp(roomName);
@@ -352,7 +352,7 @@ public class LiveKitCallService {
                         : memory != null ? memory.preferredName() : null;
                 startSession(roomName, new SessionPlan(companyId, null, null, null,
                         knownLanguage != null ? knownLanguage : decision.language(), null, null,
-                        callerNumber != null ? callerNumber : "INBOUND", route.id(), null, false,
+                        callerNumber != null ? callerNumber : "INBOUND", route.storedId(), null, false,
                         new FlowEntry(decision, callerNumber, did, knownLanguage != null, clientName)));
             } catch (Exception e) {
                 log.error("[{}] LiveKit inbound call flow could not be started: {}", roomName, e.getMessage(), e);
@@ -531,9 +531,12 @@ public class LiveKitCallService {
      */
     private void transferToNumber(String roomName, long companyId, AiAgent agent) {
         OperatorSnapshot snapshot = dialogRouter.operatorSnapshot(roomName);
-        String target = snapshot != null && snapshot.transferTo() != null && !snapshot.transferTo().isBlank()
+        boolean stageNumber = snapshot != null && snapshot.transferTo() != null && !snapshot.transferTo().isBlank();
+        String target = stageNumber
                 ? snapshot.transferTo()
                 : agent != null ? agent.callBehaviour().transferPhoneNumber() : null;
+        // The CALL_TRANSFER stage's own SIP headers go with its own number only.
+        Map<String, String> sipHeaders = stageNumber ? snapshot.transferHeaders() : Map.of();
         String number = toDialableNumber(target);
         if (number == null) {
             log.info("[{}] no transfer number a LiveKit call can dial ({}); hanging up", roomName, target);
@@ -544,7 +547,7 @@ public class LiveKitCallService {
         operatorAcceptance.onOperatorDialled(roomName, false);
         callExecutor.execute(() -> CallMdc.with(roomName, () -> {
             try {
-                LiveKitDialOutcome dial = dialTransferLeg(roomName, companyId, number);
+                LiveKitDialOutcome dial = dialTransferLeg(roomName, companyId, number, sipHeaders);
                 if (!dial.answered()) {
                     log.info("[{}] transfer to {} not answered (SIP {})", roomName, PhoneMasker.mask(number), dial.sipStatus());
                     operatorAcceptance.fallBack(roomName);
@@ -567,8 +570,12 @@ public class LiveKitCallService {
         }));
     }
 
-    /** Rings {@code number} into the room over the company's default trunk and waits for the answer. */
-    private LiveKitDialOutcome dialTransferLeg(String roomName, long companyId, String number) {
+    /**
+     * Rings {@code number} into the room over the company's default trunk and waits for the answer;
+     * {@code sipHeaders} go on the leg's INVITE.
+     */
+    private LiveKitDialOutcome dialTransferLeg(String roomName, long companyId, String number,
+                                               Map<String, String> sipHeaders) {
         SipTrunkRow trunk = sipTrunkUseCase.findDefaultForCall(companyId);
         if (trunk == null && companyId != companyProperties.defaultId()) {
             throw new ConflictException(ErrorCode.SIP_TRUNK_NONE_CONFIGURED, companyId);
@@ -577,7 +584,7 @@ public class LiveKitCallService {
                 ? sipTrunkUseCase.requireCredentialsForCall(companyId, trunk.id()) : null;
         log.info("[{}] transferring to {}", roomName, PhoneMasker.mask(number));
         return liveKitTelephonyService.dialAndWaitForAnswer(roomName, LiveKitTelephonyService.OPERATOR_IDENTITY, number,
-                trunk != null ? trunk.callerId() : null, credentials);
+                trunk != null ? trunk.callerId() : null, credentials, sipHeaders);
     }
 
     /**
@@ -594,7 +601,7 @@ public class LiveKitCallService {
         }
         LiveKitDialOutcome dial;
         try {
-            dial = dialTransferLeg(roomName, call.companyId(), number);
+            dial = dialTransferLeg(roomName, call.companyId(), number, Map.of());
         } catch (RuntimeException e) {
             log.error("[{}] forward failed: {}", roomName, e.getMessage());
             return QueueOutcome.NO_ANSWER;

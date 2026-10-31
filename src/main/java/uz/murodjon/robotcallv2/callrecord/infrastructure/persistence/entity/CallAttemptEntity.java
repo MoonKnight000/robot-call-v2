@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignTargetEntity;
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignVariantEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
@@ -100,8 +101,9 @@ public class CallAttemptEntity {
     private CampaignVariantEntity variant;
 
     /** The agent that ran the call and the published version it ran (NEXT-PLAN A.1). */
-    @Column(name = "ai_agent_id")
-    private Long aiAgentId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ai_agent_id")
+    private AiAgentEntity aiAgent;
 
     @Column(name = "agent_version")
     private Integer agentVersion;
@@ -286,12 +288,16 @@ public class CallAttemptEntity {
         return operatorUser != null ? operatorUser.getId() : null;
     }
 
-    public Long getAiAgentId() {
-        return aiAgentId;
+    public AiAgentEntity getAiAgent() {
+        return aiAgent;
     }
 
-    public void setAiAgentId(Long aiAgentId) {
-        this.aiAgentId = aiAgentId;
+    public void setAiAgent(AiAgentEntity aiAgent) {
+        this.aiAgent = aiAgent;
+    }
+
+    public Long getAiAgentId() {
+        return aiAgent != null ? aiAgent.getId() : null;
     }
 
     public Integer getAgentVersion() {

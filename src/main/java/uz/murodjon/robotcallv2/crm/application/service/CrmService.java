@@ -94,6 +94,9 @@ public class CrmService implements CrmUseCase {
         } else if (targetStatusId == null && (disposition == Disposition.NO_ANSWER || disposition == Disposition.CALLBACK_REQUESTED || disposition == Disposition.CARRIER_REJECTED)) {
             targetStatusId = firstSet(settings.callbackStatusId(), crmProperties.callbackStatusId());
             reason = "Bog'lanib bo'lmadi (" + disposition + ")";
+        } else if (targetStatusId == null && disposition != null && settings.statusFor(disposition) != null) {
+            targetStatusId = settings.statusFor(disposition);
+            reason = "Qo'ng'iroq natijasi (" + disposition + ")";
         }
 
         if (targetStatusId != null && targetStatusId > 0) {

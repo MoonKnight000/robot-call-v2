@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.phonenumber.infrastructure.persistence.entity.PhoneNumberEntity;
 import uz.murodjon.robotcallv2.siptrunk.domain.enums.CallerIdNumberStatus;
 
 import java.time.Instant;
@@ -22,6 +23,11 @@ public class CallerIdPoolNumberEntity {
 
     @Column(nullable = false, length = 32)
     private String phone;
+
+    /** The registered number this member is; its provider trunk is the member's trunk. Null for an unlinked V32 leftover. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "phone_number_id")
+    private PhoneNumberEntity phoneNumber;
 
     @Column(length = 100)
     private String label;
@@ -71,6 +77,14 @@ public class CallerIdPoolNumberEntity {
 
     public void setPhone(String phone) {
         this.phone = phone;
+    }
+
+    public PhoneNumberEntity getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(PhoneNumberEntity phoneNumber) {
+        this.phoneNumber = phoneNumber;
     }
 
     public String getLabel() {

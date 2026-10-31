@@ -73,6 +73,31 @@ public final class SttHints {
     }
 
     /**
+     * The agent's (or its current stage's) boosted keywords in front of {@code hints}, under
+     * the same cap. Keywords go first because somebody typed them for this agent on purpose,
+     * and the cap cuts from the end.
+     *
+     * @param keywords boosted keywords; null or empty leaves {@code hints} as they are
+     * @param hints    the call's own hints ({@link #of})
+     */
+    public static List<String> withKeywords(List<String> keywords, List<String> hints) {
+        Set<String> merged = new LinkedHashSet<>();
+        if (keywords != null) {
+            for (String keyword : keywords) {
+                if (keyword != null && !keyword.isBlank()) {
+                    merged.add(keyword.trim());
+                }
+            }
+        }
+        if (hints != null) {
+            merged.addAll(hints);
+        }
+        return merged.size() <= MAX_HINTS
+                ? List.copyOf(merged)
+                : List.copyOf(new ArrayList<>(merged).subList(0, MAX_HINTS));
+    }
+
+    /**
      * Add a fact's value if it is the kind of thing a recognizer can be steered by: text,
      * not a sum or a date. A name is added whole and word by word, because callers answer
      * with either.\n     */

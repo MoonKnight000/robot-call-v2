@@ -1,20 +1,39 @@
 package uz.murodjon.robotcallv2.campaign.domain.entity;
 
-/**
- * The call a CONVERSATION step places.
- *
- * @param aiAgentId         the agent that speaks on this step's calls
- * @param maxAttempts       calls a contact gets on this step before it is routed as NO_RESPONSE
- * @param retryDelayMinutes minutes between two attempts of the same step; 0 leaves it to the
- *                          campaign's per-disposition defaults
- */
-public record ConversationStepConfig(Long aiAgentId, int maxAttempts, int retryDelayMinutes) {
+import uz.murodjon.robotcallv2.campaign.domain.enums.DelayUnit;
 
-    public static final int DEFAULT_MAX_ATTEMPTS = 3;
-    public static final int MAX_ATTEMPTS = 10;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * The calls a CONVERSATION step places.
+ *
+ * @param aiAgentId the agent that speaks on this step's calls
+ * @param attempts  the step's calls in order, each with its delay after the previous one; when they
+ *                  are spent unanswered the contact follows the step's No Response route
+ */
+public record ConversationStepConfig(Long aiAgentId, List<StepAttempt> attempts) {
+
+    /** Retell's default: immediately, then 3, 7 and 10 days after the previous attempt — days 0, 3, 10, 20. */
+    public static final List<StepAttempt> DEFAULT_ATTEMPTS = List.of(
+            StepAttempt.createImmediate(),
+            new StepAttempt(3, DelayUnit.DAYS),
+            new StepAttempt(7, DelayUnit.DAYS),
+            new StepAttempt(10, DelayUnit.DAYS));
+    public static final int MAX_ATTEMPTS = 50;
 
     public ConversationStepConfig {
-        maxAttempts = maxAttempts <= 0 ? DEFAULT_MAX_ATTEMPTS : maxAttempts;
-        retryDelayMinutes = Math.max(0, retryDelayMinutes);
+        List<StepAttempt> normalized = new ArrayList<>(attempts == null ? List.of() : attempts);
+        normalized.removeIf(Objects::isNull);
+        // The first call goes out when the contact reaches the step; a delay before it is the outcome's.
+        if (!normalized.isEmpty()) {
+            normalized.set(0, StepAttempt.createImmediate());
+        }
+        attempts = List.copyOf(normalized);
+    }
+
+    public int countAttempts() {
+        return attempts.size();
     }
 }

@@ -8,6 +8,9 @@ package uz.murodjon.robotcallv2.campaign.domain.entity;
  * @param localPresence  pick the pool number that shares the longest prefix with the number being
  *                       called (same region or operator), so the call shows up as a local one;
  *                       needs {@code callerIdPoolId}
+ * @param fromNumberId   one of the company's phone numbers every call presents instead of a pool —
+ *                       the call goes out on that number's own trunk. Not together with
+ *                       {@code callerIdPoolId}; with neither, calls go out over the agent's trunks
  */
-public record CampaignNumbers(Long callerIdPoolId, boolean localPresence) {
+public record CampaignNumbers(Long callerIdPoolId, boolean localPresence, Long fromNumberId) {
 }

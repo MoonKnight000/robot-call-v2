@@ -22,7 +22,8 @@ import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
  * @param pipelineModeOverride an A/B variant's pipeline for this call, or null for the
  *                         agent's own — the cascade-versus-realtime test
  * @param callerIdPoolId   the campaign's caller ID pool, or null to present the trunk's own number
- * @param localPresence    pick the pool number closest to {@code phone}'s own
+ * @param callerId         the pool number this call presents, chosen by the dialer together with
+ *                         {@code sipTrunkId} — the number's own trunk; null when there is no pool
  */
 public record CallTask(
         Long campaignId,
@@ -39,7 +40,7 @@ public record CallTask(
         String promptOverride,
         PipelineMode pipelineModeOverride,
         Long callerIdPoolId,
-        boolean localPresence
+        String callerId
 ) {
 
     /** A task that names no caller ID pool: the trunk's own caller ID is presented. */
@@ -47,7 +48,7 @@ public record CallTask(
                     String contextData, long companyId, long aiAgentId, Long sipTrunkId, Long variantId,
                     String ttsVoiceOverride, String promptOverride, PipelineMode pipelineModeOverride) {
         this(campaignId, targetId, clientId, phone, language, contextData, companyId, aiAgentId, sipTrunkId,
-                variantId, ttsVoiceOverride, promptOverride, pipelineModeOverride, null, false);
+                variantId, ttsVoiceOverride, promptOverride, pipelineModeOverride, null, null);
     }
 
     /** The RabbitMQ queue a call task travels on, from the dialer's sweep to CallTaskConsumer. */

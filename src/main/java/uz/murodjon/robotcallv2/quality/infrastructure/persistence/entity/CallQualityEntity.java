@@ -1,14 +1,17 @@
 package uz.murodjon.robotcallv2.quality.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallAttemptEntity;
 import uz.murodjon.robotcallv2.quality.domain.enums.CallReviewStatus;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
 
 /**
- * Plain id columns rather than associations, like {@code tool_execution}: the row is written
- * once from the post-call pipeline and read back as a whole, never navigated.
+ * JPA entity for {@code call_quality}.
+ * AI metrics and automated signals for an AI-agent-handled call attempt.
+ * Domain attributes like {@code aiAgentId}, {@code agentVersion}, and {@code disposition}
+ * are normalized and resolved directly from the parent {@link CallAttemptEntity}.
  */
 @Entity
 @Table(name = "call_quality")
@@ -21,18 +24,9 @@ public class CallQualityEntity {
     @Column(name = "company_id", nullable = false)
     private Long companyId;
 
-    @Column(name = "call_attempt_id", nullable = false)
-    private Long callAttemptId;
-
-    @Column(name = "ai_agent_id")
-    private Long aiAgentId;
-
-    @Column(name = "agent_version")
-    private Integer agentVersion;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "disposition", length = 50)
-    private Disposition disposition;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "call_attempt_id", nullable = false)
+    private CallAttemptEntity callAttempt;
 
     @Column(name = "score")
     private Integer score;
@@ -118,14 +112,15 @@ public class CallQualityEntity {
     public void setId(Long id) { this.id = id; }
     public Long getCompanyId() { return companyId; }
     public void setCompanyId(Long companyId) { this.companyId = companyId; }
-    public Long getCallAttemptId() { return callAttemptId; }
-    public void setCallAttemptId(Long callAttemptId) { this.callAttemptId = callAttemptId; }
-    public Long getAiAgentId() { return aiAgentId; }
-    public void setAiAgentId(Long aiAgentId) { this.aiAgentId = aiAgentId; }
-    public Integer getAgentVersion() { return agentVersion; }
-    public void setAgentVersion(Integer agentVersion) { this.agentVersion = agentVersion; }
-    public Disposition getDisposition() { return disposition; }
-    public void setDisposition(Disposition disposition) { this.disposition = disposition; }
+
+    public CallAttemptEntity getCallAttempt() { return callAttempt; }
+    public void setCallAttempt(CallAttemptEntity callAttempt) { this.callAttempt = callAttempt; }
+
+    public Long getCallAttemptId() { return callAttempt != null ? callAttempt.getId() : null; }
+    public Long getAiAgentId() { return callAttempt != null ? callAttempt.getAiAgentId() : null; }
+    public Integer getAgentVersion() { return callAttempt != null ? callAttempt.getAgentVersion() : null; }
+    public Disposition getDisposition() { return callAttempt != null ? callAttempt.getDisposition() : null; }
+
     public Integer getScore() { return score; }
     public void setScore(Integer score) { this.score = score; }
     public Boolean getGuardrailViolation() { return guardrailViolation; }

@@ -44,7 +44,7 @@ public class ContactRepositoryAdapter implements ContactRepository {
         entity.setName(contact.name());
         entity.setPhone(contact.phone());
         entity.setAddress(contact.address());
-        entity.setTags(contact.tags());
+        entity.setTagsFromString(contact.tags());
         entity.setNotes(contact.notes());
         entity.setCreatedAt(Instant.now());
         return contactJpaRepository.save(entity).getId();
@@ -79,7 +79,7 @@ public class ContactRepositoryAdapter implements ContactRepository {
         contactJpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
             entity.setName(contact.name());
             entity.setAddress(contact.address());
-            entity.setTags(contact.tags());
+            entity.setTagsFromString(contact.tags());
             entity.setNotes(contact.notes());
             contactJpaRepository.save(entity);
         });

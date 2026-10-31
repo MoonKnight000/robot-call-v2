@@ -211,7 +211,9 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "sttProvider": "gemini",
     "sttModel": "gemini-3.5-transcribe-live",
     "ttsProvider": "gemini",
-    "ttsModel": "gemini-3.8-flash-tts"
+    "ttsModel": "gemini-3.8-flash-tts",
+    "transcriptionMode": "ACCURATE",
+    "boostedKeywords": ["Nido", "muddatli to'lov"]
   },
   "voice": {
     "defaultVoice": "gemini-tts-aoede-uz",
@@ -252,7 +254,8 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "transferPhoneNumber": null,
     "transferMessage": null,
     "transferQueueId": 4,
-    "preConversationAudioFileId": null
+    "preConversationAudioFileId": null,
+    "responseWaitMs": 600
   },
   "limits": {
     "concurrentCallsLimit": 15,
@@ -284,10 +287,15 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "headers": { "Authorization": "Bearer secret_token" },
     "timeoutSeconds": 10
   },
-  "sipTrunkIds": [1, 2],
   "enabled": true
 }
 ```
+
+> **`sipTrunkIds` olib tashlandi (2026-10-31, breaking change).** Agent endi qaysi trunkdan
+> qo'ng'iroq qilishni tanlamaydi — bu kampaniyaning savoli: `numbers.fromNumberId` yoki
+> `numbers.callerIdPoolId` raqamining o'z trunki, ikkalasi ham yo'q bo'lsa kompaniyaning barcha
+> yoqilgan trunklari ([campaigns.md — Raqamlar](campaigns.md)). Maydon so'rovda yuborilsa e'tiborsiz
+> qoldiriladi, javobda kelmaydi.
 
 > **Maydon guruhlari (2026-10-28 dan, breaking change).** Agent sozlamalari domain'dagi
 > guruhlar bo'yicha ichma-ich obyektlarda keladi: `script`, `speechEngine`, `voice`, `ambience`,
@@ -316,7 +324,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 >
 > Yuqori darajada qolganlar: `name`, `description`, `language`, `persona`, `engineProfileId`,
 > `llmModel`, `fastLlmModel`, `temperature`, `maxOutputTokens`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
-> `postCallWebhook`, `handbook`, `timezone`, `sipTrunkIds`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
+> `postCallWebhook`, `handbook`, `timezone`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
 > `id`, `companyId`, `disclosureEnabled`, `scenarioName`, `pronunciationRules`, `postCallActions`, `preCallFunctions`,
 > `createdAt`, `createdBy`, `createdByName`, `publishedVersion`, `hasDraftChanges`, `version`.
 
@@ -374,6 +382,35 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > Fayl qo'ng'iroq kompaniyasiniki bo'lishi shart; o'qib bo'lmasa (o'chirilgan, boshqa kompaniyaniki,
 > WAV emas) qo'ng'iroq usiz davom etadi va serverda WARN log yoziladi. `null` — yo'q. U
 > `callBehaviour` guruhida, shuning uchun `PUT /api/ai-agents/{id}/advanced` orqali ham o'zgaradi.
+
+> **Navbat olish va tanish sozlamalari** (Retell'ning "Responsiveness", "Transcription mode",
+> "Boosted keywords"; `POST`, `PUT` va javob qatorida). Uchalasi ham faqat **`CASCADE`** pipeline'da
+> qo'llanadi — `REALTIME` / `HALF_CASCADE` qo'ng'iroqda e'tiborsiz qoladi. Ssenariy bosqichi har
+> birini o'z `overrides` ida almashtira oladi ([scenarios.md — StageOverrides](scenarios.md)).
+>
+> | Maydon | Tip | Ma'nosi |
+> |---|---|---|
+> | `callBehaviour.responseWaitMs` | integer, 100–3000 | Mijoz gapirib bo'lgach, agent navbatni olishdan oldin kutadigan sukut (ms). Kichik — tezroq javob, lekin mijoz o'ylab turganda gapini bo'lishi mumkin. `null` — o'rnatma standarti |
+> | `speechEngine.transcriptionMode` | `FAST` \| `ACCURATE` | `FAST` — matn tezroq keladi, `ACCURATE` — biroz kechroq, lekin ishonchliroq. `null` — o'rnatma standarti |
+> | `speechEngine.boostedKeywords` | string[], ko'pi bilan 100 ta, har biri 1–50 belgi | STT ustunlik beradigan so'zlar (ism, brend, mahsulot nomi). `null` yoki `[]` — yo'q |
+>
+> `PUT` da `null` — o'zgarmaydi; `boostedKeywords: []` — ro'yxatni tozalaydi (javobda `null` qaytadi),
+> ro'yxat to'liq almashtiriladi. Standartga qaytarish — `clearFields: ["RESPONSE_WAIT_MS", "TRANSCRIPTION_MODE",
+> "BOOSTED_KEYWORDS"]` (pastdagi `clearFields` jadvali). Chegaradan tashqari qiymat — `400 AI_AGENT_RESPONSE_WAIT_OUT_OF_RANGE`,
+> `400 AI_AGENT_BOOSTED_KEYWORDS_TOO_MANY` yoki `400 AI_AGENT_BOOSTED_KEYWORD_INVALID` (bo'sh yoki 50 belgidan
+> uzun so'z). Agent versiyasi (publish) va klonida ham saqlanadi.
+>
+> **Qo'ng'iroqda qachon ta'sir qiladi** (faqat `CASCADE`; `REALTIME`/`HALF_CASCADE` da e'tiborga olinmaydi; ssenariy
+> blokining `overrides` i xuddi shu uchtasini blok faol bo'lganda almashtiradi):
+> - `responseWaitMs` — VAD gating yoqilgan bo'lsa (`voice-agent.stt.vad-gating.enabled`, standart yoqilgan).
+>   Faqat uzun gapdan keyingi kutishni almashtiradi; qisqa javob va tugallangan gapdan keyin agent undan
+>   tezroq javob berishi mumkin, kechroq emas.
+> - `transcriptionMode` — server `voice-agent.stt.transcription-modes.<provayder>.fast|accurate` da shu
+>   provayder uchun model nomini bergan bo'lsagina; berilmagan bo'lsa ta'siri yo'q. Aniq `sttModel` agent
+>   rejimidan ustun (blok rejimi esa undan ham ustun).
+> - `boostedKeywords` — hozircha faqat `openai` STT provayderida eshitiladi; qo'ng'iroqning o'z atamalari bilan
+>   birga ko'pi bilan 65 ta so'z, kalit so'zlar birinchi. Blok rejimi yoki so'zlari o'zgarsa, STT oqimi bir marta
+>   qayta ulanadi.
 
 > **Speech engine maydonlari qo'ng'iroqda qanday qo'llanadi:**
 > - `sttProvider` — shu agent qo'ng'iroqlarini tanigan provayder. Saqlashda
@@ -594,6 +631,9 @@ faqat `PUT`):
 | `FAST_LLM_MODEL` | `fastLlmModel` |
 | `GREETING_PAUSE` | `greeting.pauseBeforeSpeakingMs` (platform defaultiga qaytadi) |
 | `SPEECH_LANGUAGES` | `speechLanguages` (faqat agentning asosiy tili qoladi — bitta til rejimi) |
+| `RESPONSE_WAIT_MS` | `callBehaviour.responseWaitMs` (o'rnatma standartiga qaytadi) |
+| `TRANSCRIPTION_MODE` | `speechEngine.transcriptionMode` (o'rnatma standartiga qaytadi) |
+| `BOOSTED_KEYWORDS` | `speechEngine.boostedKeywords` (`speechEngine.boostedKeywords: []` yuborish bilan bir xil) |
 
 Bir xil so'rovda maydonga qiymat berib, uni `clearFields` ga ham qo'shish —
 `400 AI_AGENT_CLEAR_FIELD_CONFLICT` (hech narsa yozilmaydi). Ro'yxatda yo'q maydonlar avvalgidek
@@ -605,10 +645,12 @@ birlashtiriladi; `clearFields` yuborilmasa — hech narsa o'zgarmaydi (eski klie
 |---|---|
 | `AI_AGENT_TEMPERATURE_OUT_OF_RANGE` | `temperature` 0..2 dan tashqarida |
 | `AI_AGENT_MAX_OUTPUT_TOKENS_OUT_OF_RANGE` | `maxOutputTokens` 1..4096 dan tashqarida |
-| `SIP_TRUNK_NOT_FOUND` (404) | `sipTrunkIds` dagi trunk topilmadi yoki boshqa kompaniyaniki |
 | `AI_AGENT_SYSTEM_PROMPT_TOO_LONG` | `systemPrompt` 12 000 belgidan uzun |
 | `AI_AGENT_DATA_FIELD_TYPE_INVALID` | `dataNeeded[].type` `string/number/boolean/date/enum` dan boshqa (katta-kichik harf farqsiz) |
 | `AI_AGENT_TRANSFER_PHONE_INVALID` | `transferPhoneNumber` telefon raqami emas |
+| `AI_AGENT_RESPONSE_WAIT_OUT_OF_RANGE` | `callBehaviour.responseWaitMs` 100..3000 dan tashqarida |
+| `AI_AGENT_BOOSTED_KEYWORDS_TOO_MANY` | `speechEngine.boostedKeywords` da 100 tadan ko'p so'z |
+| `AI_AGENT_BOOSTED_KEYWORD_INVALID` | `speechEngine.boostedKeywords` dagi so'z bo'sh yoki 50 belgidan uzun |
 | `AI_AGENT_LIMIT_EXCEEDS_COMPANY_CAP` | `maxConversationDurationSeconds` kompaniyaning `maxCallSeconds` tavanidan ([settings.md](settings.md)) katta |
 | `WEBHOOK_URL_INVALID` | webhook manzili xususiy tarmoqqa qaraydi (§4) |
 | `AI_AGENT_CLEAR_FIELD_CONFLICT` | faqat `PUT`: maydon ham qiymat bilan, ham `clearFields` da keldi |
@@ -873,7 +915,8 @@ qo'shimcha so'rov ketmaydi.
       "transferPhoneNumber": null,
       "transferMessage": null,
       "transferQueueId": 4,
-      "preConversationAudioFileId": null
+      "preConversationAudioFileId": null,
+      "responseWaitMs": null
     },
     "dataPolicy": {
       "zeroPiiRetention": false,

@@ -29,6 +29,7 @@ import java.util.Set;
  *                  sequences, which behaves as one conversation step run by {@code aiAgentId}
  * @param autoEnroll the rules an AUTO_ENROLL campaign adds contacts by; never null, empty for a
  *                  STANDARD campaign
+ * @param autoRetries double dial and automatic callbacks of a sequence campaign; never null
  * @param consentConfirmedAt when the legal consent for the contacts it calls was confirmed; null
  *                  until then, and a DRAFT campaign cannot be launched without it
  * @param numbers   the caller ID pool its calls present numbers from, and whether the one closest
@@ -54,6 +55,7 @@ public record Campaign(
         CampaignKind kind,
         CampaignSequence sequence,
         AutoEnrollment autoEnroll,
+        CampaignAutoRetries autoRetries,
         Instant consentConfirmedAt,
         long version
 ) {
@@ -82,7 +84,10 @@ public record Campaign(
             dialing = new CampaignDialing(null, null, DEFAULT_MAX_AI_OVERFLOW_PERCENT, null);
         }
         if (numbers == null) {
-            numbers = new CampaignNumbers(null, false);
+            numbers = new CampaignNumbers(null, false, null);
+        }
+        if (autoRetries == null) {
+            autoRetries = CampaignAutoRetries.NONE;
         }
         if (autoEnroll == null) {
             autoEnroll = AutoEnrollment.NONE;
@@ -113,6 +118,6 @@ public record Campaign(
                 new CampaignRetry(maxAttempts, retryIntervalMinutes, RetryPolicy.NONE),
                 new CampaignLimits(maxConcurrentCalls, dailyCallCap, null, null, null),
                 new CampaignRecurrence(recurrenceType, recurringDayOfMonth, cronExpression, autoResetTargets),
-                null, null, lastRunAt, null, null, null, null, 0L);
+                null, null, lastRunAt, null, null, null, null, null, 0L);
     }
 }

@@ -45,7 +45,7 @@ public interface CallResultJpaRepository extends JpaRepository<CallResultEntity,
     int deleteCreatedBefore(@Param("cutoff") Instant cutoff, @Param("batchSize") int batchSize);
 
     @Query("SELECT a.id AS id, a.startedAt AS startedAt FROM CallAttemptEntity a "
-            + "WHERE a.company.id = :companyId AND a.aiAgentId = :aiAgentId "
+            + "WHERE a.company.id = :companyId AND a.aiAgent.id = :aiAgentId "
             + "AND a.startedAt >= :from AND a.startedAt < :to AND a.id > :afterCallId "
             + "AND EXISTS (SELECT 1 FROM CallResultEntity r WHERE r.call = a) "
             + "AND EXISTS (SELECT 1 FROM CallTranscriptEntity t WHERE t.call = a) "

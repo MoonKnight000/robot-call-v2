@@ -1,15 +1,11 @@
 package uz.murodjon.robotcallv2.agent.ari;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.infrastructure.config.CompanyProperties;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.siptrunk.application.dto.SipTrunkRow;
-import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.SipTrunkUseCase;
 
 import java.util.ArrayList;
@@ -24,25 +20,20 @@ import java.util.List;
 @Component
 class OutboundRouting {
 
-    private static final Logger log = LoggerFactory.getLogger(OutboundRouting.class);
-
     private final AsteriskProperties asteriskProperties;
     private final SipTrunkUseCase sipTrunkUseCase;
     /** Whose calls may go out over the platform's own trunk. */
     private final CompanyProperties companyProperties;
     private final TrunkCallPacer trunkCallPacer;
-    private final ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider;
 
     OutboundRouting(AsteriskProperties asteriskProperties,
                     SipTrunkUseCase sipTrunkUseCase,
                     CompanyProperties companyProperties,
-                    TrunkCallPacer trunkCallPacer,
-                    ObjectProvider<CallerIdPoolUseCase> callerIdPoolUseCaseProvider) {
+                    TrunkCallPacer trunkCallPacer) {
         this.asteriskProperties = asteriskProperties;
         this.sipTrunkUseCase = sipTrunkUseCase;
         this.companyProperties = companyProperties;
         this.trunkCallPacer = trunkCallPacer;
-        this.callerIdPoolUseCaseProvider = callerIdPoolUseCaseProvider;
     }
 
     /**
@@ -112,18 +103,14 @@ class OutboundRouting {
         }
     }
 
-    String findCallerId(SipTrunkRow trunk, OutboundCall outboundCall, long companyId) {
-        if (outboundCall != null && outboundCall.callerIdPoolId() != null) {
-            CallerIdPoolUseCase poolUseCase = callerIdPoolUseCaseProvider.getIfAvailable();
-            if (poolUseCase != null) {
-                try {
-                    return outboundCall.localPresence()
-                            ? poolUseCase.acquireLocalCallerId(companyId, outboundCall.callerIdPoolId(), outboundCall.phone())
-                            : poolUseCase.acquireCallerId(companyId, outboundCall.callerIdPoolId());
-                } catch (RuntimeException e) {
-                    log.warn("Failed to acquire caller ID from pool {}: {}", outboundCall.callerIdPoolId(), e.getMessage());
-                }
-            }
+    /**
+     * The pool number the dialer chose with this call's trunk, else the trunk's own caller ID, else the
+     * platform's. A pool number is never picked here: by now the trunk is fixed, and only the number's
+     * own trunk may carry it.
+     */
+    String findCallerId(SipTrunkRow trunk, OutboundCall outboundCall) {
+        if (outboundCall != null && outboundCall.callerId() != null) {
+            return outboundCall.callerId();
         }
         if (trunk != null && trunk.callerId() != null && !trunk.callerId().isBlank()) {
             return trunk.callerId();

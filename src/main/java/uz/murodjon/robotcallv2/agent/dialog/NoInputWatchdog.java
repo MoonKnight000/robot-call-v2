@@ -28,6 +28,8 @@ public class NoInputWatchdog {
     private Instant lastActivity;
     private int prompts;
     private boolean finished;
+    /** The limit of the last {@link #check}, which may be a stage's own; read by {@link #isLastPrompt()}. */
+    private int lastMaxPrompts;
 
     /**
      * @param idleThreshold quiet time that counts as no input. Long enough to let a
@@ -39,6 +41,7 @@ public class NoInputWatchdog {
     public NoInputWatchdog(Duration idleThreshold, int maxPrompts, Instant now) {
         this.idleThreshold = idleThreshold;
         this.maxPrompts = Math.max(0, maxPrompts);
+        this.lastMaxPrompts = this.maxPrompts;
         this.lastActivity = now;
     }
 
@@ -56,6 +59,18 @@ public class NoInputWatchdog {
      *                     already landed and an answer is on its way
      */
     public synchronized NoInputAction check(Instant now, boolean botSpeaking, boolean turnInFlight) {
+        return check(now, botSpeaking, turnInFlight, idleThreshold, maxPrompts);
+    }
+
+    /**
+     * {@link #check(Instant, boolean, boolean)} against limits the caller passes in — the ones
+     * the call's current stage sets ({@code StageOverrides.reminderSeconds/reminderMaxCount}).
+     * The prompt count stays the call's: a stage that allows fewer than were already spent
+     * ends the call at its next silence.
+     */
+    public synchronized NoInputAction check(Instant now, boolean botSpeaking, boolean turnInFlight,
+                                            Duration idleThreshold, int maxPrompts) {
+        lastMaxPrompts = Math.max(0, maxPrompts);
         if (finished) {
             return NoInputAction.NONE;
         }
@@ -68,13 +83,18 @@ public class NoInputWatchdog {
         if (Duration.between(lastActivity, now).compareTo(idleThreshold) < 0) {
             return NoInputAction.NONE;
         }
-        if (prompts >= maxPrompts) {
+        if (prompts >= lastMaxPrompts) {
             finished = true;
             return NoInputAction.END;
         }
         prompts++;
         lastActivity = now; // the prompt itself resets the clock
         return NoInputAction.PROMPT;
+    }
+
+    /** How many prompts the last check allowed — the stage's own limit when it sets one. */
+    public synchronized int maxPrompts() {
+        return lastMaxPrompts;
     }
 
     /** How many times the caller has been asked whether they are still there. */
@@ -89,6 +109,6 @@ public class NoInputWatchdog {
      * from, so it stays the plain question.
      */
     public synchronized boolean isLastPrompt() {
-        return maxPrompts > 1 && prompts == maxPrompts;
+        return lastMaxPrompts > 1 && prompts == lastMaxPrompts;
     }
 }

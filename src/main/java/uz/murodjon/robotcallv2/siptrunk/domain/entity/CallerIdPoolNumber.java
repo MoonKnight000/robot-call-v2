@@ -6,6 +6,10 @@ import java.time.Instant;
 
 /**
  * A phone number member of a Caller ID pool.
+ *
+ * @param trunkId the SIP trunk of the registered phone number this member is ({@code phone_number.provider_trunk_id});
+ *                a call presenting this number goes out on it. Null — no trunk yet, or a member V32 could not
+ *                link to a number — and the member is never dialled from
  */
 public record CallerIdPoolNumber(
         long id,
@@ -17,7 +21,8 @@ public record CallerIdPoolNumber(
         CallerIdNumberStatus status,
         Instant coolingUntil,
         Instant lastUsedAt,
-        Instant createdAt
+        Instant createdAt,
+        Long trunkId
 ) {
 
     public double answerRate() {

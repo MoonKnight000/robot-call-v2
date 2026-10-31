@@ -81,6 +81,6 @@ class BatchCallServiceTest {
     }
 
     private static BatchCallRequest request(boolean immediate) {
-        return new BatchCallRequest("Oktabr", 3L, CSV, null, null, null, null, null, immediate, true);
+        return new BatchCallRequest("Oktabr", 3L, CSV, null, null, null, null, null, null, immediate, true);
     }
 }

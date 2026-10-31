@@ -68,11 +68,6 @@ CompanyConfig:
     humanLikePersonaAllowed:
       type: boolean
       description: whether this company's agents may present as a person (`AgentPersona.HUMAN_LIKE`) and so skip the §11.1 automated-call disclosure. When false such an agent cannot be saved, and one saved earlier speaks as an AI assistant, disclosure included
-    holidays:
-      type: array
-      items:
-        type: string
-        format: date
     createdAt:
       type: string
       format: date-time
@@ -153,7 +148,7 @@ CreateCompanyRequest:
   - name
 UpdateCompanyConfigRequest:
   type: object
-  description: 'The contact-policy fields, `humanLikePersonaAllowed` and `holidays` are optional: null keeps what the company already has, so a client written before they existed does not reset them by omission.'
+  description: 'The contact-policy fields, `humanLikePersonaAllowed` and `scorecardReviewThreshold` are optional: null keeps what the company already has, so a client written before they existed does not reset them by omission.'
   properties:
     dialWindowStart:
       type: string
@@ -180,12 +175,6 @@ UpdateCompanyConfigRequest:
       type: boolean
     humanLikePersonaAllowed:
       type: boolean
-    holidays:
-      type: array
-      items:
-        type: string
-        format: date
-      maxItems: 366
   required:
   - dialWindowStart
   - dialWindowEnd

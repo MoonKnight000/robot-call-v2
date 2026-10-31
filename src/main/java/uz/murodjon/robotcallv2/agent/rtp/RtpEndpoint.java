@@ -218,6 +218,16 @@ public class RtpEndpoint implements Closeable {
         this.listeners = List.copyOf(next);
     }
 
+    /** The first listener of {@code type} currently on this endpoint, or null when there is none. */
+    public <T extends AudioListener> T findListener(Class<T> type) {
+        for (AudioListener listener : listeners) {
+            if (type.isInstance(listener)) {
+                return type.cast(listener);
+            }
+        }
+        return null;
+    }
+
     public void setNoiseCancellation(boolean enabled, NoiseCancellationMode mode) {
         this.noiseCancellationEnabled = enabled;
         this.noiseCancellationMode = mode != null ? mode : NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;

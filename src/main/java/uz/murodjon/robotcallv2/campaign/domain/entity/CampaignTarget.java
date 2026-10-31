@@ -10,6 +10,9 @@ import java.time.Instant;
  * @param bestCallHour the company-local hour the number most often talks in; null when unknown
  * @param stepId       the sequence step the target is on; null means the sequence's start step
  * @param stepAttempts calls spent on that step, counting one in progress
+ * @param outcome      name of the sequence outcome its last answered call reached ("Other",
+ *                     "No Response" included); null before any
+ * @param converted    left the sequence through an End successful route
  */
 public record CampaignTarget(
         long id,
@@ -25,8 +28,19 @@ public record CampaignTarget(
         Integer score,
         Integer bestCallHour,
         String stepId,
-        int stepAttempts
+        int stepAttempts,
+        String outcome,
+        boolean converted
 ) {
+
+    /** The pre-V38 shape: no outcome reached yet. */
+    public CampaignTarget(long id, long campaignId, long clientId, String phone, String language,
+                          String contextData, TargetStatus status, int attempts, boolean doNotCall,
+                          Instant nextAttemptAt, Integer score, Integer bestCallHour, String stepId,
+                          int stepAttempts) {
+        this(id, campaignId, clientId, phone, language, contextData, status, attempts, doNotCall, nextAttemptAt,
+                score, bestCallHour, stepId, stepAttempts, null, false);
+    }
 
     /**
      * How long an operator holds a preview card. A claim sets {@code nextAttemptAt} to the

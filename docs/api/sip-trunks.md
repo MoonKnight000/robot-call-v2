@@ -9,10 +9,10 @@ Har bir kompaniya bir nechta chiquvchi PJSIP trunkga ega bo'lishi mumkin (ROADMA
 ## 🔀 SIP Trunklarni taqsimlash va yo'naltirish qoidalari
 
 1. **Kampaniyalar (Ommaviy dialer)**:
-   - Kampaniya yaratishda yoki tahrirlashda `sipTrunkIds: [1, 2, 3]` orqali bir nechta trunklarni biriktirish mumkin.
-   - Agar `sipTrunkIds` bo'sh qoldirilsa (`null` yoki `[]`), tizim kompaniyaning **barcha yoqilgan (enabled) trunklari** bo'yicha qo'ng'iroqlarni navbatma-navbat (Round-Robin) teng taqsimlaydi.
-   - Agar bir nechta aniq trunklar tanlansa, qo'ng'iroqlar faqat o'sha tanlangan trunklar o'rtasida Round-Robin taqsimlanadi.
-   - Agar bitta trunk tanlansa, barcha nishonlarga faqat shu trunk orqali chiqiladi.
+   - Trunk kampaniyaning raqamidan kelib chiqadi ([campaigns.md — Raqamlar](campaigns.md)):
+     `numbers.fromNumberId` — shu raqamning trunki; `numbers.callerIdPoolId` — har qo'ng'iroqda tanlangan pul raqamining trunki.
+   - Ikkalasi ham yo'q bo'lsa, qo'ng'iroqlar kompaniyaning **barcha yoqilgan (enabled) trunklari** o'rtasida navbatma-navbat (Round-Robin) taqsimlanadi.
+   - Agent trunk tanlamaydi (`sipTrunkIds` 2026-10-31 da olib tashlandi). Bitta trunkdan chiqish kerak bo'lsa — o'sha trunkdagi raqamni `fromNumberId` qiling.
    - **Failover (`TrunkHealth`)**: AMI orqali registratsiyasi `Registered` bo'lmagan trunk
      (`TrunkRegistrationMonitor`, `AMI_ENABLED=true` kerak) yoki ketma-ket 5 ta qo'ng'irog'i
      `CARRIER_REJECTED`/`FAILED` bilan tugagan trunk 5 daqiqaga rotatsiyadan chiqariladi,

@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -49,6 +50,27 @@ public final class CallerIdSelector {
                 .filter(n -> sharedPrefixLength(callee, digitsOf(n.phone())) == longest)
                 .toList();
         return select(closest, strategy, now);
+    }
+
+    /**
+     * {@link #select}, or {@link #selectLocal} when {@code calleePhone} is given, over only the
+     * numbers whose own trunk is one of {@code trunkIds} — a number is always dialled from its own
+     * trunk, so one whose trunk cannot carry a call now is no choice at all.
+     */
+    public static Optional<CallerIdPoolNumber> selectOnTrunks(List<CallerIdPoolNumber> numbers,
+                                                              CallerIdStrategy strategy,
+                                                              Instant now,
+                                                              String calleePhone,
+                                                              Set<Long> trunkIds) {
+        if (numbers == null || trunkIds == null || trunkIds.isEmpty()) {
+            return Optional.empty();
+        }
+        List<CallerIdPoolNumber> onTrunks = numbers.stream()
+                .filter(n -> n.trunkId() != null && trunkIds.contains(n.trunkId()))
+                .toList();
+        return calleePhone != null
+                ? selectLocal(onTrunks, strategy, now, calleePhone)
+                : select(onTrunks, strategy, now);
     }
 
     private static String digitsOf(String phone) {

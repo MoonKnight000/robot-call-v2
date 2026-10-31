@@ -63,6 +63,23 @@ class CrmServiceTest {
     }
 
     @Test
+    void syncLeadStageUsesCompanyDispositionStatusMapping() {
+        CrmSettingsUseCase settings = mock(CrmSettingsUseCase.class);
+        when(settings.findByCompanyId(COMPANY_ID)).thenReturn(new CrmSettings(COMPANY_ID, null, null,
+                Map.of("FAILED", 505), null));
+        CrmService service = new CrmService(uysotProperties(), integrations, List.of(uysot),
+                CompanyFixtures.openCompanyUseCase(), settings);
+        when(integrations.findConnection(COMPANY_ID)).thenReturn(Optional.empty());
+        when(uysot.updateLeadStage(any(), eq(new UpdateLeadStageRequest(42L, 505, "Qo'ng'iroq natijasi (FAILED)")))).thenReturn(true);
+
+        CallSummary summary = new CallSummary("Qo'ng'iroq uzilib qoldi", Map.of(), null, false, null, null);
+        boolean synced = service.syncLeadStage(COMPANY_ID, 42L, summary, Disposition.FAILED);
+
+        assertTrue(synced);
+        verify(uysot).updateLeadStage(any(), eq(new UpdateLeadStageRequest(42L, 505, "Qo'ng'iroq natijasi (FAILED)")));
+    }
+
+    @Test
     void composeNoteTextAppendsAudioUrlWhenProvided() {
         CallSummary summary = new CallSummary(NOTE, Map.of(), null, false, null, null);
         String textWithAudio = client(uysotProperties()).composeNoteText(summary, 54321L);

@@ -23,8 +23,16 @@ public final class DialWindow {
 
     /** @param config the company's settings, or null when it has none */
     public static boolean isOpen(Campaign campaign, CompanyConfig config, Clock clock) {
+        return isOpen(campaign, config, Set.of(), clock);
+    }
+
+    /**
+     * @param config   the company's settings, or null when it has none
+     * @param holidays dates the company does not dial on
+     */
+    public static boolean isOpen(Campaign campaign, CompanyConfig config, Set<LocalDate> holidays, Clock clock) {
         Clock local = config != null ? clock.withZone(config.zoneId()) : clock;
-        if (config != null && config.isHoliday(LocalDate.now(local))) {
+        if (holidays != null && holidays.contains(LocalDate.now(local))) {
             return false; // a company holiday (NEXT-PLAN C.4)
         }
         Set<DayOfWeek> days = campaign.schedule().allowedDays();
@@ -44,7 +52,12 @@ public final class DialWindow {
      * (2) the recipient's local time (in their regional timezone) must be within daytime hours (08:00 - 20:00).
      */
     public static boolean isOpenForRecipient(Campaign campaign, CompanyConfig config, String recipientPhone, Clock clock) {
-        if (!isOpen(campaign, config, clock)) {
+        return isOpenForRecipient(campaign, config, Set.of(), recipientPhone, clock);
+    }
+
+    public static boolean isOpenForRecipient(Campaign campaign, CompanyConfig config, Set<LocalDate> holidays,
+                                             String recipientPhone, Clock clock) {
+        if (!isOpen(campaign, config, holidays, clock)) {
             return false;
         }
         java.time.ZoneId companyZone = config != null ? config.zoneId() : clock.getZone();

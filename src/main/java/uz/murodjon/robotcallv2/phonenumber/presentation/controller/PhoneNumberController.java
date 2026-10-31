@@ -27,6 +27,13 @@ public interface PhoneNumberController {
             @CurrentCompanyId long companyId,
             @Valid @RequestBody PurchaseNumberRequest request);
 
+    /** A number the company already has on one of its own SIP trunks (BYON); assigned at once, no fee. */
+    @PreAuthorize("hasAuthority('SIP_TRUNK_EDIT')")
+    @PostMapping("/byo")
+    ResponseEntity<ResponseData<PhoneNumberRow>> createByoNumber(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody CreateByoNumberRequest request);
+
     @PreAuthorize("hasAuthority('SIP_TRUNK_READ')")
     @PostMapping("/list")
     ResponseEntity<ResponseData<PageableData<PhoneNumberRow>>> findCompanyNumbers(
@@ -39,6 +46,14 @@ public interface PhoneNumberController {
             @CurrentCompanyId long companyId,
             @PathVariable long id,
             @Valid @RequestBody UpdateInboundRoutingRequest request);
+
+    /** Moves a BYON number to another of the company's own trunks; a marketplace number answers 409. */
+    @PreAuthorize("hasAuthority('SIP_TRUNK_EDIT')")
+    @PutMapping("/{id}/trunk")
+    ResponseEntity<ResponseData<PhoneNumberRow>> updateTrunk(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdatePhoneNumberTrunkRequest request);
 
     @PreAuthorize("hasAuthority('SIP_TRUNK_EDIT')")
     @DeleteMapping("/{id}")

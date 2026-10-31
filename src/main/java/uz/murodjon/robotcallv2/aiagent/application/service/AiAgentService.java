@@ -60,7 +60,7 @@ public class AiAgentService implements AiAgentUseCase {
     /** A group the request left out: every field null, so each one falls back like an omitted field. */
     private static final AgentScriptDto NO_SCRIPT = new AgentScriptDto(null, null, null, null, null, null);
     private static final AgentSpeechEngineDto NO_SPEECH_ENGINE =
-            new AgentSpeechEngineDto(null, null, null, null, null, null, null, null, null);
+            new AgentSpeechEngineDto(null, null, null, null, null, null, null, null, null, null, null);
     private static final AgentVoiceDto NO_VOICE = new AgentVoiceDto(null, null, null, null, null, null);
     /** What a new agent starts with where its request is silent: noise cancellation and keypad input on, data kept. */
     private static final AiAgentAmbience NEW_AMBIENCE = new AiAgentAmbience(null, null, null, null, null, true, null);
@@ -113,8 +113,7 @@ public class AiAgentService implements AiAgentUseCase {
         return createAgent(companyId, toCreateRequest(AiAgentMode.SINGLE_PROMPT, null, request.systemPrompt(),
                 request.name(), request.description(), request.language(), request.speechLanguages(), request.channel(), request.firstMessage(),
                 request.engineProfileId(), request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
-                request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation(),
-                request.sipTrunkIds()));
+                request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation()));
     }
 
     @Override
@@ -122,8 +121,7 @@ public class AiAgentService implements AiAgentUseCase {
         return createAgent(companyId, toCreateRequest(AiAgentMode.CONVERSATIONAL_FLOW, request.flowDefinition(), null,
                 request.name(), request.description(), request.language(), request.speechLanguages(), request.channel(), request.firstMessage(),
                 request.engineProfileId(), request.voice(), request.speechEngine(), request.llmModel(), request.temperature(),
-                request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation(),
-                request.sipTrunkIds()));
+                request.maxOutputTokens(), request.ambience(), request.dataNeeded(), request.dataEvaluation()));
     }
 
     /** The two preset endpoints as the general create request: an AI-assistant persona, not yet published elsewhere. */
@@ -135,13 +133,12 @@ public class AiAgentService implements AiAgentUseCase {
                                                         AgentVoiceDto voice, AgentSpeechEngineDto speechEngine,
                                                         String llmModel, Double temperature, Integer maxOutputTokens,
                                                         AgentAmbienceDto ambience, List<DataExtractionField> dataNeeded,
-                                                        List<DataEvaluationCriterion> dataEvaluation,
-                                                        Set<Long> sipTrunkIds) {
+                                                        List<DataEvaluationCriterion> dataEvaluation) {
         return new CreateAiAgentRequest(name, description, language, speechLanguages,
                 channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, engineProfileId,
                 new AgentScriptDto(null, null, mode.toScenarioMode(), flowDefinition, firstMessage, systemPrompt),
                 speechEngine, voice, llmModel, null, temperature, maxOutputTokens, ambience,
-                null, null, null, null, false, dataNeeded, dataEvaluation, null, null, null, null, sipTrunkIds, true);
+                null, null, null, null, false, dataNeeded, dataEvaluation, null, null, null, null, true);
     }
 
     @Override
@@ -232,7 +229,9 @@ public class AiAgentService implements AiAgentUseCase {
                         engineGuard.requireKnownSttProvider(sttProvider),
                         engineGuard.requireKnownSttModel(sttProvider, sttModel),
                         engineGuard.requireKnownTtsProvider(engineRequest.ttsProvider()),
-                        engineGuard.requireKnownTtsModel(engineRequest.ttsProvider(), engineRequest.ttsModel())))
+                        engineGuard.requireKnownTtsModel(engineRequest.ttsProvider(), engineRequest.ttsModel()),
+                        engineRequest.transcriptionMode(),
+                        engineRequest.boostedKeywords()))
                 .voice(new AiAgentVoice(
                         ttsVoice,
                         voiceRequest.speed(),
@@ -256,7 +255,6 @@ public class AiAgentService implements AiAgentUseCase {
                 .postCallWebhook(request.postCallWebhook())
                 .handbook(request.handbook())
                 .timezone(request.timezone())
-                .sipTrunkIds(request.sipTrunkIds())
                 .enabled(request.enabled() == null || request.enabled())
                 .createdAt(now)
                 .build();
@@ -379,7 +377,11 @@ public class AiAgentService implements AiAgentUseCase {
                                 ? engineGuard.requireKnownSttModel(sttProvider, requestedSttModel) : speechEngine.sttModel(),
                         ttsProvider,
                         engineRequest.ttsModel() != null
-                                ? engineGuard.requireKnownTtsModel(ttsProvider, engineRequest.ttsModel()) : speechEngine.ttsModel()))
+                                ? engineGuard.requireKnownTtsModel(ttsProvider, engineRequest.ttsModel()) : speechEngine.ttsModel(),
+                        engineRequest.transcriptionMode() != null
+                                ? engineRequest.transcriptionMode() : speechEngine.transcriptionMode(),
+                        engineRequest.boostedKeywords() != null
+                                ? engineRequest.boostedKeywords() : speechEngine.boostedKeywords()))
                 .voice(new AiAgentVoice(
                         ttsVoice,
                         voiceRequest.speed() != null ? voiceRequest.speed() : voice.speed(),
@@ -404,7 +406,6 @@ public class AiAgentService implements AiAgentUseCase {
                 .handbook(request.handbook() != null ? request.handbook() : existing.handbook())
                 // "" puts the agent back on the platform's zone.
                 .timezone(request.timezone() != null ? request.timezone() : existing.timezone())
-                .sipTrunkIds(request.sipTrunkIds() != null ? request.sipTrunkIds() : existing.sipTrunkIds())
                 .enabled(request.enabled() != null ? request.enabled() : existing.enabled())
                 // Not sent: the version just read, so a client that predates it edits as before.
                 .version(request.version() != null ? request.version() : existing.version())
@@ -693,6 +694,9 @@ public class AiAgentService implements AiAgentUseCase {
                 case FAST_LLM_MODEL -> request.fastLlmModel();
                 case GREETING_PAUSE -> request.greeting() != null ? request.greeting().pauseBeforeSpeakingMs() : null;
                 case SPEECH_LANGUAGES -> request.speechLanguages();
+                case RESPONSE_WAIT_MS -> behaviourRequest != null ? behaviourRequest.responseWaitMs() : null;
+                case TRANSCRIPTION_MODE -> request.speechEngine() != null ? request.speechEngine().transcriptionMode() : null;
+                case BOOSTED_KEYWORDS -> request.speechEngine() != null ? request.speechEngine().boostedKeywords() : null;
             };
             if (given != null) {
                 throw new ValidationException(ErrorCode.AI_AGENT_CLEAR_FIELD_CONFLICT, field);
@@ -711,7 +715,20 @@ public class AiAgentService implements AiAgentUseCase {
         }
         AiAgentCallBehaviour behaviour = agent.callBehaviour();
         AgentGreeting greeting = agent.greeting();
+        AiAgentSpeechEngine engine = agent.speechEngine();
         return agent.toBuilder()
+                .speechEngine(new AiAgentSpeechEngine(
+                        engine.mode(),
+                        engine.realtimeProvider(),
+                        engine.pipecatStt(),
+                        engine.pipecatLlm(),
+                        engine.pipecatTts(),
+                        engine.sttProvider(),
+                        engine.sttModel(),
+                        engine.ttsProvider(),
+                        engine.ttsModel(),
+                        fields.contains(AgentClearableField.TRANSCRIPTION_MODE) ? null : engine.transcriptionMode(),
+                        fields.contains(AgentClearableField.BOOSTED_KEYWORDS) ? null : engine.boostedKeywords()))
                 .greeting(fields.contains(AgentClearableField.GREETING_PAUSE)
                         ? new AgentGreeting(greeting.mode(), null, greeting.lines()) : greeting)
                 .initiationWebhook(fields.contains(AgentClearableField.INITIATION_WEBHOOK) ? null : agent.initiationWebhook())
@@ -730,7 +747,8 @@ public class AiAgentService implements AiAgentUseCase {
                         fields.contains(AgentClearableField.PRE_CONVERSATION_AUDIO_FILE_ID)
                                 ? null : behaviour.preConversationAudioFileId(),
                         behaviour.autoEscalateOnFrustration(),
-                        behaviour.frustrationThreshold()))
+                        behaviour.frustrationThreshold(),
+                        fields.contains(AgentClearableField.RESPONSE_WAIT_MS) ? null : behaviour.responseWaitMs()))
                 .build();
     }
 

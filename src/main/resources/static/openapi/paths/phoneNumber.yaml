@@ -137,6 +137,90 @@
         $ref: ../common.yaml#/responses/Forbidden
       '404':
         $ref: ../common.yaml#/responses/NotFound
+/api/phone-numbers/byo:
+  post:
+    tags:
+    - Phone Numbers
+    summary: O'z SIP trunkidagi raqamni qo'shish (BYON)
+    description: |-
+      **Huquq:** `SIP_TRUNK_EDIT`
+
+      Raqam darhol kompaniyaga biriktiriladi (`type = BYO_SIP_TRUNK`, `status = ASSIGNED`), to'lov yo'q.
+      `trunkId` kompaniyaning o'z trunki bo'lishi shart.
+    operationId: phoneNumber_createByoNumber
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/CreateByoNumberRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/PhoneNumberRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+      '409':
+        $ref: ../common.yaml#/responses/Conflict
+/api/phone-numbers/{id}/trunk:
+  put:
+    tags:
+    - Phone Numbers
+    summary: BYON raqamning trunkini almashtirish
+    description: |-
+      **Huquq:** `SIP_TRUNK_EDIT`
+
+      Faqat `BYO_SIP_TRUNK` raqam uchun; bozordan olingan raqam `409 PHONE_NUMBER_TRUNK_PLATFORM_MANAGED`.
+    operationId: phoneNumber_updateTrunk
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/phoneNumber.yaml#/UpdatePhoneNumberTrunkRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/phoneNumber.yaml#/PhoneNumberRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+      '409':
+        $ref: ../common.yaml#/responses/Conflict
 /api/phone-numbers/{id}:
   delete:
     tags:

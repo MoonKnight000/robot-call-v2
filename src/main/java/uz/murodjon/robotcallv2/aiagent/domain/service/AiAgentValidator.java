@@ -4,6 +4,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentVoice;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
 import uz.murodjon.robotcallv2.company.domain.enums.Language;
+import uz.murodjon.robotcallv2.scenario.domain.service.ScenarioValidator;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
@@ -11,6 +12,7 @@ import uz.murodjon.robotcallv2.voice.domain.service.VoiceSettingsValidator;
 
 import java.time.DateTimeException;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -78,6 +80,26 @@ public final class AiAgentValidator {
         String transferPhone = agent.callBehaviour().transferPhoneNumber();
         if (transferPhone != null && !transferPhone.isBlank() && !PhoneNumbers.isValid(transferPhone)) {
             throw new ValidationException(ErrorCode.AI_AGENT_TRANSFER_PHONE_INVALID, transferPhone);
+        }
+        // Same bounds a scenario stage's overrides are held to, so neither can step outside the other.
+        Integer responseWaitMs = agent.callBehaviour().responseWaitMs();
+        if (responseWaitMs != null && (responseWaitMs < ScenarioValidator.MIN_RESPONSE_WAIT_MS
+                || responseWaitMs > ScenarioValidator.MAX_RESPONSE_WAIT_MS)) {
+            throw new ValidationException(ErrorCode.AI_AGENT_RESPONSE_WAIT_OUT_OF_RANGE,
+                    ScenarioValidator.MIN_RESPONSE_WAIT_MS, ScenarioValidator.MAX_RESPONSE_WAIT_MS, responseWaitMs);
+        }
+        List<String> keywords = agent.speechEngine().boostedKeywords();
+        if (keywords != null) {
+            if (keywords.size() > ScenarioValidator.MAX_BOOSTED_KEYWORDS) {
+                throw new ValidationException(ErrorCode.AI_AGENT_BOOSTED_KEYWORDS_TOO_MANY,
+                        keywords.size(), ScenarioValidator.MAX_BOOSTED_KEYWORDS);
+            }
+            for (String keyword : keywords) {
+                if (keyword == null || keyword.isBlank() || keyword.length() > ScenarioValidator.MAX_BOOSTED_KEYWORD_LENGTH) {
+                    throw new ValidationException(ErrorCode.AI_AGENT_BOOSTED_KEYWORD_INVALID,
+                            keyword, ScenarioValidator.MAX_BOOSTED_KEYWORD_LENGTH);
+                }
+            }
         }
         Integer maxDuration = agent.limits().maxConversationDurationSeconds();
         if (maxDuration != null && companyMaxCallSeconds != null && companyMaxCallSeconds > 0

@@ -38,6 +38,20 @@ import java.util.Set;
  *                 drawn to it; null = reached only by its incoming transitions
  * @param action   the settings of a non-conversation type ({@link StageAction}); null for
  *                 CONVERSATION, LOGIC_SPLIT, ENDING and NOTE
+ * @param title    the name the editor shows on the stage's card ("Verify and Remind"); null = the
+ *                 editor shows {@code id}. Only people read it: the model, transitions and logs go
+ *                 by {@code id}, so renaming a stage never breaks the edges that point to it
+ * @param overrides agent settings this stage replaces while the call is in it ({@link StageOverrides});
+ *                 null = the agent's everywhere
+ * @param examples ✗ → ✓ phrasing pairs for this stage only, next to the scenario's own
+ *                 {@code styleExamples}; null or empty = none
+ * @param skipWhenKnown when true, the model is told not to ask for what this stage collects if
+ *                 the contact's memory, the call's facts or an earlier answer already hold it, and
+ *                 to confirm it briefly and move on; null = false
+ * @param knowledgeSourceIds knowledge sources of the company this stage also searches, on top of
+ *                 the agent's own; a stage with them searches even when the agent's {@code useRag}
+ *                 is off, unless {@code overrides.knowledgeRetrieval} switches it off. Sources of
+ *                 another company are never read; null or empty = the agent's only
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record StageDef(
@@ -54,7 +68,12 @@ public record StageDef(
         StageType type,
         StagePosition position,
         String globalCondition,
-        StageAction action
+        StageAction action,
+        String title,
+        StageOverrides overrides,
+        List<StyleExample> examples,
+        Boolean skipWhenKnown,
+        List<Long> knowledgeSourceIds
 ) {
     public StageDef {
         if (type == null) {
@@ -81,9 +100,11 @@ public record StageDef(
 
     /**
      * A plain conversation stage: no emotion, model override, branches, conditions, fixed line,
-     * required outcomes, canvas position, global condition or action.
+     * required outcomes, canvas position, global condition, action, title, overrides, examples or
+     * knowledge sources of its own.
      */
     public StageDef(String id, String purpose, List<String> allowedTransitions, List<String> allowedTools) {
-        this(id, purpose, allowedTransitions, allowedTools, null, null, null, null, null, null, null, null, null, null);
+        this(id, purpose, allowedTransitions, allowedTools, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null);
     }
 }

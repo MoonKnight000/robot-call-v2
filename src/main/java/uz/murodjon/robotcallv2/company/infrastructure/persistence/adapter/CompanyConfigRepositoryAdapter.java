@@ -63,7 +63,6 @@ public class CompanyConfigRepositoryAdapter implements CompanyConfigRepository {
         entity.setQuietDaysAfterConversation(config.quietDaysAfterConversation());
         entity.setRespectPromisedDate(config.respectPromisedDate());
         entity.setHumanLikePersonaAllowed(config.humanLikePersonaAllowed());
-        entity.setHolidays(CompanyConfigEntityMapper.formatHolidays(config.holidays()));
         entity.setScorecardReviewThreshold(config.scorecardReviewThreshold());
         entity.setTelephonyEngine(config.telephonyEngine());
     }

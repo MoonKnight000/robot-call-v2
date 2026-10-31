@@ -198,6 +198,16 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
     }
 
     @Override
+    public boolean redialOnce(long id) {
+        return campaignTargetJpaRepository.redialOnce(id) > 0;
+    }
+
+    @Override
+    public void recordOutcome(long id, String outcome, boolean converted) {
+        campaignTargetJpaRepository.recordOutcome(id, outcome, converted);
+    }
+
+    @Override
     public void releaseClaim(long id, Instant nextAttemptAt) {
         campaignTargetJpaRepository.releaseClaim(id, nextAttemptAt);
     }

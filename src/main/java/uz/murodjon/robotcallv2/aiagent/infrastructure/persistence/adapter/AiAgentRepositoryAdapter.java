@@ -15,8 +15,6 @@ import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.Com
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.repository.ScenarioJpaRepository;
 import uz.murodjon.robotcallv2.shared.util.LikePatterns;
-import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity.SipTrunkEntity;
-import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.repository.SipTrunkJpaRepository;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.TtsVoiceEntity;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.repository.TtsVoiceJpaRepository;
 
@@ -30,19 +28,16 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
     private final AiAgentEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
     private final ScenarioJpaRepository scenarioJpaRepository;
-    private final SipTrunkJpaRepository sipTrunkJpaRepository;
     private final TtsVoiceJpaRepository ttsVoiceJpaRepository;
 
     public AiAgentRepositoryAdapter(AiAgentJpaRepository jpaRepository, AiAgentEntityMapper mapper,
                                     CompanyJpaRepository companyJpaRepository,
                                     ScenarioJpaRepository scenarioJpaRepository,
-                                    SipTrunkJpaRepository sipTrunkJpaRepository,
                                     TtsVoiceJpaRepository ttsVoiceJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
         this.companyJpaRepository = companyJpaRepository;
         this.scenarioJpaRepository = scenarioJpaRepository;
-        this.sipTrunkJpaRepository = sipTrunkJpaRepository;
         this.ttsVoiceJpaRepository = ttsVoiceJpaRepository;
     }
 
@@ -54,7 +49,7 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
         entity.setCreatedBy(agent.createdBy());
         entity.setCreatedAt(Instant.now());
         mapper.applyEditableFields(entity, agent, scenarioReference(agent.script().scenarioId()),
-                sipTrunkReferences(agent.sipTrunkIds()), languageVoiceReferences(agent.voice().perLanguage()));
+                languageVoiceReferences(agent.voice().perLanguage()));
         return jpaRepository.save(entity).getId();
     }
 
@@ -72,7 +67,7 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
         // script is the same agent with a new script, but it never changes company or id.
         // An edit landing between this read and the commit is caught by @Version at flush.
         mapper.applyEditableFields(entity, agent, scenarioReference(agent.script().scenarioId()),
-                sipTrunkReferences(agent.sipTrunkIds()), languageVoiceReferences(agent.voice().perLanguage()));
+                languageVoiceReferences(agent.voice().perLanguage()));
         jpaRepository.save(entity);
         return true;
     }
@@ -148,17 +143,6 @@ public class AiAgentRepositoryAdapter implements AiAgentRepository {
     /** Null for an agent whose script is inline rather than a stored scenario. */
     private ScenarioEntity scenarioReference(Long scenarioId) {
         return scenarioId != null ? scenarioJpaRepository.getReferenceById(scenarioId) : null;
-    }
-
-    /** Empty when the agent dials over whichever trunk the campaign picks. */
-    private Set<SipTrunkEntity> sipTrunkReferences(Set<Long> sipTrunkIds) {
-        Set<SipTrunkEntity> trunks = new LinkedHashSet<>();
-        if (sipTrunkIds != null) {
-            for (Long trunkId : sipTrunkIds) {
-                trunks.add(sipTrunkJpaRepository.getReferenceById(trunkId));
-            }
-        }
-        return trunks;
     }
 
     /** Empty when the agent speaks every language with its default voice. */

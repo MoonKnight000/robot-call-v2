@@ -12,7 +12,6 @@ import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.mapper.SipTru
 import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.repository.SipTrunkJpaRepository;
 
 import java.time.Instant;
-import java.util.Collection;
 import java.util.List;
 
 @Component
@@ -134,16 +133,6 @@ public class SipTrunkRepositoryAdapter implements SipTrunkRepository {
     @Override
     public List<SipTrunk> findAllEnabledByCompany(long companyId) {
         return jpaRepository.findByCompanyIdAndEnabledTrue(companyId).stream()
-                .map(mapper::toSipTrunk)
-                .toList();
-    }
-
-    @Override
-    public List<SipTrunk> findEnabledByIdsAndCompany(Collection<Long> ids, long companyId) {
-        if (ids == null || ids.isEmpty()) {
-            return List.of();
-        }
-        return jpaRepository.findByIdInAndCompanyIdAndEnabledTrue(ids, companyId).stream()
                 .map(mapper::toSipTrunk)
                 .toList();
     }

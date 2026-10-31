@@ -67,6 +67,13 @@ public class CampaignTargetEntity {
     @Column(name = "step_attempts", insertable = false, updatable = false)
     private int stepAttempts;
 
+    /** Written only by the outcome evaluation (recordOutcome), never by a save. */
+    @Column(name = "outcome", insertable = false, updatable = false)
+    private String outcome;
+
+    @Column(name = "converted", insertable = false, updatable = false)
+    private boolean converted;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id", nullable = false)
     private CompanyEntity company;
@@ -177,6 +184,14 @@ public class CampaignTargetEntity {
 
     public int getStepAttempts() {
         return stepAttempts;
+    }
+
+    public String getOutcome() {
+        return outcome;
+    }
+
+    public boolean isConverted() {
+        return converted;
     }
 
     public Integer getBestCallHour() {

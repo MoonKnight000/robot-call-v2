@@ -287,7 +287,7 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 
 | Maydon | Turi | Izoh |
 |---|---|---|
-| `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)), `model` (ixtiyoriy — shu bosqich turn'lari agent modeli o'rniga shu LLM'da ishlaydi; `GET /api/ai-models?kind=LLM` katalogidan, noma'lum id — `400 AI_MODEL_UNKNOWN`. Bir so'zli javobdagi fast model undan ustun; realtime qo'ng'iroqda e'tiborga olinmaydi), `branches` (ixtiyoriy, LLM'siz qaror: `[{ "fact", "operator", "value", "goTo" }]` — qo'ng'iroq shu bosqichga kirishi bilan call faktlari tekshiriladi va birinchi rost shart `goTo` ga o'tkazadi; hech biri rost bo'lmasa bosqich odatdagidek gaplashiladi. `operator`: `EXISTS`, `MISSING`, `EQUALS`, `NOT_EQUALS`, `GREATER`, `GREATER_OR_EQUAL`, `LESS`, `LESS_OR_EQUAL`, `ALWAYS` (fakt va qiymat o'qilmaydi, doim rost — `LOGIC_SPLIT` ning "else" i, faqat oxirgi branch bo'la oladi); ikkala tomon son bo'lsa son sifatida, aks holda matn (katta-kichik harfsiz) solishtiriladi), `transitionConditions` (ixtiyoriy, LLM qaror qiladigan o'tish sharti: `{ "<keyingi bosqich id>": "<tabiiy tildagi shart>" }` — pastga qarang), `staticLine` (ixtiyoriy, bosqichga kirgandagi tayyor gap, `{{fact}}` bilan), `requiredOutcomes` (ixtiyoriy, bosqichdan chiqish uchun kamida bittasi yozilishi kerak bo'lgan natija nomlari) — ikkalasi "Tayyor gap va chiqish sharti" bo'limida. Flow muharriri uchun: `type`, `position`, `globalCondition`, `action` — pastdagi "Flow tugun turlari" bo'limida |
+| `stages` | `StageDef[]` | FSM bosqichlari: `id`, `purpose`, `allowedTransitions`, `allowedTools`, `emotion` (`cheerful`/`strict`/`friendly`/`whisper`/`sad`, [voices.md](voices.md)), `model` (ixtiyoriy — shu bosqich turn'lari agent modeli o'rniga shu LLM'da ishlaydi; `GET /api/ai-models?kind=LLM` katalogidan, noma'lum id — `400 AI_MODEL_UNKNOWN`. Bir so'zli javobdagi fast model undan ustun; realtime qo'ng'iroqda e'tiborga olinmaydi), `branches` (ixtiyoriy, LLM'siz qaror: `[{ "fact", "operator", "value", "goTo" }]` — qo'ng'iroq shu bosqichga kirishi bilan call faktlari tekshiriladi va birinchi rost shart `goTo` ga o'tkazadi; hech biri rost bo'lmasa bosqich odatdagidek gaplashiladi. `operator`: `EXISTS`, `MISSING`, `EQUALS`, `NOT_EQUALS`, `GREATER`, `GREATER_OR_EQUAL`, `LESS`, `LESS_OR_EQUAL`, `ALWAYS` (fakt va qiymat o'qilmaydi, doim rost — `LOGIC_SPLIT` ning "else" i, faqat oxirgi branch bo'la oladi); ikkala tomon son bo'lsa son sifatida, aks holda matn (katta-kichik harfsiz) solishtiriladi), `transitionConditions` (ixtiyoriy, LLM qaror qiladigan o'tish sharti: `{ "<keyingi bosqich id>": "<tabiiy tildagi shart>" }` — pastga qarang), `staticLine` (ixtiyoriy, bosqichga kirgandagi tayyor gap, `{{fact}}` bilan), `requiredOutcomes` (ixtiyoriy, bosqichdan chiqish uchun kamida bittasi yozilishi kerak bo'lgan natija nomlari) — ikkalasi "Tayyor gap va chiqish sharti" bo'limida. Flow muharriri uchun: `type`, `position`, `globalCondition`, `action`, `title`, `overrides`, `examples`, `skipWhenKnown` — pastdagi "Flow tugun turlari" bo'limida |
 | `factSchema` | `FactField[]` | Yig'iladigan faktlar: `{ "name", "type", "required", "description" }` |
 | `tools` | `ToolDef[]` | LLM chaqira oladigan tool'lar: `name`, `description`, `params` (`{ "name", "type", "required", "constraint" }[]`), `preToolSpeech` (tool ishlayotganda aytiladigan gap), `disposition` (ixtiyoriy, `Disposition` nomi — tool muvaffaqiyatli chaqirilsa qo'ng'iroq shu natija bilan tugaydi: `PROMISE_TO_PAY`, `REFUSED`, `CALLBACK_REQUESTED`, `PAYMENT_CLAIMED`, `GOAL_REACHED`…; noma'lum nom `400` validatsiya xatosi). **Har bir `params[].name` — natijaga yoziladigan kalit** (`promisedDate`, `promisedAmount`, `reasonCode`, `callbackTime`…): tool o'zi kod emas, argumentlarini shu nom bilan yozadi. `type`: `string`, `number`, `boolean`, `date` (`yyyy-MM-dd`), `futureDate` (bugun yoki kelajakda, o'tmish sana rad etiladi), `pastDate` (bugun yoki o'tmishda). Maxsus nom `sendDtmfTones` — IVR menyusida tugma bosish, pastga qarang. Qo'ng'iroqni boshqaradigan tool'lar (`transitionTo`, `endCall`, `requestHumanTransfer`, `recordWrongPerson`, `recordDoNotCall`, `sendDtmfTones`, `waitForCaller`, `switchLanguage`, `noteCallerMood`) kodda qoladi, ularning nomi band; qolganining hammasini (va'da, rad sababi, qayta qo'ng'iroq, bron…) ssenariyning o'zi e'lon qiladi |
 | `outcomeSchema` | `OutcomeField[]` | Qo'ng'iroq natijasi maydonlari: `{ "name", "type", "description", "goal" }`. `goal: true` (ixtiyoriy, standart `false`) — ssenariy shu maydonni yozish uchun mavjud: qo'ng'iroq uni yozsa `GOAL_REACHED`, yozmasa `GOAL_NOT_REACHED` ([calls.md](calls.md)). Qiymat ssenariy tool'ining shu nomli argumentidan yoki kompaniya tool'ining `responseMapping` dagi shu nomli maydonidan keladi ([tools.md](tools.md)). Ko'pi bilan bitta maydon — aks holda `only one outcome field may be the goal` |
@@ -334,6 +334,10 @@ buzilgan ssenariyga `400 SCENARIO_DEFINITION_INVALID` qaytaradi (muammolar — `
 | `outcomeSchema` kamida bitta maydon | `outcomeSchema must not be empty — …` |
 | `goal: true` ko'pi bilan bitta maydonda | `only one outcome field may be the goal — …` |
 | `styleExamples[]` da `wrong` va `right` ikkalasi ham bor | `a style example needs both 'wrong' and 'right'` |
+| Blok `examples[]` da `wrong` va `right` ikkalasi ham bor | `an example of stage X needs both 'wrong' and 'right'` |
+| `overrides.voiceSpeed` 0.25–3.0, `overrides.knowledgePassages` 1–10 | `stage X overrides.voiceSpeed must be between 0.25 and 3.0`, `stage X overrides.knowledgePassages must be between 1 and 10` |
+| `overrides.reminderSeconds` 3–120, `overrides.reminderMaxCount` 0–10, `knowledgeSourceIds` musbat | `stage X overrides.reminderSeconds must be between 3 and 120`, `stage X overrides.reminderMaxCount must be between 0 and 10`, `stage X knowledgeSourceIds must be positive ids` |
+| `overrides.responseWaitMs` 100–3000, `overrides.boostedKeywords` ko'pi bilan 100 ta, har biri bo'sh emas va ≤ 50 belgi | `stage X overrides.responseWaitMs must be between 100 and 3000`, `stage X overrides.boostedKeywords must have at most 100 items`, `stage X overrides.boostedKeywords must be non-blank and at most 50 characters each` |
 | `disclosureText` berilsa — avtomatik qo'ng'iroq va yozib olinishini aytadi (yoki bo'sh qoldiring) | `disclosureText must state …` |
 | `factWebhook`: `url` `http(s)://` bilan, `method` `GET`/`POST`, `timeoutMs` ≤ 2000, `factSchema` bo'sh emas | `factWebhook.url must …`, `factWebhook.method must be GET or POST`, … |
 
@@ -350,15 +354,37 @@ hammasi ixtiyoriy, shuning uchun eski ssenariylar o'zgarishsiz ishlaydi (`type` 
 | `position` | `{ "x": number, "y": number }` | Canvas'dagi joyi. Qo'ng'iroq uni o'qimaydi; `null` — frontend o'zi joylashtiradi |
 | `globalCondition` | string | Berilsa, bosqich **global** bo'ladi: shart bajarilganda ("mijoz operator so'raydi") model qo'ng'iroqni istalgan bosqichdan shu yerga o'tkaza oladi, edge chizish shart emas. Bo'sh satr bo'lishi mumkin emas, NOTE global bo'lmaydi |
 | `action` | `StageAction` | CONVERSATION'dan boshqa turlarning sozlamalari. Har tur faqat o'z maydonini o'qiydi |
+| `title` | string | Blokning canvas'da ko'rinadigan nomi ("To'lovni eslatish"). Faqat odam uchun: model, o'tishlar (`allowedTransitions`, `transitionConditions`, `goTo`, `startStageId`) va loglar `id` bo'yicha ishlaydi, shuning uchun nomni o'zgartirish edge'larni uzmaydi. `id` esa yaratilgandan keyin o'zgartirilmasligi kerak. Tekshirilmaydi; `null` — frontend `id` ni ko'rsatadi |
+| `overrides` | `StageOverrides` | Qo'ng'iroq shu blokda turganda agent sozlamalarining o'rniga ishlaydi; har bir maydon `null` — agentniki qoladi. **Faqat cascade pipeline'da** — realtime sessiya bu sozlamalarni ochilishida bir marta oladi va blok bo'yicha almashtirmaydi. Maydonlar pastda |
+| `examples` | `StyleExample[]` | Faqat shu blok uchun ✗ → ✓ ibora juftliklari (`{ "language", "wrong", "right" }`, ssenariyning `styleExamples` i bilan bir xil shakl). Ssenariy juftliklariga qo'shimcha; blok faol bo'lgan turn'larda promptga qo'shiladi. Faqat cascade |
+| `skipWhenKnown` | boolean | `true` — model bu blok yig'adigan ma'lumot kontakt xotirasida, faktlarda yoki qo'ng'iroqda allaqachon yozilgan bo'lsa, uni qayta so'ramaydi: qisqa tasdiqlaydi va keyingi blokka o'tadi. `null` — `false`. Faqat cascade |
+| `knowledgeSourceIds` | integer[] | Shu blok qidiradigan qo'shimcha bilim manbalari (`/api/knowledge` manba id lari) — agentnikiga qo'shimcha, kompaniyaning boshqa agentiga biriktirilgan manba ham bo'lishi mumkin; boshqa kompaniya manbasi hech qachon o'qilmaydi. Berilsa, agentning `useRag` i o'chiq bo'lsa ham shu blokda qidiruv yoqiladi (`overrides.knowledgeRetrieval: false` bo'lmasa). Faqat cascade |
 
-`StageAction`: `{ "toolName", "transferTo", "transferMode", "digits", "targetAgentId", "smsText", "extractFields", "code", "mcpConnectionId" }`.
+`StageOverrides`:
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `voiceSpeed` | number | TTS tezligi, `1.0` — ovozning o'zi. 0.25–3.0. Faqat tezlikni qo'llab-quvvatlaydigan TTS'da eshitiladi (Yandex, Aisha) |
+| `interruptionSensitivity` | `LOW` \| `MEDIUM` \| `HIGH` \| `OFF` | Mijoz gapi agentni qanchalik tez to'xtatadi — agentning `callBehaviour.interruptionSensitivity` bilan bir xil qiymatlar |
+| `knowledgeRetrieval` | boolean | Shu blok turn'larida bilimlar bazasidan qidirish yoqilgan/o'chirilgan (agentning `useRag` o'rniga) |
+| `knowledgePassages` | integer | Bitta qidiruvda modelga beriladigan parchalar soni, 1–10 |
+| `reminderSeconds` | integer | Mijoz shuncha soniya jim tursa agent "eshityapsizmi?" deb so'raydi (server `noInputSeconds` o'rniga). 3–120. Server jimlik nazoratini o'chirgan bo'lsa (`noInputSeconds` = 0) ishlamaydi |
+| `reminderMaxCount` | integer | Nechta eslatmadan keyin qo'ng'iroq jimlik sababli yopiladi (server `noInputMaxPrompts` o'rniga). 0–10. Hisob butun qo'ng'iroq bo'yicha yuradi: avval shundan ko'p eslatma aytilgan bo'lsa, shu blokdagi navbatdagi jimlikda qo'ng'iroq yopiladi |
+| `responseWaitMs` | integer | Mijoz gapirib bo'lgach, agent navbatni olishdan oldin kutadigan sukut (ms), agentning `callBehaviour.responseWaitMs` o'rniga. 100–3000 |
+| `transcriptionMode` | `FAST` \| `ACCURATE` | Shu blok turn'larida STT rejimi, agentning `speechEngine.transcriptionMode` o'rniga |
+| `boostedKeywords` | string[] | STT ustunlik beradigan so'zlar. Agentning `speechEngine.boostedKeywords` ro'yxatini shu blokda **to'liq almashtiradi** (qo'shilmaydi); `[]` — shu blokda hech qaysi so'z kuchaytirilmaydi, `null` — agentniki qoladi. Ko'pi bilan 100 ta, har biri bo'sh emas va 50 belgidan oshmaydi |
+
+Realtime (`REALTIME` / `HALF_CASCADE`) qo'ng'iroq `StageOverrides` ni umuman o'qimaydi — bu yerdagi
+barcha maydonlar faqat cascade pipeline'da ishlaydi.
+
+`StageAction`: `{ "toolName", "transferTo", "transferMode", "digits", "targetAgentId", "smsText", "extractFields", "code", "mcpConnectionId", "sipHeaders" }`.
 
 | `type` | Nima qiladi | Majburiy | O'tishlar (`allowedTransitions`) |
 |---|---|---|---|
 | `CONVERSATION` | Model mijoz bilan `purpose` bo'yicha gaplashadi (hozirgi oddiy bosqich) | — | Ixtiyoriy; yo'q bo'lsa yakuniy |
 | `FUNCTION` | Bitta tool'ni chaqiradi va natija bilan davom etadi | `action.toolName` — ssenariy `tools` idagi nom yoki agentga ulangan kompaniya tool'i (model ko'radigan nom); saqlashda tekshirilmaydi | Kamida bitta |
 | `MCP` | Kompaniya MCP ulanishidagi bitta tool'ni chaqiradi | `action.mcpConnectionId`, `action.toolName` | Kamida bitta |
-| `CALL_TRANSFER` | Qo'ng'iroqni telefon raqamiga o'tkazadi | `action.transferTo` — `+?[0-9]{3,15}`; `action.transferMode` `COLD` (standart) / `WARM` | Ixtiyoriy — o'tkazish muvaffaqiyatsiz bo'lsa |
+| `CALL_TRANSFER` | Qo'ng'iroqni telefon raqamiga o'tkazadi | `action.transferTo` — `+?[0-9]{3,15}`; `action.transferMode` `COLD` (standart) / `WARM`; ixtiyoriy `action.sipHeaders` — `{ "X-Nom": "qiymat" }`, o'tkazilgan qo'ng'iroqning INVITE iga qo'shiladi (Asterisk va LiveKit), qiymatda `{{fact}}` ishlaydi; nom `X-` bilan boshlanadi, ko'pi bilan 10 ta, qiymat bir qator, ≤ 256 belgi. Pipeline'dan qat'i nazar ishlaydi, faqat blokning o'z raqamiga o'tkazilganda (supervisor yoki agent navbatiga emas) | Ixtiyoriy — o'tkazish muvaffaqiyatsiz bo'lsa |
 | `PRESS_DIGIT` | DTMF tugmalarini bosadi (IVR menyu) | `action.digits` — `0-9`, `*`, `#`, `w` (yarim soniya pauza), ko'pi bilan 32 | Kamida bitta |
 | `LOGIC_SPLIT` | Faktlarga qarab LLM'siz tanlaydi | `branches`, oxirgisi `ALWAYS` ("else"); `transitionConditions` bo'lmaydi | Kamida bitta (branch'larning `goTo` lari) |
 | `AGENT_TRANSFER` | Suhbatni boshqa AI agentga beradi | `action.targetAgentId` | Ixtiyoriy — o'tkazish muvaffaqiyatsiz bo'lsa |
@@ -401,6 +427,9 @@ Xatolar (`SCENARIO_DEFINITION_INVALID`, `errors` ichida): `<TYPE> stage X needs 
 `LOGIC_SPLIT stage X decides by branches only, not transitionConditions`, `FUNCTION stage X needs action.toolName`,
 `MCP stage X needs action.mcpConnectionId and action.toolName`,
 `CALL_TRANSFER stage X needs action.transferTo as a phone number`,
+`only a CALL_TRANSFER stage can have action.sipHeaders, not T stage X`, `stage X can have at most 10 sipHeaders`,
+`sip header H of stage X must start with X- and hold only letters, digits and dashes`,
+`sip header H of stage X needs a one-line value of at most 256 characters`,
 `PRESS_DIGIT stage X needs action.digits of 0-9, *, # and w`, `AGENT_TRANSFER stage X needs action.targetAgentId`,
 `SMS stage X needs action.smsText`, `SMS stage X text must not exceed 1600 characters`,
 `EXTRACT_VARIABLE stage X needs action.extractFields`,

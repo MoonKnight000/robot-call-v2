@@ -17,6 +17,8 @@ public interface PhoneNumberRepository {
 
     boolean existsByPhoneNumber(String phoneNumber);
 
+    Optional<PhoneNumber> findByPhoneNumber(String phoneNumber);
+
     /** Which of {@code phoneNumbers} are already stored. */
     Set<String> findExistingPhoneNumbers(Collection<String> phoneNumbers);
 

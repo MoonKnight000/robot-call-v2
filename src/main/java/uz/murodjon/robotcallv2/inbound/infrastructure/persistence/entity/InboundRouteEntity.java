@@ -38,8 +38,14 @@ public class InboundRouteEntity {
     @Column(name = "after_hours_action", nullable = false)
     private InboundAfterHoursAction afterHoursAction = InboundAfterHoursAction.PLAY_MESSAGE_AND_HANGUP;
 
-    @Column(name = "after_hours_destination")
-    private String afterHoursDestination;
+    @Column(name = "after_hours_agent_id")
+    private Long afterHoursAgentId;
+
+    @Column(name = "after_hours_voicemail_id")
+    private Long afterHoursVoicemailId;
+
+    @Column(name = "after_hours_forward_phone", length = 32)
+    private String afterHoursForwardPhone;
 
     @Column(name = "business_hours_start")
     private LocalTime businessHoursStart;
@@ -113,12 +119,53 @@ public class InboundRouteEntity {
         this.afterHoursAction = afterHoursAction != null ? afterHoursAction : InboundAfterHoursAction.PLAY_MESSAGE_AND_HANGUP;
     }
 
+    public Long getAfterHoursAgentId() { return afterHoursAgentId; }
+    public void setAfterHoursAgentId(Long afterHoursAgentId) { this.afterHoursAgentId = afterHoursAgentId; }
+
+    public Long getAfterHoursVoicemailId() { return afterHoursVoicemailId; }
+    public void setAfterHoursVoicemailId(Long afterHoursVoicemailId) { this.afterHoursVoicemailId = afterHoursVoicemailId; }
+
+    public String getAfterHoursForwardPhone() { return afterHoursForwardPhone; }
+    public void setAfterHoursForwardPhone(String afterHoursForwardPhone) { this.afterHoursForwardPhone = afterHoursForwardPhone; }
+
     public String getAfterHoursDestination() {
-        return afterHoursDestination;
+        if (afterHoursAction == null) {
+            return null;
+        }
+        return switch (afterHoursAction) {
+            case AI_AGENT -> afterHoursAgentId != null ? String.valueOf(afterHoursAgentId) : null;
+            case VOICEMAIL -> afterHoursVoicemailId != null ? String.valueOf(afterHoursVoicemailId) : null;
+            case FORWARD_EXTERNAL -> afterHoursForwardPhone;
+            default -> null;
+        };
     }
 
     public void setAfterHoursDestination(String afterHoursDestination) {
-        this.afterHoursDestination = afterHoursDestination;
+        setAfterHoursDestinationForAction(this.afterHoursAction, afterHoursDestination);
+    }
+
+    public void setAfterHoursDestinationForAction(InboundAfterHoursAction action, String destination) {
+        this.afterHoursAgentId = null;
+        this.afterHoursVoicemailId = null;
+        this.afterHoursForwardPhone = null;
+        if (destination == null || destination.isBlank() || action == null) {
+            return;
+        }
+        String trimmed = destination.trim();
+        switch (action) {
+            case AI_AGENT -> this.afterHoursAgentId = parseLongOrNull(trimmed);
+            case VOICEMAIL -> this.afterHoursVoicemailId = parseLongOrNull(trimmed);
+            case FORWARD_EXTERNAL -> this.afterHoursForwardPhone = trimmed;
+            default -> { /* no-op */ }
+        }
+    }
+
+    private static Long parseLongOrNull(String s) {
+        try {
+            return Long.parseLong(s);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
 

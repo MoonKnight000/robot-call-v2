@@ -10,12 +10,13 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.*;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
-import uz.murodjon.robotcallv2.siptrunk.infrastructure.persistence.entity.SipTrunkEntity;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.TtsVoiceEntity;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 /**
  * Maps between {@link AiAgentEntity} and {@link AiAgent}.
@@ -30,11 +31,9 @@ public class AiAgentEntityMapper {
     private static final TypeReference<List<DataEvaluationCriterion>> DATA_EVALUATION_TYPE = new TypeReference<>() {};
     private static final TypeReference<AgentWebhookConfig> WEBHOOK_TYPE = new TypeReference<>() {};
     private static final TypeReference<ScenarioDefinition> SCENARIO_DEF_TYPE = new TypeReference<>() {};
-    private static final TypeReference<List<PronunciationRule>> PRONUNCIATION_RULES_TYPE = new TypeReference<>() {};
     private static final TypeReference<AgentGreeting> GREETING_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<PostCallAction>> POST_CALL_ACTIONS_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<WorkflowFunction>> WORKFLOW_FUNCTIONS_TYPE = new TypeReference<>() {};
-    private static final TypeReference<Set<HandbookRule>> HANDBOOK_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Double>> SPEED_PER_LANGUAGE_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {};
 
@@ -78,7 +77,9 @@ public class AiAgentEntityMapper {
                         speechEngine.getSttProvider(),
                         speechEngine.getSttModel(),
                         speechEngine.getTtsProvider(),
-                        speechEngine.getTtsModel()))
+                        speechEngine.getTtsModel(),
+                        speechEngine.getTranscriptionMode(),
+                        speechEngine.getBoostedKeywords()))
                 .voice(new AiAgentVoice(
                         voice.getTtsVoice(),
                         voice.getVoiceSpeed(),
@@ -106,7 +107,8 @@ public class AiAgentEntityMapper {
                         callBehaviour.getTransferQueueId(),
                         callBehaviour.getPreConversationAudioFileId(),
                         callBehaviour.getAutoEscalateOnFrustration(),
-                        callBehaviour.getFrustrationThreshold()))
+                        callBehaviour.getFrustrationThreshold(),
+                        callBehaviour.getResponseWaitMs()))
                 .limits(new AiAgentLimits(
                         limits.getMaxConversationDurationSeconds(),
                         limits.getSilenceEndCallTimeoutSeconds(),
@@ -127,12 +129,11 @@ public class AiAgentEntityMapper {
                 .initiationWebhook(read(entity.getInitiationWebhook(), WEBHOOK_TYPE, null))
                 .postCallWebhook(read(entity.getPostCallWebhook(), WEBHOOK_TYPE, null))
                 .greeting(read(entity.getGreeting(), GREETING_TYPE, AgentGreeting.DEFAULT))
-                .pronunciationRules(read(entity.getPronunciationRules(), PRONUNCIATION_RULES_TYPE, List.of()))
+                .pronunciationRules(toDomainPronunciationRules(entity.getPronunciationRules()))
                 .postCallActions(read(entity.getPostCallActions(), POST_CALL_ACTIONS_TYPE, List.of()))
                 .preCallFunctions(read(entity.getPreCallFunctions(), WORKFLOW_FUNCTIONS_TYPE, List.of()))
-                .handbook(read(entity.getHandbook(), HANDBOOK_TYPE, Set.of()))
+                .handbook(entity.getHandbook() != null ? entity.getHandbook() : Set.of())
                 .timezone(entity.getTimezone())
-                .sipTrunkIds(entity.getSipTrunkIds())
                 .enabled(entity.isEnabled())
                 .createdAt(entity.getCreatedAt())
                 .createdBy(entity.getCreatedBy())
@@ -142,7 +143,7 @@ public class AiAgentEntityMapper {
 
     /** Everything an edit may change; identity and creation stamps stay with the adapter. */
     public void applyEditableFields(AiAgentEntity entity, AiAgent agent, ScenarioEntity scenario,
-                                   Set<SipTrunkEntity> sipTrunks, Map<String, TtsVoiceEntity> languageVoices) {
+                                   Map<String, TtsVoiceEntity> languageVoices) {
         entity.setName(agent.name());
         entity.setDescription(agent.description());
         entity.setLanguage(agent.language());
@@ -168,12 +169,11 @@ public class AiAgentEntityMapper {
         entity.setInitiationWebhook(agent.initiationWebhook() != null ? write(agent.initiationWebhook(), null) : null);
         entity.setPostCallWebhook(agent.postCallWebhook() != null ? write(agent.postCallWebhook(), null) : null);
         entity.setGreeting(AgentGreeting.DEFAULT.equals(agent.greeting()) ? null : write(agent.greeting(), null));
-        entity.setPronunciationRules(write(agent.pronunciationRules(), "[]"));
+        entity.setPronunciationRules(toEmbeddablePronunciationRules(agent.pronunciationRules()));
         entity.setPostCallActions(write(agent.postCallActions(), "[]"));
         entity.setPreCallFunctions(write(agent.preCallFunctions(), "[]"));
-        entity.setHandbook(write(agent.handbook(), "[]"));
+        entity.setHandbook(agent.handbook());
         entity.setTimezone(agent.timezone());
-        entity.setSipTrunks(sipTrunks);
         entity.setEnabled(agent.enabled());
     }
 
@@ -196,7 +196,9 @@ public class AiAgentEntityMapper {
                 speechEngine.sttProvider(),
                 speechEngine.sttModel(),
                 speechEngine.ttsProvider(),
-                speechEngine.ttsModel());
+                speechEngine.ttsModel(),
+                speechEngine.transcriptionMode(),
+                speechEngine.boostedKeywords());
     }
 
     private AiAgentVoiceEntity toVoiceEntity(AiAgentVoice voice) {
@@ -232,7 +234,8 @@ public class AiAgentEntityMapper {
                 behaviour.transferQueueId(),
                 behaviour.preConversationAudioFileId(),
                 behaviour.autoEscalateOnFrustration(),
-                behaviour.frustrationThreshold());
+                behaviour.frustrationThreshold(),
+                behaviour.responseWaitMs());
     }
 
     private static AiAgentLimitsEntity toLimitsEntity(AiAgentLimits limits) {
@@ -273,5 +276,23 @@ public class AiAgentEntityMapper {
             log.warn("ai_agent value could not be serialized, storing fallback: {}", e.getMessage());
             return fallback;
         }
+    }
+
+    private List<PronunciationRule> toDomainPronunciationRules(List<PronunciationRuleEmbeddable> embeddables) {
+        if (embeddables == null || embeddables.isEmpty()) {
+            return List.of();
+        }
+        return embeddables.stream()
+                .map(e -> new PronunciationRule(e.getWord(), e.getReplacement(), e.isCaseSensitive(), e.getLanguage()))
+                .toList();
+    }
+
+    private List<PronunciationRuleEmbeddable> toEmbeddablePronunciationRules(List<PronunciationRule> rules) {
+        if (rules == null || rules.isEmpty()) {
+            return new ArrayList<>();
+        }
+        return rules.stream()
+                .map(r -> new PronunciationRuleEmbeddable(r.word(), r.replacement(), r.caseSensitive(), r.language()))
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 }

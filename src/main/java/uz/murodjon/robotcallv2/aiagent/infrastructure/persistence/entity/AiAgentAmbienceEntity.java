@@ -7,35 +7,35 @@ import jakarta.persistence.Enumerated;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.NoiseCancellationMode;
 
-/** The ai_agent columns behind {@code AiAgentAmbience}: what the caller hears besides the voice. */
+/** The ai_agent columns behind {@code AiAgentAmbience}, mapped to the {@code ai_agent_ambience} secondary table. */
 @Embeddable
 public class AiAgentAmbienceEntity {
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "ambient_sound", nullable = false)
+    @Column(name = "ambient_sound", table = "ai_agent_ambience", nullable = false)
     private AmbientSound ambientSound = AmbientSound.OFFICE;
 
-    @Column(name = "ambient_sound_volume", nullable = false)
+    @Column(name = "ambient_sound_volume", table = "ai_agent_ambience", nullable = false)
     private double ambientSoundVolume = 1.0;
 
-    @Column(name = "ambient_sound_fade_in_seconds", nullable = false)
+    @Column(name = "ambient_sound_fade_in_seconds", table = "ai_agent_ambience", nullable = false)
     private double ambientSoundFadeInSeconds = 1.5;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "thinking_sound", nullable = false, length = 50)
+    @Column(name = "thinking_sound", table = "ai_agent_ambience", nullable = false, length = 50)
     private AmbientSound thinkingSound = AmbientSound.OFF;
 
-    @Column(name = "thinking_sound_volume", nullable = false)
+    @Column(name = "thinking_sound_volume", table = "ai_agent_ambience", nullable = false)
     private double thinkingSoundVolume = 1.0;
 
-    @Column(name = "noise_cancellation_enabled", nullable = false)
+    @Column(name = "noise_cancellation_enabled", table = "ai_agent_ambience", nullable = false)
     private boolean noiseCancellationEnabled = true;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "noise_cancellation_mode", nullable = false, length = 50)
+    @Column(name = "noise_cancellation_mode", table = "ai_agent_ambience", nullable = false, length = 50)
     private NoiseCancellationMode noiseCancellationMode = NoiseCancellationMode.BACKGROUND_NOISE_SUPPRESSION;
 
-    protected AiAgentAmbienceEntity() {
+    public AiAgentAmbienceEntity() {
     }
 
     public AiAgentAmbienceEntity(AmbientSound ambientSound, double ambientSoundVolume,

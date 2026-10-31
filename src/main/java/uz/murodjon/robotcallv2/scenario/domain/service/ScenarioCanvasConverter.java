@@ -263,7 +263,8 @@ public final class ScenarioCanvasConverter {
                 }
             }
 
-            // This canvas carries no node type, global condition or action; they are kept from the saved stage.
+            // This canvas carries no node type, global condition, action, title, overrides, examples or
+            // skipWhenKnown or knowledge sources; they are kept from the saved stage.
             StageDef saved = fallback != null ? fallback.findStage(stageId) : null;
             reconstructedStages.add(new StageDef(
                     stageId,
@@ -280,7 +281,12 @@ public final class ScenarioCanvasConverter {
                     stageNode.position() != null
                             ? new StagePosition(stageNode.position().x(), stageNode.position().y()) : null,
                     saved != null ? saved.globalCondition() : null,
-                    saved != null ? saved.action() : null
+                    saved != null ? saved.action() : null,
+                    saved != null ? saved.title() : null,
+                    saved != null ? saved.overrides() : null,
+                    saved != null ? saved.examples() : null,
+                    saved != null ? saved.skipWhenKnown() : null,
+                    saved != null ? saved.knowledgeSourceIds() : null
             ));
         }
 

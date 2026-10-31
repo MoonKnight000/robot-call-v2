@@ -70,7 +70,6 @@ public record AiAgent(
         List<WorkflowFunction> preCallFunctions,
         Set<HandbookRule> handbook,
         String timezone,
-        Set<Long> sipTrunkIds,
         boolean enabled,
         Instant createdAt,
         Long createdBy,
@@ -117,7 +116,7 @@ public record AiAgent(
             script = new AiAgentScript(null, null, mode.toScenarioMode(), null, null, null);
         }
         if (speechEngine == null) {
-            speechEngine = new AiAgentSpeechEngine(null, null, null, null, null, null, null, null, null);
+            speechEngine = new AiAgentSpeechEngine(null, null, null, null, null, null, null, null, null, null, null);
         }
         if (voice == null) {
             voice = new AiAgentVoice(null, null, null, null, true);
@@ -137,7 +136,6 @@ public record AiAgent(
         if (dataPolicy == null) {
             dataPolicy = new AiAgentDataPolicy(false, true, null, null);
         }
-        sipTrunkIds = sipTrunkIds == null ? Set.of() : Set.copyOf(sipTrunkIds);
         dataNeeded = dataNeeded == null ? List.of() : List.copyOf(dataNeeded);
         dataEvaluation = dataEvaluation == null ? List.of() : List.copyOf(dataEvaluation);
         pronunciationRules = pronunciationRules == null ? List.of() : List.copyOf(pronunciationRules);

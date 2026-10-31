@@ -28,12 +28,14 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.*;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
 import uz.murodjon.robotcallv2.campaign.domain.service.SequenceValidator;
+import uz.murodjon.robotcallv2.phonenumber.application.port.input.PhoneNumberUseCase;
 import uz.murodjon.robotcallv2.siptrunk.application.port.input.CallerIdPoolUseCase;
 import uz.murodjon.robotcallv2.campaign.infrastructure.config.RetryProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
+import uz.murodjon.robotcallv2.schedule.application.port.input.BusinessScheduleUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
@@ -92,12 +94,13 @@ class CampaignServiceTest {
         clock = Clock.systemDefaultZone();
 
         CampaignOutcomeService outcomeService = new CampaignOutcomeService(campaigns, targets, companyConfig,
+                mock(BusinessScheduleUseCase.class),
                 retryProperties, audit, notifications, mock(SmsUseCase.class), new ObjectMapper(), clock);
         targetService = new CampaignTargetService(campaigns, targets, targetSources, doNotCallUseCase, audit,
                 notifications, mock(TargetApiImporter.class), mock(ChainedTargetImporter.class),
                 mock(ToolTargetImporter.class), mock(DebtorSourcePort.class), new CampaignValidator(), mock(SecretCipher.class), outcomeService, clock, new ObjectMapper(), mock(SpreadsheetReaderPort.class));
         service = new CampaignService(campaigns, targets, targetSources, aiAgents, users, companyConfig, audit,
-                notifications, ttsWarmup, targetService, outcomeService, new CampaignValidator(), new SequenceValidator(), mock(CallerIdPoolUseCase.class), callQueues, mock(AutoEnrollService.class), clock);
+                notifications, ttsWarmup, targetService, outcomeService, new CampaignValidator(), new SequenceValidator(), mock(CallerIdPoolUseCase.class), mock(PhoneNumberUseCase.class), callQueues, mock(AutoEnrollService.class), clock);
     }
 
     private Campaign campaign(int maxAttempts, int retryIntervalMinutes) {
@@ -299,7 +302,7 @@ class CampaignServiceTest {
         when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(true);
 
         service.updateCampaign(1L, CAMPAIGN_ID, new UpdateCampaignRequest("c", AI_AGENT_ID, null,
-                schedule(null, null), retry(), limits(), recurrence(), null, null, null, null, null));
+                schedule(null, null), retry(), limits(), recurrence(), null, null, null, null, null, null));
 
         ArgumentCaptor<Campaign> written = ArgumentCaptor.forClass(Campaign.class);
         verify(campaigns).update(eq(1L), eq(CAMPAIGN_ID), written.capture());
@@ -309,18 +312,18 @@ class CampaignServiceTest {
 
     private static CreateCampaignRequest createRequestWithWindow(LocalTime start, LocalTime end) {
         return new CreateCampaignRequest("c", AI_AGENT_ID, null,
-                schedule(start, end), retry(), limits(), recurrence(), null, null, null, null, null);
+                schedule(start, end), retry(), limits(), recurrence(), null, null, null, null, null, null);
     }
 
     private static CreateCampaignRequest createRequest(DialMode dialMode, Long aiAgentId, Long callQueueId) {
         return new CreateCampaignRequest("c", aiAgentId, null,
                 schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(),
-                new CampaignDialingDto(dialMode, callQueueId, null, null), null, null, null, null);
+                new CampaignDialingDto(dialMode, callQueueId, null, null), null, null, null, null, null);
     }
 
     private static UpdateCampaignRequest updateRequest(Long version) {
         return new UpdateCampaignRequest("c", AI_AGENT_ID, null,
-                schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(), null, null, null, null, version);
+                schedule(LocalTime.of(9, 0), LocalTime.of(20, 0)), retry(), limits(), recurrence(), null, null, null, null, version, null);
     }
 
     private static CampaignScheduleDto schedule(LocalTime start, LocalTime end) {

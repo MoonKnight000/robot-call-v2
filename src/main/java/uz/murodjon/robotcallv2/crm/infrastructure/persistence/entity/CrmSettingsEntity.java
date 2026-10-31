@@ -25,21 +25,6 @@ public class CrmSettingsEntity {
     @Column(name = "ai_employee_id")
     private Integer aiEmployeeId;
 
-    @Column(name = "meeting_booked_status_id")
-    private Integer meetingBookedStatusId;
-
-    @Column(name = "promise_to_pay_status_id")
-    private Integer promiseToPayStatusId;
-
-    @Column(name = "not_interested_status_id")
-    private Integer notInterestedStatusId;
-
-    @Column(name = "callback_status_id")
-    private Integer callbackStatusId;
-
-    @Column(name = "new_lead_status_id")
-    private Integer newLeadStatusId;
-
     @Column(name = "task_type_id")
     private Integer taskTypeId;
 
@@ -68,46 +53,6 @@ public class CrmSettingsEntity {
 
     public void setAiEmployeeId(Integer aiEmployeeId) {
         this.aiEmployeeId = aiEmployeeId;
-    }
-
-    public Integer getMeetingBookedStatusId() {
-        return meetingBookedStatusId;
-    }
-
-    public void setMeetingBookedStatusId(Integer meetingBookedStatusId) {
-        this.meetingBookedStatusId = meetingBookedStatusId;
-    }
-
-    public Integer getPromiseToPayStatusId() {
-        return promiseToPayStatusId;
-    }
-
-    public void setPromiseToPayStatusId(Integer promiseToPayStatusId) {
-        this.promiseToPayStatusId = promiseToPayStatusId;
-    }
-
-    public Integer getNotInterestedStatusId() {
-        return notInterestedStatusId;
-    }
-
-    public void setNotInterestedStatusId(Integer notInterestedStatusId) {
-        this.notInterestedStatusId = notInterestedStatusId;
-    }
-
-    public Integer getCallbackStatusId() {
-        return callbackStatusId;
-    }
-
-    public void setCallbackStatusId(Integer callbackStatusId) {
-        this.callbackStatusId = callbackStatusId;
-    }
-
-    public Integer getNewLeadStatusId() {
-        return newLeadStatusId;
-    }
-
-    public void setNewLeadStatusId(Integer newLeadStatusId) {
-        this.newLeadStatusId = newLeadStatusId;
     }
 
     public Integer getTaskTypeId() {

@@ -142,6 +142,8 @@ public class DialogSession implements DialogOutcomeSink {
     /** Current stage id — a scenario StageDef.id(), not an enum (ROADMAP A.3). */
     private volatile String state;
     private volatile BiConsumer<AgentWebhookEvent, Map<String, Object>> webhookEventPublisher;
+    /** Told whenever the stage is set ({@link #setStageListener}); null when nobody listens. */
+    private volatile Consumer<DialogSession> stageListener;
     private final AtomicBoolean voicemailEventPublished = new AtomicBoolean();
     private volatile boolean ended = false;
     /**
@@ -619,6 +621,19 @@ public class DialogSession implements DialogOutcomeSink {
             publishWebhookEvent(AgentWebhookEvent.STAGE_TRANSITION,
                     Map.of("fromStage", previousState, "toStage", state == null ? "" : state));
         }
+        Consumer<DialogSession> listener = stageListener;
+        if (listener != null) {
+            listener.accept(this);
+        }
+    }
+
+    /**
+     * Told after every {@link #setState}, including a re-entry of the same stage and a
+     * scenario switch — the listener decides whether anything changed. Runs on the thread
+     * that moved the stage, so it must not block.
+     */
+    public void setStageListener(Consumer<DialogSession> stageListener) {
+        this.stageListener = stageListener;
     }
 
     public int recordStageAttempt(String stage) {

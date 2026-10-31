@@ -12,8 +12,8 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
  */
 public final class VoiceSettingsValidator {
 
-    private static final double MIN_SPEED = 0.25;
-    private static final double MAX_SPEED = 3.0;
+    public static final double MIN_SPEED = 0.25;
+    public static final double MAX_SPEED = 3.0;
 
     private VoiceSettingsValidator() {
     }

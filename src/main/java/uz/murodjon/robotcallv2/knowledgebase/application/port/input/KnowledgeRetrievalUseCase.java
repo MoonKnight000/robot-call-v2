@@ -25,6 +25,14 @@ public interface KnowledgeRetrievalUseCase {
     List<KnowledgePassage> findRelevantPassages(long companyId, Long agentId, String question, int limit);
 
     /**
+     * {@link #findRelevantPassages} over the agent's passages plus those of {@code extraSourceIds}
+     * — the sources a scenario stage adds for its own turns, even when they belong to another
+     * agent of the company. Sources of another company are never read.
+     */
+    List<KnowledgePassage> findRelevantPassagesIncludingSources(long companyId, Long agentId, List<Long> extraSourceIds,
+                                                                String question, int limit);
+
+    /**
      * Drops whatever this company's passages were cached as, so the next call reads them
      * again. Called by whoever changed the knowledge base — indexing a source, deleting
      * one — because a call must not answer from text the operator has already removed.

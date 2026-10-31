@@ -57,7 +57,7 @@ public class PackMapper {
                 null, null,                                    // persona, engineProfileId
                 new AgentScriptDto(null, null, ScenarioMode.STRUCTURED_STEPS, agent.scenario(),
                         agent.firstMessage(), agent.scenario().rolePrompt()),
-                new AgentSpeechEngineDto(PACK_PIPELINE, null, null, null, null, null, null, null, null),
+                new AgentSpeechEngineDto(PACK_PIPELINE, null, null, null, null, null, null, null, null, null, null),
                 null,                                          // voice
                 null, null, null, null,                        // llmModel, fastLlmModel, temperature, maxOutputTokens
                 null, null, null, null,                        // ambience, greeting, call behaviour, limits
@@ -69,7 +69,7 @@ public class PackMapper {
                 null, null,                                    // initiation and post-call webhooks
                 null,                                          // handbook
                 null,                                          // timezone
-                null, null);                                   // sipTrunkIds, enabled
+                null);                                         // enabled
     }
 
     /** The reverse of {@link #toCreateAiAgentRequest}: only what a pack decides, with the scenario the agent runs. */

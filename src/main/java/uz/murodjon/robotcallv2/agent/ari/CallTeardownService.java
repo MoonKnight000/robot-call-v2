@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
 import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallFinalizationUseCase;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignVariantUseCase;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
@@ -73,6 +74,7 @@ class CallTeardownService {
     private final TrunkCapacityUseCase trunkCapacityUseCase;
     private final DoNotCallUseCase doNotCallUseCase;
     private final CallFinalizationUseCase callFinalizationUseCase;
+    private final CallTranscriptUseCase callTranscriptUseCase;
     private final CampaignTargetUseCase campaignTargetUseCase;
     /** A/B counters for the campaign variant an outbound call was assigned (§ campaign variants). */
     private final CampaignVariantUseCase campaignVariantUseCase;
@@ -99,6 +101,7 @@ class CallTeardownService {
                         TrunkCapacityUseCase trunkCapacityUseCase,
                         DoNotCallUseCase doNotCallUseCase,
                         CallFinalizationUseCase callFinalizationUseCase,
+                        CallTranscriptUseCase callTranscriptUseCase,
                         CampaignTargetUseCase campaignTargetUseCase,
                         CampaignVariantUseCase campaignVariantUseCase,
                         CallQueueDispatcher callQueueDispatcher,
@@ -123,6 +126,7 @@ class CallTeardownService {
         this.trunkCapacityUseCase = trunkCapacityUseCase;
         this.doNotCallUseCase = doNotCallUseCase;
         this.callFinalizationUseCase = callFinalizationUseCase;
+        this.callTranscriptUseCase = callTranscriptUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
         this.campaignVariantUseCase = campaignVariantUseCase;
         this.callQueueDispatcher = callQueueDispatcher;
@@ -285,7 +289,10 @@ class CallTeardownService {
                     mediaQuality);
         }
         if (outbound != null) {
-            campaignTargetUseCase.applyOutcome(outbound.companyId(), outbound.targetId(), disposition);
+            // A sequence campaign judges its PROMPT outcomes on what was said; only an AI agent's call has a transcript.
+            String transcript = session.callAttemptId() != 0 && session.scenarioId() != 0
+                    ? callTranscriptUseCase.findTranscriptText(session.callAttemptId()) : null;
+            campaignTargetUseCase.applyCallOutcome(outbound.companyId(), outbound.targetId(), disposition, transcript);
             // After finalization, not before: the summary can recognise a promise the caller
             // hung up on before a tool recorded it, and that promise is a conversion.
             if (outbound.variantId() != null && disposition != null && disposition.isConversion()) {

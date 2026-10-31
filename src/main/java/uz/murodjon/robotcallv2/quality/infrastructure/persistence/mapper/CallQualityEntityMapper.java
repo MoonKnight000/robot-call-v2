@@ -49,10 +49,7 @@ public class CallQualityEntityMapper {
         CallQualityEntity entity = new CallQualityEntity();
         entity.setId(domain.id());
         entity.setCompanyId(domain.companyId());
-        entity.setCallAttemptId(domain.callAttemptId());
-        entity.setAiAgentId(domain.aiAgentId());
-        entity.setAgentVersion(domain.agentVersion());
-        entity.setDisposition(domain.disposition());
+        // CallAttempt association is set in CallQualityRepositoryAdapter
         entity.setScore(domain.score());
         entity.setGuardrailViolation(domain.guardrailViolation());
         entity.setLanguageMismatch(domain.languageMismatch());

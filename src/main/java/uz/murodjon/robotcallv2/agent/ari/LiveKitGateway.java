@@ -136,7 +136,7 @@ public class LiveKitGateway implements TelephonyGateway {
                 SipTrunkCredentials credentials = trunk != null
                         ? sipTrunkUseCase.requireCredentialsForCall(dial.companyId(), trunk.id()) : null;
                 routes.add(new LiveKitRoute(credentials,
-                        () -> outboundRouting.findCallerId(trunk, outboundCall, dial.companyId())));
+                        () -> outboundRouting.findCallerId(trunk, outboundCall)));
             } catch (RuntimeException e) {
                 if (i == 0) {
                     throw e;

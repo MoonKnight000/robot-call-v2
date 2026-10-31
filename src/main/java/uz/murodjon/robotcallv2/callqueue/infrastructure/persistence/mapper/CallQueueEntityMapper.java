@@ -6,18 +6,20 @@ import uz.murodjon.robotcallv2.callqueue.domain.entity.CallQueueMember;
 import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.entity.CallQueueEntity;
 import uz.murodjon.robotcallv2.callqueue.infrastructure.persistence.entity.CallQueueMemberEntity;
 
-import java.util.Arrays;
-import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Component
 public class CallQueueEntityMapper {
 
-    public CallQueue toCallQueue(CallQueueEntity entity) {
+    public CallQueue toCallQueue(CallQueueEntity entity, Map<Long, Set<String>> userSkills) {
+        if (entity == null) {
+            return null;
+        }
         List<CallQueueMember> members = entity.getMembers().stream()
-                .map(m -> new CallQueueMember(m.getUserId(), m.getPriority(), splitSkills(m.getSkills())))
+                .map(m -> new CallQueueMember(m.getUserId(), m.getPriority(),
+                        userSkills != null ? userSkills.getOrDefault(m.getUserId(), Set.of()) : Set.of()))
                 .toList();
         return new CallQueue(entity.getId(), entity.getCompanyId(), entity.getName(), entity.getStrategy(), entity.getRingTimeoutSec(),
                 entity.getWrapUpSec(), entity.getMaxWaitSec(), entity.getMaxLength(), entity.getAnnouncePositionEverySec(),
@@ -28,20 +30,16 @@ public class CallQueueEntityMapper {
                 entity.getCreatedAt());
     }
 
-    public List<CallQueueMemberEntity> toCallQueueMemberEntities(List<CallQueueMember> members) {
-        return members.stream()
-                .map(m -> new CallQueueMemberEntity(m.userId(), m.priority(),
-                        m.skills().isEmpty() ? null : String.join(",", m.skills())))
-                .toList();
+    public CallQueue toCallQueue(CallQueueEntity entity) {
+        return toCallQueue(entity, Map.of());
     }
 
-    private static Set<String> splitSkills(String skills) {
-        if (skills == null || skills.isBlank()) {
-            return Set.of();
+    public List<CallQueueMemberEntity> toCallQueueMemberEntities(List<CallQueueMember> members) {
+        if (members == null) {
+            return List.of();
         }
-        return Arrays.stream(skills.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toCollection(LinkedHashSet::new));
+        return members.stream()
+                .map(m -> new CallQueueMemberEntity(m.userId(), m.priority()))
+                .toList();
     }
 }

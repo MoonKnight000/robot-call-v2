@@ -28,7 +28,9 @@ public class CampaignTargetEntityMapper {
                 e.getScore(),
                 e.getBestCallHour(),
                 e.getStepId(),
-                e.getStepAttempts()
+                e.getStepAttempts(),
+                e.getOutcome(),
+                e.isConverted()
         );
     }
 

@@ -71,6 +71,15 @@ public record PhoneNumber(
         return companyId != null && companyId == checkCompanyId && status == PhoneNumberStatus.ASSIGNED;
     }
 
+    /**
+     * Whether calls can present this number over a trunk of the company's own: a BYON number with
+     * its trunk set. A marketplace number's trunk is the platform's, which a company's calls do
+     * not go out on yet.
+     */
+    public boolean hasOwnTrunk() {
+        return type == PhoneNumberType.BYO_SIP_TRUNK && providerTrunkId != null;
+    }
+
     public BigDecimal calculateTotalMonthlyCost() {
         return monthlyFee.add(pricePerChannel.multiply(BigDecimal.valueOf(allocatedChannels)));
     }

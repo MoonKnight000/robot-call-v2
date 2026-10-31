@@ -21,7 +21,6 @@ import uz.murodjon.robotcallv2.siptrunk.domain.enums.SipTrunkTransport;
 import uz.murodjon.robotcallv2.siptrunk.domain.service.SipTrunkValidator;
 
 import java.time.Instant;
-import java.util.Collection;
 import java.util.List;
 
 /**
@@ -162,32 +161,6 @@ public class SipTrunkService implements SipTrunkUseCase {
     public SipTrunkRow findDefaultForCall(long companyId) {
         SipTrunk trunk = repository.findDefaultForCompany(companyId);
         return trunk == null ? null : SipTrunkRow.of(trunk);
-    }
-
-    /**
-     * The trunks a caller may dial through: the ones it picked, or every enabled trunk of
-     * the company when it picked none.
-     *
-     * <p>A picked set that resolves to nothing — every one of them disabled, deleted, or
-     * belonging to another company — is an error, not a reason to fall back. Falling back
-     * quietly sent a campaign's calls out over trunks its owner had deliberately excluded,
-     * which is the one outcome picking trunks exists to prevent. Some of the picked set
-     * still missing is only logged: the rest were chosen too, and they can carry the call.
-     */
-    @Override
-    public List<SipTrunkRow> findTrunksForCall(long companyId, Collection<Long> candidateTrunkIds) {
-        if (candidateTrunkIds == null || candidateTrunkIds.isEmpty()) {
-            return findAllEnabledForCompany(companyId);
-        }
-        List<SipTrunk> matched = repository.findEnabledByIdsAndCompany(candidateTrunkIds, companyId);
-        if (matched.isEmpty()) {
-            throw new ConflictException(ErrorCode.SIP_TRUNK_SELECTION_UNAVAILABLE, candidateTrunkIds);
-        }
-        if (matched.size() < candidateTrunkIds.size()) {
-            log.warn("Company {}: {} of the {} selected SIP trunks are unavailable, dialling over the rest",
-                    companyId, candidateTrunkIds.size() - matched.size(), candidateTrunkIds.size());
-        }
-        return matched.stream().map(SipTrunkRow::of).toList();
     }
 
     @Override

@@ -75,6 +75,12 @@ public interface CampaignTargetUseCase {
 
     void applyOutcome(long companyId, long targetId, Disposition disposition);
 
+    /**
+     * {@link #applyOutcome} for a call an AI agent spoke on: a sequence campaign judges its PROMPT
+     * outcomes on {@code transcript} ({@code ROLE: text} lines).
+     */
+    void applyCallOutcome(long companyId, long targetId, Disposition disposition, String transcript);
+
     void scheduleCallback(long companyId, long targetId, Instant callbackAt);
 
     /** The company's target, or null when there is none. */

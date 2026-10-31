@@ -7,6 +7,7 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
@@ -92,8 +93,14 @@ public class SilenceWatchdogRunner {
                 return;
             }
 
+            // The current stage may wait longer or shorter, and give up sooner or later.
+            StageOverrides overrides = SystemPromptFactory.overridesOf(s);
+            Duration idle = Duration.ofSeconds(overrides != null && overrides.reminderSeconds() != null
+                    ? overrides.reminderSeconds() : dialogProperties.noInputSeconds());
+            int maxPrompts = overrides != null && overrides.reminderMaxCount() != null
+                    ? overrides.reminderMaxCount() : dialogProperties.noInputMaxPrompts();
             NoInputAction action = s.watchdog()
-                    .check(Instant.now(), s.endpoint().isPlaying(), s.busy().get());
+                    .check(Instant.now(), s.endpoint().isPlaying(), s.busy().get(), idle, maxPrompts);
             switch (action) {
                 case NONE -> {
                 }
@@ -135,8 +142,8 @@ public class SilenceWatchdogRunner {
                     ? DialogPhrases.stillThereLastCall(s.language())
                     : DialogPhrases.stillThere(s.language());
             String question = lastPrompt ? null : DialogLines.lastQuestion(s.lastAgentText());
-            log.info("[{}] no input for {}s — prompting ({}/{}){}", s.channelId(),
-                    dialogProperties.noInputSeconds(), s.watchdog().prompts(), dialogProperties.noInputMaxPrompts(),
+            log.info("[{}] no input — prompting ({}/{}){}", s.channelId(),
+                    s.watchdog().prompts(), s.watchdog().maxPrompts(),
                     question != null ? ", repeating the question" : "");
             boolean spoken = speech.speakChunk(s, line);
             // Two chunks rather than one string: each is a cache key of its own, and both
