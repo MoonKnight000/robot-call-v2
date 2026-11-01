@@ -738,6 +738,10 @@ public class LiveKitCallService {
                 return;
             }
 
+            if (agent != null && context != null) {
+                context = context.withDefaultFacts(agent.defaultVariables());
+            }
+
             if (agent != null && !agent.preCallFunctions().isEmpty() && context != null) {
                 // Before the initiation webhook, so the webhook sees what the lookups found.
                 context = context.withMergedFacts(preCallWorkflowRunner.run(agent, plan.companyId(), roomName,

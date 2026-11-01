@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignNumbers;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRecurrence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialRules;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSequence;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
@@ -53,7 +54,8 @@ public class CampaignEntityMapper {
                 .createdBy(entity.getCreatedById())
                 .priority(entity.getPriority())
                 .schedule(new CampaignSchedule(entity.getStartAt(), entity.getEndAt(),
-                        entity.getDialWindowStart(), entity.getDialWindowEnd(), entity.getDialDays()))
+                        entity.getDialWindowStart(), entity.getDialWindowEnd(), entity.getDialDays(),
+                        toDialRules(entity.getDialRules())))
                 .retry(new CampaignRetry(entity.getMaxAttempts(), entity.getRetryIntervalMinutes(),
                         toRetryPolicy(entity.getRetryPolicy())))
                 .limits(new CampaignLimits(entity.getMaxConcurrentCalls(), entity.getDailyCallCap(),
@@ -102,6 +104,7 @@ public class CampaignEntityMapper {
         entity.setDialWindowStart(campaign.schedule().dialWindowStart());
         entity.setDialWindowEnd(campaign.schedule().dialWindowEnd());
         entity.setDialDays(campaign.schedule().dialDays());
+        entity.setDialRules(toJson(campaign.schedule().dialRules()));
         entity.setMaxAttempts(campaign.retry().maxAttempts());
         entity.setRetryIntervalMinutes(campaign.retry().intervalMinutes());
         entity.setMaxConcurrentCalls(campaign.limits().maxConcurrentCalls());
@@ -171,6 +174,32 @@ public class CampaignEntityMapper {
         } catch (Exception e) {
             // A tree of plain records always serialises; reaching this is a bug, not an input error.
             throw new IllegalStateException("campaign auto-enroll rules could not be serialised", e);
+        }
+    }
+
+    private CampaignDialRules toDialRules(String json) {
+        if (json == null || json.isBlank()) {
+            return CampaignDialRules.NONE;
+        }
+        try {
+            return objectMapper.readValue(json, CampaignDialRules.class);
+        } catch (Exception e) {
+            // Dials by the plain window rather than failing every listing.
+            log.warn("campaign.dial_rules could not be read, treating as none: {}", e.getMessage());
+            return CampaignDialRules.NONE;
+        }
+    }
+
+    /** Null for no rules, so a campaign that never set any keeps an empty column. */
+    private String toJson(CampaignDialRules rules) {
+        if (rules == null || rules.equals(CampaignDialRules.NONE)) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(rules);
+        } catch (Exception e) {
+            // A tree of plain records always serialises; reaching this is a bug, not an input error.
+            throw new IllegalStateException("campaign dial rules could not be serialised", e);
         }
     }
 

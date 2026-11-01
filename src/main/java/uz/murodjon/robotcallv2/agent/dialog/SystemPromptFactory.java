@@ -64,13 +64,47 @@ public class SystemPromptFactory {
      */
     static final List<String> PLATFORM_GUARDRAILS = PromptText.lines("platform-guardrails.txt");
 
+    private static final String RULE_WITH_TRANSFER = "@transfer ";
+    private static final String RULE_WITHOUT_TRANSFER = "@no-transfer ";
+
+    /**
+     * {@link #PLATFORM_GUARDRAILS} for a call that does or does not have somewhere to hand the
+     * caller to: a rule marked {@code @transfer} is kept only when it does, {@code @no-transfer}
+     * only when it does not, so no rule tells the model to call a tool it is not offered.
+     */
+    static List<String> findPlatformGuardrails(boolean transferOffered) {
+        List<String> rules = new ArrayList<>();
+        for (String rule : PLATFORM_GUARDRAILS) {
+            if (rule.startsWith(RULE_WITH_TRANSFER)) {
+                if (transferOffered) {
+                    rules.add(rule.substring(RULE_WITH_TRANSFER.length()));
+                }
+            } else if (rule.startsWith(RULE_WITHOUT_TRANSFER)) {
+                if (!transferOffered) {
+                    rules.add(rule.substring(RULE_WITHOUT_TRANSFER.length()));
+                }
+            } else {
+                rules.add(rule);
+            }
+        }
+        return rules;
+    }
+
+    /** What the AI persona does with a question it cannot answer: hand it to a person only if one can be reached. */
+    static String unknownAnswerAction(boolean transferOffered) {
+        return transferOffered
+                ? " Sizni mutaxassisimizga ulab beraman\" and call requestHumanTransfer.\n"
+                : "\" and offer what you can help with instead.\n";
+    }
+
     /**
      * A retrieved passage is about a chunk long; the cap guards against a source whose
      * extractor produced one enormous run of text, not a normal trim. Sanitizing matters
      * more than the length: the text comes out of a file an operator uploaded, so anything
      * in it that looks like a system marker is neutralised before it reaches the model.
      */
-    private static final int MAX_PASSAGE_CHARS = 1200;
+    /** Characters of one knowledge passage shown to the model; cascade and realtime share it. */
+    static final int MAX_PASSAGE_CHARS = 1200;
     private static final int MAX_SOURCE_NAME_CHARS = 80;
     /** A recorded outcome is a date, a code or a short note — enough for the model to see it is in. */
     private static final int MAX_RECORDED_CHARS = 120;
@@ -249,6 +283,9 @@ public class SystemPromptFactory {
         ScenarioDefinition def = s.scenario();
         CallContext c = s.context();
         StringBuilder sb = new StringBuilder();
+        // Fixed for the whole call, so it does not disturb the cached prefix.
+        boolean singleStage = StageEntry.hasNowhereToTransition(def);
+        boolean transferOffered = TransferTargets.isOfferedAnywhere(s.agent(), s.isTransferTargetAvailable(), def);
 
         sb.append(def.rolePrompt()).append(' ')
                 .append("You talk with the client over the phone, naturally, in ").append(languageName(s.language()))
@@ -281,7 +318,8 @@ public class SystemPromptFactory {
                     .append("- You are the official AI voice assistant (a robot) of ")
                     .append(s.companyName() != null ? s.companyName().trim() : "the company").append(".\n")
                     .append("- IF YOU CANNOT FIND THE ANSWER: if the client asks something that is not in the scenario or the facts, that you do not know, or that is unclear, never invent information. Say plainly that you are an AI: ")
-                    .append("\"Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman. Sizni mutaxassisimizga ulab beraman\" and call requestHumanTransfer.\n")
+                    .append("\"Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman.")
+                    .append(unknownAnswerAction(transferOffered))
                     .append("- If the client asks 'Sen robotsanmi?', say openly: \"Ha, men ").append(s.companyName() != null ? s.companyName().trim() : "")
                     .append(" kompaniyasining sun'iy intellekt yordamchisiman\".\n\n");
         }
@@ -338,9 +376,15 @@ public class SystemPromptFactory {
                 sb.append("\n[SYSTEM: In your first reply, greet and introduce yourself like a person: \"Salom, mening ismim ")
                         .append(personaName).append(". ")
                         .append(s.companyName() != null ? s.companyName().trim() + " kompaniyasidan qo'ng'iroq qilyapman. " : "")
-                        .append("\" and IMMEDIATELY move to the scenario's next stage (e.g. to confirm identity: \"")
-                        .append(sampleIdentityUz).append("\", or to the main purpose): ")
-                        .append("write what you say as plain text, then call the transitionTo tool. Do not just greet and stop.]\n");
+                        .append(singleStage
+                                ? "\" and IMMEDIATELY go on to the purpose of the call: write what you say as plain text. Do not just greet and stop.]\n"
+                                : "\" and IMMEDIATELY move to the scenario's next stage (e.g. to confirm identity: \""
+                                + sampleIdentityUz + "\", or to the main purpose): "
+                                + "write what you say as plain text, then call the transitionTo tool. Do not just greet and stop.]\n");
+            } else if (singleStage) {
+                sb.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
+                        .append("and IMMEDIATELY go on to the purpose of the call: write what you say as plain text. ")
+                        .append("Do not just greet and stop. STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\".]\n");
             } else {
             sb.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
                     .append("and IMMEDIATELY move to the scenario's next stage (e.g. to confirm identity: \"")
@@ -357,17 +401,18 @@ public class SystemPromptFactory {
                 sb.append("- ").append(rule).append('\n');
             }
         }
-        for (String rule : PLATFORM_GUARDRAILS) {
+        for (String rule : findPlatformGuardrails(transferOffered)) {
             if (s.agentPersona() != AgentPersona.HUMAN_LIKE) {
                 if (rule.startsWith("NATURAL FILLERS AND BRIDGES") || rule.startsWith("NATURAL CONVERSATIONAL TONE")) {
                     continue;
                 }
             }
-            if (rule.startsWith("LANGUAGE RESTRICTION") && (s.detectLanguages().size() > 1 || !isUzbekOrRussian(s.language()))) {
-                sb.append("- LANGUAGE RESTRICTION: This call starts in ").append(languageName(s.language()))
-                        .append(". Allowed languages for this call: ").append(String.join(", ", s.detectLanguages()))
-                        .append(". Never switch to an unsupported language.\n");
-                continue;
+            if (rule.startsWith("LANGUAGE RESTRICTION")) {
+                String restriction = languageRestriction(s.language(), s.detectLanguages());
+                if (restriction != null) {
+                    sb.append("- ").append(restriction).append('\n');
+                    continue;
+                }
             }
             sb.append("- ").append(rule).append('\n');
         }
@@ -375,11 +420,16 @@ public class SystemPromptFactory {
         sb.append('\n');
         appendGlobalNodes(sb, def);
 
-        sb.append("SCENARIO: go stage by stage. Once a stage's goal is met, move to the next allowed stage ")
-                .append("with transitionTo and say what that stage needs. ")
-                .append("Do not end the call without a reason. ")
-                .append("Each stage's text is an overall GOAL, not an order for every reply: once you have met ")
-                .append("the goal, do not repeat it — move to the next stage.\n\n");
+        if (singleStage) {
+            sb.append("SCENARIO: follow the instructions above for the whole call. ")
+                    .append("Do not end the call without a reason.\n\n");
+        } else {
+            sb.append("SCENARIO: go stage by stage. Once a stage's goal is met, move to the next allowed stage ")
+                    .append("with transitionTo and say what that stage needs. ")
+                    .append("Do not end the call without a reason. ")
+                    .append("Each stage's text is an overall GOAL, not an order for every reply: once you have met ")
+                    .append("the goal, do not repeat it — move to the next stage.\n\n");
+        }
 
         // Numbered, one line each, and last in the prefix. The same rules as prose in one
         // paragraph were being dropped: a real call opened with "Ushbu to'lov qachon amalga
@@ -712,7 +762,11 @@ public class SystemPromptFactory {
         StringBuilder sb = new StringBuilder();
         sb.append("[SYSTEM: CURRENT STAGE: ").append(s.state()).append(" — ")
                 .append(stage != null ? stage.purpose() : "").append('\n');
-        sb.append("Allowed next stages: ").append(allowedNext(s.scenario(), stage)).append('\n');
+        // Fixed for the whole call, like the stable prefix: a single-prompt agent has no stages to list.
+        boolean singleStage = StageEntry.hasNowhereToTransition(s.scenario());
+        if (!singleStage) {
+            sb.append("Allowed next stages: ").append(allowedNext(s.scenario(), stage)).append('\n');
+        }
         appendStaticLines(sb, s.scenario(), stage, s.context() != null ? s.context().facts() : Map.of());
         appendRecorded(sb, s.outcome());
         appendStageExamples(sb, stage, s.language());
@@ -736,7 +790,9 @@ public class SystemPromptFactory {
         // REASON_INQUIRY's annex arrived on the turn the agent was asking for the date,
         // and the reason it was supposed to collect was never collected. Pairing the text
         // and the transitionTo on the same stage in the same turn is what removes the lag.
-        if (s.isDisclosureSpoken() && "GREETING".equalsIgnoreCase(s.state())) {
+        if (singleStage) {
+            sb.append("In this reply: just write your reply to the client.\n");
+        } else if (s.isDisclosureSpoken() && "GREETING".equalsIgnoreCase(s.state())) {
             sb.append("NOTE: the greeting and the system disclosure have already been spoken to the client. ")
                     .append("Do NOT REPEAT the GREETING line! Without greeting again, move straight to ONE of the ")
                     .append("allowed stages above: first write that stage's line, ")
@@ -748,11 +804,15 @@ public class SystemPromptFactory {
                     .append("If you are staying in the current stage (e.g. the client asked a question, did not hear, or asked for an explanation) — ")
                     .append("do not call transitionTo, just write your reply to the client.\n");
         }
-        sb.append("STRICT RULE: every reply MUST end with a clear question! ")
-                .append("Never stop after a bare fact or message (e.g. in DEBT_NOTICE, when you state the debt and the due date, ")
-                .append("ask for the reason or when they will pay in the same breath: «Murodjon aka, 1 500 000 so'm qarzingiz bor, ")
-                .append("to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?»). ")
-                .append("Stopping without a question and waiting for the client is STRICTLY FORBIDDEN.\n");
+        // Dropped for a single-prompt agent: its line may be an inbound support or lead line,
+        // where a closing statement is a fine end of a reply; the debt example does not fit it.
+        if (!singleStage) {
+            sb.append("STRICT RULE: every reply MUST end with a clear question! ")
+                    .append("Never stop after a bare fact or message (e.g. in DEBT_NOTICE, when you state the debt and the due date, ")
+                    .append("ask for the reason or when they will pay in the same breath: «Murodjon aka, 1 500 000 so'm qarzingiz bor, ")
+                    .append("to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?»). ")
+                    .append("Stopping without a question and waiting for the client is STRICTLY FORBIDDEN.\n");
+        }
         // Text first, tool second — this is a latency rule, not a style one. A line carried
         // in a tool argument arrives in one chunk when the whole reply is finished (this
         // provider does not stream tool arguments), so synthesis cannot start until
@@ -769,13 +829,16 @@ public class SystemPromptFactory {
         // REASON_INQUIRY", then a whole extra round trip (996ms) to ask for the sentence
         // the turn should already have had.
         sb.append("FIRST write what you say to the client as plain text — it goes to speech as soon as ")
-                .append("it is written. EVERY tool — transitionTo, the outcome-recording tools, ")
+                .append("it is written. EVERY tool — ").append(singleStage ? "" : "transitionTo, ")
+                .append("the outcome-recording tools, ")
                 .append("scheduleCallback, endCall and the rest — is called AFTER THAT ")
                 .append("TEXT, and the sentence is NOT written again in its \"reply\" parameter. ")
                 .append("Calling a tool without writing text is the worst mistake: the client hears silence ")
                 .append("and your answer is delayed by several seconds. Even when you are recording an outcome ")
                 .append("(date, amount, reason), first write what you say to the client. ")
-                .append("(NOTE: never write English code or placeholders in that text.)]");
+                .append("(NOTE: never write English code or placeholders in that text.) ")
+                .append("When you call a lookup/data tool, write only a brief waiting phrase or nothing — ")
+                .append("you will receive the result and then answer with it.]");
         String asked = lastQuestion(s.lastAgentText());
         if (asked != null) {
             // The history already holds this, and the model still asked "qachon to'lay
@@ -824,9 +887,11 @@ public class SystemPromptFactory {
             if (s.agent() != null && s.agent().callBehaviour().dtmfInputEnabled()) {
                 // A number said into noise is misheard again on the second try just as
                 // easily; typed, it arrives exactly (DtmfInputRouter).
+                String terminationKey = s.agent().callBehaviour().dtmfTerminationKey();
+                String endKey = terminationKey == null ? "the hash (#) key" : "the " + terminationKey + " key";
                 sb.append("\n[SYSTEM: If it is a number (card, passport, PINFL, phone, date) — ")
-                        .append("ask the client to type it on the phone keypad and press the hash (#) key ")
-                        .append("at the end.]");
+                        .append("ask the client to type it on the phone keypad and press ").append(endKey)
+                        .append(" at the end.]");
             }
         }
         if (s.lastCustomerSentiment() != null && s.lastCustomerSentiment() != CustomerSentiment.NEUTRAL) {
@@ -848,12 +913,16 @@ public class SystemPromptFactory {
                     .append("say goodbye with the endCall tool.]");
         }
         int stageAttempts = s.stageAttempts(s.state());
-        if (stageAttempts >= 2) {
+        // One-stage conversations count every turn in that stage, so the count says nothing there.
+        if (stageAttempts >= 2 && !singleStage) {
             sb.append("\n[SYSTEM WARNING: You have already repeated yourself ").append(stageAttempts)
                     .append(" times in the '").append(s.state())
                     .append("' stage. Do NOT ASK the client the same question AGAIN! ")
-                    .append("Briefly acknowledge the client's objection or question and move to the next stage at once ")
-                    .append("(call the transitionTo tool), or if the client does not agree or understand, hand over to an operator (requestHumanTransfer).]");
+                    .append("Briefly acknowledge the client's objection or question and move to the next stage at once "
+                            + "(call the transitionTo tool)"
+                            + (TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())
+                            ? ", or if the client does not agree or understand, hand over to an operator (requestHumanTransfer).]"
+                            : ".]"));
         }
         String whisper = s.operatorWhisper();
         if (whisper != null) {
@@ -1024,6 +1093,25 @@ public class SystemPromptFactory {
 
     private static boolean isRussian(String code) {
         return code != null && code.toLowerCase().startsWith("ru");
+    }
+
+    /**
+     * The language rule for a call that is multilingual or in neither Uzbek nor Russian, or
+     * null when the stock "Uzbek or Russian only" rule fits. Shared with {@link RealtimeSystemPromptFactory}.
+     */
+    static String languageRestriction(String language, List<String> detectLanguages) {
+        if (detectLanguages.size() <= 1 && isUzbekOrRussian(language)) {
+            return null;
+        }
+        return "LANGUAGE RESTRICTION: This call starts in " + languageName(language)
+                + ". Allowed languages for this call: "
+                + String.join(", ", detectLanguages.isEmpty() ? List.of(languageName(language)) : detectLanguages)
+                + ". Never switch to an unsupported language.";
+    }
+
+    /** Whether the call is held in Uzbek — the language the realtime hearing instruction is written for. */
+    static boolean isUzbek(String code) {
+        return code == null || code.isBlank() || code.toLowerCase(Locale.ROOT).startsWith("uz");
     }
 
     private static boolean isUzbekOrRussian(String code) {

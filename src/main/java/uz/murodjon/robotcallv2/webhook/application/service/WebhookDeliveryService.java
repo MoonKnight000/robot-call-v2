@@ -134,8 +134,8 @@ public class WebhookDeliveryService implements WebhookDeliveryUseCase {
 
     @Override
     public Map<String, Object> postForReply(String url, Map<String, String> headers, Map<String, Object> payload,
-                                            String signingSecret) {
-        return sender.postForObject(url, headers, payload, signingSecret, UUID.randomUUID().toString());
+                                            String signingSecret, Duration readTimeout) {
+        return sender.postForObject(url, headers, payload, signingSecret, UUID.randomUUID().toString(), readTimeout);
     }
 
     @Scheduled(fixedDelayString = "${voice-agent.webhook.retry-check-ms:60000}", initialDelay = 60_000)

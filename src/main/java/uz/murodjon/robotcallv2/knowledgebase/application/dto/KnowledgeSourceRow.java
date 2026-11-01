@@ -23,6 +23,7 @@ public record KnowledgeSourceRow(
         Instant createdAt,
         String feedItemsPath,
         String feedKeyField,
-        Integer refreshMinutes
+        Integer refreshMinutes,
+        Long collectionId
 ) {
 }

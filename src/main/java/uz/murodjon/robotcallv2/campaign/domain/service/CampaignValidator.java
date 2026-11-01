@@ -3,20 +3,25 @@ package uz.murodjon.robotcallv2.campaign.domain.service;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollRule;
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialRules;
 import uz.murodjon.robotcallv2.campaign.domain.entity.RetryPolicy;
+import uz.murodjon.robotcallv2.campaign.domain.entity.TimeRange;
 import uz.murodjon.robotcallv2.campaign.domain.entity.TargetSourceStep;
 import uz.murodjon.robotcallv2.campaign.domain.enums.AutoEnrollField;
 import uz.murodjon.robotcallv2.campaign.domain.enums.AutoEnrollOperator;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignKind;
 import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TimezoneMode;
 import uz.murodjon.robotcallv2.campaign.domain.enums.TargetSourceProvider;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Component
@@ -81,6 +86,46 @@ public class CampaignValidator {
         if (start.isAfter(end)) {
             throw new ValidationException(ErrorCode.CAMPAIGN_DIAL_WINDOW_INVALID);
         }
+    }
+
+    /** Most ranges one weekday may be split into. */
+    static final int MAX_RANGES_PER_DAY = 5;
+
+    /**
+     * The extra calling rules: a FIXED zone must be a real zone id, and each weekday's hours must be a
+     * few ranges that start before they end and do not overlap. Null means the campaign sent none.
+     */
+    public void validateDialRules(CampaignDialRules rules) {
+        if (rules == null) {
+            return;
+        }
+        if (rules.timezoneMode() == TimezoneMode.FIXED) {
+            try {
+                ZoneId.of(rules.fixedTimezone());
+            } catch (RuntimeException e) {
+                throw new ValidationException(ErrorCode.CAMPAIGN_DIAL_TIMEZONE_INVALID, rules.fixedTimezone());
+            }
+        }
+        if (!rules.hasDayWindows()) {
+            return;
+        }
+        rules.dayWindows().forEach((day, ranges) -> {
+            if (ranges == null || ranges.size() > MAX_RANGES_PER_DAY) {
+                throw new ValidationException(ErrorCode.CAMPAIGN_DIAL_RANGES_INVALID, day, MAX_RANGES_PER_DAY);
+            }
+            List<TimeRange> sorted = new ArrayList<>(ranges);
+            sorted.sort(Comparator.comparing(range -> range != null && range.start() != null ? range.start() : LocalTime.MAX));
+            LocalTime previousEnd = null;
+            for (TimeRange range : sorted) {
+                boolean broken = range == null || range.start() == null || range.end() == null
+                        || !range.start().isBefore(range.end())
+                        || (previousEnd != null && range.start().isBefore(previousEnd));
+                if (broken) {
+                    throw new ValidationException(ErrorCode.CAMPAIGN_DIAL_RANGES_INVALID, day, MAX_RANGES_PER_DAY);
+                }
+                previousEnd = range.end();
+            }
+        });
     }
 
     /**

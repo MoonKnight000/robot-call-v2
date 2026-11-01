@@ -1,11 +1,15 @@
 package uz.murodjon.robotcallv2.contact.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -38,6 +42,10 @@ public class ContactEntity {
 
     @Column
     private String notes;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "custom_fields", columnDefinition = "jsonb", nullable = false)
+    private Map<String, String> customFields = new LinkedHashMap<>();
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -115,6 +123,14 @@ public class ContactEntity {
 
     public void setNotes(String notes) {
         this.notes = notes;
+    }
+
+    public Map<String, String> getCustomFields() {
+        return customFields;
+    }
+
+    public void setCustomFields(Map<String, String> customFields) {
+        this.customFields = customFields != null ? new LinkedHashMap<>(customFields) : new LinkedHashMap<>();
     }
 
     public Instant getCreatedAt() {

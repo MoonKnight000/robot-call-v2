@@ -133,9 +133,20 @@ public class RealtimeWatchdogRunner {
             if (watchdog == null) {
                 return;
             }
+            int silenceEndSeconds = CallLimits.silenceEndCallSeconds(s.agent());
+            if (silenceEndSeconds > 0
+                    && watchdog.isCallerSilentFor(Instant.now(), Duration.ofSeconds(silenceEndSeconds))) {
+                metrics.noInputHangup();
+                CallMdc.with(s.channelId(), () -> log.info("[{}] closing realtime call (caller silent for {}s, agent limit)",
+                        s.channelId(), silenceEndSeconds));
+                requestFarewell(s, GIVE_UP, finisher);
+                return;
+            }
             boolean answerComing = s.toolsInFlight().get() > 0 || s.isEngineWorking()
                     || s.awaitingAnswer(System.nanoTime());
-            switch (watchdog.check(Instant.now(), s.endpoint().isPlaying(), answerComing)) {
+            Duration idle = Duration.ofSeconds(CallLimits.reminderSeconds(s.agent(), dialogProperties.noInputSeconds()));
+            int maxPrompts = CallLimits.reminderMaxCount(s.agent(), dialogProperties.noInputMaxPrompts());
+            switch (watchdog.check(Instant.now(), s.endpoint().isPlaying(), answerComing, idle, maxPrompts)) {
                 case NONE -> {
                 }
                 case PROMPT -> {
@@ -144,8 +155,7 @@ public class RealtimeWatchdogRunner {
                     if (engine != null) {
                         executors.submit(() -> CallMdc.with(s.channelId(), () -> {
                             log.info("[{}] no input for {}s — asking the engine to check on the caller ({}/{})",
-                                    s.channelId(), dialogProperties.noInputSeconds(), watchdog.prompts(),
-                                    dialogProperties.noInputMaxPrompts());
+                                    s.channelId(), idle.toSeconds(), watchdog.prompts(), maxPrompts);
                             engine.sendUserText(watchdog.isLastPrompt() ? LAST_CALL : STILL_THERE);
                         }));
                     }

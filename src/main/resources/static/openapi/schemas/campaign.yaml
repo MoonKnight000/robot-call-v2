@@ -249,6 +249,30 @@ CampaignScheduleDto:
         type: string
         enum: [MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY]
       uniqueItems: true
+    dialRules:
+      type: object
+      properties:
+        timezoneMode:
+          type: string
+          enum: [COMPANY, CONTACT, FIXED]
+        fixedTimezone:
+          type: string
+          example: Europe/London
+        dayWindows:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                start:
+                  type: string
+                  example: "10:00"
+                end:
+                  type: string
+                  example: "12:00"
+        excludeHolidays:
+          type: boolean
 CampaignTargetStats:
   type: object
   properties:
@@ -816,6 +840,14 @@ TargetFilter:
           $ref: ../common.yaml#/schemas/SortDirection
       additionalProperties: false
       description: Kalitlar tartibi muhim — ro'yxatdagi tartib bo'yicha qo'llanadi
+    status:
+      type: string
+      enum: [PENDING, IN_PROGRESS, DONE, FAILED, EXHAUSTED]
+      description: Only targets in this status; omitted - every status.
+    search:
+      type: string
+      maxLength: 64
+      description: Part of the phone number; only digits and + are read.
 TargetImportResult:
   type: object
   description: Outcome of a target CSV import.

@@ -28,10 +28,20 @@ public class MidCallSmsSender {
 
     /** @return whether the gateway took it; never throws, the tool reports a failure instead */
     public boolean send(long companyId, long callAttemptId, String channelId, CallContext context, String text) {
+        return send(companyId, callAttemptId, channelId, context, null, text);
+    }
+
+    /**
+     * As {@link #send(long, long, String, CallContext, String)}, to {@code toNumber} — a SEND_SMS function that
+     * names its own recipient — instead of the number the call is with; a blank one means that number.
+     */
+    public boolean send(long companyId, long callAttemptId, String channelId, CallContext context, String toNumber,
+                        String text) {
         try {
             // The number this call is with first: a "phone" fact can come from a CRM
             // record and name someone else.
-            String phone = callAttemptUseCase.findPhoneByAttemptId(callAttemptId);
+            String phone = toNumber != null && !toNumber.isBlank() ? toNumber
+                    : callAttemptUseCase.findPhoneByAttemptId(callAttemptId);
             if ((phone == null || phone.isBlank()) && context != null) {
                 phone = context.clientPhone();
             }

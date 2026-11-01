@@ -20,6 +20,7 @@ ixtiyoriy). Yozuv kalit so'zlar (`keywords`) orqali mijozning gapi bilan solisht
 > `/api/knowledge-base`) va **manbalar** (hujjat va havolalar, `/api/knowledge-base/sources`).
 > Ikkalasi ham AI agentga bog'lanadi: `agentId` berilsa faqat o'sha agent ishlatadi,
 > `null` bo'lsa — kompaniyaning barcha agentlari.
+> Agent o'chirilsa, unga biriktirilgan manbalar (va ularning bo'laklari) ham o'chadi; ular kompaniyaning umumiy manbasiga aylanib qolmaydi (`V5` migratsiya, avval `agent_id` `NULL` ga tushardi). Saqlangan fayl omborda qoladi.
 
 Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 [README.md](README.md)ga qarang.
@@ -162,6 +163,12 @@ Bu **kalit so'z qidiruvi**, semantik (embedding) qidiruv emas — sinonim va not
 yozilgan so'z topilmaydi, shuning uchun `keywords` ga ikkala tildagi variantlarni ham
 yozing.
 
+> ℹ️ Qo'ng'iroqda yozuvlar (yuqoridagi kalit so'z qidiruvi) faqat shu navbatda bilim yoqilgan bo'lsagina
+> tekshiriladi: agentda `useRag: true` yoki bosqichda `knowledgeSourceIds` bor (bosqichning
+> `overrides.knowledgeRetrieval` i buni almashtiradi). Mos yozuv topilsa model chaqirilmaydi va bu navbatda
+> manbalar bo'yicha qidiruv (embedding) ham bajarilmaydi. Tizimning ichiga o'rnatilgan tayyor javoblari (to'lov
+> usullari, MIB, filiallar) yo'q — faqat kompaniya o'zi kiritgan yozuvlar javob beradi.
+
 ---
 
 # Bilim manbalari (Knowledge Sources) API
@@ -185,7 +192,7 @@ mahsulot bo'ladi.
    vektorga aylantiradi va `knowledge_chunk` jadvaliga yozadi. Status `PROCESSING` →
    `INDEXED`, `chunkCount` to'ladi.
 4. Qo'ng'iroq paytida mijozning savoli ham vektorga aylantiriladi va eng yaqin parchalar
-   (kosinus o'xshashligi, ostona 0.62) modelning promptiga qo'yiladi. Model javobni o'z
+   (kosinus o'xshashligi, ostona standart 0.62, agentda `ragMinScore` bilan o'zgaradi — [ai-agents.md](ai-agents.md)) modelning promptiga qo'yiladi. Model javobni o'z
    so'zi bilan aytadi — matnni o'qib bermaydi.
    **Hybrid** (NEXT-PLAN A.3): shu bilan birga savol so'zlari bo'yicha kalit so'z reytingi ham
    tuziladi va ikkala reyting RRF (reciprocal rank fusion) bilan birlashtiriladi — embedding past
@@ -227,6 +234,7 @@ Huquq: **KNOWLEDGE_BASE_EDIT**. Bitta so'rovda bir nechta hujjat yuboriladi.
 | Maydon | Turi | Majburiymi | Izoh |
 |---|---|---|---|
 | `agentId` | number | ❌ | Berilsa — agent shu kompaniyaniki ekani tekshiriladi (`404 AI_AGENT_NOT_FOUND`). `null` — kompaniyaning barcha agentlari uchun |
+| `collectionId` | number | ❌ | Manbani nomli bilim bazasiga (collection) qo'shadi — [Kolleksiyalar](#kolleksiyalar--nomli-bilim-bazasi). `agentId` bilan birga berilmaydi (`400 KNOWLEDGE_SOURCE_SCOPE_CONFLICT`); boshqa kompaniyaniki yoki yo'q — `404 KNOWLEDGE_COLLECTION_NOT_FOUND` |
 | `documents` | array | ✅ (`@NotEmpty`) | Kamida bitta hujjat |
 | `documents[].name` | string | ✅ (≤200) | UI da ko'rinadigan nom |
 | `documents[].sourceType` | enum | ✅ | `PDF`, `TXT`, `DOCX`, `CSV`, `XLSX`, `XLS`, `URL`, `SITEMAP` (§Sitemap), `STRUCTURED_FEED` (§Katalog) |
@@ -235,7 +243,7 @@ Huquq: **KNOWLEDGE_BASE_EDIT**. Bitta so'rovda bir nechta hujjat yuboriladi.
 | `documents[].originalFileName` | string | ❌ (≤255) | Foydalanuvchi yuklagan fayl nomi |
 | `documents[].feedItemsPath` | string | ❌ (≤200) | Faqat `STRUCTURED_FEED`: JSON javobdagi mahsulotlar massivining JSONPath'i (`$.data.items`). Bo'sh — butun javob massiv |
 | `documents[].feedKeyField` | string | ❌ (≤100) | Faqat `STRUCTURED_FEED`: kalit ustun (SKU). Standart `sku`, katta-kichik harf farqi yo'q |
-| `documents[].refreshMinutes` | int | ❌ (≥15) | Faqat URL'li `STRUCTURED_FEED` yoki `SITEMAP`: manba necha daqiqada avtomatik qayta yuklanadi. Bo'sh — faqat qo'lda (`/retry`) |
+| `documents[].refreshMinutes` | int | ❌ (≥15) | URL'li `URL`, `SITEMAP` yoki `STRUCTURED_FEED`: manba necha daqiqada avtomatik qayta yuklanadi (oxirgi muvaffaqiyatli indekslashdan boshlab; `FAILED` manba qo'lda `/retry` kutadi) Bo'sh — faqat qo'lda (`/retry`) |
 
 `SITEMAP` turi berilgan sitemap XML yoki sitemap index manzilidan sahifalar havolalarini avtomatik ajratib oladi va har bir sahifa matnini indekslaydi.
 `STRUCTURED_FEED` uchun `url` yoki `storedFileId` dan biri kerak — ikkalasi ham bo'lmasa `400 KNOWLEDGE_FEED_LOCATION_REQUIRED`.
@@ -356,10 +364,10 @@ Huquq: **KNOWLEDGE_BASE_READ**. Topilmasa yoki boshqa kompaniyaniki bo'lsa —
 Huquq: **KNOWLEDGE_BASE_EDIT**.
 
 ```json
-{ "name": "Narxlar ro'yxati (2026-yil sentyabr)", "agentId": 6, "url": null }
+{ "name": "Narxlar ro'yxati (2026-yil sentyabr)", "agentId": 6, "global": null, "url": null }
 ```
 
-Berilmagan (`null`) maydon o'zgarmaydi. `sourceType`, `storedFileId` va
+Berilmagan (`null`) maydon o'zgarmaydi. Manbani agentdan olib, kompaniyaning barcha agentlariga qaytarish uchun `"global": true` yuboring (`agentId: null` o'zgartirmaydi). `sourceType`, `storedFileId` va
 `originalFileName` tahrirlanmaydi — hujjatni almashtirish uchun yangisini qo'shing.
 Katalog feed uchun `refreshMinutes` (≥15) ham yuborish mumkin — qayta indekslamaydi, faqat
 keyingi yangilanish vaqtini o'zgartiradi. `feedItemsPath` va `feedKeyField` tahrirlanmaydi.
@@ -376,7 +384,7 @@ Huquq: **KNOWLEDGE_BASE_EDIT**. Manbani navbatga qaytaradi: xatosi tozalanadi, s
 `PENDING` bo'ladi, eski parchalar yangisiga almashtiriladi. `FAILED` manbani tuzatgandan
 keyin ham, hujjat mazmuni o'zgargan URL uchun ham shu chaqiriladi.
 
-Javob — `status: PENDING` bilan yangilangan `KnowledgeSourceRow`.
+Manba allaqachon `PENDING` yoki `PROCESSING` bo'lsa chaqiruv hech narsa qilmaydi va joriy `KnowledgeSourceRow` qaytadi (ikki marta navbatga tushmaydi). Aks holda javob — `status: PENDING` bilan yangilangan qator.
 
 ---
 
@@ -386,5 +394,25 @@ Huquq: **KNOWLEDGE_BASE_EDIT**. Haqiqiy o'chirish; javob `data: null`. Manbaning
 parchalari ham o'chadi va qidiruv keshi darhol yangilanadi — o'chirilgan hujjat keyingi
 qo'ng'iroqda gapirmaydi.
 
-> Yuklangan faylning o'zi `stored_file` da qoladi — uni `/api/files` orqali alohida
-> boshqarasiz.
+> Manbaga yuklangan fayl ham (`stored_file` va MinIO obyekti) o'chiriladi. Bucket o'chirishni rad etsa qator qoladi — `/api/files` orqali
+> alohida o'chirish mumkin.
+
+---
+
+## Kolleksiyalar — nomli bilim bazasi
+
+Retell'dagi "Knowledge Base" kabi: manbalar bitta nom ostida yig'iladi va **istalgancha agentga** biriktiriladi. Kolleksiyadagi manbadan faqat unga biriktirilgan agentlar javob beradi — u kompaniya bo'ylab ochiq (`agentId = null`) manbaga aylanmaydi. Agent o'z manbalari, kompaniya bo'ylab ochiq manbalar va biriktirilgan kolleksiyalar manbalaridan javob beradi (`useRag: true` bo'lsa).
+
+Ruxsat: o'qish — `KNOWLEDGE_BASE_READ`, o'zgartirish — `KNOWLEDGE_BASE_EDIT`. Yo'l — `/api/knowledge-base/collections`.
+
+| Endpoint | Vazifasi |
+|---|---|
+| `POST /api/knowledge-base/collections` | Yaratadi. Tana: `{ "name": "Narxlar", "agentIds": [5, 7] }` (`agentIds` ixtiyoriy) |
+| `GET /api/knowledge-base/collections` | Kompaniya kolleksiyalari: `{ id, name, sourceCount, agentIds, createdAt }[]` |
+| `GET /api/knowledge-base/collections/{id}/sources` | Kolleksiya manbalari (`KnowledgeSourceRow[]`, `collectionId` bilan) |
+| `PUT /api/knowledge-base/collections/{id}` | Nomini o'zgartiradi; `agentIds` berilsa biriktirilgan agentlar **almashtiriladi** (`[]` — hammasi ajratiladi), berilmasa o'zgarmaydi |
+| `DELETE /api/knowledge-base/collections/{id}` | Kolleksiyani **manbalari va bo'laklari bilan** o'chiradi; yuklangan fayllar ham o'chadi |
+
+Xatolar: `409 KNOWLEDGE_COLLECTION_NAME_TAKEN` (nom kompaniyada band, katta-kichik harf farqsiz), `404 KNOWLEDGE_COLLECTION_NOT_FOUND`, `404 AI_AGENT_NOT_FOUND` (`agentIds` da begona agent).
+
+Manbani kolleksiyaga solish: yaratishda `collectionId`, yoki mavjudini `PUT /api/knowledge-base/sources/{id}` bilan `{ "collectionId": 3 }` (agentdan ajraladi; `global: true` — kolleksiyadan ham, agentdan ham chiqarib kompaniya bo'ylab ochiq qiladi). `KnowledgeSourceRow` da `collectionId` qaytadi. Agent o'chirilsa, uning biriktirishlari ham o'chadi; kolleksiya va manbalari qoladi.

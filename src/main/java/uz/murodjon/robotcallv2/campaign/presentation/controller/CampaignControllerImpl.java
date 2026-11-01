@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.crm.domain.entity.Debtor;
 import uz.murodjon.robotcallv2.campaign.application.dto.*;
 import uz.murodjon.robotcallv2.campaign.application.port.input.BatchCallUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignAutoEnrollUseCase;
+import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetExportUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignTargetUseCase;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.campaign.domain.entity.AutoEnrollment;
@@ -28,14 +29,20 @@ public class CampaignControllerImpl implements CampaignController {
     private final CampaignTargetUseCase campaignTargetUseCase;
     private final BatchCallUseCase batchCallUseCase;
     private final CampaignAutoEnrollUseCase campaignAutoEnrollUseCase;
+    private final CampaignTargetExportUseCase campaignTargetExportUseCase;
+    private final TargetsExportResponseFactory targetsExportResponseFactory;
 
     public CampaignControllerImpl(CampaignUseCase campaignUseCase, CampaignTargetUseCase campaignTargetUseCase,
                                   BatchCallUseCase batchCallUseCase,
-                                  CampaignAutoEnrollUseCase campaignAutoEnrollUseCase) {
+                                  CampaignAutoEnrollUseCase campaignAutoEnrollUseCase,
+                                  CampaignTargetExportUseCase campaignTargetExportUseCase,
+                                  TargetsExportResponseFactory targetsExportResponseFactory) {
         this.campaignUseCase = campaignUseCase;
         this.campaignTargetUseCase = campaignTargetUseCase;
         this.batchCallUseCase = batchCallUseCase;
         this.campaignAutoEnrollUseCase = campaignAutoEnrollUseCase;
+        this.campaignTargetExportUseCase = campaignTargetExportUseCase;
+        this.targetsExportResponseFactory = targetsExportResponseFactory;
     }
 
     @Override
@@ -166,6 +173,11 @@ public class CampaignControllerImpl implements CampaignController {
     }
 
     @Override
+    public ResponseEntity<byte[]> exportTargets(long companyId, long id) {
+        return targetsExportResponseFactory.toResponse(campaignTargetExportUseCase.exportTargetsCsv(companyId, id));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<CampaignStatusResponse>> start(long companyId, long id, boolean immediate) {
         return ResponseEntity.ok(ResponseData.ok(campaignUseCase.start(companyId, id, immediate)));
     }
@@ -173,6 +185,16 @@ public class CampaignControllerImpl implements CampaignController {
     @Override
     public ResponseEntity<ResponseData<CampaignStatusResponse>> pause(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(campaignUseCase.pause(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CampaignStatusResponse>> stop(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(campaignUseCase.stop(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CampaignStatusResponse>> unschedule(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(campaignUseCase.unschedule(companyId, id)));
     }
 
     @Override

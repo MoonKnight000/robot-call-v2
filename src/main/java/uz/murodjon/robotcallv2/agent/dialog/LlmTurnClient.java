@@ -17,6 +17,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
@@ -105,8 +106,8 @@ class LlmTurnClient {
             // caller was read the stage annex out loud.
             //
             // Nothing is lost by running them ourselves: the tools move the FSM and record
-            // outcomes, their return strings are confirmations, and the line for the caller
-            // travels in the tool's own `reply` argument.
+            // outcomes, a data tool's result goes back as text in a follow-up round, and the
+            // line for the caller travels in the tool's own `reply` argument.
             chatClient = TurnTools.chatClient(model);
             log.info("Dialog engine ready (LLM model bean: {})", model.getClass().getSimpleName());
         } else {
@@ -420,6 +421,12 @@ class LlmTurnClient {
         // that no longer exists.
         String toolNote = s.isLineGone() ? null : turnTools.run(s, tools, toolCalls);
 
+        if (wantsResultRound(s, toolCalls, toolNote)) {
+            TurnResult answered = streamResultRounds(s, system, messages, tools, reply, toolCalls, toolNote);
+            if (answered != null) {
+                return answered;
+            }
+        }
         if (!reply.text().isEmpty() && !SpeechSanitizer.isUnspeakable(reply.text())) {
             return new TurnResult(reply.text(), reply.spoken(), reply.blocked(), toolNote);
         }
@@ -455,6 +462,48 @@ class LlmTurnClient {
         publishUsage(s, retryUsage);
         // toolNote dropped: the retry has already shown it to the model.
         return new TurnResult(retry.text(), retry.spoken(), retry.blocked(), null);
+    }
+
+    /**
+     * Answer with a data tool's result in the same turn: the result goes back to the model as
+     * text and its reply is spoken like the main one. Tools are offered again for chaining
+     * (search a contact, then create a lead) until the last allowed round, which has none.
+     * The normal model is used, not the fast one — the answer is what the caller hears.
+     *
+     * @return the turn (the first text plus the follow-up text), or {@code null} when nothing
+     *         speakable came out of it and the caller falls back to the ordinary empty-reply path
+     */
+    private TurnResult streamResultRounds(DialogSession s, String system, List<Message> messages,
+                                          List<ToolCallback> tools, StreamedReply first,
+                                          List<AssistantMessage.ToolCall> calls, String toolNote) {
+        String text = SpeechSanitizer.isUnspeakable(first.text()) ? "" : first.text();
+        boolean spoken = first.spoken();
+        boolean blocked = first.blocked();
+        String stepText = text;
+        List<Message> thread = messages;
+        int maxRounds = dialogProperties.toolResultRounds();
+        for (int round = 1; round <= maxRounds && wantsResultRound(s, calls, toolNote); round++) {
+            log.info("[{}] tool result round {}: {}", s.channelId(), round, toolNames(calls));
+            thread = withToolResult(thread, stepText, toolNote);
+            List<ToolCallback> roundTools = round < maxRounds ? tools : List.of();
+            TokenUsage usage = new TokenUsage();
+            calls = new ArrayList<>();
+            StreamedReply follow = consume(s, clientFor(s).prompt()
+                    .system(system)
+                    .messages(thread)
+                    .options(turnTools.buildOptions(s, roundTools, null).mutate())
+                    .stream()
+                    .chatResponse(), usage, calls);
+            publishUsage(s, usage);
+            maybeSpeakPreToolSpeech(s, calls, follow.spoken());
+            toolNote = s.isLineGone() ? null : turnTools.run(s, roundTools, calls);
+            stepText = SpeechSanitizer.isUnspeakable(follow.text()) ? "" : follow.text();
+            text = joinText(text, stepText);
+            spoken |= follow.spoken();
+            blocked |= follow.blocked();
+        }
+        // toolNote is what the last step's tools said that no model round has seen (usually null).
+        return text.isEmpty() ? null : new TurnResult(text, spoken, blocked, toolNote);
     }
 
     /**
@@ -643,6 +692,12 @@ class LlmTurnClient {
         maybeSpeakPreToolSpeech(s, calls, false);
         String toolNote = s.isLineGone() ? null : turnTools.run(s, tools, calls);
 
+        if (wantsResultRound(s, calls, toolNote)) {
+            TurnResult answered = blockingResultRounds(s, system, messages, tools, extractText(response), calls, toolNote);
+            if (answered != null) {
+                return answered;
+            }
+        }
         String reply = extractText(response);
         if (reply == null || reply.isBlank() || SpeechSanitizer.isUnspeakable(reply)) {
             reply = s.toolReplies(); // the line the tools carried (see DialogTools)
@@ -670,19 +725,147 @@ class LlmTurnClient {
                 outcome == SpeechOutcome.BLOCKED, toolNote);
     }
 
+    /**
+     * Blocking twin of {@link #streamResultRounds}: each step's text is spoken whole as soon
+     * as the step returns.
+     *
+     * @param firstText what the model wrote alongside the tool calls (not spoken yet), or null
+     * @return the turn, or {@code null} when nothing speakable came out of it
+     */
+    private TurnResult blockingResultRounds(DialogSession s, String system, List<Message> messages,
+                                            List<ToolCallback> tools, String firstText,
+                                            List<AssistantMessage.ToolCall> calls, String toolNote) {
+        String text = "";
+        boolean spoken = false;
+        boolean blocked = false;
+        String stepText = firstText == null || SpeechSanitizer.isUnspeakable(firstText) ? "" : firstText.trim();
+        if (!stepText.isEmpty()) {
+            SpeechOutcome outcome = speakBlocking(s, stepText);
+            spoken = outcome == SpeechOutcome.SPOKEN;
+            blocked = outcome == SpeechOutcome.BLOCKED;
+            text = stepText;
+        }
+        List<Message> thread = messages;
+        int maxRounds = dialogProperties.toolResultRounds();
+        for (int round = 1; round <= maxRounds && wantsResultRound(s, calls, toolNote); round++) {
+            log.info("[{}] tool result round {}: {}", s.channelId(), round, toolNames(calls));
+            thread = withToolResult(thread, stepText, toolNote);
+            List<Message> roundMessages = thread;
+            List<ToolCallback> roundTools = round < maxRounds ? tools : List.of();
+            ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
+                    .system(system)
+                    .messages(roundMessages)
+                    .options(turnTools.buildOptions(s, roundTools, null).mutate())
+                    .call()
+                    .chatResponse(), llmTimeout.callTimeoutMs());
+            TokenUsage usage = new TokenUsage();
+            usage.add(response);
+            publishUsage(s, usage);
+            calls = turnTools.extractCalls(response);
+            maybeSpeakPreToolSpeech(s, calls, false);
+            toolNote = s.isLineGone() ? null : turnTools.run(s, roundTools, calls);
+            String followText = extractText(response);
+            stepText = followText == null || SpeechSanitizer.isUnspeakable(followText) ? "" : followText.trim();
+            if (!stepText.isEmpty()) {
+                SpeechOutcome outcome = speakBlocking(s, stepText);
+                spoken |= outcome == SpeechOutcome.SPOKEN;
+                blocked |= outcome == SpeechOutcome.BLOCKED;
+                text = joinText(text, stepText);
+            }
+        }
+        // toolNote is what the last step's tools said that no model round has seen (usually null).
+        return text.isEmpty() ? null : new TurnResult(text, spoken, blocked, toolNote);
+    }
+
+    private SpeechOutcome speakBlocking(DialogSession s, String text) {
+        SpeechOutcome outcome = speech.speak(s, text);
+        if (outcome == SpeechOutcome.SKIPPED && s.isCancelled()) {
+            // See blockingTurn: a barge-in costs the whole line, which is then what resumes.
+            s.setUnspokenText(text);
+        }
+        return outcome;
+    }
+
+    /**
+     * Whether the tools just run call for another model round: a data tool answered, and the
+     * model has not yet been shown what it said.
+     */
+    private boolean wantsResultRound(DialogSession s, List<AssistantMessage.ToolCall> calls, String toolNote) {
+        // A flow stage's tool result is read by the next stage (TurnRunner), not answered here.
+        return dialogProperties.toolResultRounds() > 0 && toolNote != null && calls != null
+                && !s.isLineGone() && !s.isEnded() && !s.isCancelled() && !s.isWaitingForCaller()
+                && s.stageActionStep() <= 0
+                && calls.stream().anyMatch(call -> DialogTools.isDataTool(call.name()) && !isScenarioTool(s, call.name()));
+    }
+
+    /**
+     * A scenario's own tool only records an outcome and answers with a confirmation —
+     * nothing to answer with, so it is not worth a whole extra round trip.
+     */
+    private static boolean isScenarioTool(DialogSession s, String toolName) {
+        // The agent's EXTRACT_VARIABLE functions record values the same way and answer the same confirmation.
+        return s.scenario() != null && s.scenario().tools() != null
+                && s.scenario().tools().stream().anyMatch(t -> t.name().equals(toolName))
+                || AgentFunctionPlan.findExtractFunctions(s.agent()).stream()
+                .anyMatch(function -> toolName.equals(function.name()));
+    }
+
+    /**
+     * The messages so far plus what the model wrote this step and what its tools returned.
+     *
+     * <p>As plain text on purpose, never a replayed native tool call: Gemini 3 rejects the
+     * replay without a thought_signature (see {@link TurnTools#buildOptions}).
+     */
+    private static List<Message> withToolResult(List<Message> messages, String stepText, String toolNote) {
+        List<Message> next = new ArrayList<>(messages);
+        if (stepText != null && !stepText.isEmpty()) {
+            next.add(new AssistantMessage(stepText));
+        }
+        next.add(new UserMessage("[SYSTEM: Tool result: " + toolNote + "] Answer the client now using these "
+                + "results. Do not repeat what you already said. If the result is an error or empty, say so "
+                + "briefly and do not invent data."));
+        return next;
+    }
+
+    private static String toolNames(List<AssistantMessage.ToolCall> calls) {
+        return calls.stream().map(AssistantMessage.ToolCall::name).toList().toString();
+    }
+
+    private static String joinText(String first, String second) {
+        return first.isEmpty() ? second : second.isEmpty() ? first : first + " " + second;
+    }
+
     private void maybeSpeakPreToolSpeech(DialogSession s, List<AssistantMessage.ToolCall> calls, boolean alreadySpoken) {
-        if (!dialogProperties.preToolSpeech() || s.isCancelled() || s.isEnded() || calls == null || calls.isEmpty()) {
+        // A model that already spoke has its own waiting line; a filler on top would double it.
+        if (alreadySpoken || s.isCancelled() || s.isEnded() || calls == null || calls.isEmpty()) {
             return;
         }
+        // The agent's function list can ask for a waiting line of its own ("talk while waiting"), which then
+        // is said even where the installation's filler is off; a function that does not ask changes nothing.
+        Map<String, AgentFunction> functions = AgentFunctionPlan.indexByModelName(s.agent(), s.tools());
         for (AssistantMessage.ToolCall call : calls) {
             if (SILENT_CONTROL_TOOLS.contains(call.name())) {
                 continue;
             }
-            String phrase = null;
-            if (s.scenario() != null && s.scenario().tools() != null) {
+            AgentFunction function = functions.get(call.name());
+            boolean functionSpeaks = function != null && function.speakDuringExecution();
+            if (!dialogProperties.preToolSpeech() && !functionSpeaks) {
+                continue;
+            }
+            String phrase = functionSpeaks ? function.executionMessage() : null;
+            if (phrase == null && s.scenario() != null && s.scenario().tools() != null) {
                 phrase = s.scenario().tools().stream()
                         .filter(t -> t.name().equals(call.name()))
                         .map(ToolDef::preToolSpeech)
+                        .filter(Objects::nonNull)
+                        .findFirst()
+                        .orElse(null);
+            }
+            if ((phrase == null || phrase.isBlank()) && s.tools() != null) {
+                // An agent-attached HTTP tool carries its own filler; calls come in under the sanitized name.
+                phrase = s.tools().stream()
+                        .filter(t -> HttpToolExecutor.sanitizeToolName(t.name()).equals(call.name()))
+                        .map(t -> t.speech().preToolSpeech())
                         .filter(Objects::nonNull)
                         .findFirst()
                         .orElse(null);

@@ -36,6 +36,8 @@ public class AiAgentEntityMapper {
     private static final TypeReference<List<WorkflowFunction>> WORKFLOW_FUNCTIONS_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, Double>> SPEED_PER_LANGUAGE_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {};
+    private static final TypeReference<Map<String, String>> STRING_MAP_TYPE = new TypeReference<>() {};
+    private static final TypeReference<List<AgentFunction>> AGENT_FUNCTIONS_TYPE = new TypeReference<>() {};
 
     public AiAgentEntityMapper(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -108,7 +110,14 @@ public class AiAgentEntityMapper {
                         callBehaviour.getPreConversationAudioFileId(),
                         callBehaviour.getAutoEscalateOnFrustration(),
                         callBehaviour.getFrustrationThreshold(),
-                        callBehaviour.getResponseWaitMs()))
+                        callBehaviour.getResponseWaitMs(),
+                        callBehaviour.getReminderAfterSeconds(),
+                        callBehaviour.getReminderMaxCount(),
+                        callBehaviour.getDtmfTimeoutMs(),
+                        callBehaviour.getDtmfTerminationKey(),
+                        callBehaviour.getDtmfDigitLimit(),
+                        callBehaviour.getRingDurationSeconds(),
+                        callBehaviour.isPressDigitEnabled()))
                 .limits(new AiAgentLimits(
                         limits.getMaxConversationDurationSeconds(),
                         limits.getSilenceEndCallTimeoutSeconds(),
@@ -126,6 +135,15 @@ public class AiAgentEntityMapper {
                 .useRag(entity.isUseRag())
                 .dataNeeded(read(entity.getDataNeeded(), DATA_NEEDED_TYPE, List.of()))
                 .dataEvaluation(read(entity.getDataEvaluation(), DATA_EVALUATION_TYPE, List.of()))
+                .postCallAnalysis(new AgentPostCallAnalysis(entity.isSummaryEnabled(), entity.isSentimentEnabled(),
+                        entity.getAnalysisModel(), entity.isMemoryEnabled()))
+                .ragTopK(entity.getRagTopK())
+                .ragMinScore(entity.getRagMinScore())
+                .ragInstruction(entity.getRagInstruction())
+                .redactPhoneNumbers(entity.isRedactPhoneNumbers())
+                .defaultVariables(read(entity.getDefaultVariables(), STRING_MAP_TYPE, Map.of()))
+                .disabledIntegrationTools(read(entity.getDisabledIntegrationTools(), STRING_LIST_TYPE, List.of()))
+                .functions(read(entity.getFunctions(), AGENT_FUNCTIONS_TYPE, null))
                 .initiationWebhook(read(entity.getInitiationWebhook(), WEBHOOK_TYPE, null))
                 .postCallWebhook(read(entity.getPostCallWebhook(), WEBHOOK_TYPE, null))
                 .greeting(read(entity.getGreeting(), GREETING_TYPE, AgentGreeting.DEFAULT))
@@ -166,6 +184,17 @@ public class AiAgentEntityMapper {
         entity.setUseRag(agent.useRag());
         entity.setDataNeeded(write(agent.dataNeeded(), "[]"));
         entity.setDataEvaluation(write(agent.dataEvaluation(), "[]"));
+        entity.setSummaryEnabled(agent.postCallAnalysis().summaryEnabled());
+        entity.setSentimentEnabled(agent.postCallAnalysis().sentimentEnabled());
+        entity.setAnalysisModel(agent.postCallAnalysis().model());
+        entity.setMemoryEnabled(agent.postCallAnalysis().memoryEnabled());
+        entity.setRagTopK(agent.ragTopK());
+        entity.setRagMinScore(agent.ragMinScore());
+        entity.setRagInstruction(agent.ragInstruction());
+        entity.setRedactPhoneNumbers(agent.redactPhoneNumbers());
+        entity.setDefaultVariables(write(agent.defaultVariables(), "{}"));
+        entity.setDisabledIntegrationTools(write(agent.disabledIntegrationTools(), "[]"));
+        entity.setFunctions(agent.functions() != null ? write(agent.functions(), null) : null);
         entity.setInitiationWebhook(agent.initiationWebhook() != null ? write(agent.initiationWebhook(), null) : null);
         entity.setPostCallWebhook(agent.postCallWebhook() != null ? write(agent.postCallWebhook(), null) : null);
         entity.setGreeting(AgentGreeting.DEFAULT.equals(agent.greeting()) ? null : write(agent.greeting(), null));
@@ -235,7 +264,14 @@ public class AiAgentEntityMapper {
                 behaviour.preConversationAudioFileId(),
                 behaviour.autoEscalateOnFrustration(),
                 behaviour.frustrationThreshold(),
-                behaviour.responseWaitMs());
+                behaviour.responseWaitMs(),
+                behaviour.reminderAfterSeconds(),
+                behaviour.reminderMaxCount(),
+                behaviour.dtmfTimeoutMs(),
+                behaviour.dtmfTerminationKey(),
+                behaviour.dtmfDigitLimit(),
+                behaviour.ringDurationSeconds(),
+                behaviour.pressDigitEnabled());
     }
 
     private static AiAgentLimitsEntity toLimitsEntity(AiAgentLimits limits) {

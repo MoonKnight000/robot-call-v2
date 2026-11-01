@@ -64,16 +64,16 @@ class ContactServiceTest {
     }
 
     private Contact sampleContact(long id, String name, String phone) {
-        return new Contact(id, name, phone, "Tashkent", "vip", "notes", Instant.now());
+        return new Contact(id, name, phone, "Tashkent", "vip", "notes", null, Instant.now());
     }
 
     @Test
     void createSuccess() {
-        CreateContactRequest req = new CreateContactRequest("Aziz", "+998901234567", "Tashkent", "vip", "Client");
+        CreateContactRequest req = new CreateContactRequest("Aziz", "+998901234567", "Tashkent", "vip", "Client", null);
         String normalizedPhone = "+998901234567";
 
         when(contactRepository.existsByPhone(1L, normalizedPhone)).thenReturn(false);
-        when(contactRepository.create(1L, Contact.of("Aziz", normalizedPhone, "Tashkent", "vip", "Client"))).thenReturn(10L);
+        when(contactRepository.create(1L, Contact.of("Aziz", normalizedPhone, "Tashkent", "vip", "Client", null))).thenReturn(10L);
         when(contactRepository.find(1L, 10L)).thenReturn(sampleContact(10L, "Aziz", normalizedPhone));
 
         Contact created = contactService.create(1L, req);
@@ -86,7 +86,7 @@ class ContactServiceTest {
 
     @Test
     void createThrowsConflictWhenPhoneAlreadyExists() {
-        CreateContactRequest req = new CreateContactRequest("Aziz", "+998901234567", null, null, null);
+        CreateContactRequest req = new CreateContactRequest("Aziz", "+998901234567", null, null, null, null);
         when(contactRepository.existsByPhone(1L, "+998901234567")).thenReturn(true);
 
         assertThatThrownBy(() -> contactService.create(1L, req))
@@ -98,14 +98,14 @@ class ContactServiceTest {
         Contact existing = sampleContact(10L, "Aziz", "+998901234567");
         when(contactRepository.find(1L, 10L)).thenReturn(existing);
 
-        UpdateContactRequest req = new UpdateContactRequest("Aziz Updated", "Samarkand", "lead", "Updated notes");
-        Contact updatedContact = new Contact(10L, "Aziz Updated", "+998901234567", "Samarkand", "lead", "Updated notes", Instant.now());
+        UpdateContactRequest req = new UpdateContactRequest("Aziz Updated", "Samarkand", "lead", "Updated notes", null);
+        Contact updatedContact = new Contact(10L, "Aziz Updated", "+998901234567", "Samarkand", "lead", "Updated notes", null, Instant.now());
         when(contactRepository.find(1L, 10L)).thenReturn(existing, updatedContact);
 
         Contact result = contactService.update(1L, 10L, req);
 
         assertThat(result.name()).isEqualTo("Aziz Updated");
-        verify(contactRepository).update(1L, 10L, Contact.profile("Aziz Updated", "Samarkand", "lead", "Updated notes"));
+        verify(contactRepository).update(1L, 10L, Contact.profile("Aziz Updated", "Samarkand", "lead", "Updated notes", null));
         verify(auditService).record(1L, "CONTACT_UPDATE", "contact", "10", "+998901234567");
     }
 

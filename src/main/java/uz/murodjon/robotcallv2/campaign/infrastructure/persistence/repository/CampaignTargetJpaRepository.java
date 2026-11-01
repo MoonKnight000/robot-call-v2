@@ -39,6 +39,17 @@ public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTarge
                                                            @Param("companyId") long companyId,
                                                            Pageable pageable);
 
+    @Query("SELECT t FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId "
+            + "AND t.status IN :statuses AND t.phone LIKE :phonePattern")
+    List<CampaignTargetEntity> findFiltered(@Param("campaignId") long campaignId, @Param("companyId") long companyId,
+                                            @Param("statuses") Collection<TargetStatus> statuses,
+                                            @Param("phonePattern") String phonePattern, Pageable pageable);
+
+    @Query("SELECT count(t) FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId "
+            + "AND t.status IN :statuses AND t.phone LIKE :phonePattern")
+    long countFiltered(@Param("campaignId") long campaignId, @Param("companyId") long companyId,
+                       @Param("statuses") Collection<TargetStatus> statuses, @Param("phonePattern") String phonePattern);
+
     @Query("SELECT count(t) FROM CampaignTargetEntity t WHERE t.campaign.id = :campaignId AND t.company.id = :companyId")
     long countByCampaignIdAndCompanyId(@Param("campaignId") long campaignId, @Param("companyId") long companyId);
 

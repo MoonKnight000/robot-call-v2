@@ -20,10 +20,11 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
+import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,9 @@ class RealtimeToolRunner {
 
     private static final Logger log = LoggerFactory.getLogger(RealtimeToolRunner.class);
 
+    /** The longest tool name OpenAI and Gemini accept in a declaration. */
+    private static final int MAX_TOOL_NAME_LENGTH = 64;
+
     /** Appended to a tool answer the engine gets after it already spoke this turn — see {@link #runTool}. */
     private static final String ALREADY_SPOKEN = " [SYSTEM: the client has already heard what you said this turn — "
             + "do not say it again. If you have nothing new to say, stay silent and wait for the client's answer.]";
@@ -55,6 +59,9 @@ class RealtimeToolRunner {
     private final ClientMemoryUseCase clientMemory;
     private final CrmUseCase crmUseCase;
     private final IntegrationHttpToolFactory integrationHttpToolFactory;
+    private final ToolUseCase toolUseCase;
+    private final HttpToolExecutor httpToolExecutor;
+    private final McpToolCallbackFactory mcpToolCallbackFactory;
 
     /**
      * Tool bodies hit the database and the CRM, and they arrive on the engine's network
@@ -67,7 +74,8 @@ class RealtimeToolRunner {
                        RealtimeProperties realtimeProperties, RealtimeMetrics metrics,
                        StageScriptRunner stageScriptRunner, CrmCatalogUseCase crmCatalog,
                        ClientMemoryUseCase clientMemory, CrmUseCase crmUseCase,
-                       IntegrationHttpToolFactory integrationHttpToolFactory) {
+                       IntegrationHttpToolFactory integrationHttpToolFactory, ToolUseCase toolUseCase,
+                       HttpToolExecutor httpToolExecutor, McpToolCallbackFactory mcpToolCallbackFactory) {
         this.knowledgeRetrieval = knowledgeRetrieval;
         this.catalogSearch = catalogSearch;
         this.realtimeProperties = realtimeProperties;
@@ -77,6 +85,9 @@ class RealtimeToolRunner {
         this.clientMemory = clientMemory;
         this.crmUseCase = crmUseCase;
         this.integrationHttpToolFactory = integrationHttpToolFactory;
+        this.toolUseCase = toolUseCase;
+        this.httpToolExecutor = httpToolExecutor;
+        this.mcpToolCallbackFactory = mcpToolCallbackFactory;
     }
 
     /**
@@ -93,8 +104,11 @@ class RealtimeToolRunner {
                     .toolObjects(new RealtimeFactTools(s)).build().getToolCallbacks()));
         }
         // Only for agents that asked for it: an engine offered a tool it never needs still
-        // pays for the description in every request, and may call it out of curiosity.
-        if (s.agent() != null && s.agent().useRag()) {
+        // pays for the description in every request, and may call it out of curiosity. The tools
+        // are fixed at connect, so a stage that switches the knowledge base on by itself (own
+        // sources, or an override) counts too; refuse() holds the search back in the stages where
+        // it is off, the way the cascade rebuilds its list per turn.
+        if (s.agent() != null && (s.agent().useRag() || StageEntry.anyStageUsesKnowledge(s.scenario()))) {
             callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
                     .toolObjects(new RealtimeKnowledgeTools(s, knowledgeRetrieval))
                     .build().getToolCallbacks()));
@@ -116,19 +130,42 @@ class RealtimeToolRunner {
         }
         // The HTTP tools the platform admin defined for the company's CRM; declared once, with the token they carry.
         if (integrationHttpToolFactory != null) {
-            callbacks.addAll(integrationHttpToolFactory.build(s, s.companyId(), callVariablesOf(s)));
+            callbacks.addAll(integrationHttpToolFactory.build(s, s.companyId(),
+                    ToolCallVariables.build(s.channelId(), s.companyId(), s.language(), s.callAttemptId(), s.context())));
         }
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()
                 .toolObjects(new DialogTools(s, stageScriptRunner)).build().getToolCallbacks()) {
             String name = fixed.getToolDefinition().name();
             if ("sendMidCallSms".equals(name)) {
-                if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
+                if (AgentFunctionPlan.offersSms(s.agent())) {
                     callbacks.add(fixed);
                 }
                 continue;
             }
+            if ("transferToAgent".equals(name)) {
+                if (AgentFunctionPlan.offersAgentTransfer(s.agent())) {
+                    callbacks.add(fixed);
+                }
+                continue;
+            }
+            if ("endCall".equals(name) && !AgentFunctionPlan.offersEndCall(s.agent())) {
+                continue; // the agent's function list has no END_CALL: it does not hang up by itself
+            }
+            if ("sendDtmfTones".equals(name) && DialogTools.isPressDigitEnabled(s)) {
+                callbacks.add(fixed); // the agent presses keys itself, whatever its scenario declares
+                continue;
+            }
+            // Declared once at connect, so this holds the tool back only when no stage could ever
+            // have a target; the stage-by-stage case is refuse()'s.
+            if ("requestHumanTransfer".equals(name)
+                    && !TransferTargets.isOfferedAnywhere(s.agent(), s.isTransferTargetAvailable(), s.scenario())) {
+                continue;
+            }
             if (DialogTools.CASCADE_ONLY_TOOL_NAMES.contains(name)) {
                 continue;
+            }
+            if ("transitionTo".equals(name) && StageEntry.hasNowhereToTransition(s.scenario())) {
+                continue; // a single-prompt agent has no stage to move to
             }
             // The same rule the cascade pipeline applies (TurnTools#build), and it has to
             // be the same rule: the previous condition here included a tool when it was
@@ -152,24 +189,81 @@ class RealtimeToolRunner {
         if (extraction != null) {
             callbacks.add(ScenarioToolCallbackFactory.build(extraction, s));
         }
-        return callbacks;
+        // The agent's EXTRACT_VARIABLE functions, usable at every stage like its other function tools.
+        addDeclarable(callbacks, AgentFunctionTools.buildExtractionTools(s.agent(), s), s);
+        // The agent's own HTTP tools and its MCP servers' tools: usable at every stage, as on the
+        // cascade pipeline (refuse() lets them through).
+        List<Tool> agentTools = findAgentTools(s);
+        addDeclarable(callbacks, buildAgentHttpTools(s, agentTools), s);
+        addDeclarable(callbacks, buildMcpTools(s), s);
+        return AgentFunctionTools.describe(callbacks, s.agent(), agentTools);
     }
 
-    /** The call's facts and number, for a tool body's variables — the same ones the cascade pipeline gives its tools. */
-    private static Map<String, Object> callVariablesOf(RealtimeDialogSession s) {
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("channel_id", s.channelId());
-        vars.put("company_id", s.companyId());
-        vars.put("language", s.language());
-        vars.put("call_attempt_id", s.callAttemptId());
-        if (s.context() != null && s.context().facts() != null) {
-            vars.putAll(s.context().facts());
+    /** The tools attached to the call's agent; empty for a call with no stored agent, and when they cannot be read. */
+    private List<Tool> findAgentTools(RealtimeDialogSession s) {
+        if (s.agent() == null || s.agent().id() == 0L) {
+            return List.of();
         }
-        String phone = s.context() != null ? s.context().clientPhone() : null;
-        if (phone != null) {
-            vars.putIfAbsent("phone", phone);
+        try {
+            return toolUseCase.findAgentToolDefinitions(s.companyId(), s.agent().id());
+        } catch (Exception e) {
+            log.warn("[{}] failed to load active tools for agent {}: {}", s.channelId(), s.agent().id(), e.getMessage());
+            return List.of();
         }
-        return vars;
+    }
+
+    /**
+     * The HTTP tools attached to the call's agent. A tool that waits for the caller's yes before a
+     * write is left out: that confirmation counts the caller's transcribed lines, which a
+     * speech-to-speech engine delivers after the fact, so the yes could never be recognised.
+     * Never throws: a call goes on without them.
+     */
+    private List<ToolCallback> buildAgentHttpTools(RealtimeDialogSession s, List<Tool> agentTools) {
+        try {
+            Map<String, Object> variables = ToolCallVariables.build(s.channelId(), s.companyId(), s.language(),
+                    s.callAttemptId(), s.context());
+            List<ToolCallback> callbacks = new ArrayList<>();
+            for (Tool tool : agentTools) {
+                if (!HttpToolExecutor.isOfferedToModel(tool) || !AgentFunctionPlan.offersCustomTool(s.agent(), tool)) {
+                    continue;
+                }
+                if (tool.requiresConfirmation()) {
+                    log.info("[{}] tool {} needs the caller's confirmation, which realtime calls cannot take - not offered",
+                            s.channelId(), tool.name());
+                    continue;
+                }
+                callbacks.add(httpToolExecutor.buildCallback(tool, s, variables));
+            }
+            return callbacks;
+        } catch (Exception e) {
+            log.warn("[{}] failed to load active tools for agent {}: {}", s.channelId(), s.agent().id(), e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** The MCP tools of the servers attached to the call's agent; the factory never throws. */
+    private List<ToolCallback> buildMcpTools(RealtimeDialogSession s) {
+        return mcpToolCallbackFactory.build(s, s.companyId(), s.callAttemptId());
+    }
+
+    /**
+     * Adds {@code candidates} to what is declared to the engine, skipping a tool the engine would
+     * refuse the whole declaration for: a name already taken (a scenario tool, or two tools
+     * sanitised to the same name) or longer than the 64 characters OpenAI and Gemini allow.
+     */
+    private static void addDeclarable(List<ToolCallback> callbacks, List<ToolCallback> candidates,
+                                      RealtimeDialogSession s) {
+        Set<String> taken = new HashSet<>();
+        callbacks.forEach(callback -> taken.add(callback.getToolDefinition().name()));
+        for (ToolCallback candidate : candidates) {
+            String name = candidate.getToolDefinition().name();
+            if (name.length() > MAX_TOOL_NAME_LENGTH || !taken.add(name)) {
+                log.warn("[{}] tool {} not offered to the realtime engine: duplicate or over {} characters",
+                        s.channelId(), name, MAX_TOOL_NAME_LENGTH);
+                continue;
+            }
+            callbacks.add(candidate);
+        }
     }
 
     /**
@@ -265,8 +359,9 @@ class RealtimeToolRunner {
             log.info("[{}] tool {} -> {}", s.channelId(), name, result);
             return result;
         } catch (Exception e) {
+            // The detail stays in the log: an exception message is the engine's to read aloud otherwise.
             log.warn("[{}] tool {} failed: {}", s.channelId(), name, e.getMessage());
-            return "ERROR: " + e.getMessage();
+            return "ERROR: " + name + " failed";
         }
     }
 
@@ -304,10 +399,26 @@ class RealtimeToolRunner {
             return "ERROR: you have only just entered this stage — the client has not named a date yet. "
                     + "First say this stage's line and ask the client for the exact day.";
         }
+        // Declared once for the whole call, so whether a target exists in THIS stage is decided
+        // here — with the rule the cascade applies per turn (TurnTools#build).
+        if ("requestHumanTransfer".equals(name)
+                && !TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())) {
+            return "ERROR: there is no operator to hand this call to. Tell the client you cannot connect them "
+                    + "and carry on helping, or say a polite goodbye.";
+        }
         if (DialogTools.ALWAYS_AVAILABLE_TOOL_NAMES.contains(name)) {
             return null;
         }
+        // Key presses are the agent's own setting, not a scenario tool a stage may fence off.
+        if ("sendDtmfTones".equals(name) && DialogTools.isPressDigitEnabled(s)) {
+            return null;
+        }
         StageDef current = s.scenario() == null ? null : s.scenario().findStage(s.state());
+        // Declared once at connect for the whole call, so whether the search is on in THIS stage
+        // is decided here - with the rule the cascade applies per turn (TurnRunner).
+        if (RealtimeKnowledgeTools.SEARCH_TOOL_NAME.equals(name) && !StageEntry.isKnowledgeEnabled(s.agent(), current)) {
+            return "ERROR: the knowledge base is not available in this stage.";
+        }
         if (StageEntry.EXTRACT_TOOL_NAME.equals(name)) {
             return current != null && current.type() == StageType.EXTRACT_VARIABLE ? null
                     : "ERROR: " + name + " can only be called in a stage that reads values out of the conversation.";
@@ -328,7 +439,7 @@ class RealtimeToolRunner {
         StageDef stage = s.scenario() == null ? null : s.scenario().findStage(s.state());
         // null = the stage names no restriction, every scenario tool is usable here (the
         // common case); an explicit — possibly empty — list means exactly those tools.
-        List<String> allowed = stage == null ? null : stage.allowedTools();
+        List<String> allowed = StageEntry.findAllowedTools(s.scenario(), stage);
         if (allowed == null || allowed.contains(name)) {
             return null;
         }

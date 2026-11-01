@@ -30,7 +30,8 @@ final class CrmToolCallbacks {
     static List<ToolCallback> build(DialogOutcomeSink session, long companyId, Set<String> enabledToolNames,
                                     Map<String, String> descriptions, CrmCatalogUseCase catalog, CrmUseCase crm,
                                     ClientMemoryUseCase memory) {
-        if (enabledToolNames.isEmpty()) {
+        Set<String> allowedToolNames = IntegrationToolFilter.removeDisabled(session, enabledToolNames);
+        if (allowedToolNames.isEmpty()) {
             return List.of();
         }
         List<ToolCallback> all = new ArrayList<>(List.of(MethodToolCallbackProvider.builder()
@@ -42,7 +43,7 @@ final class CrmToolCallbacks {
                     .build().getToolCallbacks()));
         }
         return all.stream()
-                .filter(callback -> enabledToolNames.contains(callback.getToolDefinition().name()))
+                .filter(callback -> allowedToolNames.contains(callback.getToolDefinition().name()))
                 .map(callback -> descriptions.containsKey(callback.getToolDefinition().name())
                         ? (ToolCallback) new DescribedToolCallback(callback, descriptions.get(callback.getToolDefinition().name()))
                         : callback)

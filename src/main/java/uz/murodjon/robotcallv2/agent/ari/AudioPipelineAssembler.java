@@ -289,7 +289,7 @@ class AudioPipelineAssembler {
                     // What the caller said is personal data: DEBUG, like the rest of the pipeline.
                     log.debug("[{}] FINAL (conf={}): {}", channelId, confidence, text);
                     int offsetMs = (int) (Instant.now().toEpochMilli() - startedAt.toEpochMilli());
-                    String safeText = PiiRedactor.redact(text);
+                    String safeText = PiiRedactor.redact(text, agent);
                     ariEventLanes.execute(channelId, () -> callTranscriptUseCase.addTranscript(callAttemptId, "CLIENT", safeText, null,
                             offsetMs, confidence));
                     if (dialog) {

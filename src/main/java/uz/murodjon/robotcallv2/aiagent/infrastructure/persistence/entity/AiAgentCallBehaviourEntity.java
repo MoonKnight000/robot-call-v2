@@ -52,6 +52,27 @@ public class AiAgentCallBehaviourEntity {
     @Column(name = "response_wait_ms")
     private Integer responseWaitMs;
 
+    @Column(name = "reminder_after_seconds")
+    private Integer reminderAfterSeconds;
+
+    @Column(name = "reminder_max_count")
+    private Integer reminderMaxCount;
+
+    @Column(name = "dtmf_timeout_ms")
+    private Integer dtmfTimeoutMs;
+
+    @Column(name = "dtmf_termination_key", length = 1)
+    private String dtmfTerminationKey;
+
+    @Column(name = "dtmf_digit_limit")
+    private Integer dtmfDigitLimit;
+
+    @Column(name = "ring_duration_seconds")
+    private Integer ringDurationSeconds;
+
+    @Column(name = "press_digit_enabled", nullable = false)
+    private boolean pressDigitEnabled;
+
     protected AiAgentCallBehaviourEntity() {
     }
 
@@ -62,7 +83,11 @@ public class AiAgentCallBehaviourEntity {
                                       String transferMessage, Long transferQueueId,
                                       Long preConversationAudioFileId,
                                       Boolean autoEscalateOnFrustration, Integer frustrationThreshold,
-                                      Integer responseWaitMs) {
+                                      Integer responseWaitMs, Integer reminderAfterSeconds,
+                                      Integer reminderMaxCount, Integer dtmfTimeoutMs,
+                                      String dtmfTerminationKey, Integer dtmfDigitLimit,
+                                      Integer ringDurationSeconds,
+                                      boolean pressDigitEnabled) {
         this.interruptionSensitivity = interruptionSensitivity != null
                 ? interruptionSensitivity : InterruptionSensitivity.MEDIUM;
         this.dtmfInputEnabled = dtmfInputEnabled;
@@ -77,6 +102,13 @@ public class AiAgentCallBehaviourEntity {
         this.autoEscalateOnFrustration = autoEscalateOnFrustration;
         this.frustrationThreshold = frustrationThreshold;
         this.responseWaitMs = responseWaitMs;
+        this.reminderAfterSeconds = reminderAfterSeconds;
+        this.reminderMaxCount = reminderMaxCount;
+        this.dtmfTimeoutMs = dtmfTimeoutMs;
+        this.dtmfTerminationKey = dtmfTerminationKey;
+        this.dtmfDigitLimit = dtmfDigitLimit;
+        this.ringDurationSeconds = ringDurationSeconds;
+        this.pressDigitEnabled = pressDigitEnabled;
     }
 
     public InterruptionSensitivity getInterruptionSensitivity() {
@@ -129,5 +161,33 @@ public class AiAgentCallBehaviourEntity {
 
     public Integer getResponseWaitMs() {
         return responseWaitMs;
+    }
+
+    public Integer getReminderAfterSeconds() {
+        return reminderAfterSeconds;
+    }
+
+    public Integer getReminderMaxCount() {
+        return reminderMaxCount;
+    }
+
+    public Integer getDtmfTimeoutMs() {
+        return dtmfTimeoutMs;
+    }
+
+    public String getDtmfTerminationKey() {
+        return dtmfTerminationKey;
+    }
+
+    public Integer getDtmfDigitLimit() {
+        return dtmfDigitLimit;
+    }
+
+    public Integer getRingDurationSeconds() {
+        return ringDurationSeconds;
+    }
+
+    public boolean isPressDigitEnabled() {
+        return pressDigitEnabled;
     }
 }

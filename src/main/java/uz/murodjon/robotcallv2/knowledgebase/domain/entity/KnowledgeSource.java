@@ -16,7 +16,9 @@ import java.time.Instant;
  * @param chunkCount     how many passages (or catalog items) the last successful indexing produced
  * @param feedItemsPath  a feed's JSONPath to its array of items in a JSON answer; null for the whole answer
  * @param feedKeyField   a feed's key column; null for {@code sku}
- * @param refreshMinutes how often a URL feed is fetched again; null for only by hand
+ &
+ * @param collectionId   the named knowledge base the source sits in; null when it is not in one. A source in a
+ *                       collection is used only by the agents attached to that collection, so it has no {@code agentId}
  */
 public record KnowledgeSource(
         long id,
@@ -35,39 +37,41 @@ public record KnowledgeSource(
         Instant createdAt,
         String feedItemsPath,
         String feedKeyField,
-        Integer refreshMinutes
+        Integer refreshMinutes,
+        Long collectionId
 ) {
     /** The same source, moved to the front of the indexing queue with its last error cleared. */
     public KnowledgeSource queuedForIndexing() {
         return new KnowledgeSource(id, companyId, agentId, name, sourceType, originalFileName, storedFileId, url,
                 KnowledgeSourceStatus.PENDING, null, null, lastIndexedAt, chunkCount, createdAt,
-                feedItemsPath, feedKeyField, refreshMinutes);
+                feedItemsPath, feedKeyField, refreshMinutes, collectionId);
     }
 
     public KnowledgeSource indexing() {
         return new KnowledgeSource(id, companyId, agentId, name, sourceType, originalFileName, storedFileId, url,
                 KnowledgeSourceStatus.PROCESSING, null, null, lastIndexedAt, chunkCount, createdAt,
-                feedItemsPath, feedKeyField, refreshMinutes);
+                feedItemsPath, feedKeyField, refreshMinutes, collectionId);
     }
 
     public KnowledgeSource indexed(int indexedChunks, Instant at) {
         return new KnowledgeSource(id, companyId, agentId, name, sourceType, originalFileName, storedFileId, url,
                 KnowledgeSourceStatus.INDEXED, null, null, at, indexedChunks, createdAt,
-                feedItemsPath, feedKeyField, refreshMinutes);
+                feedItemsPath, feedKeyField, refreshMinutes, collectionId);
     }
 
     public KnowledgeSource failed(String failureCode, String failureMessage) {
         return new KnowledgeSource(id, companyId, agentId, name, sourceType, originalFileName, storedFileId, url,
                 KnowledgeSourceStatus.FAILED, failureCode, failureMessage, lastIndexedAt, 0, createdAt,
-                feedItemsPath, feedKeyField, refreshMinutes);
+                feedItemsPath, feedKeyField, refreshMinutes, collectionId);
     }
 
     /**
-     * Whether a URL feed is due to be fetched again: indexed, set to refresh, and its
+     * Whether a URL source (feed, sitemap or page) is due to be fetched again: indexed, set to refresh, and its
      * interval gone since it was last indexed. A failed feed is not — it waits for a retry.
      */
     public boolean isDueForRefresh(Instant now) {
-        return (sourceType == KnowledgeSourceType.STRUCTURED_FEED || sourceType == KnowledgeSourceType.SITEMAP)
+        return (sourceType == KnowledgeSourceType.STRUCTURED_FEED || sourceType == KnowledgeSourceType.SITEMAP
+                || sourceType == KnowledgeSourceType.URL)
                 && url != null && !url.isBlank()
                 && refreshMinutes != null && refreshMinutes > 0
                 && status == KnowledgeSourceStatus.INDEXED

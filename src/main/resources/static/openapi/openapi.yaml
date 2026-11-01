@@ -324,6 +324,10 @@ paths:
     $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1clone
   /api/campaigns/{id}/pause:
     $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1pause
+  /api/campaigns/{id}/stop:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1stop
+  /api/campaigns/{id}/unschedule:
+    $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1unschedule
   /api/campaigns/{id}/start:
     $ref: paths/campaign.yaml#/~1api~1campaigns~1%7Bid%7D~1start
   /api/campaigns/{id}/target-source:
@@ -408,6 +412,12 @@ paths:
     $ref: paths/inbound-route.yaml#/~1api~1inbound-routes~1%7Bid%7D~1stats
   /api/knowledge-base:
     $ref: paths/knowledge-base.yaml#/~1api~1knowledge-base
+  /api/knowledge-base/collections:
+    $ref: paths/knowledge-collection.yaml#/~1api~1knowledge-base~1collections
+  /api/knowledge-base/collections/{id}:
+    $ref: paths/knowledge-collection.yaml#/~1api~1knowledge-base~1collections~1%7Bid%7D
+  /api/knowledge-base/collections/{id}/sources:
+    $ref: paths/knowledge-collection.yaml#/~1api~1knowledge-base~1collections~1%7Bid%7D~1sources
   /api/knowledge-base/filter:
     $ref: paths/knowledge-base.yaml#/~1api~1knowledge-base~1filter
   /api/knowledge-base/list:

@@ -86,6 +86,15 @@ public class KnowledgeSourceRepositoryAdapter implements KnowledgeSourceReposito
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<KnowledgeSource> findByCompanyIdAndCollectionId(long companyId, long collectionId) {
+        return jpaRepository.findByCompanyIdAndCollectionIdOrderByCreatedAtDesc(companyId, collectionId)
+                .stream()
+                .map(mapper::toKnowledgeSource)
+                .toList();
+    }
+
+    @Override
     @Transactional
     public void deleteByCompanyIdAndId(long companyId, long id) {
         jpaRepository.deleteByCompanyIdAndId(companyId, id);

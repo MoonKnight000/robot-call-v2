@@ -34,6 +34,10 @@ CreateKnowledgeSourceItem:
 CreateKnowledgeSourceRequest:
   type: object
   properties:
+    collectionId:
+      type: integer
+      format: int64
+      description: Puts the sources into this knowledge collection; not together with agentId.
     agentId:
       type: integer
       format: int64
@@ -214,6 +218,9 @@ KnowledgeSourceRow:
     agentId:
       type: integer
       format: int64
+    collectionId:
+      type: integer
+      format: int64
     agentName:
       type: string
     name:
@@ -298,6 +305,10 @@ UpdateKnowledgeSourceRequest:
     name:
       type: string
       maxLength: 200
+    collectionId:
+      type: integer
+      format: int64
+      description: Moves the source into this collection (and out of any agent).
     agentId:
       type: integer
       format: int64
@@ -308,3 +319,35 @@ UpdateKnowledgeSourceRequest:
       type: integer
       format: int32
       minimum: 15
+SaveKnowledgeCollectionRequest:
+  type: object
+  description: On update a null agentIds leaves the attachments as they are; an empty list detaches every agent.
+  properties:
+    name:
+      type: string
+      maxLength: 200
+    agentIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+  required:
+  - name
+KnowledgeCollectionRow:
+  type: object
+  properties:
+    id:
+      type: integer
+      format: int64
+    name:
+      type: string
+    sourceCount:
+      type: integer
+    agentIds:
+      type: array
+      items:
+        type: integer
+        format: int64
+    createdAt:
+      type: string
+      format: date-time

@@ -26,7 +26,8 @@ public class KnowledgeSourceEntityMapper {
                 entity.getCreatedAt(),
                 entity.getFeedItemsPath(),
                 entity.getFeedKeyField(),
-                entity.getRefreshMinutes()
+                entity.getRefreshMinutes(),
+                entity.getCollectionId()
         );
     }
 
@@ -44,5 +45,6 @@ public class KnowledgeSourceEntityMapper {
         entity.setFeedItemsPath(source.feedItemsPath());
         entity.setFeedKeyField(source.feedKeyField());
         entity.setRefreshMinutes(source.refreshMinutes());
+        entity.setCollectionId(source.collectionId());
     }
 }

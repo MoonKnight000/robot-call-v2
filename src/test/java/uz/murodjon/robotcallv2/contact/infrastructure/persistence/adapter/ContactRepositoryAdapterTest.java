@@ -40,7 +40,7 @@ class ContactRepositoryAdapterTest {
         company.setId(1L);
         when(companyJpaRepository.getReferenceById(1L)).thenReturn(company);
 
-        Contact input = Contact.of("Ali Valiyev", "+998901234567", "Toshkent", "vip, qarzdor", "Eslatma");
+        Contact input = Contact.of("Ali Valiyev", "+998901234567", "Toshkent", "vip, qarzdor", "Eslatma", null);
 
         ArgumentCaptor<ContactEntity> captor = ArgumentCaptor.forClass(ContactEntity.class);
         when(contactJpaRepository.save(captor.capture())).thenAnswer(inv -> {
@@ -86,7 +86,7 @@ class ContactRepositoryAdapterTest {
 
         when(contactJpaRepository.findByIdAndCompanyId(101L, 1L)).thenReturn(Optional.of(entity));
 
-        Contact update = Contact.of("Ali", "+998901234567", "Toshkent", "new_tag, vip", null);
+        Contact update = Contact.of("Ali", "+998901234567", "Toshkent", "new_tag, vip", null, null);
         adapter.update(1L, 101L, update);
 
         verify(contactJpaRepository).save(entity);

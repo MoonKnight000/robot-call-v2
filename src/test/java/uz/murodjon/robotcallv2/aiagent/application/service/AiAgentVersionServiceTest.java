@@ -74,7 +74,7 @@ class AiAgentVersionServiceTest {
     private AiAgentVersionService serviceWithGate(AgentEvalMode gate) {
         return new AiAgentVersionService(versionRepository, drafts, userUseCase, auditUseCase, currentUser,
                 testCaseRepository, evalRepository, mock(AiAgentUseCase.class), new AgentEvalProperties(gate),
-                rolloutRepository);
+                rolloutRepository, mock(AgentFunctionsService.class));
     }
 
     /** A finished draft run over {@code agent}'s configuration (no scenario resolved — the mock returns null). */

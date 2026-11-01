@@ -31,6 +31,9 @@ public interface CampaignTargetRepository {
 
     long countByCampaign(long companyId, long campaignId);
 
+    /** How many of the campaign's targets pass {@code filter} (its page and order are ignored). */
+    long countByCampaign(long companyId, long campaignId, TargetFilter filter);
+
     long countActive(long campaignId);
 
     List<CampaignTarget> claimDue(long campaignId, int limit);

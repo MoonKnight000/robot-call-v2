@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.aiagent.application.dto;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentPostCallAnalysis;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
@@ -13,6 +15,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -28,6 +31,9 @@ import java.util.Set;
  * <p>{@code engineProfileId} replaces the agent's recognizer, models, temperature and reply cap
  * with that profile's ({@code GET /api/ai-agents/engine-profiles}); any of those fields sent
  * alongside it still wins.
+ *
+ * <p>{@code functions} replaces the whole function list; null keeps it, an empty list leaves the agent with no
+ * functions. Saving it makes the list the only thing the agent's calls read for functions (see {@code AgentFunction}).
  *
  * <p>{@code clearFields} removes the listed optional settings — the one way to empty a value,
  * since null means "keep". Sending a value for a field and listing it too is refused (400).
@@ -56,6 +62,14 @@ public record UpdateAiAgentRequest(
         Boolean useRag,
         List<DataExtractionField> dataNeeded,
         List<DataEvaluationCriterion> dataEvaluation,
+        AgentPostCallAnalysis postCallAnalysis,
+        Integer ragTopK,
+        Double ragMinScore,
+        String ragInstruction,
+        Boolean redactPhoneNumbers,
+        Map<String, String> defaultVariables,
+        List<String> disabledIntegrationTools,
+        List<AgentFunction> functions,
         AgentWebhookConfig initiationWebhook,
         AgentWebhookConfig postCallWebhook,
         Set<HandbookRule> handbook,

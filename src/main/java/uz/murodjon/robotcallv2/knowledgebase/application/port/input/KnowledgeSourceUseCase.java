@@ -13,6 +13,9 @@ public interface KnowledgeSourceUseCase {
     /** All of the company's sources, or only the given agent's when {@code agentId} is set. */
     List<KnowledgeSourceRow> findKnowledgeSources(long companyId, Long agentId);
 
+    /** The sources inside one collection. */
+    List<KnowledgeSourceRow> findKnowledgeSourcesByCollectionId(long companyId, long collectionId);
+
     KnowledgeSourceRow findKnowledgeSource(long companyId, long id);
 
     KnowledgeSourceRow updateKnowledgeSource(long companyId, long id, UpdateKnowledgeSourceRequest request);

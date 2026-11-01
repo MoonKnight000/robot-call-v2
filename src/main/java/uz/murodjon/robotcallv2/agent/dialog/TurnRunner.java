@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 
 /**
@@ -203,8 +204,10 @@ public class TurnRunner {
                 return;
             }
 
+            // A single-stage conversation stays in its one state by design — every turn there is
+            // not a loop; the call's own limits (CallLimits) bound how long it runs.
             int stageAttempts = s.recordStageAttempt(s.state());
-            if (stageAttempts >= dialogTuning.maxStageAttempts()) {
+            if (stageAttempts >= dialogTuning.maxStageAttempts() && !StageEntry.hasNowhereToTransition(s.scenario())) {
                 log.warn("[{}] FSM infinite loop detected: {} turns stuck in state '{}' - escalating to operator",
                         s.channelId(), stageAttempts, s.state());
                 s.end(Disposition.TRANSFERRED);
@@ -225,8 +228,15 @@ public class TurnRunner {
             }
 
             String system = llmTurnClient.resolveSystemPrefix(s);
+            // A curated question-and-answer item that matches is spoken below instead of the LLM turn, so
+            // the passages are not searched for such a turn: that is an embedding round trip for nothing.
+            String curatedAnswer = turnShortcuts.findKnowledgeItemAnswer(s, clientText, fromClient, isKnowledgeEnabled(s));
             // Looked up before the annex is built, because that is where the passages go.
-            retrieveKnowledge(s, clientText, fromClient);
+            if (curatedAnswer == null) {
+                retrieveKnowledge(s, clientText, fromClient);
+            } else {
+                s.setKnowledgePassages(List.of());
+            }
             // The state block goes after the history, not into the system message, so
             // the cached prefix stays append-only (see SystemPromptFactory).
             List<Message> messages = new ArrayList<>(s.history());
@@ -240,7 +250,7 @@ public class TurnRunner {
             s.setUnspokenText(null); // a previous turn's cut-off tail is stale now
 
             if (turnShortcuts.answerFromFastPath(s, clientText, fromClient)
-                    || turnShortcuts.answerFromKnowledgeBase(s, clientText, fromClient)) {
+                    || turnShortcuts.speakKnowledgeItemAnswer(s, curatedAnswer)) {
                 return;
             }
 
@@ -415,6 +425,16 @@ public class TurnRunner {
     }
 
     /**
+     * Whether this turn may use the company's knowledge, by retrieval or by curated items.
+     * The stage may switch it on or off, and sources of its own switch it on unless the stage
+     * says otherwise.
+     */
+    private boolean isKnowledgeEnabled(DialogSession s) {
+        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        return StageEntry.isKnowledgeEnabled(s.agent(), stage);
+    }
+
+    /**
      * Puts the company's own documents behind this turn, for agents that asked for it.
      *
      * <p>Off unless the agent has {@code useRag}: a search costs one embedding round trip
@@ -427,25 +447,23 @@ public class TurnRunner {
      * without it, not a call that stops.
      */
     private void retrieveKnowledge(DialogSession s, String clientText, boolean fromClient) {
-        // The stage may switch the search on or off, size it for its own turns, and add sources
-        // of its own — which switch it on unless the stage says otherwise.
         StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
         StageOverrides overrides = stage != null ? stage.overrides() : null;
         List<Long> stageSources = stage != null && stage.knowledgeSourceIds() != null
                 ? stage.knowledgeSourceIds() : List.of();
-        boolean enabled = s.agent() != null && (overrides != null && overrides.knowledgeRetrieval() != null
-                ? overrides.knowledgeRetrieval()
-                : s.agent().useRag() || !stageSources.isEmpty());
-        if (!fromClient || !enabled) {
+        if (!fromClient || !isKnowledgeEnabled(s)) {
             s.setKnowledgePassages(List.of());
             return;
         }
         int limit = overrides != null && overrides.knowledgePassages() != null
                 ? overrides.knowledgePassages()
-                : dialogProperties.knowledgePassages();
+                : s.agent().ragTopK() != null ? s.agent().ragTopK() : dialogProperties.knowledgePassages();
         try {
-            List<KnowledgePassage> passages = knowledgeRetrieval.findRelevantPassagesIncludingSources(
-                    s.companyId(), TurnShortcuts.findAgentId(s), stageSources, clientText, limit);
+            List<KnowledgePassage> passages = knowledgeRetrieval.searchPassages(
+                    s.companyId(), TurnShortcuts.findAgentId(s), stageSources,
+                    KnowledgeQueryFactory.createFromHistory(s.agent(), s.context() != null ? s.context().facts() : Map.of(),
+                            s.history(), clientText),
+                    limit);
             s.setKnowledgePassages(passages);
             if (!passages.isEmpty()) {
                 log.debug("[{}] knowledge base contributed {} passages (best {})",

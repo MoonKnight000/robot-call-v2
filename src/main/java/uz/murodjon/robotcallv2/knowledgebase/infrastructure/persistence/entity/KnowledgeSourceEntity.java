@@ -75,6 +75,9 @@ public class KnowledgeSourceEntity {
     @Column(name = "feed_key_field", length = 100)
     private String feedKeyField;
 
+    @Column(name = "collection_id")
+    private Long collectionId;
+
     @Column(name = "refresh_minutes")
     private Integer refreshMinutes;
 
@@ -216,6 +219,14 @@ public class KnowledgeSourceEntity {
 
     public void setFeedKeyField(String feedKeyField) {
         this.feedKeyField = feedKeyField;
+    }
+
+    public Long getCollectionId() {
+        return collectionId;
+    }
+
+    public void setCollectionId(Long collectionId) {
+        this.collectionId = collectionId;
     }
 
     public Integer getRefreshMinutes() {

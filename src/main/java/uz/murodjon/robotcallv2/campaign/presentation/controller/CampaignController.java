@@ -219,6 +219,13 @@ public interface CampaignController {
             @PathVariable long id,
             @Valid @RequestBody TargetFilter filter);
 
+    /** The campaign's targets with status, attempts, outcome and converted flag, as a CSV download. */
+    @PreAuthorize("hasAuthority('CAMPAIGN_READ')")
+    @GetMapping("/campaigns/{id:\\d+}/targets/export")
+    ResponseEntity<byte[]> exportTargets(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns/{id:\\d+}/start")
     ResponseEntity<ResponseData<CampaignStatusResponse>> start(
@@ -229,6 +236,24 @@ public interface CampaignController {
     @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
     @PostMapping("/campaigns/{id:\\d+}/pause")
     ResponseEntity<ResponseData<CampaignStatusResponse>> pause(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    /**
+     * Ends the run (Retell "Stop"): the dialer places no more calls, calls in progress finish, pending targets stay
+     * pending and {@code start} can run the campaign again. ACTIVE or PAUSED only; a repeating campaign is paused
+     * instead ({@code 409 CAMPAIGN_STOP_RECURRING_NOT_ALLOWED}).
+     */
+    @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
+    @PostMapping("/campaigns/{id:\\d+}/stop")
+    ResponseEntity<ResponseData<CampaignStatusResponse>> stop(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    /** Takes a SCHEDULED campaign back to DRAFT so it can be edited or started again. */
+    @PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")
+    @PostMapping("/campaigns/{id:\\d+}/unschedule")
+    ResponseEntity<ResponseData<CampaignStatusResponse>> unschedule(
             @CurrentCompanyId long companyId,
             @PathVariable long id);
 

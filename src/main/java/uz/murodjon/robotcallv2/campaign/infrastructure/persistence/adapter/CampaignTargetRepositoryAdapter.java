@@ -110,9 +110,19 @@ public class CampaignTargetRepositoryAdapter implements CampaignTargetRepository
 
     @Override
     public List<CampaignTarget> findByCampaign(long companyId, long campaignId, TargetFilter filter) {
-        return campaignTargetJpaRepository.findByCampaignIdAndCompanyId(campaignId, companyId, filter.pageable()).stream()
+        return campaignTargetJpaRepository.findFiltered(campaignId, companyId, statusesOf(filter), filter.phonePattern(), filter.pageable()).stream()
                 .map(mapper::toCampaignTarget)
                 .toList();
+    }
+
+    @Override
+    public long countByCampaign(long companyId, long campaignId, TargetFilter filter) {
+        return campaignTargetJpaRepository.countFiltered(campaignId, companyId, statusesOf(filter), filter.phonePattern());
+    }
+
+    /** The statuses the filter lets through: the one asked for, else every status (no null parameters in the query). */
+    private static List<TargetStatus> statusesOf(TargetFilter filter) {
+        return filter.status() != null ? List.of(filter.status()) : List.of(TargetStatus.values());
     }
 
     @Override

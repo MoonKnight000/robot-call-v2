@@ -40,6 +40,12 @@ public interface CampaignUseCase {
 
     CampaignStatusResponse pause(long companyId, long campaignId);
 
+    /** Ends the run: no more calls are placed, calls in progress finish. ACTIVE or PAUSED only, and not a repeating campaign. */
+    CampaignStatusResponse stop(long companyId, long campaignId);
+
+    /** Takes a SCHEDULED campaign back to DRAFT. */
+    CampaignStatusResponse unschedule(long companyId, long campaignId);
+
     CampaignStatusResponse archive(long companyId, long campaignId);
 
     void triggerRecurrenceRun(long companyId, long campaignId, boolean resetTargets);

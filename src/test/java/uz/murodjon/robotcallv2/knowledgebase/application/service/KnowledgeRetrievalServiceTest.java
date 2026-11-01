@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeChunkRepository;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeCollectionRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.TextEmbedderPort;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.IndexedChunk;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeChunk;
@@ -22,6 +23,10 @@ class KnowledgeRetrievalServiceTest {
 
     private StubChunkRepository chunkRepository;
 
+    private static KnowledgeCollectionRepository noCollections() {
+        return org.mockito.Mockito.mock(KnowledgeCollectionRepository.class);
+    }
+
     @BeforeEach
     void setUp() {
         chunkRepository = new StubChunkRepository(List.of(
@@ -32,7 +37,7 @@ class KnowledgeRetrievalServiceTest {
 
     @Test
     void returnsThePassageClosestToTheQuestion() {
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(PAYMENT));
+        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(PAYMENT), noCollections());
 
         List<KnowledgePassage> hits = service.findRelevantPassages(1L, 7L, "Qanday to'lasam bo'ladi?", 3);
 
@@ -45,14 +50,14 @@ class KnowledgeRetrievalServiceTest {
     void aPassageThatIsMerelyTheLeastUnrelatedIsNotReturned() {
         // Orthogonal to both documents: cosine 0, far below the floor.
         KnowledgeRetrievalService service = new KnowledgeRetrievalService(
-                chunkRepository, embedder(new float[]{0.0f, 0.0f, 1.0f}));
+                chunkRepository, embedder(new float[]{0.0f, 0.0f, 1.0f}), noCollections());
 
         assertThat(service.findRelevantPassages(1L, 7L, "Bugun havo qanday?", 3)).isEmpty();
     }
 
     @Test
     void anotherAgentsSourceIsNeverReturned() {
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(LEGAL));
+        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(LEGAL), noCollections());
 
         // Source 2 belongs to agent 7; agent 9 must not see it, and the company-wide
         // source 1 does not match this question.
@@ -64,7 +69,7 @@ class KnowledgeRetrievalServiceTest {
 
     @Test
     void withNoEmbeddingModelItFallsBackToKeywords() {
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(null));
+        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(null), noCollections());
 
         List<KnowledgePassage> hits = service.findRelevantPassages(1L, 7L, "Click orqali to'lash", 3);
 
@@ -74,7 +79,7 @@ class KnowledgeRetrievalServiceTest {
     @Test
     void anUtteranceTooShortToBeAQuestionIsNotSearched() {
         StubEmbedder embedder = embedder(PAYMENT);
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder);
+        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder, noCollections());
 
         assertThat(service.findRelevantPassages(1L, 7L, "ha", 3)).isEmpty();
         assertThat(embedder.queries.get()).isZero();
@@ -82,7 +87,7 @@ class KnowledgeRetrievalServiceTest {
 
     @Test
     void passagesAreReadOncePerCompanyAndAgainAfterEviction() {
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(PAYMENT));
+        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(PAYMENT), noCollections());
 
         service.findRelevantPassages(1L, 7L, "Qanday to'layman?", 3);
         service.findRelevantPassages(1L, 7L, "Qayerga to'layman?", 3);

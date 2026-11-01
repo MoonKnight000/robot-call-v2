@@ -64,7 +64,10 @@ class IntegrationHttpToolFactory {
             Map<String, Object> variables = withCrmVariables(callVariables, crmSettingsUseCase.findByCompanyId(companyId));
             List<ToolCallback> callbacks = new ArrayList<>();
             for (Tool tool : tools) {
-                callbacks.add(httpToolExecutor.buildCallback(tool, session, variables));
+                if (HttpToolExecutor.isOfferedToModel(tool)
+                        && IntegrationToolFilter.isOffered(session, HttpToolExecutor.sanitizeToolName(tool.name()), tool.name())) {
+                    callbacks.add(httpToolExecutor.buildCallback(tool, session, variables));
+                }
             }
             return callbacks;
         } catch (RuntimeException e) {

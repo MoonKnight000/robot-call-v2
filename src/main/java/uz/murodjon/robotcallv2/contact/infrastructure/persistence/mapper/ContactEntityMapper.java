@@ -20,6 +20,7 @@ public class ContactEntityMapper {
                 entity.getAddress(),
                 entity.getTagsString(),
                 entity.getNotes(),
+                entity.getCustomFields(),
                 entity.getCreatedAt()
         );
     }
@@ -36,6 +37,7 @@ public class ContactEntityMapper {
         entity.setAddress(domain.address());
         entity.setTagsFromString(domain.tags());
         entity.setNotes(domain.notes());
+        entity.setCustomFields(domain.customFields());
         entity.setCreatedAt(domain.createdAt());
         return entity;
     }

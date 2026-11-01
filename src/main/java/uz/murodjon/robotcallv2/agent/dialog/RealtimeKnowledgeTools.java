@@ -7,8 +7,11 @@ import org.springframework.ai.tool.annotation.ToolParam;
 
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The company's documents, reachable from a realtime call.
@@ -18,7 +21,8 @@ import java.util.List;
  * then nobody has asked anything. The cascade pipeline does not need this — it rebuilds an
  * annex every turn and the passages are already in it ({@code SystemPromptFactory}).
  *
- * <p>Registered only for agents with {@code useRag} on, and the cost is the same one the
+ * <p>Registered only for agents with {@code useRag} on, or whose scenario has a stage that turns the
+ * knowledge base on by itself (refused in the stages where it is off, see {@code RealtimeToolRunner}), and the cost is the same one the
  * fact tool pays: a beat of silence while the engine waits for the answer. That is the
  * trade — a short pause against the bot inventing the company's policy on a recorded line.
  */
@@ -30,8 +34,10 @@ public class RealtimeKnowledgeTools {
     private static final String NOTHING_FOUND = "NOT FOUND IN THE DOCUMENTS — do not invent an answer to "
             + "this question. Say you do not know or hand over to an operator.";
 
+    /** The name the engine calls it by: the {@link Tool} method below. */
+    static final String SEARCH_TOOL_NAME = "searchKnowledgeBase";
+
     private static final int MAX_PASSAGES = 3;
-    private static final int MAX_PASSAGE_CHARS = 900;
 
     private final RealtimeDialogSession session;
     private final KnowledgeRetrievalUseCase knowledgeRetrieval;
@@ -48,8 +54,13 @@ public class RealtimeKnowledgeTools {
     public String searchKnowledgeBase(@ToolParam(description = "the client's question, in their own words")
                                       String question) {
         try {
-            List<KnowledgePassage> passages = knowledgeRetrieval.findRelevantPassages(
-                    session.companyId(), agentId(), question, MAX_PASSAGES);
+            StageDef stage = SystemPromptFactory.stageOf(session.scenario(), session.state());
+            List<Long> stageSources = stage != null && stage.knowledgeSourceIds() != null
+                    ? stage.knowledgeSourceIds() : List.of();
+            List<KnowledgePassage> passages = knowledgeRetrieval.searchPassages(
+                    session.companyId(), agentId(), stageSources,
+                    KnowledgeQueryFactory.create(session.agent(), session.context() != null ? session.context().facts() : Map.of(), question),
+                    passageLimit(stage));
             if (passages.isEmpty()) {
                 log.debug("[{}] knowledge search for '{}' found nothing", session.channelId(), question);
                 return NOTHING_FOUND;
@@ -57,7 +68,7 @@ public class RealtimeKnowledgeTools {
             StringBuilder answer = new StringBuilder();
             for (KnowledgePassage passage : passages) {
                 answer.append("[").append(PromptSafeText.sanitize(passage.sourceName(), 80)).append("] ")
-                        .append(PromptSafeText.sanitize(passage.content(), MAX_PASSAGE_CHARS))
+                        .append(PromptSafeText.sanitize(passage.content(), SystemPromptFactory.MAX_PASSAGE_CHARS))
                         .append('\n');
             }
             log.debug("[{}] knowledge search for '{}' returned {} passages",
@@ -69,6 +80,15 @@ public class RealtimeKnowledgeTools {
             log.warn("[{}] knowledge search failed: {}", session.channelId(), e.getMessage());
             return NOTHING_FOUND;
         }
+    }
+
+    /** The stage's own passage count, else the agent's, else the default — the cascade's order. */
+    private int passageLimit(StageDef stage) {
+        StageOverrides overrides = stage != null ? stage.overrides() : null;
+        if (overrides != null && overrides.knowledgePassages() != null) {
+            return overrides.knowledgePassages();
+        }
+        return session.agent() != null && session.agent().ragTopK() != null ? session.agent().ragTopK() : MAX_PASSAGES;
     }
 
     private Long agentId() {

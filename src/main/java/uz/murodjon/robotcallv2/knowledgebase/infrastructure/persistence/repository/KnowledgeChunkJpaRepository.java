@@ -18,11 +18,11 @@ public interface KnowledgeChunkJpaRepository extends JpaRepository<KnowledgeChun
      * Every chunk of every source the company has finished indexing, with the document's
      * name and the agent it belongs to.
      *
-     * <p>Rows are {@code [sourceId, agentId, sourceName, content, embedding]}. A projection
+     * <p>Rows are {@code [sourceId, agentId, sourceName, content, embedding, collectionId]}. A projection
      * rather than entities because the caller keeps thousands of these in memory and has no
      * use for a managed entity or for the chunk's own id.
      */
-    @Query("SELECT s.id, s.agent.id, s.name, c.content, c.embedding "
+    @Query("SELECT s.id, s.agent.id, s.name, c.content, c.embedding, s.collectionId "
             + "FROM KnowledgeChunkEntity c JOIN c.source s "
             + "WHERE s.company.id = :companyId AND s.status = :status "
             + "ORDER BY s.id, c.ordinal")

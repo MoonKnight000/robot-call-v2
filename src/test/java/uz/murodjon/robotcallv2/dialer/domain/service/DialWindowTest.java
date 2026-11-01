@@ -3,6 +3,9 @@ package uz.murodjon.robotcallv2.dialer.domain.service;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialRules;
+import uz.murodjon.robotcallv2.campaign.domain.entity.TimeRange;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TimezoneMode;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignSchedule;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignRetry;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignLimits;
@@ -12,6 +15,8 @@ import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 
 import java.time.*;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -91,5 +96,75 @@ class DialWindowTest {
         CompanyConfig config = CompanyConfig.defaults();
 
         assertTrue(DialWindow.isOpenForRecipient(campaign, config, "+447123456789", clock));
+    }
+
+    private Campaign campaignWithRules(LocalTime start, LocalTime end, CampaignDialRules rules) {
+        return createCampaign(start, end).toBuilder()
+                .schedule(new CampaignSchedule(null, null, start, end, Set.of(), rules))
+                .build();
+    }
+
+    private Clock clockAt(int hour) {
+        return Clock.fixed(LocalDate.of(2026, 10, 10).atTime(hour, 0).atZone(tashkentZone).toInstant(), tashkentZone);
+    }
+
+    @Test
+    @DisplayName("hours per weekday: open only inside that weekday's ranges, and a weekday left out is closed")
+    void perWeekdayRanges() {
+        DayOfWeek today = LocalDate.of(2026, 10, 10).getDayOfWeek();
+        CampaignDialRules rules = new CampaignDialRules(null, null,
+                Map.of(today, List.of(new TimeRange(LocalTime.of(10, 0), LocalTime.of(12, 0)),
+                        new TimeRange(LocalTime.of(14, 0), LocalTime.of(16, 0)))), null);
+        Campaign campaign = campaignWithRules(LocalTime.of(9, 0), LocalTime.of(20, 0), rules);
+        CompanyConfig config = CompanyConfig.defaults();
+
+        assertTrue(DialWindow.isOpen(campaign, config, Set.of(), clockAt(11)));
+        assertFalse(DialWindow.isOpen(campaign, config, Set.of(), clockAt(13)));
+        assertTrue(DialWindow.isOpen(campaign, config, Set.of(), clockAt(15)));
+
+        CampaignDialRules otherDay = new CampaignDialRules(null, null,
+                Map.of(today.plus(1), List.of(new TimeRange(LocalTime.of(10, 0), LocalTime.of(12, 0)))), null);
+        assertFalse(DialWindow.isOpen(campaignWithRules(LocalTime.of(9, 0), LocalTime.of(20, 0), otherDay),
+                config, Set.of(), clockAt(11)));
+    }
+
+    @Test
+    @DisplayName("a fixed zone reads the window on that clock, whoever is called")
+    void fixedZone() {
+        // 15:00 in Tashkent is 10:00 in London.
+        CampaignDialRules london = new CampaignDialRules(TimezoneMode.FIXED, "Europe/London", null, null);
+        Campaign campaign = campaignWithRules(LocalTime.of(9, 0), LocalTime.of(12, 0), london);
+        CompanyConfig config = CompanyConfig.defaults();
+
+        assertTrue(DialWindow.isOpenForRecipient(campaign, config, Set.of(), "+998901234567", clockAt(15)));
+        // The same window on the company's own clock would be closed at 15:00.
+        Campaign company = campaignWithRules(LocalTime.of(9, 0), LocalTime.of(12, 0),
+                new CampaignDialRules(TimezoneMode.COMPANY, null, null, null));
+        assertFalse(DialWindow.isOpenForRecipient(company, config, Set.of(), "+998901234567", clockAt(15)));
+    }
+
+    @Test
+    @DisplayName("contact local time reads the window on the callee's clock")
+    void contactLocalTime() {
+        CampaignDialRules contact = new CampaignDialRules(TimezoneMode.CONTACT, null, null, null);
+        Campaign campaign = campaignWithRules(LocalTime.of(9, 0), LocalTime.of(12, 0), contact);
+        CompanyConfig config = CompanyConfig.defaults();
+
+        // 15:00 in Tashkent: 10:00 for a London number, still 15:00 for a Tashkent one.
+        assertTrue(DialWindow.isOpenForRecipient(campaign, config, Set.of(), "+447123456789", clockAt(15)));
+        assertFalse(DialWindow.isOpenForRecipient(campaign, config, Set.of(), "+998901234567", clockAt(15)));
+    }
+
+    @Test
+    @DisplayName("holidays are skipped unless the campaign says otherwise")
+    void holidaysToggle() {
+        LocalDate today = LocalDate.of(2026, 10, 10);
+        CompanyConfig config = CompanyConfig.defaults();
+        Campaign dialsOnHolidays = campaignWithRules(LocalTime.of(9, 0), LocalTime.of(20, 0),
+                new CampaignDialRules(null, null, null, false));
+
+        assertTrue(DialWindow.isOpen(dialsOnHolidays, config, Set.of(today), clockAt(12)));
+        assertFalse(DialWindow.isOpen(createCampaign(LocalTime.of(9, 0), LocalTime.of(20, 0)), config,
+                Set.of(today), clockAt(12)));
     }
 }

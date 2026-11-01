@@ -20,6 +20,7 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
@@ -68,6 +69,7 @@ public class DialogEngine implements CallDialog {
     private final OwnLlmChatModels ownLlmChatModels;
     private final AgentHandoffResolver agentHandoffResolver;
     private final AgentWebhookUseCase agentWebhookUseCase;
+    private final OperatorProperties operatorProperties;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
@@ -92,7 +94,8 @@ public class DialogEngine implements CallDialog {
                         TtsProperties ttsProperties,
                         OwnLlmChatModels ownLlmChatModels,
                         AgentHandoffResolver agentHandoffResolver,
-                        AgentWebhookUseCase agentWebhookUseCase) {
+                        AgentWebhookUseCase agentWebhookUseCase,
+                        OperatorProperties operatorProperties) {
         this.dialogProperties = dialogProperties;
         this.callAttemptUseCase = callAttemptUseCase;
         this.callTranscriptUseCase = callTranscriptUseCase;
@@ -115,6 +118,7 @@ public class DialogEngine implements CallDialog {
         this.ownLlmChatModels = ownLlmChatModels;
         this.agentHandoffResolver = agentHandoffResolver;
         this.agentWebhookUseCase = agentWebhookUseCase;
+        this.operatorProperties = operatorProperties;
     }
 
     @Override
@@ -245,14 +249,17 @@ public class DialogEngine implements CallDialog {
         } else {
             // The model may text the caller only where the agent allows it (TurnTools); an SMS
             // stage of the flow is the flow's own decision and needs the sender regardless.
-            if (agent != null && (agent.callBehaviour().midCallSmsEnabled() || StageEntry.sendsSms(scenario))) {
+            if (agent != null && (AgentFunctionPlan.offersSms(agent) || StageEntry.sendsSms(scenario))) {
                 session.setMidCallSmsSender(smsText ->
                         midCallSmsSender.send(companyId, callAttemptId, channelId, session.context(), smsText));
+                session.setSmsToNumberSender((smsText, number) ->
+                        midCallSmsSender.send(companyId, callAttemptId, channelId, session.context(), number, smsText));
             }
             session.setAgentScenarioResolver(agentId -> agentHandoffResolver.findPublishedScenario(companyId, agentId));
         }
         session.setDtmfSender(dtmf);
         session.setInbound(inbound);
+        session.setTransferTargetAvailable(TransferTargets.hasCallLevelTarget(agent, operatorProperties));
         session.setDetectLanguages(agent != null ? agent.findSpokenLanguages() : List.of());
         // Which model a one-word turn is answered on is the agent's call, the same way its
         // own llmModel is: a survey agent and a collections agent share a deployment and
@@ -563,7 +570,7 @@ public class DialogEngine implements CallDialog {
                 s.state(),
                 s.transferReason(),
                 callTranscriptUseCase.findTranscriptText(s.callAttemptId()),
-                StageEntry.findTransferTarget(s.scenario(), s.state()),
+                AgentFunctionPlan.findTransferNumber(s),
                 StageEntry.findTransferHeaders(s, s.scenario(), s.state()));
     }
 

@@ -76,6 +76,12 @@ public class AsteriskGateway implements TelephonyGateway {
             throw e;
         }
 
+        // The agent's own ring time wins over the deployment default.
+        int ringSeconds = outboundCall != null && outboundCall.agent() != null
+                && outboundCall.agent().callBehaviour().ringDurationSeconds() != null
+                ? outboundCall.agent().callBehaviour().ringDurationSeconds()
+                : asteriskProperties.answerTimeoutSec();
+
         Exception lastException = null;
         String lastEndpoint = null;
 
@@ -95,7 +101,7 @@ public class AsteriskGateway implements TelephonyGateway {
                         .originate("PJSIP/" + dialNumber + "@" + endpoint)
                         .setApp(asteriskProperties.appName())
                         .setAppArgs(dial.callId())
-                        .setTimeout(asteriskProperties.answerTimeoutSec());
+                        .setTimeout(ringSeconds);
                 if (callerId != null && !callerId.isBlank()) {
                     request.setCallerId(callerId);
                 }

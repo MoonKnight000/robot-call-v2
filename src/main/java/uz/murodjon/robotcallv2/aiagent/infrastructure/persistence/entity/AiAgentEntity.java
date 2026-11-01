@@ -138,6 +138,42 @@ public class AiAgentEntity {
     @Column(name = "data_evaluation", columnDefinition = "jsonb")
     private String dataEvaluation = "[]";
 
+    @Column(name = "summary_enabled", nullable = false)
+    private boolean summaryEnabled = true;
+
+    @Column(name = "sentiment_enabled", nullable = false)
+    private boolean sentimentEnabled = true;
+
+    @Column(name = "analysis_model")
+    private String analysisModel;
+
+    @Column(name = "memory_enabled", nullable = false)
+    private boolean memoryEnabled = true;
+
+    @Column(name = "rag_top_k")
+    private Integer ragTopK;
+
+    @Column(name = "rag_min_score")
+    private Double ragMinScore;
+
+    @Column(name = "rag_instruction", length = 500)
+    private String ragInstruction;
+
+    @Column(name = "redact_phone_numbers", nullable = false)
+    private boolean redactPhoneNumbers;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "default_variables", columnDefinition = "jsonb")
+    private String defaultVariables = "{}";
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "disabled_integration_tools", columnDefinition = "jsonb")
+    private String disabledIntegrationTools = "[]";
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "functions", columnDefinition = "jsonb")
+    private String functions;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "initiation_webhook", columnDefinition = "jsonb")
     private String initiationWebhook;
@@ -371,6 +407,94 @@ public class AiAgentEntity {
 
     public void setDataNeeded(String dataNeeded) {
         this.dataNeeded = dataNeeded != null ? dataNeeded : "[]";
+    }
+
+    public boolean isRedactPhoneNumbers() {
+        return redactPhoneNumbers;
+    }
+
+    public void setRedactPhoneNumbers(boolean redactPhoneNumbers) {
+        this.redactPhoneNumbers = redactPhoneNumbers;
+    }
+
+    public String getDefaultVariables() {
+        return defaultVariables;
+    }
+
+    public void setDefaultVariables(String defaultVariables) {
+        this.defaultVariables = defaultVariables != null ? defaultVariables : "{}";
+    }
+
+    public String getFunctions() {
+        return functions;
+    }
+
+    public void setFunctions(String functions) {
+        this.functions = functions;
+    }
+
+    public String getDisabledIntegrationTools() {
+        return disabledIntegrationTools;
+    }
+
+    public void setDisabledIntegrationTools(String disabledIntegrationTools) {
+        this.disabledIntegrationTools = disabledIntegrationTools != null ? disabledIntegrationTools : "[]";
+    }
+
+    public Integer getRagTopK() {
+        return ragTopK;
+    }
+
+    public void setRagTopK(Integer ragTopK) {
+        this.ragTopK = ragTopK;
+    }
+
+    public Double getRagMinScore() {
+        return ragMinScore;
+    }
+
+    public void setRagMinScore(Double ragMinScore) {
+        this.ragMinScore = ragMinScore;
+    }
+
+    public String getRagInstruction() {
+        return ragInstruction;
+    }
+
+    public void setRagInstruction(String ragInstruction) {
+        this.ragInstruction = ragInstruction;
+    }
+
+    public boolean isSummaryEnabled() {
+        return summaryEnabled;
+    }
+
+    public void setSummaryEnabled(boolean summaryEnabled) {
+        this.summaryEnabled = summaryEnabled;
+    }
+
+    public boolean isSentimentEnabled() {
+        return sentimentEnabled;
+    }
+
+    public void setSentimentEnabled(boolean sentimentEnabled) {
+        this.sentimentEnabled = sentimentEnabled;
+    }
+
+    public String getAnalysisModel() {
+        return analysisModel;
+    }
+
+    public void setAnalysisModel(String analysisModel) {
+        this.analysisModel = analysisModel;
+    }
+
+    public boolean isMemoryEnabled() {
+        return memoryEnabled;
+    }
+
+    public void setMemoryEnabled(boolean memoryEnabled) {
+        this.memoryEnabled = memoryEnabled;
     }
 
     public String getDataEvaluation() {

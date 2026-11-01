@@ -21,6 +21,12 @@ public interface TelegramUseCase {
      */
     TelegramBotRow registerWebhook(long companyId, long botId, RegisterWebhookRequest request);
 
+    /**
+     * Sends {@code text} to {@code chatId} as the company's bot — a post-call action reporting
+     * a call to a team's chat. The bot must be the company's.
+     */
+    void sendMessage(long companyId, long botId, String chatId, String text);
+
     /** Deletes the bot here and stops its updates at Telegram's end. */
     void deleteBot(long companyId, long botId);
 

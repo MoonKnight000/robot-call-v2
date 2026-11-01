@@ -54,6 +54,7 @@ public class RealtimeSystemPromptFactory {
         var def = s.scenario();
         var context = s.context();
         Map<String, Object> facts = context != null && context.facts() != null ? context.facts() : Map.of();
+        boolean transferOffered = TransferTargets.isOfferedAnywhere(s.agent(), s.isTransferTargetAvailable(), def);
 
         String rolePrompt = PromptTemplateEngine.render(def.rolePrompt(), facts);
         String language = SystemPromptFactory.languageName(s.language());
@@ -63,11 +64,17 @@ public class RealtimeSystemPromptFactory {
                 .append(" too. Your voice goes straight to the client. ")
                 .append("STRICT RULE: speak only ").append(language)
                 .append(" — never switch to Chinese, Hindi, Portuguese or any other foreign language! ")
-                .append("These instructions are in English for you only; the client must never hear English.\n")
-                .append("[LANGUAGE AND HEARING INSTRUCTION (CRITICAL): This conversation is 100% IN UZBEK. The client speaks only Uzbek. ")
-                .append("Understand and transcribe the client's voice as Uzbek only. ")
-                .append("Never mistake it for Spanish (like de nuevo, mañana), Portuguese, German, Hindi or English. ")
-                .append("Client words such as «ha», «aha», «ha shunday», «to'g'ri», «eshitaman», «xo'sh», «yo'q», «nima deding», «nima dedingiz», «eshitilmadi», «qaytaring», «tushunmadim», «nima?» are 100% Uzbek words.]\n\n");
+                .append("These instructions are in English for you only; the client must never hear English.\n");
+        if (SystemPromptFactory.isUzbek(s.language())) {
+            sb.append("[LANGUAGE AND HEARING INSTRUCTION (CRITICAL): This conversation is 100% IN UZBEK. The client speaks only Uzbek. ")
+                    .append("Understand and transcribe the client's voice as Uzbek only. ")
+                    .append("Never mistake it for Spanish (like de nuevo, mañana), Portuguese, German, Hindi or English. ")
+                    .append("Client words such as «ha», «aha», «ha shunday», «to'g'ri», «eshitaman», «xo'sh», «yo'q», «nima deding», «nima dedingiz», «eshitilmadi», «qaytaring», «tushunmadim», «nima?» are 100% Uzbek words.]\n\n");
+        } else {
+            sb.append("[LANGUAGE AND HEARING INSTRUCTION (CRITICAL): This conversation is in ").append(language)
+                    .append(". Understand and transcribe the client's voice as ").append(language)
+                    .append(" only; do not mistake it for another language.]\n\n");
+        }
 
         SystemPromptFactory.appendCallFrame(sb, s.isInbound(), def.callPurpose(),
                 context != null ? context.goal() : null, facts);
@@ -89,7 +96,8 @@ public class RealtimeSystemPromptFactory {
                     .append("- You are the official AI voice assistant (a robot) of ")
                     .append(companyName != null ? companyName.trim() : "the company").append(".\n")
                     .append("- IF YOU CANNOT FIND THE ANSWER: if the client asks something that is not in the scenario or the facts, say: ")
-                    .append("\"Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman. Sizni mutaxassisimizga ulab beraman\" and call requestHumanTransfer.\n")
+                    .append("\"Men sun'iy intellekt yordamchisiman, ushbu savolingiz bo'yicha aniq ma'lumotga ega emasman.")
+                    .append(SystemPromptFactory.unknownAnswerAction(transferOffered))
                     .append("- If the client asks 'Sen robotsanmi?', say: \"Ha, men ").append(companyName != null ? companyName.trim() : "")
                     .append(" kompaniyasining sun'iy intellekt yordamchisiman\".\n\n");
         }
@@ -104,6 +112,123 @@ public class RealtimeSystemPromptFactory {
         appendFacts(sb, s, factsInPrompt);
         SystemPromptFactory.appendMemory(sb, context.memory(), zone);
 
+        boolean singleStage = StageEntry.hasNowhereToTransition(def);
+        if (singleStage) {
+            // A single-prompt agent: no stage graph, no transitionTo, nothing to walk through.
+            sb.append("\n- Call tools only through function calls. NEVER say a tool name (endCall and others) ")
+                    .append("or its parameters out loud — the client hears them.\n");
+        } else {
+            appendStageGraph(sb, s, def, facts);
+        }
+
+        if (disclosureText != null && !disclosureText.isBlank()) {
+            String renderedDisclosure = PromptTemplateEngine.render(disclosureText.trim(), facts);
+            sb.append("\n[SYSTEM: When the conversation starts, first give a short greeting, then say this legal disclosure: \"")
+                    .append(renderedDisclosure)
+                    .append(s.isInbound()
+                            ? "\". After that, ask \"Sizga qanday yordam bera olaman?\".]\n"
+                            : singleStage ? "\". After that, go on to the purpose of the call.]\n"
+                            : "\". After that, move straight on to the scenario's next stage.]\n");
+        } else if (s.isInbound()) {
+            sb.append('\n').append(SystemPromptFactory.inboundOpening(false));
+        }
+
+        // The cascade pipeline's rule for a call that is not plainly Uzbek or Russian; this engine knows one language per call.
+        String languageRestriction = SystemPromptFactory.languageRestriction(s.language(), List.of());
+        sb.append("\nSTRICT RULES:\n");
+        List<String> scenarioGuardrails = def.guardrails();
+        if (scenarioGuardrails != null) {
+            for (String rule : scenarioGuardrails) {
+                sb.append("- ").append(rule).append('\n');
+            }
+        }
+        for (String rule : SystemPromptFactory.findPlatformGuardrails(transferOffered)) {
+            if (persona != AgentPersona.HUMAN_LIKE) {
+                if (rule.startsWith("NATURAL FILLERS AND BRIDGES") || rule.startsWith("NATURAL CONVERSATIONAL TONE")) {
+                    continue;
+                }
+            }
+            sb.append("- ").append(languageRuleOf(rule, languageRestriction)).append('\n');
+        }
+        for (String rule : REALTIME_RULES) {
+            // The Uzbek-or-Russian-only switching rule contradicts the language this call is held in.
+            if (languageRestriction != null && rule.startsWith("SWITCHING LANGUAGE")) {
+                continue;
+            }
+            sb.append("- ").append(languageRuleOf(rule, languageRestriction)).append('\n');
+        }
+        HandbookPrompt.append(sb, s.agent());
+        SystemPromptFactory.appendGlobalNodes(sb, def);
+
+        boolean russian = s.language() != null && s.language().toLowerCase().startsWith("ru");
+        sb.append("\nSTYLE: short, respectful, natural sentences. Ask one question at a time. ")
+                .append("First give a brief reaction to what the client said, then continue — but ")
+                .append("vary it every time. NEVER address the client as \"suhbatdoshim\", \"suhbatdosh\" or \"mijoz\". \n");
+        if (persona == AgentPersona.HUMAN_LIKE) {
+            String warmthLine = SystemPromptFactory.warmthStyleLine(SystemPromptFactory.warmthOf(s.agent()), russian);
+            if (warmthLine != null) {
+                // No per-turn annex here to carry the caller's mood, so the matching is asked for once.
+                sb.append(warmthLine).append(' ')
+                        .append("Match the client's mood: if they are upset — calm, slower and brief; ")
+                        .append("if they are warm — be a little warmer too. No staged sympathy (\"juda afsusdaman\").\n");
+            }
+        }
+        if (!russian) {
+            sb.append("ADDRESS AND IDENTITY CHECK (STRICT): \n")
+                    .append("STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\", \"Siz falonchimisiz?\". It sounds robotic and rude. \n")
+                    .append("RIGHT FORM: as a live operator does, say the name inside the greeting: ")
+                    .append("\"Assalomu alaykum, [Ism] aka, yaxshimisiz?\" (add \"opa\" for a woman, \"aka\" for a man). ")
+                    .append("A reply that takes the name without objecting (\"va alaykum assalom\", \"rahmat, yaxshi\") already confirms it. \n")
+                    .append("When addressing someone by name, always add the respectful Uzbek \"aka\"/\"opa\" (e.g. \"Murodjon aka\"); never say the surname.\n")
+                    .append("IDENTITY CONFIRMATION: if the client says «ha», «ha shunday», «shunday», «albatta», «eshitaman», «menman», «ha menman», «eshityapman», «labay», «to'g'ri» or a similar confirmation — the identity is confirmed. NEVER take this for a foreign language (Chinese, Hindi), never insist on «ovoz yaxshi eshitilmadi», do not call recordWrongPerson — ")
+                    .append(singleStage ? "carry on with the call.\n"
+                            : "call transitionTo at once and move to the next stage.\n");
+        }
+        sb.append("Do not restate a fact you have already said in the conversation (number, ")
+                .append("amount, date). ")
+                .append("BUT if the client says \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\" or asks you to repeat — ")
+                .append(singleStage ? "do not move on to a new question! "
+                        : "do not move on to the next stage, do not call transitionTo! ")
+                .append("Never ask whether they heard (no \"Eshitilmadimi?\", no \"Qaytadan aytaman\") — ")
+                .append("explain what you just said again, briefly and in other, simpler words, the way a live operator would: ")
+                .append("\"Aka, uyingiz bo'yicha oylik to'lovdan [summa] so'm to'lanmay qolgan ekan. Qachon to'lab bera olasiz?\".\n");
+
+        sb.append("SPOKEN FORM: not \"amalga oshirasiz\" but a plain verb (\"qilasiz\"); ")
+                .append("not \"ma'lumot beraman\" but \"aytaman\".\n");
+        // Not for a single-prompt agent: its line may be an inbound support or lead line, where a
+        // closing statement is a fine end of a reply and the debt example does not fit.
+        if (!singleStage) {
+            sb.append("EVERY REPLY ENDS WITH A CLEAR QUESTION (STRICT): never state a bare message or fact and go silent waiting for the client! ")
+                    .append("Once you state a fact (debt, amount, due date), ask a question in the same breath — ")
+                    .append("e.g. «Murodjon aka, 1500000 so'm qarzingiz bor, to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?». ")
+                    .append("Stopping without a question and waiting for the client is STRICTLY FORBIDDEN. ")
+                    .append("The only exception is saying goodbye with endCall.\n");
+        }
+        sb.append("SHORT SENTENCES: at most two or three short sentences and one question per reply. ")
+                .append("Do not cram several facts into one long sentence — split them into separate ")
+                .append("sentences.\n");
+        sb.append("INTRODUCE YOURSELF ONCE (STRICT): you say who you are and the company ONLY in your first line. ")
+                .append("After that, do NOT REPEAT them until the end of the call. ")
+                .append("NEVER use phrases like \"Suhbat yozib olinmoqda\".\n");
+        sb.append("DATE: for a date in the current year, do not say the year — \"3-sentabr\" is enough, ")
+                .append("not \"2026-yil 3-sentabr kuni\". If the client says \"ertaga\" or \"dushanba\", ")
+                .append("keep that natural form when confirming too (\"ertaga, 3-sentabrda\"); ")
+                .append("the full yyyy-MM-dd date goes only into tool parameters.");
+        StringBuilder examples = new StringBuilder();
+        SystemPromptFactory.appendStyleExamples(examples, def, s.language());
+        if (!examples.isEmpty()) {
+            sb.append("\n\nEXAMPLES (✗ wrong → ✓ right):\n").append(examples);
+        }
+
+        return sb.toString();
+    }
+
+    /**
+     * The stage list, how to walk it, and the tool-calling rules that go with it — only for a
+     * scenario that has stages to move between.
+     */
+    private static void appendStageGraph(StringBuilder sb, RealtimeDialogSession s, ScenarioDefinition def,
+                                         Map<String, Object> facts) {
         sb.append("\nCONVERSATION STAGES (you move between them with the transitionTo tool):\n");
         for (StageDef stage : def.stages()) {
             if (stage.type() == StageType.NOTE) {
@@ -166,93 +291,6 @@ public class RealtimeSystemPromptFactory {
                 .append("- Do not record a stage's outcome in the same turn you move into that ")
                 .append("stage: first say your line, hear the client's answer, ")
                 .append("then call the outcome tool.\n");
-
-        if (disclosureText != null && !disclosureText.isBlank()) {
-            String renderedDisclosure = PromptTemplateEngine.render(disclosureText.trim(), facts);
-            sb.append("\n[SYSTEM: When the conversation starts, first give a short greeting, then say this legal disclosure: \"")
-                    .append(renderedDisclosure)
-                    .append(s.isInbound()
-                            ? "\". After that, ask \"Sizga qanday yordam bera olaman?\".]\n"
-                            : "\". After that, move straight on to the scenario's next stage.]\n");
-        } else if (s.isInbound()) {
-            sb.append('\n').append(SystemPromptFactory.inboundOpening(false));
-        }
-
-        sb.append("\nSTRICT RULES:\n");
-        List<String> scenarioGuardrails = def.guardrails();
-        if (scenarioGuardrails != null) {
-            for (String rule : scenarioGuardrails) {
-                sb.append("- ").append(rule).append('\n');
-            }
-        }
-        for (String rule : SystemPromptFactory.PLATFORM_GUARDRAILS) {
-            if (persona != AgentPersona.HUMAN_LIKE) {
-                if (rule.startsWith("NATURAL FILLERS AND BRIDGES") || rule.startsWith("NATURAL CONVERSATIONAL TONE")) {
-                    continue;
-                }
-            }
-            sb.append("- ").append(rule).append('\n');
-        }
-        for (String rule : REALTIME_RULES) {
-            sb.append("- ").append(rule).append('\n');
-        }
-        HandbookPrompt.append(sb, s.agent());
-        SystemPromptFactory.appendGlobalNodes(sb, def);
-
-        boolean russian = s.language() != null && s.language().toLowerCase().startsWith("ru");
-        sb.append("\nSTYLE: short, respectful, natural sentences. Ask one question at a time. ")
-                .append("First give a brief reaction to what the client said, then continue — but ")
-                .append("vary it every time. NEVER address the client as \"suhbatdoshim\", \"suhbatdosh\" or \"mijoz\". \n");
-        if (persona == AgentPersona.HUMAN_LIKE) {
-            String warmthLine = SystemPromptFactory.warmthStyleLine(SystemPromptFactory.warmthOf(s.agent()), russian);
-            if (warmthLine != null) {
-                // No per-turn annex here to carry the caller's mood, so the matching is asked for once.
-                sb.append(warmthLine).append(' ')
-                        .append("Match the client's mood: if they are upset — calm, slower and brief; ")
-                        .append("if they are warm — be a little warmer too. No staged sympathy (\"juda afsusdaman\").\n");
-            }
-        }
-        if (!russian) {
-            sb.append("ADDRESS AND IDENTITY CHECK (STRICT): \n")
-                    .append("STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\", \"Siz falonchimisiz?\". It sounds robotic and rude. \n")
-                    .append("RIGHT FORM: as a live operator does, say the name inside the greeting: ")
-                    .append("\"Assalomu alaykum, [Ism] aka, yaxshimisiz?\" (add \"opa\" for a woman, \"aka\" for a man). ")
-                    .append("A reply that takes the name without objecting (\"va alaykum assalom\", \"rahmat, yaxshi\") already confirms it. \n")
-                    .append("When addressing someone by name, always add the respectful Uzbek \"aka\"/\"opa\" (e.g. \"Murodjon aka\"); never say the surname.\n")
-                    .append("IDENTITY CONFIRMATION: if the client says «ha», «ha shunday», «shunday», «albatta», «eshitaman», «menman», «ha menman», «eshityapman», «labay», «to'g'ri» or a similar confirmation — the identity is confirmed. NEVER take this for a foreign language (Chinese, Hindi), never insist on «ovoz yaxshi eshitilmadi», do not call recordWrongPerson — call transitionTo at once and move to the next stage.\n");
-        }
-        sb.append("Do not restate a fact you have already said in the conversation (number, ")
-                .append("amount, date). ")
-                .append("BUT if the client says \"a?\", \"a\", \"nima?\", \"eshitmadim\", \"nima deyishdi\" or asks you to repeat — ")
-                .append("do not move on to the next stage, do not call transitionTo! ")
-                .append("Never ask whether they heard (no \"Eshitilmadimi?\", no \"Qaytadan aytaman\") — ")
-                .append("explain what you just said again, briefly and in other, simpler words, the way a live operator would: ")
-                .append("\"Aka, uyingiz bo'yicha oylik to'lovdan [summa] so'm to'lanmay qolgan ekan. Qachon to'lab bera olasiz?\".\n");
-
-        sb.append("SPOKEN FORM: not \"amalga oshirasiz\" but a plain verb (\"qilasiz\"); ")
-                .append("not \"ma'lumot beraman\" but \"aytaman\".\n");
-        sb.append("EVERY REPLY ENDS WITH A CLEAR QUESTION (STRICT): never state a bare message or fact and go silent waiting for the client! ")
-                .append("Once you state a fact (debt, amount, due date), ask a question in the same breath — ")
-                .append("e.g. «Murodjon aka, 1500000 so'm qarzingiz bor, to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?». ")
-                .append("Stopping without a question and waiting for the client is STRICTLY FORBIDDEN. ")
-                .append("The only exception is saying goodbye with endCall.\n");
-        sb.append("SHORT SENTENCES: at most two or three short sentences and one question per reply. ")
-                .append("Do not cram several facts into one long sentence — split them into separate ")
-                .append("sentences.\n");
-        sb.append("INTRODUCE YOURSELF ONCE (STRICT): you say who you are and the company ONLY in your first line. ")
-                .append("After that, do NOT REPEAT them until the end of the call. ")
-                .append("NEVER use phrases like \"Suhbat yozib olinmoqda\".\n");
-        sb.append("DATE: for a date in the current year, do not say the year — \"3-sentabr\" is enough, ")
-                .append("not \"2026-yil 3-sentabr kuni\". If the client says \"ertaga\" or \"dushanba\", ")
-                .append("keep that natural form when confirming too (\"ertaga, 3-sentabrda\"); ")
-                .append("the full yyyy-MM-dd date goes only into tool parameters.");
-        StringBuilder examples = new StringBuilder();
-        SystemPromptFactory.appendStyleExamples(examples, def, s.language());
-        if (!examples.isEmpty()) {
-            sb.append("\n\nEXAMPLES (✗ wrong → ✓ right):\n").append(examples);
-        }
-
-        return sb.toString();
     }
 
     /**
@@ -278,6 +316,11 @@ public class RealtimeSystemPromptFactory {
         }
     }
 
+    /** {@code rule}, or {@code restriction} in its place when it is the language rule and this call needs another one. */
+    private static String languageRuleOf(String rule, String restriction) {
+        return restriction != null && rule.startsWith("LANGUAGE RESTRICTION") ? restriction : rule;
+    }
+
     private static void appendFacts(StringBuilder sb, RealtimeDialogSession s, boolean factsInPrompt) {
         List<FactField> factSchema = s.scenario().factSchema();
         if (factSchema == null || factSchema.isEmpty()) {
@@ -298,11 +341,11 @@ public class RealtimeSystemPromptFactory {
             sb.append("Do not tell the client any number.\n");
             return;
         }
-        sb.append("When you need any of the following, fetch it with the getFact tool and THEN tell the client:\n");
+        sb.append("When you need any of the following, fetch it with the getCallFact tool and THEN tell the client:\n");
         for (String name : available) {
             sb.append("- ").append(name).append(": ")
                     .append(RealtimeFactTools.factDescription(name)).append('\n');
         }
-        sb.append("Never invent a number, amount or date — say only what getFact returned.\n");
+        sb.append("Never invent a number, amount or date — say only what getCallFact returned.\n");
     }
 }

@@ -21,7 +21,7 @@ public class KnowledgeChunkEntityMapper {
         entity.setEmbedding(toBytes(chunk.embedding()));
     }
 
-    /** A {@code findIndexedByCompanyId} row: id, agent id, source name, content, embedding. */
+    /** A {@code findIndexedByCompanyId} row: id, agent id, source name, content, embedding, collection id. */
     public IndexedChunk toIndexedChunk(Object[] row) {
         Number agentId = (Number) row[1];
         return new IndexedChunk(
@@ -29,7 +29,8 @@ public class KnowledgeChunkEntityMapper {
                 agentId != null ? agentId.longValue() : null,
                 (String) row[2],
                 (String) row[3],
-                toFloats((byte[]) row[4])
+                toFloats((byte[]) row[4]),
+                row[5] != null ? ((Number) row[5]).longValue() : null
         );
     }
 

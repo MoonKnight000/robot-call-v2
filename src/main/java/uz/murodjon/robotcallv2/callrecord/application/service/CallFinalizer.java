@@ -349,7 +349,10 @@ public class CallFinalizer implements CallFinalizationUseCase {
             log.error("[{}] writeResult failed: {}", callAttemptId, e.getMessage());
         }
 
-        memoryWriter.remember(callAttemptId, companyId, scenarioRow, disposition, stored);
+        if (agent == null || agent.postCallAnalysis().memoryEnabled()) {
+            memoryWriter.remember(callAttemptId, companyId, scenarioRow, disposition, stored);
+        }
+        memoryWriter.saveContactFields(callAttemptId, companyId, phone, agent, stored);
 
         try {
             if (summary.callbackAt() != null && !summary.callbackAt().isBlank()) {

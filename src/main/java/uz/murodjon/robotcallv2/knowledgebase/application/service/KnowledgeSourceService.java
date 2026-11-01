@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.knowledgebase.application.dto.UpdateKnowledgeSour
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeSourceUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeChunkRepository;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeCollectionRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeSourceRepository;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeSource;
 import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceStatus;
@@ -20,6 +21,7 @@ import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -44,24 +46,31 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
     private final KnowledgeRetrievalUseCase knowledgeRetrievalUseCase;
     private final AiAgentUseCase aiAgentUseCase;
     private final AuditUseCase auditService;
+    private final FileStorageUseCase fileStorageUseCase;
+    private final KnowledgeCollectionRepository collectionRepository;
 
     public KnowledgeSourceService(KnowledgeSourceRepository repository,
                                   KnowledgeChunkRepository chunkRepository,
                                   KnowledgeIndexingService indexingService,
                                   KnowledgeRetrievalUseCase knowledgeRetrievalUseCase,
                                   AiAgentUseCase aiAgentUseCase,
-                                  AuditUseCase auditService) {
+                                  AuditUseCase auditService,
+                                  FileStorageUseCase fileStorageUseCase,
+                                  KnowledgeCollectionRepository collectionRepository) {
         this.repository = repository;
         this.chunkRepository = chunkRepository;
         this.indexingService = indexingService;
         this.knowledgeRetrievalUseCase = knowledgeRetrievalUseCase;
         this.aiAgentUseCase = aiAgentUseCase;
         this.auditService = auditService;
+        this.fileStorageUseCase = fileStorageUseCase;
+        this.collectionRepository = collectionRepository;
     }
 
     @Override
     @Transactional
     public List<KnowledgeSourceRow> createKnowledgeSources(long companyId, CreateKnowledgeSourceRequest request) {
+        requireCollectionScope(companyId, request.agentId(), request.collectionId());
         String agentName = requireAgentName(companyId, request.agentId());
 
         List<KnowledgeSource> created = new ArrayList<>();
@@ -85,7 +94,8 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                     now,
                     item.feedItemsPath(),
                     item.feedKeyField(),
-                    item.refreshMinutes()
+                    item.refreshMinutes(),
+                    request.collectionId()
             )));
         }
 
@@ -114,6 +124,16 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
 
     @Override
     @Transactional(readOnly = true)
+    public List<KnowledgeSourceRow> findKnowledgeSourcesByCollectionId(long companyId, long collectionId) {
+        collectionRepository.findByCompanyIdAndId(companyId, collectionId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.KNOWLEDGE_COLLECTION_NOT_FOUND, collectionId));
+        return repository.findByCompanyIdAndCollectionId(companyId, collectionId).stream()
+                .map(source -> toRow(source, null))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public KnowledgeSourceRow findKnowledgeSource(long companyId, long id) {
         KnowledgeSource source = requireSource(companyId, id);
         return toRow(source, agentNameOf(companyId, source.agentId()));
@@ -125,9 +145,18 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
         KnowledgeSource existing = requireSource(companyId, id);
 
         Long agentId = existing.agentId();
-        if (request.agentId() != null) {
+        Long collectionId = existing.collectionId();
+        if (Boolean.TRUE.equals(request.global())) {
+            agentId = null;
+            collectionId = null;
+        } else if (request.collectionId() != null) {
+            requireCollectionScope(companyId, request.agentId(), request.collectionId());
+            collectionId = request.collectionId();
+            agentId = null;
+        } else if (request.agentId() != null) {
             aiAgentUseCase.requireAgent(companyId, request.agentId());
             agentId = request.agentId();
+            collectionId = null;
         }
         String url = request.url() != null ? request.url().trim() : existing.url();
         // Only a changed address means the text behind the source changed. A rename or a
@@ -152,7 +181,8 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                 existing.createdAt(),
                 existing.feedItemsPath(),
                 existing.feedKeyField(),
-                request.refreshMinutes() != null ? request.refreshMinutes() : existing.refreshMinutes()
+                request.refreshMinutes() != null ? request.refreshMinutes() : existing.refreshMinutes(),
+                collectionId
         );
         KnowledgeSource saved = repository.save(reindex ? updated.queuedForIndexing() : updated);
         audit(companyId, "KNOWLEDGE_SOURCE_UPDATE", saved);
@@ -169,6 +199,10 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
     @Transactional
     public KnowledgeSourceRow retryKnowledgeSource(long companyId, long id) {
         KnowledgeSource existing = requireSource(companyId, id);
+        if (existing.status() == KnowledgeSourceStatus.PENDING || existing.status() == KnowledgeSourceStatus.PROCESSING) {
+            // Already queued or running; a second message would index the same source twice.
+            return toRow(existing, agentNameOf(companyId, existing.agentId()));
+        }
         KnowledgeSource saved = repository.save(existing.queuedForIndexing());
         audit(companyId, "KNOWLEDGE_SOURCE_RETRY", saved);
         indexingService.enqueue(saved);
@@ -181,6 +215,9 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
         KnowledgeSource existing = requireSource(companyId, id);
         chunkRepository.deleteBySourceId(id);
         repository.deleteByCompanyIdAndId(companyId, id);
+        if (existing.storedFileId() != null) {
+            fileStorageUseCase.delete(companyId, existing.storedFileId());
+        }
         knowledgeRetrievalUseCase.evictCompany(companyId);
         audit(companyId, "KNOWLEDGE_SOURCE_DELETE", existing);
     }
@@ -211,6 +248,18 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
     }
 
     /** Refuses an agent that is not this company's, so a source cannot be bound across tenants. */
+    /** A source sits in one agent or one collection; a collection must be this company's. */
+    private void requireCollectionScope(long companyId, Long agentId, Long collectionId) {
+        if (collectionId == null) {
+            return;
+        }
+        if (agentId != null) {
+            throw new ValidationException(ErrorCode.KNOWLEDGE_SOURCE_SCOPE_CONFLICT);
+        }
+        collectionRepository.findByCompanyIdAndId(companyId, collectionId)
+                .orElseThrow(() -> new NotFoundException(ErrorCode.KNOWLEDGE_COLLECTION_NOT_FOUND, collectionId));
+    }
+
     private String requireAgentName(long companyId, Long agentId) {
         return agentId == null ? null : aiAgentUseCase.requireAgent(companyId, agentId).name();
     }
@@ -250,7 +299,8 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                 source.createdAt(),
                 source.feedItemsPath(),
                 source.feedKeyField(),
-                source.refreshMinutes()
+                source.refreshMinutes(),
+                source.collectionId()
         );
     }
 }

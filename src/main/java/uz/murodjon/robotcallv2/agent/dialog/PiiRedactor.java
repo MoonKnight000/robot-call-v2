@@ -33,13 +33,37 @@ public final class PiiRedactor {
             "(?i)\\b(?:cvv(?:\\s*kodini|\\s*kodi)?|cvc(?:\\s*kodini|\\s*kodi)?|(?:xavfsizlik|maxfiy|karta)\\s*kodini?)[\\s:]+(\\d{3,4})\\b"
     );
 
+    // International numbers: optional +, 1-3 digit country code, then 2 + 3 + 2 + 2 digits (+998 90 123 45 67).
+    private static final Pattern INTERNATIONAL_PHONE_PATTERN = Pattern.compile(
+            "(?<!\\d)\\+?\\d{1,3}[\\s\\-]?\\(?\\d{2}\\)?[\\s\\-]?\\d{3}[\\s\\-]?\\d{2}[\\s\\-]?\\d{2}(?!\\d)"
+    );
+
+    // Uzbek local mobile numbers: an operator code, then 3 + 2 + 2 digits (90 123 45 67). The code keeps a plain amount out.
+    private static final Pattern LOCAL_PHONE_PATTERN = Pattern.compile(
+            "(?<!\\d)(?:33|50|55|6[1-9]|7[0-9]|88|9[0-9])[\\s\\-]?\\d{3}[\\s\\-]?\\d{2}[\\s\\-]?\\d{2}(?!\\d)"
+    );
+
     private PiiRedactor() {
+    }
+
+    /** As {@link #redact(String)}, plus phone numbers when {@code agent} asks for it ({@code redactPhoneNumbers}). */
+    public static String redact(String text, uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent agent) {
+        return redact(text, agent != null && agent.redactPhoneNumbers());
     }
 
     /**
      * Redacts sensitive PII from the given text.
      */
     public static String redact(String text) {
+        return redact(text, false);
+    }
+
+    /**
+     * As {@link #redact(String)}; with {@code phoneNumbers} a phone number is replaced by
+     * {@code [PHONE]} too. That is opt-in: the number a caller leaves for a call back is often
+     * exactly what the summary has to extract from the stored transcript.
+     */
+    public static String redact(String text, boolean phoneNumbers) {
         if (text == null || text.isBlank()) {
             return text;
         }
@@ -70,6 +94,11 @@ public final class PiiRedactor {
         Matcher cvvMatcher = CVV_PATTERN.matcher(result);
         if (cvvMatcher.find()) {
             result = cvvMatcher.replaceAll("CVV ***");
+        }
+
+        if (phoneNumbers) {
+            result = INTERNATIONAL_PHONE_PATTERN.matcher(result).replaceAll("[PHONE]");
+            result = LOCAL_PHONE_PATTERN.matcher(result).replaceAll("[PHONE]");
         }
 
         return result;

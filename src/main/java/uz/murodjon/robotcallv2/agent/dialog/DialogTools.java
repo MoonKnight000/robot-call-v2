@@ -4,6 +4,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionAgentTransfer;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionPressDigit;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionSms;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsContentMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsRecipient;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -37,6 +44,17 @@ public class DialogTools {
     );
 
     /**
+     * Whether a tool may hand the model something to answer with (an HTTP, MCP, CRM or
+     * catalog tool) rather than steering the call. The cascade pipeline feeds such a
+     * result back to the model in a follow-up round ({@link LlmTurnClient}).
+     */
+    static boolean isDataTool(String toolName) {
+        return !HARDCODED_TOOL_NAMES.contains(toolName)
+                && !"transitionTo".equals(toolName)
+                && !"sendMidCallSms".equals(toolName);
+    }
+
+    /**
      * Tools every call gets whatever its scenario declares: the one that drives the FSM,
      * and the four ways out of a conversation that should not continue — hand the caller
      * to a person, mark the wrong person, blacklist the number, hang up.
@@ -51,6 +69,14 @@ public class DialogTools {
             "transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall",
             "waitForCaller", "switchLanguage", "noteCallerMood"
     );
+
+    /**
+     * Whether the agent may press keypad digits on the line itself, without its scenario declaring
+     * {@code sendDtmfTones}: its PRESS_DIGIT function when it saved a function list, else its press-digit setting.
+     */
+    static boolean isPressDigitEnabled(DialogOutcomeSink session) {
+        return AgentFunctionPlan.offersPressDigit(session.agent());
+    }
 
     /**
      * Always-available tools only the cascade pipeline offers: a realtime engine does its own
@@ -178,6 +204,16 @@ public class DialogTools {
             recordReply(reply);
             return "State unchanged: stayed in the current stage " + session.state() + ".";
         }
+        // A name that is no stage of the scenario would park the call in a state with no
+        // prompt, tools or transitions; the scenario names no terminal state, calls end by endCall.
+        ScenarioDefinition known = session.scenario();
+        if (known != null && known.stages() != null && known.findStage(nextStage) == null) {
+            log.warn("[{}] refused transition {} -> {}: no such stage", session.channelId(), session.state(), nextStage);
+            return "ERROR: there is no stage " + nextStage + " in this conversation"
+                    + (StageEntry.hasNowhereToTransition(known) ? ", it has a single stage"
+                    : " — you can only move to " + String.join(", ", allowedTransitions()))
+                    + ". Do not repeat what you have already said in this stage.";
+        }
         // A global stage ("the caller asks for a person") answers the caller, not the stage
         // they interrupted, so the stage's unfinished business does not hold it back.
         List<String> required = StageEntry.isGlobal(session.scenario(), nextStage) ? List.of()
@@ -269,26 +305,52 @@ public class DialogTools {
                                  @ToolParam(description = "SMS text or link to send. If the agent has an SMS template "
                                          + "— not the whole message, only the part that goes into the template (a link or a code)",
                                          required = false) String text) {
-        String template = midCallSmsTemplate();
-        if (template == null) {
-            // Without a template the model would write the whole message itself, in words
-            // nobody reviewed — and a gateway delivers only registered templates anyway.
-            return "ERROR: this agent has no SMS template, no SMS can be sent. "
-                    + "Tell the client you cannot send an SMS right now.";
+        // An agent with a saved function list texts as its SEND_SMS function says; any other follows its
+        // older midCallSmsTemplate.
+        AgentFunctionSms sms = AgentFunctionPlan.findSms(session.agent()).orElse(null);
+        boolean modelWrites = sms != null && sms.contentMode() == AgentSmsContentMode.PROMPT;
+        String body;
+        if (modelWrites) {
+            // The function's content is the model's instruction, and the text it writes is the SMS.
+            if (text == null || text.isBlank()) {
+                return "ERROR: write the SMS text in the text parameter.";
+            }
+            body = text;
+        } else {
+            String template = sms != null ? sms.content() : midCallSmsTemplate();
+            if (template == null) {
+                // Without a template the model would write the whole message itself, in words
+                // nobody reviewed — and a gateway delivers only registered templates anyway.
+                return "ERROR: this agent has no SMS template, no SMS can be sent. "
+                        + "Tell the client you cannot send an SMS right now.";
+            }
+            if (SMS_TEXT_SLOT.matcher(template).find() && (text == null || text.isBlank())) {
+                return "ERROR: pass the link or code that goes into the SMS template in the text parameter.";
+            }
+            body = renderSmsTemplate(template, text, sms != null);
         }
-        if (SMS_TEXT_SLOT.matcher(template).find() && (text == null || text.isBlank())) {
-            return "ERROR: pass the link or code that goes into the SMS template in the text parameter.";
+        String number = null;
+        if (sms != null && sms.sendTo() == AgentSmsRecipient.NUMBER) {
+            number = AgentFunctionPlan.findSmsNumber(session);
+            if (number == null) {
+                return "ERROR: the SMS recipient is not known on this call, no SMS can be sent. "
+                        + "Tell the client you cannot send an SMS right now.";
+            }
         }
-        String body = renderSmsTemplate(template, text);
-        String refusal = sendGuardedSms(body);
+        String refusal = sendGuardedSms(body, number);
         if (refusal != null) {
             return refusal;
         }
-        recordReply(reply);
+        boolean silent = sms != null && !sms.speakAfter();
+        if (!silent) {
+            recordReply(reply);
+        }
         session.recordOutcome("midCallSmsSent", true);
         session.recordOutcome("midCallSmsText", body.trim());
         log.info("[{}] mid-call SMS sent ({} chars)", session.channelId(), body.trim().length());
-        return "SMS sent to the client's phone. Tell the client the SMS has been sent.";
+        return silent
+                ? "SMS sent. Do not mention it to the client and write no reply text about it; carry on with the conversation."
+                : "SMS sent to the client's phone. Tell the client the SMS has been sent.";
     }
 
     /** The agent's {@code midCallSmsTemplate}, or null when it has none — and then no mid-call SMS is sent. */
@@ -304,10 +366,13 @@ public class DialogTools {
      * and the call's facts fill the rest ({@code {{debtAmount}}}). A template without the
      * slot is sent as it stands, whatever the model wrote.
      */
-    private String renderSmsTemplate(String template, String text) {
+    private String renderSmsTemplate(String template, String text, boolean fromFunction) {
         Map<String, Object> values = new HashMap<>();
         CallContext context = session.context();
-        if (context != null && context.facts() != null) {
+        if (fromFunction) {
+            // A function's text may use what the call has recorded too (an extracted name, a tool's answer).
+            values.putAll(StageEntry.variables(session));
+        } else if (context != null && context.facts() != null) {
             values.putAll(context.facts());
         }
         values.put(SMS_TEXT_PLACEHOLDER, text == null ? "" : text.trim());
@@ -321,9 +386,10 @@ public class DialogTools {
      * call's one SMS; a send that failed does spend it — a timed-out request may still have
      * been delivered, and a retry would be the customer's second copy.
      *
+     * @param number the number a SEND_SMS function names instead of the call's own; null for the call's own
      * @return the refusal to hand back to the model, or {@code null} once the gateway took the SMS
      */
-    private String sendGuardedSms(String text) {
+    private String sendGuardedSms(String text, String number) {
         if (text == null || text.isBlank()) {
             return "ERROR: the SMS text is empty. Write the text to send.";
         }
@@ -336,7 +402,8 @@ public class DialogTools {
             return "ERROR: an SMS has already been sent on this call, a second one is not sent. "
                     + "Tell the client to look at the earlier SMS.";
         }
-        if (!session.triggerMidCallSms(body)) {
+        boolean sent = number != null ? session.triggerSmsToNumber(body, number) : session.triggerMidCallSms(body);
+        if (!sent) {
             log.warn("[{}] SMS not sent ({} chars)", session.channelId(), body.length());
             return "ERROR: the SMS was not sent. Do not tell the client it was sent; tell them you cannot send it right now.";
         }
@@ -363,8 +430,9 @@ public class DialogTools {
     }
 
     /**
-     * IVR navigation. Only reaches the model when the scenario declares a {@code ToolDef}
-     * named {@code sendDtmfTones} — an outbound scenario that dials companies rather than
+     * IVR navigation. Only reaches the model when the agent has press-digit switched on
+     * ({@link #isPressDigitEnabled}) or the scenario declares a {@code ToolDef} named
+     * {@code sendDtmfTones} — an outbound scenario that dials companies rather than
      * people (see {@code TurnTools#build}). The scenario's own {@code ToolDef.description}
      * is not used here: the wording below is what stops the model asking the human to press
      * the key, or guessing a digit it has not heard the menu name.
@@ -382,7 +450,42 @@ public class DialogTools {
             return "ERROR: keys cannot be pressed on this call. Do not wait for the menu; keep talking.";
         }
         log.info("[{}] IVR: pressed '{}' for '{}'", session.channelId(), digits, menuOption);
+        pauseForMenu();
         return "Pressed '" + digits + "'. Now wait for the menu's answer.";
+    }
+
+    /**
+     * The PRESS_DIGIT function's {@code pauseDetectionDelayMs}: the menu needs a moment to answer, so the tool
+     * answers the model only after it. The tones themselves go out with fixed timings.
+     */
+    private void pauseForMenu() {
+        Integer delay = AgentFunctionPlan.find(session.agent(), AgentFunctionType.PRESS_DIGIT)
+                .map(AgentFunction::pressDigit).map(AgentFunctionPressDigit::pauseDetectionDelayMs).orElse(null);
+        if (delay == null || delay <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(delay);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @Tool(description = "Hands the call over to another specialist agent of this company, who carries on the "
+            + "same conversation. Use it only when the conversation needs what that agent does")
+    public String transferToAgent(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
+                                  @ToolParam(description = "why the call is handed over", required = false) String reason) {
+        Long target = AgentFunctionPlan.find(session.agent(), AgentFunctionType.AGENT_TRANSFER)
+                .map(AgentFunction::agentTransfer).map(AgentFunctionAgentTransfer::agentId).orElse(null);
+        if (target == null || !session.handOffToAgent(target)) {
+            log.warn("[{}] handoff to agent {} refused", session.channelId(), target);
+            return "ERROR: the call could not be handed to the other agent. Carry on yourself "
+                    + "and do not mention a transfer.";
+        }
+        recordReply(reply);
+        log.info("[{}] call handed to agent {}: {}", session.channelId(), target, reason);
+        return "The call is now handled by the other agent. Carry on in the new role, do not greet from scratch "
+                + "and do not mention the handover.";
     }
 
     @Tool(description = "Call when the client has not finished speaking: they are thinking, made only a "

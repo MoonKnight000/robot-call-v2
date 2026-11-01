@@ -16,6 +16,8 @@ public interface KnowledgeSourceJpaRepository extends JpaRepository<KnowledgeSou
 
     List<KnowledgeSourceEntity> findByCompanyIdAndAgentIdOrderByCreatedAtDesc(long companyId, long agentId);
 
+    List<KnowledgeSourceEntity> findByCompanyIdAndCollectionIdOrderByCreatedAtDesc(long companyId, long collectionId);
+
     Optional<KnowledgeSourceEntity> findByCompanyIdAndId(long companyId, long id);
 
     void deleteByCompanyIdAndId(long companyId, long id);

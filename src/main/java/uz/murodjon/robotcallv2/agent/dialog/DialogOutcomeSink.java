@@ -147,6 +147,14 @@ public interface DialogOutcomeSink {
     boolean triggerMidCallSms(String text);
 
     /**
+     * Sends {@code text} by SMS to {@code number} instead of the number this call is with — a SEND_SMS function
+     * that names its own recipient.
+     *
+     * @return whether the gateway took it; {@code false} when this call has no sender or the send failed
+     */
+    boolean triggerSmsToNumber(String text, String number);
+
+    /**
      * Continues this call under the published scenario of the company's agent {@code agentId}
      * — an {@code AGENT_TRANSFER} stage. The voice stays this call's; what is said changes.
      *

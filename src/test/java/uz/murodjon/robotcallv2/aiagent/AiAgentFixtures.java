@@ -56,7 +56,15 @@ public final class AiAgentFixtures {
                 null,
                 null,
                 null,
-                0L
+                0L,
+                null,
+                null,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null
         );
     }
 

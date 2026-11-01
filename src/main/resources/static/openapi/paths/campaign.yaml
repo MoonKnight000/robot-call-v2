@@ -298,6 +298,74 @@
         $ref: ../common.yaml#/responses/Forbidden
       '404':
         $ref: ../common.yaml#/responses/NotFound
+/api/campaigns/{id}/stop:
+  post:
+    tags:
+    - Campaigns
+    summary: Kampaniyani tugatish (Stop)
+    description: '**Huquq:** `CAMPAIGN_EDIT`'
+    operationId: campaign_stop
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/campaign.yaml#/CampaignStatusResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/campaigns/{id}/unschedule:
+  post:
+    tags:
+    - Campaigns
+    summary: Rejalashtirishni bekor qilish
+    description: '**Huquq:** `CAMPAIGN_EDIT`'
+    operationId: campaign_unschedule
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/campaign.yaml#/CampaignStatusResponse
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
 /api/campaigns/{id}/start:
   post:
     tags:

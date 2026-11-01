@@ -76,6 +76,43 @@ AgentCallBehaviourDto:
       minimum: 100
       maximum: 3000
       description: caller silence (ms) the agent waits after the caller stops speaking before its turn (cascade only); null = deployment default
+    reminderAfterSeconds:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 300
+      description: caller silence (s) after which the agent asks whether they are still there; null = deployment default
+    reminderMaxCount:
+      type: integer
+      format: int32
+      minimum: 0
+      maximum: 10
+      description: reminders before the call is ended (0 = end at the first silence); null = deployment default
+    dtmfTimeoutMs:
+      type: integer
+      format: int32
+      minimum: 500
+      maximum: 10000
+      description: pause (ms) between keypad digits that hands the typed sequence over; null = 2000
+    dtmfTerminationKey:
+      type: string
+      pattern: "^[0-9#*]$"
+      description: key that hands the typed sequence over at once; null = "#"
+    dtmfDigitLimit:
+      type: integer
+      format: int32
+      minimum: 1
+      maximum: 50
+      description: digits after which the sequence is handed over without waiting; null = no limit
+    ringDurationSeconds:
+      type: integer
+      format: int32
+      minimum: 5
+    pressDigitEnabled:
+      type: boolean
+      description: 'Whether the agent may press keypad digits on the line itself (IVR navigation, the sendDtmfTones tool) without its scenario declaring that tool. Not dtmfInputEnabled (the caller typing digits). Omitted keeps the current value; default false.'
+      maximum: 300
+      description: seconds an outbound call rings before it counts as unanswered (Asterisk); null = deployment default
 AgentClearableField:
   type: string
   enum:
@@ -90,6 +127,13 @@ AgentClearableField:
   - RESPONSE_WAIT_MS
   - TRANSCRIPTION_MODE
   - BOOSTED_KEYWORDS
+  - REMINDER_AFTER_SECONDS
+  - REMINDER_MAX_COUNT
+  - DTMF_TIMEOUT_MS
+  - DTMF_TERMINATION_KEY
+  - DTMF_DIGIT_LIMIT
+  - RING_DURATION_SECONDS
+  - RAG_MIN_SCORE
   description: Optional agent setting `PUT /api/ai-agents/{id}` can remove through `clearFields`.
 AgentGreetingDto:
   type: object
@@ -235,6 +279,18 @@ AgentAnalysisDto:
       type: array
       items:
         $ref: '#/DataEvaluationCriterion'
+    postCallAnalysis:
+      $ref: '#/AgentPostCallAnalysis'
+AgentPostCallAnalysis:
+  type: object
+  description: Which fixed parts of the post-call analysis the agent keeps. The call is still analysed once; a switched-off part is left out of what is stored. Summary off stores an empty summary, sentiment off stores none.
+  properties:
+    summaryEnabled:
+      type: boolean
+      default: true
+    sentimentEnabled:
+      type: boolean
+      default: true
 AgentEvalResult:
   type: object
   description: How one test case went in one evaluation run (NEXT-PLAN A.2).
@@ -540,6 +596,11 @@ AgentWebhookConfig:
     audioUrl:
       type: boolean
       description: whether to send recorded audio URL (post-call)
+    timeoutSeconds:
+      type: integer
+      minimum: 1
+      maximum: 30
+      description: How long the initiation webhook may take to answer before the call goes on without it. Null - platform default. Post-call deliveries keep the default.
 AiAgentDataPolicy:
   type: object
   description: |-
@@ -656,6 +717,37 @@ AiAgentRow:
       $ref: '#/AgentLimitsDto'
     dataPolicy:
       $ref: '#/AgentDataPolicyDto'
+    redactPhoneNumbers:
+      type: boolean
+      description: Phone numbers are replaced by [PHONE] in the stored transcript and summary.
+    defaultVariables:
+      type: object
+      additionalProperties:
+        type: string
+      description: Default values for {{name}} placeholders; call data, pre-call functions and the initiation webhook override them.
+    disabledIntegrationTools:
+      type: array
+      items:
+        type: string
+      description: Legacy - ignored once functions is saved. Integration tools (company-enabled Uysot built-ins and HTTP tools) this agent does not get; empty = follows the company settings.
+    functions:
+      type: array
+      items:
+        $ref: '#/AgentFunction'
+      description: The agent's function list; always filled - for an agent that never saved one, the list derived from its older settings (END_CALL, TRANSFER_CALL, PRESS_DIGIT, SEND_SMS, attached tools, enabled integration tools).
+    ragTopK:
+      type: integer
+      description: How many knowledge passages answer one question (1-10). Null - the deployment default.
+    ragMinScore:
+      type: number
+      format: double
+      minimum: 0
+      maximum: 1
+      description: Semantic similarity floor for knowledge passages (0-1). Null - the default 0.62.
+    ragInstruction:
+      type: string
+      maxLength: 500
+      description: Focus text prepended to the knowledge search query; {{name}} placeholders are filled from call variables. Null - none.
     useRag:
       type: boolean
     dataNeeded:
@@ -877,6 +969,11 @@ DataExtractionField:
     description:
       type: string
       description: extraction instructions for the LLM
+    options:
+      type: array
+      items:
+        type: string
+      description: Allowed values of an enum field (at most 20, each 1-100 characters); the answer must be one of them. Enum fields only.
 EngineOptionsResponse:
   type: object
   description: Options for engine settings screen.
@@ -1164,6 +1261,41 @@ UpdateAiAgentRequest:
       $ref: '#/AgentLimitsDto'
     dataPolicy:
       $ref: '#/AgentDataPolicyDto'
+    redactPhoneNumbers:
+      type: boolean
+      description: Replace phone numbers by [PHONE] in stored transcripts and summaries; omitted keeps the current value.
+    defaultVariables:
+      type: object
+      additionalProperties:
+        type: string
+      description: Default values for {{name}} placeholders (up to 50, names [A-Za-z0-9_-]{1,64}, values up to 500 characters); replaces the whole map, {} clears it, omitted keeps it.
+    disabledIntegrationTools:
+      type: array
+      maxItems: 100
+      items:
+        type: string
+        maxLength: 100
+      description: 'Legacy, ignored once functions is saved. Integration tools this agent does not get: a built-in tool key (CREATE_LEAD, from GET /api/settings/integrations/tools `tool`) or an HTTP tool name (`toolName`). Replaces the whole list, [] follows the company settings again, omitted keeps it. Unknown names are accepted and ignored.'
+    functions:
+      type: array
+      maxItems: 50
+      nullable: true
+      items:
+        $ref: '#/AgentFunction'
+      description: 'Replaces the whole function list; null keeps it, [] leaves the agent with no functions. Once saved, only this list drives the agent tools; attached tools are synced to the CUSTOM functions. Errors: AI_AGENT_FUNCTION_INVALID, AI_AGENT_FUNCTION_DUPLICATE, AI_AGENT_FUNCTION_TOOL_NOT_FOUND (all 400).'
+    ragTopK:
+      type: integer
+      description: 1-10; 0 puts the agent back on the default count.
+    ragMinScore:
+      type: number
+      format: double
+      minimum: 0
+      maximum: 1
+      description: 0-1; omitted keeps the current value, clearFields RAG_MIN_SCORE returns to the default 0.62.
+    ragInstruction:
+      type: string
+      maxLength: 500
+      description: Knowledge search focus text, up to 500 characters; omitted keeps it, "" removes it.
     useRag:
       type: boolean
     dataNeeded:
@@ -1198,3 +1330,146 @@ VoicemailAction:
   - LEAVE_MESSAGE
   - IGNORE
   description: Action taken when Answering Machine Detection (AMD) classifies the answered call as voicemail.
+AgentFunctionType:
+  type: string
+  enum:
+  - END_CALL
+  - TRANSFER_CALL
+  - AGENT_TRANSFER
+  - PRESS_DIGIT
+  - SEND_SMS
+  - EXTRACT_VARIABLE
+  - CUSTOM
+  - INTEGRATION
+  description: 'What a function does. System types have a fixed model tool name: endCall, requestHumanTransfer, transferToAgent, sendDtmfTones, sendMidCallSms. CODE is not accepted.'
+AgentFunction:
+  type: object
+  description: One function (tool) the agent may use on a call. Only the settings group of its own type is filled; the others are dropped on save.
+  properties:
+    id:
+      type: string
+      pattern: '^[A-Za-z0-9_-]{1,40}$'
+      description: Stable key the client gives it, unique within the list.
+    type:
+      $ref: '#/AgentFunctionType'
+    name:
+      type: string
+      description: The tool name the model sees. Fixed for a system type (the request value is ignored), the user's for EXTRACT_VARIABLE (^[a-zA-Z][a-zA-Z0-9_]{0,63}$), the tool's own for CUSTOM, the catalog's for INTEGRATION.
+    description:
+      type: string
+      maxLength: 1000
+      nullable: true
+      description: Replaces the description the model reads; null - the standard one.
+    speakDuringExecution:
+      type: boolean
+    executionMessage:
+      type: string
+      maxLength: 300
+      nullable: true
+      description: What is said while the function runs (cascade only); null - the standard filler.
+    transfer:
+      $ref: '#/AgentFunctionTransfer'
+    agentTransfer:
+      $ref: '#/AgentFunctionAgentTransfer'
+    pressDigit:
+      $ref: '#/AgentFunctionPressDigit'
+    sms:
+      $ref: '#/AgentFunctionSms'
+    extract:
+      $ref: '#/AgentFunctionExtract'
+    toolId:
+      type: integer
+      format: int64
+      nullable: true
+      description: CUSTOM - the company's tool.
+    integrationTool:
+      type: string
+      nullable: true
+      description: INTEGRATION - the catalog tool (`toolName ?? tool` of GET /api/settings/integrations/tools).
+  required:
+  - id
+  - type
+AgentFunctionTransfer:
+  type: object
+  properties:
+    destination:
+      type: string
+      nullable: true
+      description: A phone number, a PJSIP/ or SIP/ endpoint, a sip: URI or a {{variable}}; empty - the agent's earlier transfer target (queue, number, global operator).
+    mode:
+      type: string
+      enum:
+      - COLD
+      - WARM
+AgentFunctionAgentTransfer:
+  type: object
+  properties:
+    agentId:
+      type: integer
+      format: int64
+      description: Another published agent of the same company, not this one.
+    keepVoice:
+      type: boolean
+    keepLanguage:
+      type: boolean
+AgentFunctionPressDigit:
+  type: object
+  properties:
+    pauseDetectionDelayMs:
+      type: integer
+      minimum: 0
+      maximum: 5000
+      nullable: true
+AgentFunctionSms:
+  type: object
+  properties:
+    contentMode:
+      type: string
+      enum:
+      - PROMPT
+      - STATIC
+    content:
+      type: string
+      description: STATIC - the SMS text ({{variables}} filled, up to 480 characters); PROMPT - the instruction the model writes the text from (up to 1000).
+    sendTo:
+      type: string
+      enum:
+      - CALLER
+      - NUMBER
+    number:
+      type: string
+      nullable: true
+      description: The recipient of sendTo=NUMBER, a phone number or a {{variable}}.
+    speakAfter:
+      type: boolean
+AgentFunctionExtract:
+  type: object
+  properties:
+    variables:
+      type: array
+      maxItems: 30
+      items:
+        $ref: '#/AgentFunctionVariable'
+AgentFunctionVariable:
+  type: object
+  properties:
+    name:
+      type: string
+      pattern: '^[a-zA-Z][a-zA-Z0-9_]{0,63}$'
+    type:
+      type: string
+      enum:
+      - STRING
+      - NUMBER
+      - BOOLEAN
+      - ENUM
+    description:
+      type: string
+      maxLength: 300
+    choices:
+      type: array
+      maxItems: 20
+      items:
+        type: string
+        maxLength: 100
+      description: The allowed values of an ENUM variable (at least one).

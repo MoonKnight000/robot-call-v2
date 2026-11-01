@@ -57,7 +57,7 @@ class RealtimeTranscriptRecorder {
      * it the bot's audio. One writer thread keeps the lines in the order they were spoken.
      */
     void recordLine(RealtimeDialogSession s, String role, String text) {
-        String safeText = PiiRedactor.redact(text);
+        String safeText = PiiRedactor.redact(text, s.agent());
         s.addTranscriptLine(role, safeText);
         int offsetMs = (int) (Instant.now().toEpochMilli() - s.startedAt().toEpochMilli());
         var state = s.state();

@@ -16,7 +16,10 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 **Request body** (`CreateContactRequest`):
 
 ```json
-{ "name": "Aziz Karimov", "phone": "998901234567", "address": "Toshkent", "tags": "vip,doimiy", "notes": "Doimiy mijoz" }
+{
+  "name": "Aziz Karimov", "phone": "998901234567", "address": "Toshkent", "tags": "vip,doimiy", "notes": "Doimiy mijoz",
+  "customFields": { "contract_no": "A-1042", "preferred_time": "kechqurun" }
+}
 ```
 
 | Maydon | Majburiymi | Izoh |
@@ -26,6 +29,7 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `address` | ❌ | — |
 | `tags` | ❌ | vergul bilan ajratilgan |
 | `notes` | ❌ | — |
+| `customFields` | ❌ | `{ "kalit": "qiymat" }` — erkin maydonlar, [cheklovlar](#custom-fields); `null` yoki yo'q — bo'sh to'plam |
 
 **Response** (`Contact`):
 
@@ -37,9 +41,30 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
   "address": "Toshkent",
   "tags": "vip,doimiy",
   "notes": "Doimiy mijoz",
+  "customFields": { "contract_no": "A-1042", "preferred_time": "kechqurun" },
   "createdAt": "2026-07-20T09:00:00Z"
 }
 ```
+
+`customFields` javobda doim bor — maydon bo'lmasa `{}`.
+
+### Custom fields (erkin maydonlar) {#custom-fields}
+
+Retell uslubidagi kontakt maydonlari: `string → string` xaritasi, JSON obyekt sifatida
+(`{ "contract_no": "A-1042" }`). Cheklovlar:
+
+| Qoida | Buzilsa |
+|---|---|
+| ko'pi bilan 50 ta kalit | `400 CONTACT_CUSTOM_FIELDS_TOO_MANY` |
+| kalit `^[A-Za-z_][A-Za-z0-9_]{0,63}$` (harf/raqam/`_`, raqam bilan boshlanmaydi, ≤ 64 belgi) | `400 CONTACT_CUSTOM_FIELD_INVALID` (argument — kalit) |
+| qiymat `null` emas va ≤ 1000 belgi | `400 CONTACT_CUSTOM_FIELD_INVALID` |
+
+Qiymatlarni AI agent ham avtomatik yozadi: agentning post-call extraction maydonida
+`contactField` berilgan bo'lsa, qo'ng'iroqdan keyin ajratilgan qiymat shu kalit bilan
+kontaktga qo'shiladi (mavjud kalitlar ustidan yoziladi, boshqalari saqlanadi; kontakt
+bo'lmasa — telefon raqami ism sifatida yangi kontakt yaratiladi; noto'g'ri kalit yoki bo'sh
+qiymat jimgina tashlanadi) — [ai-agents.md](ai-agents.md) §9.
+CSV import/eksport custom field'larni o'qimaydi va yozmaydi.
 
 ---
 
@@ -85,8 +110,12 @@ kiradi; ulanmaganida `durationSec` — `null`.
 (barqaror identifikator sifatida saqlanadi, shuning uchun bodyda yo'q):
 
 ```json
-{ "name": "Aziz Karimov", "address": "Toshkent", "tags": "vip", "notes": "Yangilangan izoh" }
+{ "name": "Aziz Karimov", "address": "Toshkent", "tags": "vip", "notes": "Yangilangan izoh", "customFields": { "contract_no": "A-1042" } }
 ```
+
+`customFields`: `null` yoki yo'q — saqlangan to'plam o'zgarmaydi; xarita berilsa — **butun
+to'plam almashtiriladi** (berilmagan kalitlar o'chadi, `{}` hammasini tozalaydi).
+Cheklovlar — [yuqorida](#custom-fields).
 
 Javob — yangilangan `Contact`.
 

@@ -4,12 +4,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
+import uz.murodjon.robotcallv2.agent.dialog.StageScriptRunner;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PostCallAction;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.PostCallCondition;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.PostCallActionType;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.PostCallConditionOperator;
+import uz.murodjon.robotcallv2.chat.application.port.input.TelegramUseCase;
 import uz.murodjon.robotcallv2.notification.application.port.input.NotificationUseCase;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -37,6 +41,8 @@ class PostCallActionExecutorTest {
     private NotificationUseCase notificationService;
     private AgentWebhookUseCase agentWebhookUseCase;
     private WebhookDeliveryUseCase webhookDelivery;
+    private TelegramUseCase telegramUseCase;
+    private StageScriptRunner scriptRunner;
     private PostCallActionExecutor executor;
 
     @BeforeEach
@@ -46,6 +52,8 @@ class PostCallActionExecutorTest {
         notificationService = mock(NotificationUseCase.class);
         agentWebhookUseCase = mock(AgentWebhookUseCase.class);
         webhookDelivery = mock(WebhookDeliveryUseCase.class);
+        telegramUseCase = mock(TelegramUseCase.class);
+        scriptRunner = mock(StageScriptRunner.class);
 
         when(secretUseCase.resolveSecrets(eq(COMPANY_ID), anyString()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
@@ -55,7 +63,9 @@ class PostCallActionExecutorTest {
                 secretUseCase,
                 notificationService,
                 agentWebhookUseCase,
-                webhookDelivery
+                webhookDelivery,
+                telegramUseCase,
+                scriptRunner
         );
     }
 
@@ -70,7 +80,12 @@ class PostCallActionExecutorTest {
                 "Sizga qo'ng'iroq qildik ({{phone}}), natija: {{disposition}}. {{summary}}",
                 null,
                 Map.of(),
-                true
+                true,
+                List.of(),
+                null,
+                null,
+                null,
+                null
         );
 
         AiAgent agent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null)
@@ -97,7 +112,12 @@ class PostCallActionExecutorTest {
                 "Rahmat, {{phone}}!",
                 null,
                 Map.of(),
-                true
+                true,
+                List.of(),
+                null,
+                null,
+                null,
+                null
         );
 
         AiAgent agent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null)
@@ -119,7 +139,12 @@ class PostCallActionExecutorTest {
                 "Xulosa: {{summary}}, kayfiyat: {{sentiment}}, sana: {{promisedDate}}",
                 null,
                 Map.of(),
-                true
+                true,
+                List.of(),
+                null,
+                null,
+                null,
+                null
         );
 
         AiAgent agent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null)
@@ -159,7 +184,12 @@ class PostCallActionExecutorTest {
                 null,
                 "https://api.example.com/missed-call",
                 Map.of("X-Test", "test-val"),
-                true
+                true,
+                List.of(),
+                null,
+                null,
+                null,
+                null
         );
 
         AiAgent agent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null)
@@ -172,5 +202,81 @@ class PostCallActionExecutorTest {
                         "BUSY".equals(payload.get("disposition")) &&
                         PHONE.equals(payload.get("phone")) &&
                         !payload.containsKey("summary")));
+    }
+
+    @Test
+    void skipsActionWhenAConditionOnExtractedValuesFails() {
+        PostCallAction action = smsAction(List.of(
+                new PostCallCondition("interested", PostCallConditionOperator.EQUALS, "true"),
+                new PostCallCondition("budget", PostCallConditionOperator.GREATER_THAN, "1000")), null);
+        AiAgent agent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null)
+                .withPostCallActions(List.of(action));
+
+        executor.executeActions(COMPANY_ID, CALL_ATTEMPT_ID, PHONE, agent, Disposition.COMPLETED,
+                summaryWithOutcome(Map.of("interested", true, "budget", "500")));
+        verify(smsUseCase, never()).sendSms(anyLong(), any());
+
+        executor.executeActions(COMPANY_ID, CALL_ATTEMPT_ID, PHONE, agent, Disposition.COMPLETED,
+                summaryWithOutcome(Map.of("interested", "TRUE", "budget", "1500")));
+        verify(smsUseCase).sendSms(eq(COMPANY_ID), any());
+    }
+
+    @Test
+    void sendsSmsToTheNumberTheCallerGave() {
+        PostCallAction action = smsAction(List.of(), "{{callback_phone}}");
+        AiAgent agent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null)
+                .withPostCallActions(List.of(action));
+
+        executor.executeActions(COMPANY_ID, CALL_ATTEMPT_ID, PHONE, agent, Disposition.COMPLETED,
+                summaryWithOutcome(Map.of("callback_phone", "+998 93 111 22 33")));
+
+        ArgumentCaptor<SmsSendRequest> captor = ArgumentCaptor.forClass(SmsSendRequest.class);
+        verify(smsUseCase).sendSms(eq(COMPANY_ID), captor.capture());
+        assertEquals("+998931112233", captor.getValue().phone());
+    }
+
+    @Test
+    void sendsTelegramMessageThroughTheChosenBot() {
+        PostCallAction action = new PostCallAction("action-5", "Team chat", PostCallActionType.TELEGRAM, null, false,
+                "Yangi lid: {{phone}}", null, Map.of(), true, List.of(), null, 7L, "-1001234567890", null);
+        AiAgent agent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null)
+                .withPostCallActions(List.of(action));
+
+        executor.executeActions(COMPANY_ID, CALL_ATTEMPT_ID, PHONE, agent, Disposition.COMPLETED, null);
+
+        verify(telegramUseCase).sendMessage(COMPANY_ID, 7L, "-1001234567890", "Yangi lid: " + PHONE);
+        verify(notificationService, never()).notify(anyLong(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aCodeActionFeedsWhatItReturnsToTheActionsAfterIt() {
+        String code = "return { tier: vars.budget > 1000 ? 'gold' : 'basic' };";
+        when(scriptRunner.run(eq(String.valueOf(CALL_ATTEMPT_ID)), eq(code), anyMap()))
+                .thenReturn(Map.of("tier", "gold"));
+        PostCallAction compute = new PostCallAction("calc", "Tier", PostCallActionType.CODE, null, false,
+                null, null, Map.of(), true, List.of(), null, null, null, code);
+        PostCallAction sms = new PostCallAction("gold-sms", "Gold SMS", PostCallActionType.SEND_SMS, null, false,
+                "Daraja: {{tier}}", null, Map.of(), true,
+                List.of(new PostCallCondition("tier", PostCallConditionOperator.EQUALS, "gold")), null, null, null, null);
+        AiAgent agent = AiAgentFixtures.agent(1L, COMPANY_ID, 2L, "uz-UZ", null)
+                .withPostCallActions(List.of(compute, sms));
+
+        executor.executeActions(COMPANY_ID, CALL_ATTEMPT_ID, PHONE, agent, Disposition.COMPLETED,
+                summaryWithOutcome(Map.of("budget", 1500)));
+
+        ArgumentCaptor<SmsSendRequest> captor = ArgumentCaptor.forClass(SmsSendRequest.class);
+        verify(smsUseCase).sendSms(eq(COMPANY_ID), captor.capture());
+        assertEquals("Daraja: gold", captor.getValue().message());
+        verify(scriptRunner).run(eq(String.valueOf(CALL_ATTEMPT_ID)), eq(code),
+                argThat(vars -> Integer.valueOf(1500).equals(vars.get("budget")) && PHONE.equals(vars.get("phone"))));
+    }
+
+    private static PostCallAction smsAction(List<PostCallCondition> conditions, String recipient) {
+        return new PostCallAction("action-c", "Conditional SMS", PostCallActionType.SEND_SMS, null, false,
+                "Rahmat!", null, Map.of(), true, conditions, recipient, null, null, null);
+    }
+
+    private static CallSummary summaryWithOutcome(Map<String, Object> outcome) {
+        return new CallSummary("Xulosa", Sentiment.NEUTRAL, 80, 70, false, null, null, outcome, List.of());
     }
 }

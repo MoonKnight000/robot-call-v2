@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.dialog.PiiRedactor;
 import uz.murodjon.robotcallv2.agent.dialog.TokenUsage;
 import uz.murodjon.robotcallv2.agent.provider.OwnLlmChatModels;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentPostCallAnalysis;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
@@ -134,7 +135,7 @@ public class SummaryService {
             }
             ChatOptions options = ownLlm != null
                     ? OpenAiChatOptions.builder().model(ownLlm.model()).maxTokens(maxTokens).build()
-                    : options();
+                    : options(model);
             return ask(client, options, system, transcript, new TokenUsage());
         } catch (Exception e) {
             log.warn("Question about a call failed (company {}): {}", companyId, e.getMessage());
@@ -184,22 +185,34 @@ public class SummaryService {
             if (client == null) {
                 return null;
             }
+            // The agent's own analysis model, when it names one; a company on its own LLM stays there.
+            String analysisModel = agent != null && agent.postCallAnalysis().model() != null
+                    ? agent.postCallAnalysis().model() : model;
             ChatOptions options = ownLlm != null
                     ? OpenAiChatOptions.builder().model(ownLlm.model()).maxTokens(maxTokens).build()
-                    : options();
+                    : options(analysisModel);
             String system = systemPrompt(scenario, agent) + "\nTODAY'S DATE AND TIME: " + callTime + ".";
             Map<String, Object> raw = ask(client, options, system, transcript, tokens);
             List<String> invalid = invalidExtractions(raw, agent);
-            if (!invalid.isEmpty()) {
-                // One more try, told exactly which fields came back in the wrong shape. The
-                // first answer stays if the retry fails: it is still a usable summary.
-                log.info("Summary: {} extracted field(s) had an invalid type or format, asking once more: {}", invalid.size(), invalid);
+            List<String> missing = missingRequired(raw, agent);
+            if (!invalid.isEmpty() || !missing.isEmpty()) {
+                // One more try, told exactly which fields came back in the wrong shape or empty
+                // though required. The first answer stays if the retry fails: it is still a usable summary.
+                log.info("Summary: asking once more — invalid type or format: {}, required but empty: {}", invalid, missing);
+                StringBuilder retry = new StringBuilder(system);
+                if (!invalid.isEmpty()) {
+                    retry.append("\nIN THE PREVIOUS ANSWER THESE FIELDS HAD AN INVALID TYPE OR FORMAT: ")
+                            .append(String.join(", ", invalid)).append(". Return them in the stated type or leave them null.");
+                }
+                if (!missing.isEmpty()) {
+                    retry.append("\nIN THE PREVIOUS ANSWER THESE REQUIRED FIELDS WERE EMPTY: ")
+                            .append(String.join(", ", missing))
+                            .append(". Read the transcript again and give the closest value it supports.");
+                }
                 try {
-                    raw = ask(client, options, system + "\nIN THE PREVIOUS ANSWER THESE FIELDS HAD AN INVALID TYPE OR FORMAT: "
-                            + String.join(", ", invalid)
-                            + ". Return them in the stated type or leave them null.", transcript, tokens);
+                    raw = ask(client, options, retry.toString(), transcript, tokens);
                 } catch (Exception e) {
-                    log.warn("Summary retry for field types failed, keeping the first answer: {}", e.getMessage());
+                    log.warn("Summary retry for extracted fields failed, keeping the first answer: {}", e.getMessage());
                 }
             }
             CallSummary summary = toCallSummary(raw, scenario, agent);
@@ -238,19 +251,20 @@ public class SummaryService {
         }
     }
 
-    private ChatOptions options() {
+    /** Request options for {@code modelId}: the platform's summary model or an agent's own analysis model. */
+    private ChatOptions options(String modelId) {
         ChatModel cm = chatModelProvider.getIfAvailable();
         boolean isOpenAi = (cm instanceof OpenAiChatModel)
-                || (model != null && (model.startsWith("llama") || model.startsWith("mixtral")
-                || model.startsWith("gpt-") || model.startsWith("qwen")));
+                || (modelId != null && (modelId.startsWith("llama") || modelId.startsWith("mixtral")
+                || modelId.startsWith("gpt-") || modelId.startsWith("qwen")));
         if (isOpenAi) {
             return OpenAiChatOptions.builder()
-                    .model(model)
+                    .model(modelId)
                     .maxTokens(maxTokens)
                     .build();
         }
         return GoogleGenAiChatOptions.builder()
-                .model(model)
+                .model(modelId)
                 .maxOutputTokens(maxTokens)
                 .thinkingLevel(thinkingLevel())
                 .build();
@@ -275,9 +289,14 @@ public class SummaryService {
                         .append("digits only, boolean — true or false, date — YYYY-MM-DD, enum — one of the options ")
                         .append("in the description, phone — a valid UZ local or international number, email — a valid email address:\n");
                 for (DataExtractionField f : agent.dataNeeded()) {
-                    sb.append("- ").append(fieldKey(f)).append(" (").append(typeOf(f)).append("): ")
+                    sb.append("- ").append(fieldKey(f)).append(" (").append(typeOf(f)).append(optionsHint(f))
+                            .append(f.required() ? ", REQUIRED" : "").append("): ")
                             .append(f.name() != null ? f.name() : "").append(" — ")
-                            .append(f.description() != null ? f.description() : "").append('\n');
+                            .append(f.description() != null ? f.description() : "")
+                            .append(formatHint(f)).append('\n');
+                }
+                if (agent.dataNeeded().stream().anyMatch(DataExtractionField::required)) {
+                    sb.append("A field marked REQUIRED must not be null: give the closest value the transcript supports.\n");
                 }
             }
             if (!agent.dataEvaluation().isEmpty()) {
@@ -303,10 +322,12 @@ public class SummaryService {
         if (raw == null) {
             return null;
         }
-        String summary = PiiRedactor.redact(str(raw.get("summary")));
-        Sentiment sentiment = sentiment(raw.get("sentiment"));
+        AgentPostCallAnalysis kept = agent != null ? agent.postCallAnalysis() : AgentPostCallAnalysis.ALL;
+        // A switched-off part is left out of what is stored; the model still answers it, as the outcome depends on the same read.
+        String summary = kept.summaryEnabled() ? PiiRedactor.redact(str(raw.get("summary")), agent) : "";
+        Sentiment sentiment = kept.sentimentEnabled() ? sentiment(raw.get("sentiment")) : null;
         boolean needsFollowUp = Boolean.TRUE.equals(raw.get("needsFollowUp"));
-        String followUpNote = PiiRedactor.redact(str(raw.get("followUpNote")));
+        String followUpNote = PiiRedactor.redact(str(raw.get("followUpNote")), agent);
         String callbackAt = str(raw.get("callbackAt"));
         Integer qaScore = integer(raw.get("qaScore"), 100);
         Integer commitmentScore = integer(raw.get("commitmentScore"), 50);
@@ -329,7 +350,7 @@ public class SummaryService {
         }
         if (agent != null) {
             for (DataExtractionField f : agent.dataNeeded()) {
-                Object value = coerce(raw.get(fieldKey(f)), typeOf(f));
+                Object value = coerce(raw.get(fieldKey(f)), f);
                 if (value != null) {
                     outcome.put(fieldKey(f), value);
                 }
@@ -368,11 +389,30 @@ public class SummaryService {
         }
         for (DataExtractionField f : agent.dataNeeded()) {
             Object value = raw.get(fieldKey(f));
-            if (isPresent(value) && coerce(value, typeOf(f)) == null) {
+            if (isPresent(value) && coerce(value, f) == null) {
                 invalid.add(fieldKey(f));
             }
         }
         return invalid;
+    }
+
+    /** Required {@code dataNeeded} keys the answer left without a readable value. */
+    private static List<String> missingRequired(Map<String, Object> raw, AiAgent agent) {
+        List<String> missing = new ArrayList<>();
+        if (raw == null || agent == null) {
+            return missing;
+        }
+        for (DataExtractionField f : agent.dataNeeded()) {
+            if (f.required() && coerce(raw.get(fieldKey(f)), f) == null) {
+                missing.add(fieldKey(f));
+            }
+        }
+        return missing;
+    }
+
+    /** {@code " Examples: a | b"} when the field shows the shape of its answer, otherwise nothing. */
+    private static String formatHint(DataExtractionField field) {
+        return field.formatExamples().isEmpty() ? "" : " Examples: " + String.join(" | ", field.formatExamples());
     }
 
     /** Every criterion, answered or not: one the model skipped is {@code N/A}, not missing. */
@@ -407,6 +447,25 @@ public class SummaryService {
      * The value in its declared type, or null when it is missing or cannot be read as one.
      * Dates stay text ({@code YYYY-MM-DD}) so the outcome serializes without a date module.
      */
+    private static Object coerce(Object value, DataExtractionField field) {
+        Object coerced = coerce(value, typeOf(field));
+        if (coerced == null || !"enum".equals(typeOf(field)) || field.options().isEmpty()) {
+            return coerced;
+        }
+        // An enum with a fixed list answers with one of its options, spelled as the list spells it.
+        String answer = coerced.toString().trim();
+        return field.options().stream().filter(option -> option.trim().equalsIgnoreCase(answer)).findFirst()
+                .map(String::trim).orElse(null);
+    }
+
+    /** {@code ", one of: a | b"} for an enum with a fixed list, otherwise nothing. */
+    private static String optionsHint(DataExtractionField field) {
+        if (!"enum".equals(typeOf(field)) || field.options().isEmpty()) {
+            return "";
+        }
+        return ", one of: " + String.join(" | ", field.options());
+    }
+
     static Object coerce(Object value, String type) {
         if (!isPresent(value)) {
             return null;
@@ -446,6 +505,11 @@ public class SummaryService {
 
     private static boolean isPresent(Object value) {
         return value != null && !value.toString().isBlank() && !"null".equalsIgnoreCase(value.toString().trim());
+    }
+
+    /** The key {@code field}'s extracted value is stored under in a call's {@code outcome}. */
+    public static String findOutcomeKey(DataExtractionField field) {
+        return fieldKey(field);
     }
 
     /** A field's key in the answer and in {@code outcome}: its stable id, its label when it has none. */

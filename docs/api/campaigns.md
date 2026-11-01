@@ -83,6 +83,11 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `dialing.callQueueId` | `number` | `AI` dan boshqasida ✅ | Qo'ng'iroqlarni oladigan operatorlar navbati ([call-queues.md](call-queues.md)). `dialMode` `AI` bo'lmasa va berilmasa — `400 CAMPAIGN_CALL_QUEUE_REQUIRED`; boshqa kompaniyaning yoki mavjud bo'lmagan navbat — `404 CALL_QUEUE_NOT_FOUND`. Navbat o'chirilsa, maydon `null` bo'lib qoladi |
 | `schedule.dialWindowStart` / `schedule.dialWindowEnd` | `string` (`HH:mm:ss`) | ❌ | Kunlik qo'ng'iroq oynasi. **Berilmasa — kompaniyaning ish soatlari**; bo'sh AI qoralamada (`sequence` va `aiAgentId` berilmagan) — Retell kabi **09:00–18:00**, kompaniya oynasi ichiga qisilgan (`company_config.dialWindowStart/End`, yaratish paytidagi qiymati nusxalanadi; kompaniyada sozlama bo'lmasa 09:00–20:00). `PUT` da berilmasa — kampaniyaning mavjud oynasi qoladi. UI bu maydonni "Kompaniya ish soatlari" (default) / "Boshqa vaqt" tanlovi sifatida ko'rsatishi mumkin. Kompaniyaning `company_config` oynasidan **tashqariga chiqa olmaydi** ([companies.md](companies.md)). Shuningdek, `DialerService` har bir qabul qiluvchining mahalliy vaqt zonasini (quiet hours / TCPA: 08:00–20:00) hisobga oladi — uning mahalliy vaqtida tun bo'lsa, nishon avtomatik +30 daqiqaga kechiktiriladi |
 | `schedule.dialDays` | `array<DayOfWeek>` | ❌ | `["MONDAY", ...]`. Bo'sh/berilmasa — barcha kunlar |
+| `schedule.dialRules` | `object` | ❌ | Qo'shimcha qo'ng'iroq qoidalari (Retell "Calling hours"). Berilmasa — create'da yo'q, `PUT` da o'zgarmaydi (`{}` — olib tashlaydi). Maydonlari pastda |
+| `schedule.dialRules.timezoneMode` | `TimezoneMode` | ❌ | Oyna qaysi soat bo'yicha o'qiladi: `COMPANY` (kompaniya zonasi, standart), `CONTACT` (qabul qiluvchining mahalliy vaqti — raqam prefiksidan), `FIXED` (`fixedTimezone` zonasi) |
+| `schedule.dialRules.fixedTimezone` | `string` | `FIXED` da ✅ | IANA zona (`Europe/London`). Noto'g'ri bo'lsa — `400 CAMPAIGN_DIAL_TIMEZONE_INVALID` |
+| `schedule.dialRules.dayWindows` | `object<DayOfWeek, array<{start,end}>>` | ❌ | Hafta kuniga qarab soatlar (`"MONDAY": [{"start":"10:00","end":"12:00"}]`). Berilsa `dialWindowStart/End` va `dialDays` o'rniga shu ishlaydi; ro'yxatda yo'q kun — yopiq. Kuniga ko'pi bilan 5 ta oraliq, `start < end`, ustma-ust tushmasin — aks holda `400 CAMPAIGN_DIAL_RANGES_INVALID`. Kompaniya ish soatlari baribir cheklaydi |
+| `schedule.dialRules.excludeHolidays` | `boolean` | ❌ | Kompaniya bayram kunlarida terilmasin (standart `true`) |
 | `retry.maxAttempts` | `number` | ❌ | Bitta nishonga urinishlar soni |
 | `retry.intervalMinutes` | `number` | ❌ | Javob bo'lmagan nishonni qayta terishgacha daqiqa. `0` — disposition bo'yicha standartlar (avtootvetchikdan keyin uzoqroq, bandlikdan keyin qisqaroq) |
 | `limits.maxConcurrentCalls` | `number` | ❌ | Parallel kanallar chegarasi |
@@ -258,7 +263,7 @@ Ikkala path bir xil metodga boradi. Body — `CampaignFilter`:
   "orders": { "CREATED_AT": "DESC" },
   "search": "Mart",
   "status": "ACTIVE",
-  "type": "DEBT_COLLECTION",
+  "kind": "STANDARD",
   "aiAgentId": 7,
   "createdBy": 3,
   "recurrenceType": "CRON",
@@ -266,6 +271,8 @@ Ikkala path bir xil metodga boradi. Body — `CampaignFilter`:
   "dateTo": "2026-03-31T23:59:59Z"
 }
 ```
+
+`kind` — `STANDARD` yoki `AUTO_ENROLL` (Retell'dagi "Campaign type"); berilmasa ikkalasi ham. Oldin hujjatda bor `type` filtri aslida mavjud emas edi.
 
 Saralanadigan ustunlar: `ID`, `NAME`, `TYPE`, `STATUS`, `CREATED_AT`, `LAST_RUN_AT`,
 `AI_AGENT_ID`. Standart: `CREATED_AT DESC, ID DESC`. Qaysi saralash berilsa ham
@@ -898,6 +905,15 @@ Stsenariy matnlarida istalgan o'zgaruvchini `{{varName}}` yoki sukut qiymat bila
 Body — `TargetFilter` (`page`/`size`/`orders`). Saralanadigan ustunlar: `ID`, `PHONE`,
 `STATUS`, `ATTEMPTS`. Standart: `ID ASC`.
 
+Filtrlar (ikkalasi ixtiyoriy, birga ishlaydi; `totalElements` ham filtrdan keyingi sonni beradi):
+
+| Maydon | Izoh |
+|---|---|
+| `status` | `TargetStatus` — faqat shu holatdagi nishonlar (`PENDING`, `IN_PROGRESS`, `DONE`, `FAILED`, `EXHAUSTED`). Berilmasa — hammasi |
+| `search` | Telefon raqamining bo'lagi (≤64 belgi). Faqat raqam va `+` o'qiladi, boshqa belgilar (bo'shliq, tire) e'tiborga olinmaydi. Mijoz nomi bo'yicha qidirilmaydi |
+
+`targets/export` filtrdan qat'i nazar hamma nishonni chiqaradi.
+
 Javob — `PageableData<CampaignTarget>`:
 
 ```json
@@ -929,6 +945,18 @@ Javob — `PageableData<CampaignTarget>`:
 qo'ng'iroqlar. `outcome` — oxirgi javob berilgan qo'ng'iroq tushgan sequence natijasining nomi (`"Other"`,
 `"No Response"` ham bo'ladi); hali baholanmagan bo'lsa `null`. `converted` — nishon **End successful** yo'li
 bilan chiqqan (kampaniyaning "muvaffaqiyatli" hisobiga kiradi).
+
+### `GET /api/campaigns/{id}/targets/export` — Nishonlarni CSV qilib yuklab olish
+
+Huquq: **CAMPAIGN_READ**. Kampaniyaning barcha nishonlari bitta `text/csv` faylda
+(`campaign-{id}-targets.csv`, UTF-8 + BOM — Excel o'zbek/rus matnini to'g'ri o'qiydi). Ustunlar:
+`id, phone, language, status, attempts, step, step_attempts, outcome, converted, do_not_call,
+next_attempt_at, score, context`. `context` — `contextData` JSON'i o'z holicha. `=`, `+`, `-`, `@`
+bilan boshlanadigan matn katakchalari (telefon raqami emas) formula sifatida ishlamasligi uchun
+oldindan `'` bilan boshlanadi.
+
+Javob `ResponseData` konvertida emas — fayl. Xatolar: `404 CAMPAIGN_NOT_FOUND`,
+`400 CAMPAIGN_EXPORT_TOO_LARGE` (100 000 dan ortiq nishon).
 
 ---
 
@@ -1199,9 +1227,11 @@ Body yo'q. Nishonning raqami kompaniya opt-out ro'yxatiga tushadi
 |---|---|
 | `POST /api/campaigns/{id}/start?immediate=false` | Kampaniyani ishga tushirish (`ACTIVE`; `startAt` kelajakda bo'lsa — `SCHEDULED`) |
 | `POST /api/campaigns/{id}/pause` | Vaqtincha to'xtatish (`PAUSED`) |
+| `POST /api/campaigns/{id}/stop` | Yugurishni tugatish (`COMPLETED`): yangi qo'ng'iroq qilinmaydi, davom etayotganlari tugaydi, kutayotgan nishonlar `PENDING` qoladi va `start` bilan qayta yurgizsa bo'ladi. Faqat `ACTIVE`/`PAUSED`; takrorlanuvchi kampaniya (`recurrence.type` ≠ `ONCE`) — `409 CAMPAIGN_STOP_RECURRING_NOT_ALLOWED` (uni `pause` qiling) |
+| `POST /api/campaigns/{id}/unschedule` | `SCHEDULED` kampaniyani `DRAFT` ga qaytarish (tahrirlash yoki qayta ishga tushirish uchun) |
 | `DELETE /api/campaigns/{id}` | Arxivlash (`ARCHIVED`) |
 
-Uchalasi ham `CampaignStatusResponse` (`{ "campaignId": 12, "status": "ACTIVE" }`)
+Hammasi `CampaignStatusResponse` (`{ "campaignId": 12, "status": "ACTIVE" }`)
 qaytaradi. Ruxsat etilmagan o'tish — `409 CAMPAIGN_INVALID_TRANSITION` (yuqoridagi holat
 mashinasi); `start` nishonsiz va target source'siz — `409 CAMPAIGN_HAS_NO_TARGETS`, agenti o'chirilgan (`enabled=false`) kampaniyada — `409 AI_AGENT_DISABLED` (dialer bunday kampaniyani har tick'da o'tkazib yuboradi).
 

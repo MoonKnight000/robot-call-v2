@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.agent.flow.FlowCall;
 import uz.murodjon.robotcallv2.agent.queue.CallQueueDispatcher;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 
 import java.time.Instant;
@@ -111,12 +112,12 @@ class DtmfInputRouter {
             flowCall.digits().offer(digit.charAt(0));
             return;
         }
-        boolean terminator = key == '#';
-        if (!terminator && (key < '0' || key > '9')) {
-            return;
-        }
         CallSession session = callSessionRegistry.find(channelId);
         if (session == null || !session.dtmfInputEnabled()) {
+            return;
+        }
+        boolean terminator = key == terminationKeyOf(session);
+        if (!terminator && (key < '0' || key > '9')) {
             return;
         }
         boolean cascade = dialogEngine.owns(channelId);
@@ -133,6 +134,8 @@ class DtmfInputRouter {
             // and it has to land before a '#' that follows it hands the sequence over.
             CallMdc.with(channelId, () -> dialogEngine.notifyKeypress(channelId));
         }
+        int digitLimit = digitLimitOf(session);
+        boolean[] limitReached = {false};
         pending.compute(channelId, (id, current) -> {
             PendingDigits digits = current;
             if (digits == null) {
@@ -143,9 +146,38 @@ class DtmfInputRouter {
             if (digits.flush != null) {
                 digits.flush.cancel(false);
             }
-            digits.flush = dialogExecutors.scheduleOnWorker(() -> flush(id, session), DIGIT_GAP_MS);
+            limitReached[0] = digitLimit > 0 && digits.keys.length() >= digitLimit;
+            if (!limitReached[0]) {
+                digits.flush = dialogExecutors.scheduleOnWorker(() -> flush(id, session), digitGapMs(session));
+            }
             return digits;
         });
+        if (limitReached[0]) {
+            flush(channelId, session);
+        }
+    }
+
+    /** The agent's own pause between digits, else the platform default. */
+    private static long digitGapMs(CallSession session) {
+        AiAgentCallBehaviour behaviour = behaviourOf(session);
+        return behaviour != null && behaviour.dtmfTimeoutMs() != null ? behaviour.dtmfTimeoutMs() : DIGIT_GAP_MS;
+    }
+
+    /** The key that hands the typed digits over at once: the agent's own, else {@code #}. */
+    private static char terminationKeyOf(CallSession session) {
+        AiAgentCallBehaviour behaviour = behaviourOf(session);
+        String key = behaviour != null ? behaviour.dtmfTerminationKey() : null;
+        return key != null && key.length() == 1 ? key.charAt(0) : '#';
+    }
+
+    /** Digits after which the sequence is handed over without waiting; 0 when the agent sets no limit. */
+    private static int digitLimitOf(CallSession session) {
+        AiAgentCallBehaviour behaviour = behaviourOf(session);
+        return behaviour != null && behaviour.dtmfDigitLimit() != null ? behaviour.dtmfDigitLimit() : 0;
+    }
+
+    private static AiAgentCallBehaviour behaviourOf(CallSession session) {
+        return session.agent() != null ? session.agent().callBehaviour() : null;
     }
 
     /** Hand the digits typed so far on {@code channelId} to the dialog as one turn. */

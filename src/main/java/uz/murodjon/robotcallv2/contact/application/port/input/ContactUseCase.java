@@ -38,4 +38,11 @@ public interface ContactUseCase {
 
     /** Pre-call carrier, format, and Do-Not-Call scrubbing for a batch of telephone numbers. */
     ContactScrubResponse scrubPhones(long companyId, ContactScrubRequest request);
+
+    /**
+     * Merges {@code values} into the custom fields of the contact with {@code phone}, creating the
+     * contact when the company has none for that phone. Blank values are ignored. Used by the
+     * post-call extraction ("save to contact field").
+     */
+    void saveCustomFieldsByPhone(long companyId, String phone, Map<String, String> values);
 }

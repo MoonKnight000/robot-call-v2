@@ -52,7 +52,7 @@ public class CatalogFeedRefreshScheduler {
 
     private void enqueueDueFeeds() {
         Instant now = clock.instant();
-        for (KnowledgeSourceType type : List.of(KnowledgeSourceType.STRUCTURED_FEED, KnowledgeSourceType.SITEMAP)) {
+        for (KnowledgeSourceType type : List.of(KnowledgeSourceType.STRUCTURED_FEED, KnowledgeSourceType.SITEMAP, KnowledgeSourceType.URL)) {
             for (KnowledgeSource source : sourceRepository.findRefreshable(type, KnowledgeSourceStatus.INDEXED)) {
                 if (source.isDueForRefresh(now)) {
                     indexingService.enqueue(sourceRepository.save(source.queuedForIndexing()));

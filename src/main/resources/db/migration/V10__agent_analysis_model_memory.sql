@@ -1,0 +1,2 @@
+ALTER TABLE ai_agent ADD COLUMN analysis_model VARCHAR(128);
+ALTER TABLE ai_agent ADD COLUMN memory_enabled BOOLEAN NOT NULL DEFAULT TRUE;

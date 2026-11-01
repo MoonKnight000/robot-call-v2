@@ -16,6 +16,8 @@ import java.util.Set;
  * @param transcript       whether to send call transcript (post-call)
  * @param audioUrl         whether to send recorded audio URL (post-call)
  * @param events           call-time events sent to the configured post-call webhook
+ * @param timeoutSeconds   how long the initiation webhook may take to answer before the call goes on without it;
+ *                         null for the platform default. Post-call deliveries are retried from a queue and keep the default
  */
 public record AgentWebhookConfig(
         String webhookUrl,
@@ -24,7 +26,8 @@ public record AgentWebhookConfig(
         Map<String, String> dynamicVariables,
         Boolean transcript,
         Boolean audioUrl,
-        Set<AgentWebhookEvent> events
+        Set<AgentWebhookEvent> events,
+        Integer timeoutSeconds
 ) {
     public AgentWebhookConfig {
         if (headers == null) {
@@ -42,6 +45,13 @@ public record AgentWebhookConfig(
 
     public AgentWebhookConfig(String webhookUrl, String method, Map<String, String> headers,
                               Map<String, String> dynamicVariables, Boolean transcript, Boolean audioUrl) {
-        this(webhookUrl, method, headers, dynamicVariables, transcript, audioUrl, Set.of());
+        this(webhookUrl, method, headers, dynamicVariables, transcript, audioUrl, Set.of(), null);
+    }
+
+    /** A webhook with call-time events and the default timeout. */
+    public AgentWebhookConfig(String webhookUrl, String method, Map<String, String> headers,
+                              Map<String, String> dynamicVariables, Boolean transcript, Boolean audioUrl,
+                              Set<AgentWebhookEvent> events) {
+        this(webhookUrl, method, headers, dynamicVariables, transcript, audioUrl, events, null);
     }
 }

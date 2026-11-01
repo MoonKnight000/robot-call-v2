@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.shared.stream.EventSubscription;
 import uz.murodjon.robotcallv2.webhook.application.dto.WebhookDeliveryRow;
 import uz.murodjon.robotcallv2.webhook.domain.entity.WebhookDeliveryFilter;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -28,10 +29,10 @@ public interface WebhookDeliveryUseCase {
 
     /**
      * POSTs {@code payload} once and returns the JSON reply — for a caller that needs the
-     * answer now. Nothing is kept for retry.
+     * answer now. Nothing is kept for retry. {@code readTimeout} is how long to wait for the reply; null for the default.
      */
     Map<String, Object> postForReply(String url, Map<String, String> headers, Map<String, Object> payload,
-                                     String signingSecret);
+                                     String signingSecret, Duration readTimeout);
 
     /**
      * The deliveries kept for retry: every webhook whose first try failed, until a week

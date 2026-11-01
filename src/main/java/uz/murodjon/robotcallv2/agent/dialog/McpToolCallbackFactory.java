@@ -50,16 +50,16 @@ public class McpToolCallbackFactory {
      * none attached, or a lookup that failed: an MCP server is an extra, and a call that
      * cannot reach one is still a call.
      */
-    public List<ToolCallback> build(DialogSession session) {
+    public List<ToolCallback> build(DialogOutcomeSink session, long companyId, long callAttemptId) {
         if (session.agent() == null) {
             return List.of();
         }
         try {
             Map<McpConnection, List<McpTool>> byConnection =
-                    mcpUseCase.findAgentTools(session.companyId(), session.agent().id());
+                    mcpUseCase.findAgentTools(companyId, session.agent().id());
             List<ToolCallback> callbacks = new ArrayList<>();
             byConnection.forEach((connection, tools) ->
-                    tools.forEach(tool -> callbacks.add(toCallback(connection, tool, session))));
+                    tools.forEach(tool -> callbacks.add(toCallback(connection, tool, companyId, callAttemptId))));
             return callbacks;
         } catch (Exception e) {
             log.warn("[{}] MCP tools unavailable: {}", session.channelId(), e.getMessage());
@@ -67,11 +67,11 @@ public class McpToolCallbackFactory {
         }
     }
 
-    private ToolCallback toCallback(McpConnection connection, McpTool tool, DialogSession session) {
+    private ToolCallback toCallback(McpConnection connection, McpTool tool, long companyId, long callAttemptId) {
         return FunctionToolCallback
                 .<Map<String, Object>, String>builder(toolName(connection, tool),
-                        arguments -> mcpUseCase.callTool(session.companyId(), connection.id(),
-                                session.callAttemptId(), tool.name(), arguments))
+                        arguments -> mcpUseCase.callTool(companyId, connection.id(),
+                                callAttemptId, tool.name(), arguments))
                 .description(description(connection, tool))
                 .inputSchema(schemaOf(tool))
                 .inputType(Map.class)

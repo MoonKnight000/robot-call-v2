@@ -30,7 +30,6 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
-import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 
 import java.util.*;
 
@@ -106,19 +105,43 @@ public class TurnTools {
      * Set {@code voice-agent.dialog.state-scoped-tools=false} to send them all.
      */
     public List<ToolCallback> build(DialogSession s) {
+        return AgentFunctionTools.describe(buildCallbacks(s), s.agent(), s.tools());
+    }
+
+    private List<ToolCallback> buildCallbacks(DialogSession s) {
         Set<String> declared = declaredToolNames(s.scenario());
         List<ToolCallback> callbacks = new ArrayList<>();
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()
                 .toolObjects(new DialogTools(s, stageScriptRunner)).build().getToolCallbacks()) {
             String name = fixed.getToolDefinition().name();
             if ("sendMidCallSms".equals(name)) {
-                if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
+                if (AgentFunctionPlan.offersSms(s.agent())) {
                     callbacks.add(fixed);
                 }
                 continue;
             }
+            if ("transferToAgent".equals(name)) {
+                if (AgentFunctionPlan.offersAgentTransfer(s.agent())) {
+                    callbacks.add(fixed);
+                }
+                continue;
+            }
+            if ("endCall".equals(name) && !AgentFunctionPlan.offersEndCall(s.agent())) {
+                continue; // the agent's function list has no END_CALL: it does not hang up by itself
+            }
+            if ("sendDtmfTones".equals(name) && DialogTools.isPressDigitEnabled(s)) {
+                callbacks.add(fixed); // the agent presses keys itself, whatever its scenario declares
+                continue;
+            }
+            if ("requestHumanTransfer".equals(name)
+                    && !TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())) {
+                continue; // nowhere to hand the caller to: the transfer would only hang up
+            }
             if ("switchLanguage".equals(name) && s.detectLanguages().size() < 2) {
                 continue; // a single-language company has nothing to switch to
+            }
+            if ("transitionTo".equals(name) && StageEntry.hasNowhereToTransition(s.scenario())) {
+                continue; // a single-prompt agent has no stage to move to
             }
             // requestHumanTransfer/recordWrongPerson/recordDoNotCall/endCall/transitionTo
             // are universal and always included; the rest only when this scenario
@@ -139,7 +162,7 @@ public class TurnTools {
             for (Tool tool : s.tools()) {
                 // Never declared, so never argued into — McpToolGuard's rule for MCP tools
                 // (UNIVERSAL-OPERATOR-PLAN B.3).
-                if (tool.effect() != ToolEffect.DESTRUCTIVE) {
+                if (HttpToolExecutor.isOfferedToModel(tool) && AgentFunctionPlan.offersCustomTool(s.agent(), tool)) {
                     // A simulation with canned answers: offered the same, never sent.
                     callbacks.add(s.toolMocks() != null
                             ? httpToolExecutor.buildMockCallback(tool, s)
@@ -152,6 +175,8 @@ public class TurnTools {
         if (extraction != null) {
             callbacks.add(ScenarioToolCallbackFactory.build(extraction, s));
         }
+        // The agent's EXTRACT_VARIABLE functions: one tool each, usable in any stage.
+        callbacks.addAll(AgentFunctionTools.buildExtractionTools(s.agent(), s));
         List<ToolCallback> mcp = mcpTools(s);
         callbacks.addAll(mcp);
         List<ToolCallback> catalog = catalogTools(s);
@@ -189,7 +214,7 @@ public class TurnTools {
         }
         List<ToolCallback> cached = s.mcpTools();
         if (cached == null) {
-            cached = mcpToolCallbackFactory.build(s);
+            cached = mcpToolCallbackFactory.build(s, s.companyId(), s.callAttemptId());
             s.setMcpTools(cached);
         }
         return cached;
@@ -273,14 +298,21 @@ public class TurnTools {
     private static Set<String> allowedTools(DialogSession s) {
         StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
         Set<String> allowed = new HashSet<>(DialogTools.ALWAYS_AVAILABLE_TOOL_NAMES);
-        if (s.agent() != null && s.agent().callBehaviour().midCallSmsEnabled()) {
+        if (AgentFunctionPlan.offersSms(s.agent())) {
             allowed.add("sendMidCallSms");
         }
+        if (AgentFunctionPlan.offersAgentTransfer(s.agent())) {
+            allowed.add("transferToAgent");
+        }
+        if (DialogTools.isPressDigitEnabled(s)) {
+            allowed.add("sendDtmfTones");
+        }
+        AgentFunctionPlan.findExtractFunctions(s.agent()).forEach(function -> allowed.add(function.name()));
         // null = not specified, every scenario tool is available here (the common case);
         // an explicit (possibly empty) list means exactly those tools and no others —
         // debt-collection's GREETING/CLOSING/etc. stages rely on the empty-list case to
         // exclude recordPaymentPromise/recordRefusalReason.
-        List<String> perStage = stage != null ? stage.allowedTools() : null;
+        List<String> perStage = StageEntry.findAllowedTools(s.scenario(), stage);
         if (stage != null && stage.type() == StageType.FUNCTION && stage.action() != null) {
             allowed.add(stage.action().toolName());
         }
@@ -303,21 +335,7 @@ public class TurnTools {
     }
 
     private static Map<String, Object> buildCallVariables(DialogSession s) {
-        Map<String, Object> vars = new HashMap<>();
-        vars.put("channel_id", s.channelId());
-        vars.put("company_id", s.companyId());
-        vars.put("language", s.language());
-        vars.put("call_attempt_id", s.callAttemptId());
-        if (s.context() != null && s.context().facts() != null) {
-            vars.putAll(s.context().facts());
-        }
-        // The number on the line, for a tool body's "x-source: variable" phone — an inbound
-        // call's facts do not carry it (UNIVERSAL-OPERATOR-PLAN C.2, create_order).
-        String phone = s.context() != null ? s.context().clientPhone() : null;
-        if (phone != null) {
-            vars.putIfAbsent("phone", phone);
-        }
-        return vars;
+        return ToolCallVariables.build(s.channelId(), s.companyId(), s.language(), s.callAttemptId(), s.context());
     }
 
     /**
@@ -345,8 +363,10 @@ public class TurnTools {
      * hand that reasoning to the TTS and speak it to the caller.
      *
      * <p>Running the tools ourselves removes the round trip that needs a signature at
-     * all. Nothing is lost: the tools move the FSM and record outcomes, their return
-     * strings are confirmations, and the conversation history was already text-only.
+     * all. Nothing is lost: the tools move the FSM and record outcomes, and the conversation
+     * history was already text-only. A data tool's result (HTTP, MCP, CRM, catalog) is fed
+     * back as a plain text message in a follow-up round of the same turn
+     * ({@code LlmTurnClient}), never as a replayed native tool call.
      *
      * <p>A fresh options builder every turn — the ChatClient merges the tool callbacks
      * into the instance it is handed, so a shared one would accumulate them.

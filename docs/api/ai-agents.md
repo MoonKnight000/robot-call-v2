@@ -255,6 +255,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "transferMessage": null,
     "transferQueueId": 4,
     "preConversationAudioFileId": null,
+    "pressDigitEnabled": false,
     "responseWaitMs": 600
   },
   "limits": {
@@ -278,14 +279,12 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     { "id": "satisfaction", "name": "Mijoz roziligi", "criteria": "Mijoz ijobiy kayfiyatda xayrlashdimi" }
   ],
   "initiationWebhook": {
-    "url": "https://api.example.com/webhooks/call-started",
-    "headers": { "Authorization": "Bearer secret_token" },
-    "timeoutSeconds": 5
+    "webhookUrl": "https://api.example.com/webhooks/call-started",
+    "headers": { "Authorization": "Bearer secret_token" }
   },
   "postCallWebhook": {
-    "url": "https://api.example.com/webhooks/call-ended",
-    "headers": { "Authorization": "Bearer secret_token" },
-    "timeoutSeconds": 10
+    "webhookUrl": "https://api.example.com/webhooks/call-ended",
+    "headers": { "Authorization": "Bearer secret_token" }
   },
   "enabled": true
 }
@@ -318,7 +317,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > | `ambientSound`, `ambientSoundVolume`, `ambientSoundFadeInSeconds` | `ambience.background`, `ambience.backgroundVolume`, `ambience.backgroundFadeInSeconds` |
 > | `thinkingSound`, `thinkingSoundVolume` | `ambience.thinking`, `ambience.thinkingVolume` |
 > | `noiseCancellationEnabled`, `noiseCancellationMode` | `ambience.<o'sha nom>` |
-> | `dtmfInputEnabled`, `voicemail*`, `midCallSms*`, `transfer*`, `interruptionSensitivity`, `preConversationAudioFileId` | `callBehaviour.<o'sha nom>` |
+> | `dtmfInputEnabled`, `pressDigitEnabled`, `voicemail*`, `midCallSms*`, `transfer*`, `interruptionSensitivity`, `preConversationAudioFileId` | `callBehaviour.<o'sha nom>` |
 > | `maxConversationDurationSeconds`, `silenceEndCallTimeoutSeconds`, `concurrentCallsLimit`, `dailyCallsLimit` | `limits.<o'sha nom>` |
 > | `zeroPiiRetention`, `storeCallAudio`, `conversationRetentionDays`, `realtimeFactsDelivery` | `dataPolicy.<o'sha nom>` |
 >
@@ -391,6 +390,12 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > | Maydon | Tip | Ma'nosi |
 > |---|---|---|
 > | `callBehaviour.responseWaitMs` | integer, 100–3000 | Mijoz gapirib bo'lgach, agent navbatni olishdan oldin kutadigan sukut (ms). Kichik — tezroq javob, lekin mijoz o'ylab turganda gapini bo'lishi mumkin. `null` — o'rnatma standarti |
+> | `callBehaviour.reminderAfterSeconds` | integer, 1–300 | Mijoz shuncha soniya jim tursa, agent "hali shu yerdamisiz?" deb so'raydi. `null` — o'rnatma standarti |
+> | `callBehaviour.reminderMaxCount` | integer, 0–10 | Qo'ng'iroq tugatilguncha nechta eslatma. `0` — birinchi jimlikdayoq tugatadi. `null` — o'rnatma standarti |
+> | `callBehaviour.dtmfTimeoutMs` | integer, 500–10000 | Tugmalar orasidagi pauza: shundan keyin terilgan raqamlar dialogga bitta gap bo'lib beriladi. `null` — 2000 |
+> | `callBehaviour.dtmfTerminationKey` | `0-9`, `#` yoki `*` | Bosilsa terilgan raqamlar darhol beriladi. `null` — `#` |
+> | `callBehaviour.dtmfDigitLimit` | integer, 1–50 | Shuncha raqam terilgach kutmasdan beriladi. `null` — cheklov yo'q |
+> | `callBehaviour.ringDurationSeconds` | integer, 5–300 | Chiquvchi qo'ng'iroq javobsiz deb hisoblanguncha jiringlash vaqti (faqat Asterisk; LiveKit hozircha o'rnatma standartini ishlatadi). `null` — o'rnatma standarti |
 > | `speechEngine.transcriptionMode` | `FAST` \| `ACCURATE` | `FAST` — matn tezroq keladi, `ACCURATE` — biroz kechroq, lekin ishonchliroq. `null` — o'rnatma standarti |
 > | `speechEngine.boostedKeywords` | string[], ko'pi bilan 100 ta, har biri 1–50 belgi | STT ustunlik beradigan so'zlar (ism, brend, mahsulot nomi). `null` yoki `[]` — yo'q |
 >
@@ -634,6 +639,13 @@ faqat `PUT`):
 | `RESPONSE_WAIT_MS` | `callBehaviour.responseWaitMs` (o'rnatma standartiga qaytadi) |
 | `TRANSCRIPTION_MODE` | `speechEngine.transcriptionMode` (o'rnatma standartiga qaytadi) |
 | `BOOSTED_KEYWORDS` | `speechEngine.boostedKeywords` (`speechEngine.boostedKeywords: []` yuborish bilan bir xil) |
+| `REMINDER_AFTER_SECONDS` | `callBehaviour.reminderAfterSeconds` (o'rnatma standartiga qaytadi) |
+| `REMINDER_MAX_COUNT` | `callBehaviour.reminderMaxCount` (o'rnatma standartiga qaytadi) |
+| `DTMF_TIMEOUT_MS` | `callBehaviour.dtmfTimeoutMs` (2000 ga qaytadi) |
+| `DTMF_TERMINATION_KEY` | `callBehaviour.dtmfTerminationKey` (`#` ga qaytadi) |
+| `DTMF_DIGIT_LIMIT` | `callBehaviour.dtmfDigitLimit` (cheklovsiz) |
+| `RING_DURATION_SECONDS` | `callBehaviour.ringDurationSeconds` (o'rnatma standartiga qaytadi) |
+| `RAG_MIN_SCORE` | `ragMinScore` (standart `0.62` ga qaytadi) |
 
 Bir xil so'rovda maydonga qiymat berib, uni `clearFields` ga ham qo'shish —
 `400 AI_AGENT_CLEAR_FIELD_CONFLICT` (hech narsa yozilmaydi). Ro'yxatda yo'q maydonlar avvalgidek
@@ -644,16 +656,26 @@ birlashtiriladi; `clearFields` yuborilmasa — hech narsa o'zgarmaydi (eski klie
 | Kod | Sabab |
 |---|---|
 | `AI_AGENT_TEMPERATURE_OUT_OF_RANGE` | `temperature` 0..2 dan tashqarida |
+| `AI_AGENT_RAG_MIN_SCORE_OUT_OF_RANGE` | `ragMinScore` 0..1 dan tashqarida |
+| `AI_AGENT_RAG_INSTRUCTION_TOO_LONG` | `ragInstruction` 500 belgidan uzun |
 | `AI_AGENT_MAX_OUTPUT_TOKENS_OUT_OF_RANGE` | `maxOutputTokens` 1..4096 dan tashqarida |
 | `AI_AGENT_SYSTEM_PROMPT_TOO_LONG` | `systemPrompt` 12 000 belgidan uzun |
 | `AI_AGENT_DATA_FIELD_TYPE_INVALID` | `dataNeeded[].type` `string/number/boolean/date/enum` dan boshqa (katta-kichik harf farqsiz) |
+| `AI_AGENT_WEBHOOK_TIMEOUT_OUT_OF_RANGE` | `initiationWebhook.timeoutSeconds` / `postCallWebhook.timeoutSeconds` 1–30 dan tashqari. `timeoutSeconds` — qo'ng'iroq boshlanishidagi (initiation) webhook javobini necha soniya kutish; undan o'tsa qo'ng'iroq webhooksiz davom etadi. `null` — standart (5 soniya). Qo'ng'iroqdan keyingi webhooklar navbatdan qayta uriniladi va standartda qoladi |
+| `AI_AGENT_DATA_FIELD_OPTIONS_INVALID` | `dataNeeded[].options` faqat `enum` uchun, ko'pi bilan 20 ta, har biri 1–100 belgi |
+| `AI_AGENT_DATA_FIELD_FORMAT_EXAMPLES_INVALID` | `dataNeeded[].formatExamples` 5 tadan ko'p yoki biri bo'sh / 200 belgidan uzun |
+| `AI_AGENT_DATA_FIELD_CONTACT_FIELD_INVALID` | `dataNeeded[].contactField` kontakt maxsus maydoni nomi emas (harf yoki `_` bilan boshlanadi, harf/raqam/`_`, 64 gacha) |
+| `AI_MODEL_UNKNOWN` | `llmModel`, `fastLlmModel` yoki `postCallAnalysis.model` katalogda yo'q (yoki shu rejimda tanlab bo'lmaydi) |
 | `AI_AGENT_TRANSFER_PHONE_INVALID` | `transferPhoneNumber` telefon raqami emas |
 | `AI_AGENT_RESPONSE_WAIT_OUT_OF_RANGE` | `callBehaviour.responseWaitMs` 100..3000 dan tashqarida |
+| `AI_AGENT_CALL_TUNING_OUT_OF_RANGE` | `reminderAfterSeconds` (1–300), `reminderMaxCount` (0–10), `dtmfTimeoutMs` (500–10000), `dtmfDigitLimit` (1–50) yoki `ringDurationSeconds` (5–300) chegaradan tashqarida; xabar maydon nomini aytadi |
+| `AI_AGENT_DTMF_KEY_INVALID` | `callBehaviour.dtmfTerminationKey` `0-9`, `#`, `*` dan boshqa |
 | `AI_AGENT_BOOSTED_KEYWORDS_TOO_MANY` | `speechEngine.boostedKeywords` da 100 tadan ko'p so'z |
 | `AI_AGENT_BOOSTED_KEYWORD_INVALID` | `speechEngine.boostedKeywords` dagi so'z bo'sh yoki 50 belgidan uzun |
 | `AI_AGENT_LIMIT_EXCEEDS_COMPANY_CAP` | `maxConversationDurationSeconds` kompaniyaning `maxCallSeconds` tavanidan ([settings.md](settings.md)) katta |
 | `WEBHOOK_URL_INVALID` | webhook manzili xususiy tarmoqqa qaraydi (§4) |
 | `AI_AGENT_CLEAR_FIELD_CONFLICT` | faqat `PUT`: maydon ham qiymat bilan, ham `clearFields` da keldi |
+| `AI_AGENT_FUNCTION_INVALID`, `AI_AGENT_FUNCTION_DUPLICATE`, `AI_AGENT_FUNCTION_TOOL_NOT_FOUND` | `functions` ro'yxati noto'g'ri — sabab kodlari §11 dagi "`functions`" bo'limida |
 
 ---
 
@@ -765,6 +787,16 @@ QuickVoice uslubidagi mustaqil `Analysis` bo'limi. Agent butun konfiguratsiyasin
         "type": "email",
         "name": "Email",
         "description": "Mijoz aytgan email manzil"
+      },
+      {
+        "id": "customer_type",
+        "type": "enum",
+        "name": "Mijoz turi",
+        "description": "Mijozning biznes turi",
+        "options": ["mebel_ishlab_chiqaruvchi", "dizayner", "xususiy_mijoz"],
+        "formatExamples": [],
+        "required": true,
+        "contactField": "customer_type"
       }
     ],
     "dataEvaluation": [
@@ -778,7 +810,13 @@ QuickVoice uslubidagi mustaqil `Analysis` bo'limi. Agent butun konfiguratsiyasin
         "name": "Agent odobi",
         "criteria": "Agent xushmuomala so'zlashgani"
       }
-    ]
+    ],
+    "postCallAnalysis": {
+      "summaryEnabled": true,
+      "sentimentEnabled": true,
+      "model": null,
+      "memoryEnabled": true
+    }
   },
   "message": null,
   "messageCode": null,
@@ -787,6 +825,22 @@ QuickVoice uslubidagi mustaqil `Analysis` bo'limi. Agent butun konfiguratsiyasin
 ```
 
 `dataNeeded[].type` qiymatlari registrga sezgir emas: `string`, `number`, `boolean`, `date`, `enum`, `phone` yoki `email`.
+
+`postCallAnalysis: { "summaryEnabled": true, "sentimentEnabled": true, "model": null, "memoryEnabled": true }` — qo'ng'iroq tahlilining qaysi doimiy qismlari saqlanadi va tahlil qanday qilinadi (Retell "Post call analysis"). Berilmasa `PUT` da o'zgarmaydi; `summaryEnabled`/`sentimentEnabled` obyekt yuborilganda berilmasa `false` bo'ladi, shuning uchun obyekt doim to'liq yuboriladi. Qo'ng'iroq baribir bir marta tahlil qilinadi (natija, follow-up va ballar dialerga kerak), o'chirilgan qism faqat saqlanmaydi: `summaryEnabled=false` — `call_result.summary` bo'sh matn (shu sababli `{{summary}}` li SMS/webhook ham bo'sh), `sentimentEnabled=false` — `sentiment` `null`. Shu maydon `GET/PUT /api/ai-agents/{id}` da ham bor.
+
+| Maydon | Ma'nosi |
+|---|---|
+| `model` | Tahlil (xulosa, `dataNeeded`, `dataEvaluation`) qaysi LLM bilan qilinadi. `null` — platformaning xulosa modeli. Qiymat `GET /api/ai-agents/engine-options` dagi CASCADE LLM ro'yxatidan bo'lishi shart (`fastLlmModel` kabi), aks holda `400 AI_MODEL_UNKNOWN`. Kompaniya o'z LLM'ida bo'lsa (`ownLlm`), tahlil baribir o'sha yerda qilinadi va bu maydon e'tiborga olinmaydi |
+| `memoryEnabled` | `true` (standart) — qo'ng'iroq tugagach mijoz xotirasi (`client_memory`) yangilanadi (Retell "Save conversation to memory"). `false` — bu agentning qo'ng'iroqlari xotiraga yozilmaydi; agent mavjud xotirani o'qishda davom etadi. Berilmasa (eski klient) `true` |
+
+`dataNeeded[]` ning qo'shimcha maydonlari (barchasi ixtiyoriy, eski agentlarda yo'q — standart qiymat bilan o'qiladi):
+
+| Maydon | Ma'nosi |
+|---|---|
+| `formatExamples` | Javob ko'rinishiga namunalar (`["+998 90 123 45 67"]`) — modelga ko'rsatiladi. Eng ko'pi 5 ta, har biri 1–200 belgi, aks holda `400 AI_AGENT_DATA_FIELD_FORMAT_EXAMPLES_INVALID`. Standart `[]` |
+| `required` | `true` — maydon bo'sh qolmasligi kerak (Retell "Allow empty value" o'chiq). Birinchi javobda bo'sh/yaroqsiz bo'lsa, model bir marta qayta so'raladi; yana bo'sh bo'lsa natijaga kirmaydi (xato emas). Standart `false` — avvalgidek, noma'lum qiymat bo'sh qoladi |
+| `contactField` | Qiymat qo'ng'iroqdan keyin mijoz kontaktining shu nomli maxsus maydoniga ham yoziladi (`contacts.md` — `customFields`); kontakt bo'lmasa yaratiladi. Bo'sh qolgan qiymat yozilmaydi (avvalgisi qoladi). `zeroPiiRetention` agentida `dataNeeded` qiymatlari saqlanmagani uchun kontaktga ham yozilmaydi. Nom harf yoki `_` bilan boshlanadi, harf/raqam/`_`, 64 gacha — aks holda `400 AI_AGENT_DATA_FIELD_CONTACT_FIELD_INVALID`. `null` — faqat qo'ng'iroq natijasida |
+`enum` maydonida `options: ["A", "B"]` berilsa, javob shulardan biri bo'lishi shart (katta-kichik harf farqsiz, ro'yxatdagi yozuvda saqlanadi); boshqa qiymat yozilmaydi va kaliti `extractionErrors` ga tushadi. `options` bo'sh bo'lsa — avvalgidek, variantlar `description` da. Boshqa turda `options` — `400 AI_AGENT_DATA_FIELD_OPTIONS_INVALID`.
 `phone` qiymati UZ mahalliy raqami yoki xalqaro E.164 raqami sifatida, `email` esa odatiy email sintaksisi bo'yicha tekshiriladi.
 Noto'g'ri format topilsa, modeldan bir marta qayta ajratish so'raladi; qiymat yana yaroqsiz bo'lsa, natijaga kiritilmaydi va kaliti `extractionErrors` ro'yxatiga yoziladi.
 
@@ -878,20 +932,150 @@ parchalar modelning promptiga qo'yiladi; REALTIME rejimida esa model `searchKnow
 tool'ini o'zi chaqiradi. O'chirilgan bo'lsa qidiruv umuman ishlamaydi va bitta ham
 qo'shimcha so'rov ketmaydi.
 
+`redactPhoneNumbers` (`GET/PUT /api/ai-agents/{id}`, standart `false`) — karta, pasport, PINFL, CVV va email transkriptda **har doim** yashiriladi; bu o'chirgich yoqilsa telefon raqamlari ham `[PHONE]` ga almashadi: AI agent va mijoz qatorlari (saqlanadigan va jonli efirga chiqadigan), shuningdek xulosa va `followUpNote`. Tanilgan ko'rinishlar: `+998 90 123 45 67`, `998901234567`, `90 123 45 67`, `901234567` (mahalliy raqam operator kodi bilan boshlansa). ⚠️ Xulosa **saqlangan transkriptdan** o'qiladi, shuning uchun yoqilganda mijoz aytgan qayta aloqa raqami (`dataNeeded` da `phone` turidagi maydon) ajratib olinmaydi. Oldingi qo'ng'iroqlar o'zgarmaydi. `PUT` da berilmasa — o'zgarmaydi.
+
+`defaultVariables` (`GET/PUT /api/ai-agents/{id}`, standart `{}`) — agent darajasidagi standart dinamik o'zgaruvchilar: `{"company": "Nido", "city": "Toshkent"}`. Prompt, `firstMessage` va ssenariy matnidagi `{{company}}` / `{{city | Toshkent}}` shu qiymat bilan to'ladi. Ustuvorlik (pastdan yuqoriga): agent standartlari → kontakt/kampaniya ma'lumoti (`target.context`, `facts`) → pre-call funksiyalar → initiation webhook javobi; ya'ni yuqoridagilar bir xil nomli standartni bosib ketadi. Cheklov: ko'pi bilan 50 ta; nom `[A-Za-z0-9_-]{1,64}`, qiymat 500 belgigacha; buzilsa `400 AI_AGENT_DEFAULT_VARIABLE_INVALID`. `PUT` da berilsa **butun xarita almashadi**, `{}` hammasini tozalaydi, berilmasa o'zgarmaydi.
+
+### Agent funksiyalari (built-in tool'lar)
+
+Agent qo'ng'iroqda qaysi tool'larni **ko'rishi** shu yerda aniq belgilanadi. **Yangi yo'l — `functions` ro'yxati (bu bo'limning oxirida); quyidagi bandlar `functions` hali saqlanmagan (eski) agentlar uchun amal qiladi.** Eski agentda `endCall` doim bor; qolganlari quyidagicha. Qoidalar kaskad ham, REALTIME ham uchun bir xil.
+
+- **Operatorga ulash (`requestHumanTransfer`)** *(legacy; `functions` saqlangan bo'lsa `TRANSFER_CALL` funksiyasi hal qiladi)* — faqat qo'ng'iroq uchun **ulanadigan joy bor bo'lsagina** beriladi. Joy (OperatorTransferService tartibi bilan): joriy `CALL_TRANSFER` bosqichining raqami → `callBehaviour.transferQueueId` → `callBehaviour.transferPhoneNumber` → umumiy operator (`voice-agent.operator.enabled=true` va `endpoint` berilgan). Hech biri bo'lmasa tool modelga umuman ko'rsatilmaydi (ilgari qo'ng'iroq shunchaki uzilardi) va prompt ham "operatorga ulang" demaydi. REALTIME'da tool ulanishda bir marta e'lon qilinadi: ssenariyning birorta `CALL_TRANSFER` bosqichida raqam bo'lsa e'lon qilinadi, lekin raqamsiz bosqichda chaqirilsa xato qaytadi. Frontend: agent kartochkasida `transferQueueId`/`transferPhoneNumber` yo'q va platformada umumiy operator sozlanmagan bo'lsa "Operatorga ulash" nofaol/ogohlantirish bilan ko'rsatilishi kerak.
+- **Tugma bosish / IVR (`sendDtmfTones`)** *(legacy; `functions` saqlangan bo'lsa `PRESS_DIGIT` funksiyasi)* — `callBehaviour.pressDigitEnabled` (boolean, standart `false`). `true` bo'lsa tool ssenariyda `sendDtmfTones` ToolDef bo'lmasa ham beriladi va bosqichning `allowedTools` ro'yxati uni cheklamaydi. `false` bo'lsa — eskicha: faqat ssenariy `sendDtmfTones` ToolDef'ini e'lon qilgan bo'lsagina. **`dtmfInputEnabled` bilan adashtirmang** — u mijoz tugma bosib raqam kiritishi.
+- **Qo'ng'iroq ichidagi SMS (`sendMidCallSms`)** *(legacy; `functions` saqlangan bo'lsa `SEND_SMS` funksiyasi)* — `callBehaviour.midCallSmsEnabled` (+ `midCallSmsTemplate`), o'zgarmagan.
+- **Integratsiya tool'lari** *(legacy; `functions` saqlangan bo'lsa `INTEGRATION` funksiyalari ro'yxati ruxsat ro'yxati bo'ladi va `disabledIntegrationTools` e'tiborsiz)* — `disabledIntegrationTools` (`PUT /api/ai-agents/{id}`, `GET` javobida `AiAgentRow.disabledIntegrationTools`, standart `[]`). Kompaniya yoqqan Uysot tool'lari (built-in CRM tool'lar va integratsiyaning HTTP tool'lari, jumladan `createLead`, `moveLeadStage` kabi yozuvchilar) ilgari kompaniyaning **barcha** agentlariga berilardi; endi agent o'zi keraklisini o'chira oladi. Bo'sh ro'yxat — kompaniya sozlamasiga ergashadi. Element: built-in tool uchun katalog kaliti (`CREATE_LEAD`) yoki modelga ko'rinadigan nom (`createLead`); HTTP tool uchun uning nomi (`toolName`). Frontend ro'yxatni mavjud `GET /api/settings/integrations/tools` ([settings.md](settings.md), `INTEGRATION_READ`) dan oladi: har qator uchun `toolName ?? tool` ni yuboring; `enabled && granted` qatorlargina agentga yetadi. Agent faqat **kompaniya yoqqan** tool'ni o'chira oladi, yoqmagan tool'ni agent yoqa olmaydi. `PUT` da berilsa **butun ro'yxat almashadi**, `[]` tozalaydi, berilmasa o'zgarmaydi. Cheklov: ko'pi bilan 100 ta, element bo'sh bo'lmasligi va 100 belgidan oshmasligi kerak, aks holda `400 AI_AGENT_DISABLED_INTEGRATION_TOOL_INVALID`. Katalogda yo'q (o'zgargan/o'chirilgan) nom xato bermaydi — e'tiborsiz qoldiriladi. O'zgarish **yangi qo'ng'iroqlardan** boshlab amal qiladi.
+
+#### `functions` — agentning funksiyalar ro'yxati (Retell "Functions")
+
+Agentning qo'ng'iroqdagi **barcha** tool'lari bitta ro'yxat: `AiAgentRow.functions` (har doim to'ldirilgan),
+`PUT /api/ai-agents/{id}` da `functions` (`null` — o'zgartirma; `[]` — funksiyasiz agent; berilsa **butun ro'yxat
+almashadi**). Qoralamaga yoziladi va versiyalanadi (publish/rollback/diff ro'yxatni ham oladi).
+Quyidagi eski maydonlar (`callBehaviour.pressDigitEnabled`, `callBehaviour.midCallSmsEnabled`/`midCallSmsTemplate`,
+`callBehaviour.transferPhoneNumber`/`transferQueueId`, `disabledIntegrationTools`, `POST /{id}/tools/{toolId}`)
+**legacy**: `functions` hali saqlanmagan agentda ular avvalgidek ishlaydi, saqlangandan keyin runtime ularga qaramaydi
+(yozilgan qiymat qoladi, lekin tool'larni belgilamaydi).
+
+```jsonc
+// AgentFunction
+{
+  "id": "fn_1a2b",                 // ^[A-Za-z0-9_-]{1,40}$, ro'yxatda unikal (mijoz yasaydi)
+  "type": "SEND_SMS",              // AgentFunctionType
+  "name": "sendMidCallSms",        // javobda doim to'ldirilgan; EXTRACT_VARIABLE dan boshqasida so'rovdagi qiymat e'tiborsiz
+  "description": null,             // ≤1000; null = standart tavsif. Modelga shu beriladi (hamma turda)
+  "speakDuringExecution": false,   // "Talk while waiting"
+  "executionMessage": null,        // ≤300; kutish paytida aytiladigan gap, null = standart filler
+  // faqat o'z turi uchun; qolganlari null (yuborilsa tashlab yuboriladi):
+  "transfer":      { "destination": "+998901234567", "mode": "COLD" },
+  "agentTransfer": { "agentId": 42, "keepVoice": true, "keepLanguage": true },
+  "pressDigit":    { "pauseDetectionDelayMs": 1000 },
+  "sms":           { "contentMode": "STATIC", "content": "…{{customer_name}}…", "sendTo": "CALLER", "number": null, "speakAfter": true },
+  "extract":       { "variables": [ { "name": "budget", "type": "NUMBER", "description": "…", "choices": [] } ] },
+  "toolId": 17,                    // CUSTOM
+  "integrationTool": "createLead"  // INTEGRATION
+}
+```
+
+| `type` | Model tool'i (`name`) | Sozlama | Ishlashi |
+|---|---|---|---|
+| `END_CALL` | `endCall` | — | Ro'yxatda **yo'q** bo'lsa `endCall` modelga berilmaydi (agent o'zi go'shak qo'ymaydi). Boshqa yo'llar (DNC, noto'g'ri odam, limitlar, ENDING bosqichi, sentiment eskalatsiyasi) o'zgarmaydi |
+| `TRANSFER_CALL` | `requestHumanTransfer` | `transfer.destination`, `transfer.mode` | Ro'yxatda **yo'q** bo'lsa tool berilmaydi (5-bosqichdagi `@no-transfer` prompt ishlaydi), `CALL_TRANSFER` bosqichi raqami bo'lsa ham. Bor bo'lsa manzil tartibi: joriy `CALL_TRANSFER` bosqichi raqami → `destination` → `transferQueueId` → `transferPhoneNumber` → umumiy operator. `destination` bo'sh bo'lsa eski tartib (oxirgi uchtasi) |
+| `AGENT_TRANSFER` | `transferToAgent` | `agentTransfer.agentId` | Qo'ng'iroqni kompaniyaning boshqa (e'lon qilingan) agent ssenariysiga uzatadi (`AGENT_TRANSFER` bosqichi bilan bir xil mexanizm). Xato bo'lsa model "o'zingiz davom eting" javobini oladi |
+| `PRESS_DIGIT` | `sendDtmfTones` | `pressDigit.pauseDetectionDelayMs` (0..5000) | Ro'yxatda bor bo'lsa tool ssenariy `ToolDef` ini e'lon qilmasa ham beriladi |
+| `SEND_SMS` | `sendMidCallSms` | `sms.*` | Qo'ng'iroqda bir martagacha SMS (480 belgigacha) |
+| `EXTRACT_VARIABLE` | foydalanuvchi bergan `name` | `extract.variables[]` | Har funksiya — bitta tool; har o'zgaruvchi — parametr. Qiymatlar qo'ng'iroq natijasiga (`call_result.outcome`) yoziladi va keyingi tool'larda / SMS matnida `{{nom}}` bo'lib ishlaydi |
+| `CUSTOM` | tool nomi (sanitize qilingan) | `toolId` | Kompaniyaning REST tool'i. Faqat shu ro'yxatdagilar beriladi |
+| `INTEGRATION` | katalog nomi | `integrationTool` | Faqat shu ro'yxatdagi integratsiya tool'lari beriladi (`toolName ?? tool`, `GET /api/settings/integrations/tools`); kompaniya yoqmagan/grant yetmagan tool baribir berilmaydi |
+
+**Nom qoidasi.** Tizim turlari ro'yxatda ko'pi bilan bir marta; `name` o'zgarmas (yuqoridagi jadval), so'rovdagi `name`
+e'tiborsiz va javobda shu nom qaytadi. `EXTRACT_VARIABLE` — `name` foydalanuvchiniki, `^[a-zA-Z][a-zA-Z0-9_]{0,63}$`, tizim nomlari
+(`endCall`, `requestHumanTransfer`, `transferToAgent`, `sendDtmfTones`, `sendMidCallSms`, `recordWrongPerson`, `recordDoNotCall`,
+`waitForCaller`, `switchLanguage`, `noteCallerMood`, `transitionTo`, `extractVariables`, `getFact`) bilan to'qnashmaydi; o'zgaruvchi
+nomi ham shu shaklda, `reply` bo'lmaydi, funksiya ichida unikal, `ENUM` uchun `choices` (1..20 ta, har biri ≤100 belgi) majburiy.
+`CUSTOM` nomi tool'ning o'zidan; ikki funksiya nomi (katta-kichik harfsiz) bir xil bo'lmasin.
+
+**`transfer.destination`** — telefon (`+998901234567`), `PJSIP/…` / `SIP/…` endpoint, `sip:user@host` URI yoki `{{o'zgaruvchi}}`
+(qo'ng'iroq faktlari + yozib olingan qiymatlar bilan to'ldiriladi). To'ldirilgandan keyin raqam yoki oddiy endpoint nomi bo'lishi
+shart (qo'ng'iroq qiluvchi gapidan kelgan qiymatga qarshi himoya) — aks holda eski tartibga o'tiladi. Asterisk: `PJSIP/`·`SIP/` o'zgarmay,
+`sip:`·`sips:` URI faqat user qismi (raqam) bilan, oddiy raqam `PJSIP/<raqam>` orqali terladi. LiveKit qo'ng'irog'i faqat oddiy raqamni
+terishi mumkin (endpoint/URI uchun uzilish). `mode`: `COLD` yoki `WARM`; hozir ikkalasi bir xil — operatorga transfer paytida
+doim qo'ng'iroq xulosasi va oxirgi gaplar (screen pop) yuboriladi, AI operatorga ovozli brifing o'qimaydi.
+
+**`agentTransfer`** — `agentId` shu kompaniyaning boshqa agenti bo'lishi kerak (o'zi emas) va qo'ng'iroq vaqtida e'lon qilingan bo'lishi
+shart (aks holda uzatish bajarilmaydi). Ovoz va til har doim joriy qo'ng'iroqniki qoladi, ya'ni `keepVoice`/`keepLanguage` saqlanadi, lekin
+runtime ularni o'zgartirmaydi (hozircha faqat `true` xatti-harakati bor). Uzatilgandan keyin ssenariy yangi agentniki, funksiyalar ro'yxati esa
+shu (uzatgan) agentniki bo'lib qoladi. REALTIME'da dvigatel o'rtada ssenariyni almashtira olmasa uzatish rad etiladi.
+
+**`pressDigit.pauseDetectionDelayMs`** — tugma bosilgandan keyin tool modelga javob berishdan oldin shuncha kutadi (menyu javob berishga
+ulgursin); tugma tovushlarining o'zi qat'iy vaqt bilan ketadi. `null` — qo'shimcha kutish yo'q.
+
+**`sms`** — `contentMode`: `STATIC` (`content` — SMS matni, `{{o'zgaruvchi}}` to'ldiriladi, model matn yozmaydi; ≤480 belgi) yoki `PROMPT`
+(`content` — modelga ko'rsatma, SMS matnini model yozadi; ≤1000 belgi). `sendTo`: `CALLER` (qo'ng'iroq raqami) yoki `NUMBER` (`number` —
+telefon yoki `{{o'zgaruvchi}}`; to'ldirilgach raqam bo'lmasa SMS yuborilmaydi). `speakAfter=false` — agent SMS yuborilganini aytmaydi.
+Qo'ng'iroqda baribir bitta SMS cheklovi amal qiladi. Legacy `midCallSmsTemplate` dagi `{{text}}` o'rni `STATIC` da ham ishlaydi.
+
+**`speakDuringExecution` / `executionMessage`** — kaskad: `speakDuringExecution=true` bo'lsa shu tool chaqirilganda `executionMessage`
+(yoki bo'sh bo'lsa standart filler) aytiladi, `dialog.pre-tool-speech` o'chiq bo'lsa ham. `false` — funksiyaga xos filler qo'shilmaydi,
+lekin umumiy filler siyosati (`dialog.pre-tool-speech`, tool'ning o'z `speech.preToolSpeech`) avvalgidek ishlaydi. REALTIME'da filler
+mexanizmi yo'q — bu ikki maydon e'tiborsiz.
+
+**Eski agent uchun standart ro'yxat.** `functions` hech qachon saqlanmagan agentda `GET` quyidagini yasab qaytaradi (qo'ng'iroq xatti-harakati
+o'zgarmaydi): `END_CALL`; `transferPhoneNumber`/`transferQueueId` yoki umumiy operator bo'lsa `TRANSFER_CALL` (manzilsiz); `pressDigitEnabled`
+bo'lsa `PRESS_DIGIT`; `midCallSmsEnabled` va shablon bo'lsa `SEND_SMS` (`STATIC`, `content` = shablon); biriktirilgan tool'lar — `CUSTOM`;
+kompaniya yoqqan integratsiya tool'lari (`disabledIntegrationTools` dan tashqari) — `INTEGRATION`. Bunday ro'yxat id'lari `fn_end_call`,
+`fn_transfer_call`, `fn_press_digit`, `fn_send_sms`, `fn_tool_<toolId>`, `fn_int_<nom>` ko'rinishida. Uni o'zgartirmay `PUT` qilish ham
+ro'yxatni "saqlangan" qiladi: shundan keyin faqat shu ro'yxat ishlaydi.
+
+**`CUSTOM` ↔ biriktirilgan tool'lar.** Saqlashda agentning biriktirilgan tool'lari `CUSTOM` funksiyalarning `toolId` lari bilan
+sinxronlanadi (ortiqchasi uziladi, yetishmagani biriktiriladi); rollback ham shuni qiladi. Saqlangandan keyin
+`POST/DELETE /{id}/tools/{toolId}` runtime'dagi tool'lar to'plamini o'zgartirmaydi — `functions` ni tahrirlang. Tool'lar versiyalanmaydi
+(jonli), `functions` versiyalanadi.
+
+| Kod (`400`) | Sabab |
+|---|---|
+| `AI_AGENT_FUNCTION_INVALID` | Umumiy: xabar funksiya `id` si va sabab kodini aytadi. Sabab kodlari: `TOO_MANY_FUNCTIONS` (>50), `ID_INVALID`, `TYPE_REQUIRED`, `DESCRIPTION_TOO_LONG`, `EXECUTION_MESSAGE_TOO_LONG`, `TRANSFER_DESTINATION_INVALID`, `AGENT_ID_REQUIRED`, `AGENT_TRANSFER_TO_SELF`, `PAUSE_DELAY_OUT_OF_RANGE`, `SMS_CONTENT_REQUIRED`, `SMS_CONTENT_TOO_LONG`, `SMS_NUMBER_REQUIRED`, `SMS_NUMBER_INVALID`, `NAME_INVALID`, `VARIABLES_REQUIRED`, `TOO_MANY_VARIABLES` (>30), `VARIABLE_NAME_INVALID`, `VARIABLE_DESCRIPTION_TOO_LONG`, `VARIABLE_CHOICES_INVALID`, `TOOL_ID_REQUIRED`, `INTEGRATION_TOOL_REQUIRED` |
+| `AI_AGENT_FUNCTION_DUPLICATE` | `id` takrori, nom takrori, tizim turi ikki marta yoki funksiya ichida o'zgaruvchi nomi takrori |
+| `AI_AGENT_FUNCTION_TOOL_NOT_FOUND` | `toolId` yoki `agentTransfer.agentId` shu kompaniyada yo'q (404 emas, 400) |
+
+`INTEGRATION` da `integrationTool` katalogda borligi tekshirilmaydi (katalog o'zgarishi mumkin): bunday funksiya shunchaki hech narsa bermaydi.
+`CODE` turi qabul qilinmaydi.
+
+`ragTopK` (`GET/PUT /api/ai-agents/{id}`) — bitta savolga javob uchun nechta parcha olinadi, 1–10
+(Retell "Chunks to retrieve"). Berilmasa (`null`) — joriy standart (matn rejimida `dialog.knowledge-passages`,
+REALTIME'da 3). Tartib: ssenariy bosqichining o'z `knowledgePassages` qiymati → agentning `ragTopK` → standart.
+`PUT` da berilmasa o'zgarmaydi, `0` — standartga qaytaradi; 1–10 dan tashqari — `400 AI_AGENT_RAG_TOP_K_OUT_OF_RANGE`.
+
+`ragMinScore` (`GET/PUT /api/ai-agents/{id}`, Retell "Similarity threshold") — semantik o'xshashlik ostonasi, `0.0`–`1.0`:
+bundan past baholangan parcha modelga berilmaydi. `null` — joriy standart `0.62` (javobda ham `null`). Past qiymat
+ko'proq (kamroq aniq) parcha qaytaradi, yuqori qiymat kamroq lekin aniqroq. Faqat embedding reytingiga ta'sir qiladi;
+kalit so'z reytingi o'z ostonasida qoladi. `PUT` da berilmasa — o'zgarmaydi; `0.0` — haqiqiy qiymat (hammasi o'tadi),
+standartga qaytarish — `clearFields: ["RAG_MIN_SCORE"]` (qiymat bilan birga yuborilsa `400 AI_AGENT_CLEAR_FIELD_CONFLICT`).
+0–1 dan tashqari — `400 AI_AGENT_RAG_MIN_SCORE_OUT_OF_RANGE`.
+
+`ragInstruction` (`GET/PUT /api/ai-agents/{id}`, Retell "Knowledge base instruction") — qidiruv uchun yo'naltiruvchi matn,
+ko'pi bilan 500 belgi: har bir qidiruvda embedding so'rovining boshiga qo'shiladi (masalan "Nido mahsulot narxlari va
+tariflari haqida savol"). `{{o'zgaruvchi}}` / `{{o'zgaruvchi | standart}}` qo'ng'iroq faktlaridan to'ldiriladi (promptdagi
+kabi). Matn modelga ko'rsatilmaydi va javob matniga tushmaydi. `null` — yo'q. `PUT` da berilmasa — o'zgarmaydi,
+`""` (yoki bo'sh joylar) — o'chiradi. 500 belgidan uzun — `400 AI_AGENT_RAG_INSTRUCTION_TOO_LONG`.
+
+**Qidiruv so'rovi qanday tuziladi.** Matn rejimida (CASCADE) embedding so'rovi = `ragInstruction` + mijozning oldingi gapi +
+agentning oxirgi qatori + mijozning hozirgi gapi (oxirgisi eng yangi), jami ~500 belgigacha (eng eskisi birinchi qisqaradi) —
+shu tufayli "narxi?" kabi qisqa javob ham oldingi gapga ulanib to'g'ri parchani topadi. Kalit so'z reytingi faqat mijozning
+hozirgi gapiga qaraydi; hozirgi gap 3 belgidan, butun so'rov 8 belgidan qisqa bo'lsa qidiruv ishlamaydi. REALTIME'da model
+`searchKnowledgeBase(question)` ni chaqiradi: so'rov = `ragInstruction` + modelning savoli; parcha soni, `ragMinScore` va
+bosqichning `knowledgeSourceIds` i matn rejimidagi kabi (bir parcha ko'pi bilan 1200 belgi).
+
 ```json
 {
   "accept": true,
   "data": {
     "useRag": true,
     "initiationWebhook": {
-      "url": "https://api.example.com/webhooks/call-started",
-      "headers": { "Authorization": "Bearer secret_token" },
-      "timeoutSeconds": 5
+      "webhookUrl": "https://api.example.com/webhooks/call-started",
+      "headers": { "Authorization": "Bearer secret_token" }
     },
     "postCallWebhook": {
-      "url": "https://api.example.com/webhooks/call-ended",
+      "webhookUrl": "https://api.example.com/webhooks/call-ended",
       "headers": { "Authorization": "Bearer secret_token" },
-      "timeoutSeconds": 10,
       "events": ["STAGE_TRANSITION", "TRANSFER_REQUESTED"]
     },
     "emotionAdaptiveVoice": true,
@@ -1039,7 +1223,29 @@ Qo'ng'iroq yakunlangach (suhbat muvaffaqiyatli bo'ladimi yoki javobsiz/band `NO_
         "template": "Assalomu alaykum! Buyurtmangiz qabul qilindi. Xulosa: {{summary}}",
         "webhookUrl": null,
         "headers": null,
-        "enabled": true
+        "enabled": true,
+        "conditions": [
+          { "field": "interested", "operator": "EQUALS", "value": "true" },
+          { "field": "callback_phone", "operator": "IS_SET", "value": null }
+        ],
+        "smsRecipient": "{{callback_phone}}",
+        "telegramBotId": null,
+        "telegramChatId": null
+      },
+      {
+        "id": "team-chat",
+        "name": "Sotuv guruhiga xabar",
+        "actionType": "TELEGRAM",
+        "triggerDisposition": null,
+        "onlyOnSuccess": false,
+        "template": "Yangi lid: {{phone}} — {{summary}}",
+        "webhookUrl": null,
+        "headers": null,
+        "enabled": true,
+        "conditions": [],
+        "smsRecipient": null,
+        "telegramBotId": 7,
+        "telegramChatId": "-1001234567890"
       },
       {
         "id": "crm-webhook",
@@ -1062,8 +1268,44 @@ Qo'ng'iroq yakunlangach (suhbat muvaffaqiyatli bo'ladimi yoki javobsiz/band `NO_
 }
 ```
 
+| Maydon | Turi | Ma'nosi |
+|---|---|---|
+| `conditions` | `PostCallCondition[]` | Ajratilgan qiymatlar (`call_result.outcome`) bo'yicha shartlar; amal **hammasi** bajarilganda ishlaydi. Bo'sh yoki `null` — shartsiz. Ko'pi bilan 10 ta |
+| `conditions[].field` | string | `dataNeeded` maydonining `id` si (outcome kaliti), 1–64 belgi |
+| `conditions[].operator` | enum | `EQUALS`, `NOT_EQUALS`, `CONTAINS`, `GREATER_THAN`, `LESS_THAN`, `IS_SET`, `IS_NOT_SET` |
+| `conditions[].value` | string | Solishtiriladigan qiymat, 1–200 belgi; `IS_SET`/`IS_NOT_SET` da e'tiborga olinmaydi; `GREATER_THAN`/`LESS_THAN` da son bo'lishi shart. Matn katta-kichik harfsiz solishtiriladi; boolean `"true"`/`"false"` |
+| `smsRecipient` | string \| null | Faqat `SEND_SMS`: telefon raqam yoki bitta `{{field}}` placeholder (masalan `{{callback_phone}}`). `null` — qo'ng'iroq qilingan raqamga. Placeholder qiymati yaroqli raqam bo'lmasa, SMS yuborilmaydi (log) |
+| `telegramBotId` | number \| null | Faqat `TELEGRAM`: kompaniyaning Telegram boti (`/api/telegram-bots`). `telegramChatId` bilan birga beriladi |
+| `telegramChatId` | string \| null | Faqat `TELEGRAM`: chat — raqamli id (`-100…`) yoki `@kanal`. Ikkalasi ham `null` bo'lsa, xabar kompaniyaning bildirishnoma kanallariga ketadi (avvalgi xatti-harakat) |
+
+| `code` | string \| null | Faqat `actionType: CODE`: JavaScript funksiya tanasi (≤ 10 000 belgi), `vars` ni o'qib obyekt qaytaradi |
+
+Bot boshqa kompaniyaniki bo'lsa yoki o'chirilgan bo'lsa, amal qo'ng'iroq paytida o'tkazib yuboriladi (log) — saqlashda tekshirilmaydi.
+
+**`CODE` amali.** Amallar ro'yxat tartibida ishlaydi. `CODE` amali (shart va `triggerDisposition` unga ham
+qo'llanadi) skriptni ishga tushiradi: `vars` — `outcome` qiymatlari + `phone`, `disposition`, `call_attempt_id`,
+`summary`, `sentiment`, `qaScore` (maxfiy kalitlar berilmaydi). Qaytgan obyekt maydonlari **shu qo'ng'iroqdagi
+keyingi amallar** ko'radigan `outcome` ga qo'shiladi: shartlar, `{{maydon}}` placeholder'lar, webhook `payload.outcome`.
+`call_result` ga yozilmaydi. Sandbox pre-call kod funksiyasi bilan bir xil (1 soniya; xato yoki vaqt tugasa — hech
+narsa qo'shilmaydi, keyingi amallar davom etadi).
+
+```json
+{ "id": "tier", "name": "Mijoz darajasi", "actionType": "CODE", "triggerDisposition": null, "onlyOnSuccess": false,
+  "enabled": true, "conditions": [],
+  "code": "return { tier: Number(vars.budget) > 1000 ? 'gold' : 'basic' };" }
+```
+
 ### `PUT /api/ai-agents/{id}/post-call-actions`
 Yuqoridagi formatdagi amallar massivini yuborish orqali yangilanadi.
+
+| Xato (`messageCode`) | Status | Qachon |
+|---|---|---|
+| `AI_AGENT_POST_CALL_CONDITION_INVALID` | 400 | 10 tadan ko'p shart, `field`/`operator` yo'q, qiymat bo'sh yoki 200 belgidan uzun, yoki son kutilgan joyda son emas |
+| `AI_AGENT_POST_CALL_SMS_RECIPIENT_INVALID` | 400 | `smsRecipient` raqam ham, `{{field}}` ham emas, yoki amal `SEND_SMS` emas |
+| `AI_AGENT_POST_CALL_CODE_INVALID` | 400 | `CODE` amalida `code` yo'q yoki 10 000 belgidan uzun, yoki `code` boshqa turdagi amalda berilgan |
+| `AI_AGENT_POST_CALL_TELEGRAM_TARGET_INVALID` | 400 | `telegramBotId`/`telegramChatId` faqat bittasi berilgan, chat formati noto'g'ri, yoki amal `TELEGRAM` emas |
+
+Shu tekshiruvlar agentni to'liq saqlashda (`PUT /api/ai-agents/{id}`) ham ishlaydi.
 
 ---
 
@@ -1119,10 +1361,20 @@ kompaniyaning CRM sozlamalari (`crm_new_lead_status_id`, … — `platform-integ
 | `outputs` | hosil bo'ladigan o'zgaruvchi → `$`-yo'l (`responseMapping` sintaksisi, `[*]` ham). Yo'l vositaning **to'liq xom javobidan** o'qiladi (modelga qisqartirilgandan oldin) |
 | `dependsOn` | kutiladigan funksiyalar `id`si |
 | `enabled` | `false` — ishlamaydi (unga bog'liqlar ham) |
+| `code` | vosita o'rniga **JavaScript** (funksiya tanasi, ≤ 10 000 belgi). `vars` obyektini o'qiydi (qo'ng'iroq o'zgaruvchilari va oldingi funksiyalar natijasi) va obyekt qaytaradi — uning maydonlari yangi o'zgaruvchi bo'ladi. Bunda `toolName`, `inputs`, `outputs` berilmaydi. Bo'sh/obyekt bo'lmagan javob, xato yoki 1 soniyadan uzoq ishlash — funksiya yiqilgan hisoblanadi (bog'liqlari ishlamaydi) |
+
+Kod funksiyasi GraalJS sandbox'ida ishlaydi (CODE bosqichi bilan bir xil): Java klasslari, fayl, tarmoq, thread yo'q;
+1 soniya va 1 000 000 operator chegarasi; ko'pi bilan 50 ta natija maydoni.
+
+```json
+{ "id": "label", "toolName": null, "inputs": {}, "outputs": {}, "dependsOn": ["lead"], "enabled": true,
+  "code": "return { greeting_name: (vars.client_name || '').split(' ')[0] };" }
+```
 
 Validatsiya (`400 WORKFLOW_INVALID`, barcha muammolar `errors` ro'yxatida): 15 dan ko'p funksiya, takroriy/noto'g'ri
 `id`, mavjud bo'lmagan yoki o'ziga `dependsOn`, sikl, 4 dan uzun zanjir, noto'g'ri o'zgaruvchi nomi, `$` bilan
-boshlanmagan `outputs` yo'li. Vosita nomi mavjudligi saqlashda tekshirilmaydi — topilmasa funksiya qo'ng'iroqda
+boshlanmagan `outputs` yo'li, `toolName` va `code` ikkalasi ham yoki hech biri berilmagan, kod funksiyasida
+`inputs`/`outputs`, 10 000 belgidan uzun kod. Vosita nomi mavjudligi saqlashda tekshirilmaydi — topilmasa funksiya qo'ng'iroqda
 o'tkazib yuboriladi (logda).
 
 `AiAgentRow.preCallFunctions` va versiya snapshot'ida ham shu ro'yxat bor (publish/rollback bilan versiyalanadi).

@@ -85,6 +85,14 @@ Authorization: Bearer {{auth_token}}
 POST http://localhost:8080/api/campaigns/1/pause
 Authorization: Bearer {{auth_token}}
 
+### Stop Campaign
+POST http://localhost:8080/api/campaigns/1/stop
+Authorization: Bearer {{auth_token}}
+
+### Unschedule Campaign
+POST http://localhost:8080/api/campaigns/1/unschedule
+Authorization: Bearer {{auth_token}}
+
 ### Archive Campaign
 DELETE http://localhost:8080/api/campaigns/1
 Authorization: Bearer {{auth_token}}

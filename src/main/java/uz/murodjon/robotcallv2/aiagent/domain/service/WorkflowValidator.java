@@ -22,6 +22,8 @@ public final class WorkflowValidator {
     public static final int MAX_FUNCTIONS = 15;
     /** Longest chain of functions waiting on one another in one slot. */
     public static final int MAX_DEPTH = 4;
+    /** Of one code function's script — and of a post-call CODE action's. */
+    public static final int MAX_CODE_CHARS = 10_000;
 
     private static final Pattern NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,63}");
 
@@ -39,6 +41,17 @@ public final class WorkflowValidator {
                 errors.add("function id '" + function.id() + "' must be letters, digits and _, starting with a letter or _");
             } else if (byId.put(function.id(), function) != null) {
                 errors.add("function id '" + function.id() + "' is used twice");
+            }
+            if ((function.toolName() == null) == (function.code() == null)) {
+                errors.add(function.id() + ": give either toolName or code, not both and not neither");
+            } else if (function.code() != null) {
+                if (function.code().length() > MAX_CODE_CHARS) {
+                    errors.add(function.id() + ": code is " + function.code().length() + " characters, the limit is "
+                            + MAX_CODE_CHARS);
+                }
+                if (!function.inputs().isEmpty() || !function.outputs().isEmpty()) {
+                    errors.add(function.id() + ": a code function has no inputs or outputs — it reads vars and returns an object");
+                }
             }
             function.outputs().forEach((variable, path) -> {
                 if (!NAME.matcher(variable).matches()) {

@@ -17,6 +17,8 @@ public interface KnowledgeSourceRepository {
 
     List<KnowledgeSource> findByCompanyIdAndAgentId(long companyId, long agentId);
 
+    List<KnowledgeSource> findByCompanyIdAndCollectionId(long companyId, long collectionId);
+
     void deleteByCompanyIdAndId(long companyId, long id);
 
     /**

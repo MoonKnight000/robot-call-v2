@@ -12,7 +12,7 @@ import java.util.Set;
  * Which status a campaign may move to from where. Pure rules, no Spring:
  *
  * <pre>
- * DRAFT ──► SCHEDULED ──► ACTIVE ◄──► PAUSED
+ * DRAFT ──► SCHEDULED ──► ACTIVE ◄──► PAUSED   (SCHEDULED ──► DRAFT: unschedule; PAUSED ──► COMPLETED: stop)
  *   │            │           │           │
  *   └────────────┘           ▼           │
  *   (start now)          COMPLETED ──► ACTIVE (a recurrence run, or a manual restart)
@@ -26,9 +26,9 @@ public final class CampaignStateMachine {
 
     private static final Map<CampaignStatus, Set<CampaignStatus>> ALLOWED = Map.of(
             CampaignStatus.DRAFT, EnumSet.of(CampaignStatus.SCHEDULED, CampaignStatus.ACTIVE, CampaignStatus.ARCHIVED),
-            CampaignStatus.SCHEDULED, EnumSet.of(CampaignStatus.ACTIVE, CampaignStatus.ARCHIVED),
+            CampaignStatus.SCHEDULED, EnumSet.of(CampaignStatus.DRAFT, CampaignStatus.ACTIVE, CampaignStatus.ARCHIVED),
             CampaignStatus.ACTIVE, EnumSet.of(CampaignStatus.PAUSED, CampaignStatus.COMPLETED, CampaignStatus.ARCHIVED),
-            CampaignStatus.PAUSED, EnumSet.of(CampaignStatus.ACTIVE, CampaignStatus.ARCHIVED),
+            CampaignStatus.PAUSED, EnumSet.of(CampaignStatus.ACTIVE, CampaignStatus.COMPLETED, CampaignStatus.ARCHIVED),
             CampaignStatus.COMPLETED, EnumSet.of(CampaignStatus.ACTIVE, CampaignStatus.ARCHIVED),
             CampaignStatus.ARCHIVED, EnumSet.noneOf(CampaignStatus.class)
     );

@@ -201,6 +201,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       end. 0 disables the budget
  * @param preToolSpeech  whether to speak a short intermediate phrase before executing tools
  *                       to prevent dead silence during long or external tool operations
+ * @param toolResultRounds how many follow-up model rounds a cascade turn may spend answering
+ *                       with the result of a data tool (HTTP, MCP, CRM, catalog, outcome) it
+ *                       just called. The last round offers no tools. 0 disables the feature:
+ *                       the result then reaches the model on the next turn only
  * @param testContext    static client facts injected into the prompt for verification
  */
 @ConfigurationProperties(prefix = "voice-agent.dialog")
@@ -238,6 +242,7 @@ public record DialogProperties(
         long maxTokensPerCall,
         boolean preToolSpeech,
         int knowledgePassages,
+        int toolResultRounds,
         TestContextProperties testContext
 ) {
 

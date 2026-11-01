@@ -49,7 +49,10 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
              JOIN knowledge_source s ON s.id = ci.source_id
             WHERE ci.company_id = :companyId
               AND s.status = 'INDEXED'
-              AND (CAST(:agentId AS BIGINT) IS NULL OR s.agent_id IS NULL OR s.agent_id = :agentId)
+              AND (CAST(:agentId AS BIGINT) IS NULL
+                   OR (s.collection_id IS NULL AND (s.agent_id IS NULL OR s.agent_id = :agentId))
+                   OR s.collection_id IN (SELECT k.collection_id FROM ai_agent_knowledge_collection k
+                                           WHERE k.agent_id = :agentId))
             """;
 
     private static final String MATCH_COLUMNS = "SELECT ci.source_id, ci.sku, ci.content, ci.attributes::text AS attributes, ";

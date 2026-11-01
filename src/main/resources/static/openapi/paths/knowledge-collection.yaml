@@ -1,0 +1,174 @@
+# Knowledge Base Collections — nomli bilim bazalari (knowledge-collection controller).
+# Har bir kalit — to'liq yo'l; openapi.yaml shu kalitlarga $ref qiladi.
+/api/knowledge-base/collections:
+  post:
+    tags:
+    - Knowledge Base Collections
+    summary: Kolleksiya yaratish
+    description: |-
+      Creates a named knowledge base and optionally attaches agents to it.
+
+      **Huquq:** `KNOWLEDGE_BASE_EDIT`
+    operationId: knowledgeCollection_create
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/SaveKnowledgeCollectionRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeCollectionRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+      '409':
+        $ref: ../common.yaml#/responses/Conflict
+  get:
+    tags:
+    - Knowledge Base Collections
+    summary: Kolleksiyalar ro'yxati
+    description: |-
+      All knowledge collections of the company.
+
+      **Huquq:** `KNOWLEDGE_BASE_READ`
+    operationId: knowledgeCollection_list
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/knowledgebase.yaml#/KnowledgeCollectionRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+/api/knowledge-base/collections/{id}:
+  put:
+    tags:
+    - Knowledge Base Collections
+    summary: Kolleksiyani o'zgartirish
+    description: |-
+      Renames the collection; agentIds, when given, replaces the agents attached to it.
+
+      **Huquq:** `KNOWLEDGE_BASE_EDIT`
+    operationId: knowledgeCollection_update
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../schemas/knowledgebase.yaml#/SaveKnowledgeCollectionRequest
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    $ref: ../schemas/knowledgebase.yaml#/KnowledgeCollectionRow
+      '400':
+        $ref: ../common.yaml#/responses/BadRequest
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+      '409':
+        $ref: ../common.yaml#/responses/Conflict
+  delete:
+    tags:
+    - Knowledge Base Collections
+    summary: Kolleksiyani o'chirish
+    description: |-
+      Deletes the collection together with its sources.
+
+      **Huquq:** `KNOWLEDGE_BASE_EDIT`
+    operationId: knowledgeCollection_delete
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound
+/api/knowledge-base/collections/{id}/sources:
+  get:
+    tags:
+    - Knowledge Base Collections
+    summary: Kolleksiya manbalari
+    description: |-
+      The sources inside one collection.
+
+      **Huquq:** `KNOWLEDGE_BASE_READ`
+    operationId: knowledgeCollection_listSources
+    parameters:
+    - name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: ../common.yaml#/schemas/ResponseData
+              - type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: ../schemas/knowledgebase.yaml#/KnowledgeSourceRow
+      '401':
+        $ref: ../common.yaml#/responses/Unauthorized
+      '403':
+        $ref: ../common.yaml#/responses/Forbidden
+      '404':
+        $ref: ../common.yaml#/responses/NotFound

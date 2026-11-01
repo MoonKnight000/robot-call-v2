@@ -39,7 +39,8 @@ import java.util.regex.Pattern;
  * budget, so a slow CRM costs the caller a bounded silence.
  *
  * <p>Only {@code READ} tools run here: nobody has said anything yet, so there is no caller to
- * read a write back to and nothing to ask a yes of.
+ * read a write back to and nothing to ask a yes of. A function with {@code code} runs that
+ * JavaScript in the {@link StageScriptRunner} sandbox instead of a tool.
  */
 @Component
 public class PreCallWorkflowRunner {
@@ -56,15 +57,17 @@ public class PreCallWorkflowRunner {
     private final IntegrationToolUseCase integrationToolUseCase;
     private final CrmSettingsUseCase crmSettingsUseCase;
     private final ObjectMapper objectMapper;
+    private final StageScriptRunner scriptRunner;
 
     PreCallWorkflowRunner(HttpToolExecutor httpToolExecutor, ToolUseCase toolUseCase,
                           IntegrationToolUseCase integrationToolUseCase, CrmSettingsUseCase crmSettingsUseCase,
-                          ObjectMapper objectMapper) {
+                          ObjectMapper objectMapper, StageScriptRunner scriptRunner) {
         this.httpToolExecutor = httpToolExecutor;
         this.toolUseCase = toolUseCase;
         this.integrationToolUseCase = integrationToolUseCase;
         this.crmSettingsUseCase = crmSettingsUseCase;
         this.objectMapper = objectMapper;
+        this.scriptRunner = scriptRunner;
     }
 
     /**
@@ -189,6 +192,12 @@ public class PreCallWorkflowRunner {
     /** What the function produced; empty when it did not run or failed. */
     private Optional<Map<String, Object>> runFunction(WorkflowFunction function, Map<String, Tool> tools,
                                                       Map<String, Object> variables) {
+        if (function.code() != null) {
+            // An empty answer is a failure too: a script that produces nothing gives its dependents nothing to read.
+            Map<String, Object> produced = scriptRunner.run(String.valueOf(variables.get("channel_id")),
+                    function.code(), variables);
+            return produced.isEmpty() ? Optional.empty() : Optional.of(produced);
+        }
         Tool tool = tools.get(function.toolName());
         if (tool == null) {
             log.warn("Pre-call function '{}' skipped: no tool named '{}'", function.id(), function.toolName());

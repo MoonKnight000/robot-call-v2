@@ -9,8 +9,10 @@ import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
@@ -37,6 +39,10 @@ import java.util.concurrent.ThreadLocalRandom;
  * <p>{@code version} is the draft row's optimistic-lock counter as read — not a published
  * version: a write goes through only while the row still has it. A snapshot does not keep
  * it ({@code AiAgentSnapshot}), so it reads back as 0.
+ *
+ * <p>{@code functions} is the Retell-style function list; {@code null} means the agent never saved one and
+ * its calls run on the older fields (press-digit, mid-call SMS, transfer number, attached tools,
+ * {@code disabledIntegrationTools}); an empty list is an agent with no functions at all.
  */
 public record AiAgent(
         Long id,
@@ -74,7 +80,15 @@ public record AiAgent(
         Instant createdAt,
         Long createdBy,
         Integer publishedVersion,
-        long version
+        long version,
+        AgentPostCallAnalysis postCallAnalysis,
+        Integer ragTopK,
+        boolean redactPhoneNumbers,
+        Map<String, String> defaultVariables,
+        Double ragMinScore,
+        String ragInstruction,
+        List<String> disabledIntegrationTools,
+        List<AgentFunction> functions
 ) {
 
     public AiAgent {
@@ -138,9 +152,16 @@ public record AiAgent(
         }
         dataNeeded = dataNeeded == null ? List.of() : List.copyOf(dataNeeded);
         dataEvaluation = dataEvaluation == null ? List.of() : List.copyOf(dataEvaluation);
+        postCallAnalysis = postCallAnalysis == null ? AgentPostCallAnalysis.ALL : postCallAnalysis;
         pronunciationRules = pronunciationRules == null ? List.of() : List.copyOf(pronunciationRules);
         postCallActions = postCallActions == null ? List.of() : List.copyOf(postCallActions);
         preCallFunctions = preCallFunctions == null ? List.of() : List.copyOf(preCallFunctions);
+        defaultVariables = defaultVariables == null || defaultVariables.isEmpty()
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(defaultVariables));
+        functions = functions == null ? null : functions.stream().filter(Objects::nonNull).toList();
+        disabledIntegrationTools = disabledIntegrationTools == null ? List.of()
+                : disabledIntegrationTools.stream().filter(Objects::nonNull).toList();
         // Enum order, not Set.copyOf's per-JVM order: the snapshot text and its fingerprint
         // have to come out the same for the same rules.
         handbook = handbook == null || handbook.isEmpty()

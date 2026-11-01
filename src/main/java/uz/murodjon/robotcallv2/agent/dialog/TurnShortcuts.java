@@ -86,25 +86,30 @@ class TurnShortcuts {
     }
 
     /**
-     * Answer a question this system already knows the answer to, without asking the model.
+     * The company's curated question-and-answer item that matches what the caller said, or null.
+     * Only looked up when knowledge is on for the turn; the answer is spoken by
+     * {@link #speakKnowledgeItemAnswer} without asking the model.
      *
-     * <p>"How do I pay?", "which branch?", "what happens if I don't?" come up on a large
-     * share of calls, and the answer never varies — it is policy, not conversation. Sending
-     * them to the LLM buys a paraphrase for a full turnaround and a prompt's worth of
+     * <p>A curated answer never varies — it is the company's own wording, not conversation.
+     * Sending it to the LLM buys a paraphrase for a full turnaround and a prompt's worth of
      * tokens, and the paraphrase is the part most likely to be wrong.
-     *
-     * <p>Answered as a proper turn: the line goes through {@link SpeechOutput#speak} (so
-     * the fact guard and the spoken-audio accounting still apply), into the transcript, and
-     * into the history — the model has to know what the caller was told, or it will answer
-     * the follow-up as if the exchange never happened.
+     */
+    String findKnowledgeItemAnswer(DialogSession s, String clientText, boolean fromClient, boolean knowledgeEnabled) {
+        if (!dialogProperties.knowledgeBase() || !fromClient || !knowledgeEnabled) {
+            return null;
+        }
+        return knowledgeBase.findRelevantKnowledge(s.companyId(), findAgentId(s), clientText, s.language());
+    }
+
+    /**
+     * Speaks a curated answer found by {@link #findKnowledgeItemAnswer}, as a proper turn: the
+     * line goes through {@link SpeechOutput#speak} (so the fact guard and the spoken-audio
+     * accounting still apply), into the transcript, and into the history — the model has to know
+     * what the caller was told, or it will answer the follow-up as if the exchange never happened.
      *
      * @return whether the turn was answered here and the LLM should be skipped
      */
-    boolean answerFromKnowledgeBase(DialogSession s, String clientText, boolean fromClient) {
-        if (!dialogProperties.knowledgeBase() || !fromClient) {
-            return false;
-        }
-        String answer = knowledgeBase.findRelevantKnowledge(s.companyId(), findAgentId(s), clientText, s.language());
+    boolean speakKnowledgeItemAnswer(DialogSession s, String answer) {
         if (answer == null) {
             return false;
         }

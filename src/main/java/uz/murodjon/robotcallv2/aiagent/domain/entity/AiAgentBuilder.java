@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -53,6 +54,14 @@ public class AiAgentBuilder {
     private Long createdBy;
     private Integer publishedVersion;
     private long version;
+    private AgentPostCallAnalysis postCallAnalysis;
+    private Integer ragTopK;
+    private boolean redactPhoneNumbers;
+    private Map<String, String> defaultVariables;
+    private Double ragMinScore;
+    private String ragInstruction;
+    private List<String> disabledIntegrationTools;
+    private List<AgentFunction> functions;
 
     AiAgentBuilder() {
     }
@@ -94,6 +103,14 @@ public class AiAgentBuilder {
         this.createdBy = source.createdBy();
         this.publishedVersion = source.publishedVersion();
         this.version = source.version();
+        this.postCallAnalysis = source.postCallAnalysis();
+        this.ragTopK = source.ragTopK();
+        this.redactPhoneNumbers = source.redactPhoneNumbers();
+        this.defaultVariables = source.defaultVariables();
+        this.ragMinScore = source.ragMinScore();
+        this.ragInstruction = source.ragInstruction();
+        this.disabledIntegrationTools = source.disabledIntegrationTools();
+        this.functions = source.functions();
     }
 
     public AiAgentBuilder id(Long id) {
@@ -274,6 +291,46 @@ public class AiAgentBuilder {
         return this;
     }
 
+    public AiAgentBuilder redactPhoneNumbers(boolean redactPhoneNumbers) {
+        this.redactPhoneNumbers = redactPhoneNumbers;
+        return this;
+    }
+
+    public AiAgentBuilder defaultVariables(Map<String, String> defaultVariables) {
+        this.defaultVariables = defaultVariables;
+        return this;
+    }
+
+    public AiAgentBuilder ragTopK(Integer ragTopK) {
+        this.ragTopK = ragTopK;
+        return this;
+    }
+
+    public AiAgentBuilder ragMinScore(Double ragMinScore) {
+        this.ragMinScore = ragMinScore;
+        return this;
+    }
+
+    public AiAgentBuilder ragInstruction(String ragInstruction) {
+        this.ragInstruction = ragInstruction;
+        return this;
+    }
+
+    public AiAgentBuilder disabledIntegrationTools(List<String> disabledIntegrationTools) {
+        this.disabledIntegrationTools = disabledIntegrationTools;
+        return this;
+    }
+
+    public AiAgentBuilder functions(List<AgentFunction> functions) {
+        this.functions = functions;
+        return this;
+    }
+
+    public AiAgentBuilder postCallAnalysis(AgentPostCallAnalysis postCallAnalysis) {
+        this.postCallAnalysis = postCallAnalysis;
+        return this;
+    }
+
     public AiAgentBuilder version(long version) {
         this.version = version;
         return this;
@@ -316,7 +373,15 @@ public class AiAgentBuilder {
                 createdAt,
                 createdBy,
                 publishedVersion,
-                version
+                version,
+                postCallAnalysis,
+                ragTopK,
+                redactPhoneNumbers,
+                defaultVariables,
+                ragMinScore,
+                ragInstruction,
+                disabledIntegrationTools,
+                functions
         );
     }
 }

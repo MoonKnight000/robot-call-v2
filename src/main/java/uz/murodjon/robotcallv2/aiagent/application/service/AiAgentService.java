@@ -47,6 +47,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * AI agents — the voice, persona, model and speech engine a scenario is spoken with. This
@@ -81,6 +82,7 @@ public class AiAgentService implements AiAgentUseCase {
     /** Which callers a running rollout sends to its candidate (requireCallAgent). */
     private final AgentRolloutRepository rolloutRepository;
     private final AiAgentCatalogUseCase aiAgentCatalogUseCase;
+    private final AgentFunctionsService agentFunctionsService;
 
     public AiAgentService(
             AiAgentRepository repository,
@@ -93,10 +95,12 @@ public class AiAgentService implements AiAgentUseCase {
             CurrentUser currentUser,
             ApplicationEventPublisher eventPublisher,
             AgentRolloutRepository rolloutRepository,
-            AiAgentCatalogUseCase aiAgentCatalogUseCase
+            AiAgentCatalogUseCase aiAgentCatalogUseCase,
+            AgentFunctionsService agentFunctionsService
     ) {
         this.rolloutRepository = rolloutRepository;
         this.aiAgentCatalogUseCase = aiAgentCatalogUseCase;
+        this.agentFunctionsService = agentFunctionsService;
         this.repository = repository;
         this.versionRepository = versionRepository;
         this.drafts = drafts;
@@ -349,6 +353,9 @@ public class AiAgentService implements AiAgentUseCase {
                 ? engineGuard.requireKnownTtsProvider(engineRequest.ttsProvider()) : speechEngine.ttsProvider();
         AiAgentVoice voice = existing.voice();
 
+        List<AgentFunction> functions = request.functions() != null
+                ? agentFunctionsService.prepare(companyId, id, request.functions()) : existing.functions();
+
         // The pronunciation rules, post-call actions, creator, creation time and published version
         // stay the existing agent's: this request does not carry them.
         AiAgent updated = existing.toBuilder()
@@ -401,6 +408,22 @@ public class AiAgentService implements AiAgentUseCase {
                 .useRag(request.useRag() != null ? request.useRag() : existing.useRag())
                 .dataNeeded(request.dataNeeded() != null ? request.dataNeeded() : existing.dataNeeded())
                 .dataEvaluation(request.dataEvaluation() != null ? request.dataEvaluation() : existing.dataEvaluation())
+                .postCallAnalysis(request.postCallAnalysis() != null
+                        ? engineGuard.requireKnownAnalysisModel(request.postCallAnalysis()) : existing.postCallAnalysis())
+                // 0 puts the agent back on the deployment default.
+                .ragTopK(request.ragTopK() == null ? existing.ragTopK() : request.ragTopK() == 0 ? null : request.ragTopK())
+                .ragMinScore(request.ragMinScore() != null ? request.ragMinScore() : existing.ragMinScore())
+                // "" puts the agent back on no focus text.
+                .ragInstruction(request.ragInstruction() == null ? existing.ragInstruction()
+                        : request.ragInstruction().isBlank() ? null : request.ragInstruction().strip())
+                .redactPhoneNumbers(request.redactPhoneNumbers() != null ? request.redactPhoneNumbers() : existing.redactPhoneNumbers())
+                // An empty map clears every default.
+                .defaultVariables(request.defaultVariables() != null ? request.defaultVariables() : existing.defaultVariables())
+                // An empty list puts the agent back on the company's settings.
+                .disabledIntegrationTools(request.disabledIntegrationTools() != null
+                        ? request.disabledIntegrationTools() : existing.disabledIntegrationTools())
+                // A list replaces the whole of it; with one saved, the older per-feature fields no longer drive calls.
+                .functions(functions)
                 .initiationWebhook(request.initiationWebhook() != null ? request.initiationWebhook() : existing.initiationWebhook())
                 .postCallWebhook(request.postCallWebhook() != null ? request.postCallWebhook() : existing.postCallWebhook())
                 .handbook(request.handbook() != null ? request.handbook() : existing.handbook())
@@ -414,6 +437,10 @@ public class AiAgentService implements AiAgentUseCase {
 
         AiAgentDrafts.requireCompatibleDataPolicy(updated.dataPolicy().zeroPiiRetention(), updated.dataPolicy().storeCallAudio());
         drafts.update(companyId, id, updated);
+        if (request.functions() != null) {
+            // Only once the draft is accepted (validated, not a lost write): a refused list must not touch the links.
+            agentFunctionsService.syncTools(companyId, id, functions);
+        }
         auditUseCase.record(companyId, "AI_AGENT_UPDATE", "ai_agent", String.valueOf(id), updated.name());
         return findAgentRow(companyId, id);
     }
@@ -451,13 +478,16 @@ public class AiAgentService implements AiAgentUseCase {
                         agents.stream().map(AiAgent::id).toList()).stream()
                 .collect(Collectors.toMap(AiAgentVersion::agentId, v -> v));
         List<EngineProfile> profiles = aiAgentCatalogUseCase.findEngineProfiles();
-        List<AiAgentRow> rows = agents.stream()
-                .map(agent -> {
+        List<List<AgentFunction>> functions = agentFunctionsService.resolveAll(companyId, agents);
+        List<AiAgentRow> rows = IntStream.range(0, agents.size())
+                .mapToObj(index -> {
+                    AiAgent agent = agents.get(index);
                     AiAgentVersion live = published.get(agent.id());
                     return AiAgentRow.of(agent,
                             agent.script().scenarioId() != null ? scenarioNames.get(agent.script().scenarioId()) : null,
                             agent.createdBy() != null ? creatorNames.get(agent.createdBy()) : null,
                             findEngineProfileId(agent, profiles),
+                            functions.get(index),
                             live != null ? live.version() : null,
                             live != null && !AiAgentSnapshot.isSameConfiguration(agent, live.snapshot()));
                 })
@@ -638,7 +668,8 @@ public class AiAgentService implements AiAgentUseCase {
                 ? userUseCase.findNamesByIds(companyId, List.of(agent.createdBy())).get(agent.createdBy())
                 : null;
         return AiAgentRow.of(agent, scenarioName, createdByName,
-                findEngineProfileId(agent, aiAgentCatalogUseCase.findEngineProfiles()), publishedVersion, hasDraftChanges);
+                findEngineProfileId(agent, aiAgentCatalogUseCase.findEngineProfiles()),
+                agentFunctionsService.resolve(companyId, agent), publishedVersion, hasDraftChanges);
     }
 
     /** The offered profile whose engine choices the agent has exactly, or null when they were tuned by hand. */
@@ -697,6 +728,13 @@ public class AiAgentService implements AiAgentUseCase {
                 case RESPONSE_WAIT_MS -> behaviourRequest != null ? behaviourRequest.responseWaitMs() : null;
                 case TRANSCRIPTION_MODE -> request.speechEngine() != null ? request.speechEngine().transcriptionMode() : null;
                 case BOOSTED_KEYWORDS -> request.speechEngine() != null ? request.speechEngine().boostedKeywords() : null;
+                case REMINDER_AFTER_SECONDS -> behaviourRequest != null ? behaviourRequest.reminderAfterSeconds() : null;
+                case REMINDER_MAX_COUNT -> behaviourRequest != null ? behaviourRequest.reminderMaxCount() : null;
+                case DTMF_TIMEOUT_MS -> behaviourRequest != null ? behaviourRequest.dtmfTimeoutMs() : null;
+                case DTMF_TERMINATION_KEY -> behaviourRequest != null ? behaviourRequest.dtmfTerminationKey() : null;
+                case DTMF_DIGIT_LIMIT -> behaviourRequest != null ? behaviourRequest.dtmfDigitLimit() : null;
+                case RING_DURATION_SECONDS -> behaviourRequest != null ? behaviourRequest.ringDurationSeconds() : null;
+                case RAG_MIN_SCORE -> request.ragMinScore();
             };
             if (given != null) {
                 throw new ValidationException(ErrorCode.AI_AGENT_CLEAR_FIELD_CONFLICT, field);
@@ -734,6 +772,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .initiationWebhook(fields.contains(AgentClearableField.INITIATION_WEBHOOK) ? null : agent.initiationWebhook())
                 .postCallWebhook(fields.contains(AgentClearableField.POST_CALL_WEBHOOK) ? null : agent.postCallWebhook())
                 .fastLlmModel(fields.contains(AgentClearableField.FAST_LLM_MODEL) ? null : agent.fastLlmModel())
+                .ragMinScore(fields.contains(AgentClearableField.RAG_MIN_SCORE) ? null : agent.ragMinScore())
                 .callBehaviour(new AiAgentCallBehaviour(
                         behaviour.interruptionSensitivity(),
                         behaviour.dtmfInputEnabled(),
@@ -748,7 +787,14 @@ public class AiAgentService implements AiAgentUseCase {
                                 ? null : behaviour.preConversationAudioFileId(),
                         behaviour.autoEscalateOnFrustration(),
                         behaviour.frustrationThreshold(),
-                        fields.contains(AgentClearableField.RESPONSE_WAIT_MS) ? null : behaviour.responseWaitMs()))
+                        fields.contains(AgentClearableField.RESPONSE_WAIT_MS) ? null : behaviour.responseWaitMs(),
+                        fields.contains(AgentClearableField.REMINDER_AFTER_SECONDS) ? null : behaviour.reminderAfterSeconds(),
+                        fields.contains(AgentClearableField.REMINDER_MAX_COUNT) ? null : behaviour.reminderMaxCount(),
+                        fields.contains(AgentClearableField.DTMF_TIMEOUT_MS) ? null : behaviour.dtmfTimeoutMs(),
+                        fields.contains(AgentClearableField.DTMF_TERMINATION_KEY) ? null : behaviour.dtmfTerminationKey(),
+                        fields.contains(AgentClearableField.DTMF_DIGIT_LIMIT) ? null : behaviour.dtmfDigitLimit(),
+                        fields.contains(AgentClearableField.RING_DURATION_SECONDS) ? null : behaviour.ringDurationSeconds(),
+                        behaviour.pressDigitEnabled()))
                 .build();
     }
 

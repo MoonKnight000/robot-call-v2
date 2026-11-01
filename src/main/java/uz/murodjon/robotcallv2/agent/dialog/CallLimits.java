@@ -32,6 +32,41 @@ public final class CallLimits {
     }
 
     /**
+     * The agent's own silence ceiling ({@code silenceEndCallTimeoutSeconds}): total quiet after
+     * which the call is ended whatever the reminder prompts did.
+     *
+     * @return the seconds, or {@code 0} when the agent sets none
+     */
+    public static int silenceEndCallSeconds(AiAgent agent) {
+        Integer own = agent != null && agent.limits() != null ? agent.limits().silenceEndCallTimeoutSeconds() : null;
+        return own != null && own > 0 ? own : 0;
+    }
+
+    /**
+     * How long the caller may be silent before the agent asks whether they are still there.
+     *
+     * @param agent           the agent on the call, or null
+     * @param fallbackSeconds the deployment default when the agent sets none
+     * @return the seconds of idle silence
+     */
+    public static int reminderSeconds(AiAgent agent, int fallbackSeconds) {
+        Integer own = agent != null && agent.callBehaviour() != null ? agent.callBehaviour().reminderAfterSeconds() : null;
+        return own != null && own > 0 ? own : fallbackSeconds;
+    }
+
+    /**
+     * How many reminder prompts to speak before giving up on the caller and ending the call.
+     *
+     * @param agent         the agent on the call, or null
+     * @param fallbackCount the deployment default when the agent sets none
+     * @return the maximum prompts; 0 means end at the first silence without asking
+     */
+    public static int reminderMaxCount(AiAgent agent, int fallbackCount) {
+        Integer own = agent != null && agent.callBehaviour() != null ? agent.callBehaviour().reminderMaxCount() : null;
+        return own != null && own >= 0 ? own : fallbackCount;
+    }
+
+    /**
      * {@code maxCallSeconds} tightened to what the company's balance still pays for.
      *
      * @param affordableSeconds {@code CallBillingUseCase.findAffordableCallSeconds}; {@code 0}

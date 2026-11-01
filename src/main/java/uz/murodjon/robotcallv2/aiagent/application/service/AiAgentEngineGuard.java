@@ -4,6 +4,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProviderRegistry;
 import uz.murodjon.robotcallv2.agent.stt.SttProviderSelector;
 import uz.murodjon.robotcallv2.agent.tts.TtsProviderSelector;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentPostCallAnalysis;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelUseCase;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.enums.AiModelKind;
@@ -189,6 +190,19 @@ class AiAgentEngineGuard {
      */
     String requireKnownFastModel(String fastLlmModel) {
         return requireKnownModel(PipelineMode.CASCADE, null, fastLlmModel);
+    }
+
+    /**
+     * The post-call analysis with its model checked as the fast model is: the transcript is
+     * read by a cascade text LLM whatever pipeline the call ran on. No model — the platform's
+     * summary model — passes as it is.
+     */
+    AgentPostCallAnalysis requireKnownAnalysisModel(AgentPostCallAnalysis analysis) {
+        if (analysis == null || analysis.model() == null) {
+            return analysis;
+        }
+        return new AgentPostCallAnalysis(analysis.summaryEnabled(), analysis.sentimentEnabled(),
+                requireKnownFastModel(analysis.model()), analysis.memoryEnabled());
     }
 
     /**

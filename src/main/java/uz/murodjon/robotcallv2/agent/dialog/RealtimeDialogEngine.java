@@ -20,6 +20,7 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
@@ -126,6 +127,7 @@ public class RealtimeDialogEngine implements CallDialog {
     private final AgentHandoffResolver agentHandoffResolver;
     private final AgentWebhookUseCase agentWebhookUseCase;
     private final IntentDetector intentDetector;
+    private final OperatorProperties operatorProperties;
 
     private final Map<String, RealtimeDialogSession> sessions = new ConcurrentHashMap<>();
     /**
@@ -146,7 +148,8 @@ public class RealtimeDialogEngine implements CallDialog {
                                 RealtimeToolRunner toolRunner, RealtimeTranscriptRecorder transcriptRecorder,
                                 AgentHandoffResolver agentHandoffResolver,
                                 AgentWebhookUseCase agentWebhookUseCase,
-                                IntentDetector intentDetector) {
+                                IntentDetector intentDetector,
+                                OperatorProperties operatorProperties) {
         this.registry = registry;
         this.promptFactory = promptFactory;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -166,6 +169,7 @@ public class RealtimeDialogEngine implements CallDialog {
         this.agentHandoffResolver = agentHandoffResolver;
         this.agentWebhookUseCase = agentWebhookUseCase;
         this.intentDetector = intentDetector;
+        this.operatorProperties = operatorProperties;
     }
 
     @Override
@@ -222,8 +226,11 @@ public class RealtimeDialogEngine implements CallDialog {
         session.setSttDriven(halfCascade);
         session.setDtmfSender(dtmf);
         session.setInbound(callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null);
-        if (agent != null && (agent.callBehaviour().midCallSmsEnabled() || StageEntry.sendsSms(scenario))) {
+        session.setTransferTargetAvailable(TransferTargets.hasCallLevelTarget(agent, operatorProperties));
+        if (agent != null && (AgentFunctionPlan.offersSms(agent) || StageEntry.sendsSms(scenario))) {
             session.setMidCallSmsSender(text -> midCallSmsSender.send(companyId, callAttemptId, channelId, context, text));
+            session.setSmsToNumberSender((text, number) ->
+                    midCallSmsSender.send(companyId, callAttemptId, channelId, context, number, text));
         }
         Company company = companyUseCase.findById(companyId);
         String companyName = company != null ? company.name() : null;
@@ -679,7 +686,7 @@ public class RealtimeDialogEngine implements CallDialog {
                 factText(c, "clientName"), factText(c, "debtAmount"), factText(c, "currency"),
                 factText(c, "dueDate"), factText(c, "contractNumber"),
                 s.state(), s.transferReason(), s.transcriptText(),
-                StageEntry.findTransferTarget(s.scenario(), s.state()),
+                AgentFunctionPlan.findTransferNumber(s),
                 StageEntry.findTransferHeaders(s, s.scenario(), s.state()));
     }
 

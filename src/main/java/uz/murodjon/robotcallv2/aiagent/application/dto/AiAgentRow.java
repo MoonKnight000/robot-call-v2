@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -43,6 +44,14 @@ public record AiAgentRow(
         boolean useRag,
         List<DataExtractionField> dataNeeded,
         List<DataEvaluationCriterion> dataEvaluation,
+        AgentPostCallAnalysis postCallAnalysis,
+        Integer ragTopK,
+        Double ragMinScore,
+        String ragInstruction,
+        boolean redactPhoneNumbers,
+        Map<String, String> defaultVariables,
+        List<String> disabledIntegrationTools,
+        List<AgentFunction> functions,
         AgentWebhookConfig initiationWebhook,
         AgentWebhookConfig postCallWebhook,
         List<PronunciationRule> pronunciationRules,
@@ -61,6 +70,8 @@ public record AiAgentRow(
 
     /**
      * @param scenarioName     the name of {@code script.scenarioId}, when the agent speaks a shared scenario
+     * @param functions        the agent's function list as it stands, or — for an agent that never saved one — the
+     *                         list derived from its older settings (see {@code AgentFunctionDefaults})
      * @param engineProfileId  the engine profile whose choices the agent has exactly, or null when
      *                         they were tuned by hand — what the simple form shows as picked
      * @param publishedVersion the version calls run on; null while the agent was never published
@@ -71,6 +82,7 @@ public record AiAgentRow(
      * takes back; 0 on a row built from a published snapshot.
      */
     public static AiAgentRow of(AiAgent agent, String scenarioName, String createdByName, String engineProfileId,
+                                List<AgentFunction> functions,
                                 Integer publishedVersion, boolean hasDraftChanges) {
         return new AiAgentRow(
                 agent.id(),
@@ -101,6 +113,14 @@ public record AiAgentRow(
                 agent.useRag(),
                 agent.dataNeeded(),
                 agent.dataEvaluation(),
+                agent.postCallAnalysis(),
+                agent.ragTopK(),
+                agent.ragMinScore(),
+                agent.ragInstruction(),
+                agent.redactPhoneNumbers(),
+                agent.defaultVariables(),
+                agent.disabledIntegrationTools(),
+                functions,
                 agent.initiationWebhook(),
                 agent.postCallWebhook(),
                 agent.pronunciationRules(),

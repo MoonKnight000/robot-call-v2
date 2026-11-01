@@ -114,7 +114,7 @@ public class PackMapper {
 
     public CreateKnowledgeSourceRequest toCreateKnowledgeSourceRequest(long agentId, PackCatalogFeed feed,
                                                                       InstallPackRequest request) {
-        return new CreateKnowledgeSourceRequest(agentId, List.of(new CreateKnowledgeSourceItem(
+        return new CreateKnowledgeSourceRequest(agentId, null, List.of(new CreateKnowledgeSourceItem(
                 feed.name(), KnowledgeSourceType.STRUCTURED_FEED, request.catalogUrl().trim(), null, null,
                 request.catalogItemsPath(), feed.feedKeyField(), feed.refreshMinutes())));
     }

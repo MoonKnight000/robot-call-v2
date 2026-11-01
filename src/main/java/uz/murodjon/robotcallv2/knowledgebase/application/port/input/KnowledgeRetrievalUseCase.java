@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.knowledgebase.application.port.input;
 
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeQuery;
 
 import java.util.List;
 
@@ -31,6 +32,15 @@ public interface KnowledgeRetrievalUseCase {
      */
     List<KnowledgePassage> findRelevantPassagesIncludingSources(long companyId, Long agentId, List<Long> extraSourceIds,
                                                                 String question, int limit);
+
+    /**
+     * The general search the other two narrow: {@code query.question()} drives keyword matching and
+     * the minimum-length rule, {@code query.semanticText()} drives the embedding, and
+     * {@code query.minSemanticScore()} overrides the default similarity floor. Same guarantees as
+     * {@link #findRelevantPassages}.
+     */
+    List<KnowledgePassage> searchPassages(long companyId, Long agentId, List<Long> extraSourceIds,
+                                          KnowledgeQuery query, int limit);
 
     /**
      * Drops whatever this company's passages were cached as, so the next call reads them

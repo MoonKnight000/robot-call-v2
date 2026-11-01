@@ -33,6 +33,7 @@ class PreCallWorkflowRunnerTest {
     private final ToolUseCase toolUseCase = mock(ToolUseCase.class);
     private final IntegrationToolUseCase integrationToolUseCase = mock(IntegrationToolUseCase.class);
     private final CrmSettingsUseCase crmSettingsUseCase = mock(CrmSettingsUseCase.class);
+    private final StageScriptRunner scriptRunner = mock(StageScriptRunner.class);
     private PreCallWorkflowRunner runner;
 
     @BeforeEach
@@ -41,7 +42,7 @@ class PreCallWorkflowRunnerTest {
                 .thenReturn(new CrmSettings(COMPANY, null, null, null, null, null, null, null, null));
         when(toolUseCase.findAgentToolDefinitions(eq(COMPANY), any(Long.class))).thenReturn(List.of());
         runner = new PreCallWorkflowRunner(executor, toolUseCase, integrationToolUseCase, crmSettingsUseCase,
-                new ObjectMapper());
+                new ObjectMapper(), scriptRunner);
     }
 
     private static Tool tool(String name, ToolEffect effect) {
@@ -53,7 +54,7 @@ class PreCallWorkflowRunnerTest {
 
     private static WorkflowFunction fn(String id, String toolName, Map<String, String> inputs,
                                        Map<String, String> outputs, String... dependsOn) {
-        return new WorkflowFunction(id, toolName, inputs, outputs, List.of(dependsOn), true);
+        return new WorkflowFunction(id, toolName, inputs, outputs, List.of(dependsOn), true, null);
     }
 
     private AiAgent agentWith(WorkflowFunction... functions) {
@@ -110,6 +111,40 @@ class PreCallWorkflowRunnerTest {
 
         assertThat(produced).containsOnlyKeys("tariff");
         verify(executor, never()).executeForTest(eq(dependent), anyMap(), anyMap());
+    }
+
+    @Test
+    void aCodeFunctionReadsWhatAToolProducedAndItsDependentsReadItsAnswer() {
+        Tool findLead = tool("find_lead", ToolEffect.READ);
+        when(integrationToolUseCase.findEnabledHttpTools(COMPANY)).thenReturn(List.of(findLead));
+        when(executor.executeForTest(eq(findLead), anyMap(), anyMap())).thenReturn(new ToolTestRun("ok", "{\"id\":42}"));
+        when(executor.previewMapping("{\"id\":42}", Map.of("lead_id", "$.id")))
+                .thenReturn(new ObjectMapper().valueToTree(Map.of("lead_id", 42)));
+        String code = "return { lead_label: 'L-' + vars.lead_id };";
+        when(scriptRunner.run(eq("ch-1"), eq(code), anyMap())).thenAnswer(invocation -> {
+            Map<String, Object> variables = invocation.getArgument(2);
+            return Map.of("lead_label", "L-" + variables.get("lead_id"));
+        });
+
+        Map<String, Object> produced = run(agentWith(
+                fn("lead", "find_lead", Map.of(), Map.of("lead_id", "$.id")),
+                new WorkflowFunction("label", null, Map.of(), Map.of(), List.of("lead"), true, code)));
+
+        assertThat(produced).containsEntry("lead_id", 42).containsEntry("lead_label", "L-42");
+    }
+
+    @Test
+    void aCodeFunctionThatProducesNothingCountsAsFailed() {
+        when(scriptRunner.run(any(), any(), anyMap())).thenReturn(Map.of());
+        Tool balance = tool("get_balance", ToolEffect.READ);
+        when(integrationToolUseCase.findEnabledHttpTools(COMPANY)).thenReturn(List.of(balance));
+
+        Map<String, Object> produced = run(agentWith(
+                new WorkflowFunction("calc", null, Map.of(), Map.of(), List.of(), true, "return null;"),
+                fn("debt", "get_balance", Map.of(), Map.of("debt", "$.debt"), "calc")));
+
+        assertThat(produced).isEmpty();
+        verify(executor, never()).executeForTest(any(), anyMap(), anyMap());
     }
 
     @Test

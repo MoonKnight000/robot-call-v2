@@ -470,6 +470,10 @@ class CallSetupService {
                 activeCallService.play(channelId, Path.of(testFile));
             }
 
+            if (agent != null && context != null) {
+                context = context.withDefaultFacts(agent.defaultVariables());
+            }
+
             if (agent != null && !agent.preCallFunctions().isEmpty() && context != null) {
                 // Before the initiation webhook, so the webhook sees what the lookups found.
                 String preCallPhone = outbound != null ? outbound.phone() : ChannelNames.extractCallerNumber(channel);

@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class WorkflowValidatorTest {
 
     private static WorkflowFunction fn(String id, String... dependsOn) {
-        return new WorkflowFunction(id, "tool_" + id, Map.of(), Map.of(), List.of(dependsOn), true);
+        return new WorkflowFunction(id, "tool_" + id, Map.of(), Map.of(), List.of(dependsOn), true, null);
     }
 
     @Test
@@ -33,7 +33,7 @@ class WorkflowValidatorTest {
     @Test
     void everyProblemIsReportedNotOnlyTheFirst() {
         List<WorkflowFunction> functions = List.of(
-                new WorkflowFunction("a", "tool", Map.of(), Map.of("1bad", "data.id"), List.of("ghost"), true),
+                new WorkflowFunction("a", "tool", Map.of(), Map.of("1bad", "data.id"), List.of("ghost"), true, null),
                 fn("a"));
 
         assertThatThrownBy(() -> WorkflowValidator.validate(functions))
@@ -45,6 +45,28 @@ class WorkflowValidatorTest {
                             .anyMatch(error -> error.contains("must be a path starting with $"))
                             .anyMatch(error -> error.contains("ghost"));
                 });
+    }
+
+    @Test
+    void aCodeFunctionIsFineAlongsideTools() {
+        WorkflowFunction code = new WorkflowFunction("label", null, Map.of(), Map.of(), List.of("find_lead"), true,
+                "return { label: vars.lead_id };");
+
+        assertThatCode(() -> WorkflowValidator.validate(List.of(fn("find_lead"), code))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void aFunctionNeedsExactlyOneOfToolAndCode() {
+        List<WorkflowFunction> functions = List.of(
+                new WorkflowFunction("neither", null, Map.of(), Map.of(), List.of(), true, null),
+                new WorkflowFunction("both", "tool", Map.of(), Map.of(), List.of(), true, "return {};"),
+                new WorkflowFunction("mapped", null, Map.of(), Map.of("x", "$.x"), List.of(), true, "return {};"));
+
+        assertThatThrownBy(() -> WorkflowValidator.validate(functions))
+                .isInstanceOfSatisfying(ValidationException.class, e -> assertThat(e.errors())
+                        .anyMatch(error -> error.startsWith("neither: give either toolName or code"))
+                        .anyMatch(error -> error.startsWith("both: give either toolName or code"))
+                        .anyMatch(error -> error.startsWith("mapped: a code function has no inputs or outputs")));
     }
 
     @Test

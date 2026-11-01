@@ -93,12 +93,19 @@ public class SilenceWatchdogRunner {
                 return;
             }
 
+            int silenceEndSec = CallLimits.silenceEndCallSeconds(s.agent());
+            if (silenceEndSec > 0 && s.watchdog().isCallerSilentFor(Instant.now(), Duration.ofSeconds(silenceEndSec))) {
+                log.info("[{}] caller silent for {}s (agent limit) - ending call", s.channelId(), silenceEndSec);
+                executors.submit(() -> closeOnSilence(s));
+                return;
+            }
+
             // The current stage may wait longer or shorter, and give up sooner or later.
             StageOverrides overrides = SystemPromptFactory.overridesOf(s);
             Duration idle = Duration.ofSeconds(overrides != null && overrides.reminderSeconds() != null
-                    ? overrides.reminderSeconds() : dialogProperties.noInputSeconds());
+                    ? overrides.reminderSeconds() : CallLimits.reminderSeconds(s.agent(), dialogProperties.noInputSeconds()));
             int maxPrompts = overrides != null && overrides.reminderMaxCount() != null
-                    ? overrides.reminderMaxCount() : dialogProperties.noInputMaxPrompts();
+                    ? overrides.reminderMaxCount() : CallLimits.reminderMaxCount(s.agent(), dialogProperties.noInputMaxPrompts());
             NoInputAction action = s.watchdog()
                     .check(Instant.now(), s.endpoint().isPlaying(), s.busy().get(), idle, maxPrompts);
             switch (action) {

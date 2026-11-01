@@ -54,7 +54,7 @@ class AiAgentSettingsServiceTest {
         auditUseCase = mock(AuditUseCase.class);
         AiAgentDrafts drafts = new AiAgentDrafts(repository, mock(AiAgentVersionRepository.class),
                 aiModelConfigUseCase, mock(CompanyConfigUseCase.class));
-        service = new AiAgentSettingsService(drafts, auditUseCase);
+        service = new AiAgentSettingsService(drafts, auditUseCase, mock(AiAgentEngineGuard.class));
         when(repository.findByCompanyIdAndId(COMPANY_ID, AGENT_ID)).thenReturn(AGENT);
         when(repository.update(eq(COMPANY_ID), eq(AGENT_ID), any())).thenReturn(true);
     }

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.Sort;
 
+import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignKind;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignTableField;
 import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
@@ -22,7 +23,8 @@ public record CampaignFilter(
         Long createdBy,
         RecurrenceType recurrenceType,
         Instant dateFrom,
-        Instant dateTo)
+        Instant dateTo,
+        CampaignKind kind)
         implements FilterInterface<CampaignTableField> {
 
     public CampaignFilter {
@@ -37,7 +39,13 @@ public record CampaignFilter(
         }
     }
 
+    public CampaignFilter(Integer page, Integer size, LinkedHashMap<CampaignTableField, Sort.Direction> orders,
+                          String search, CampaignStatus status, Long aiAgentId, Long createdBy,
+                          RecurrenceType recurrenceType, Instant dateFrom, Instant dateTo) {
+        this(page, size, orders, search, status, aiAgentId, createdBy, recurrenceType, dateFrom, dateTo, null);
+    }
+
     public CampaignFilter(Integer page, Integer size, LinkedHashMap<CampaignTableField, Sort.Direction> orders, CampaignStatus status) {
-        this(page, size, orders, null, status, null, null, null, null, null);
+        this(page, size, orders, null, status, null, null, null, null, null, null);
     }
 }

@@ -30,6 +30,15 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
  * @param responseWaitMs           caller silence, after the caller stops speaking, the agent waits before
  *                                taking its turn; null = deployment default. Cascade pipeline only; a
  *                                scenario stage may replace it ({@code StageOverrides.responseWaitMs})
+ * @param reminderAfterSeconds   caller silence after which the agent asks whether they are still there; null = deployment default
+ * @param reminderMaxCount       how many such reminders before the call is ended; null = deployment default, 0 = end at the first silence
+ * @param dtmfTimeoutMs          pause between keypad digits after which the typed sequence is handed over; null = 2000
+ * @param dtmfTerminationKey     key that hands the sequence over at once (0-9, # or *); null = #
+ * @param dtmfDigitLimit         digits after which the sequence is handed over without waiting; null = no limit
+ * @param ringDurationSeconds    how long an outbound call rings before it counts as unanswered; null = deployment default
+ * @param pressDigitEnabled       whether the agent may press keypad digits on the line itself (IVR navigation, the
+ *                                {@code sendDtmfTones} tool) without its scenario declaring that tool; not
+ *                                {@code dtmfInputEnabled}, which is the caller typing digits
  */
 public record AiAgentCallBehaviour(
         InterruptionSensitivity interruptionSensitivity,
@@ -46,7 +55,14 @@ public record AiAgentCallBehaviour(
         Boolean autoEscalateOnFrustration,
         /** How many consecutive FRUSTRATED turns before auto-escalation triggers; default 2 */
         Integer frustrationThreshold,
-        Integer responseWaitMs
+        Integer responseWaitMs,
+        Integer reminderAfterSeconds,
+        Integer reminderMaxCount,
+        Integer dtmfTimeoutMs,
+        String dtmfTerminationKey,
+        Integer dtmfDigitLimit,
+        Integer ringDurationSeconds,
+        boolean pressDigitEnabled
 ) {
     public AiAgentCallBehaviour {
         if (interruptionSensitivity == null) {
@@ -55,6 +71,17 @@ public record AiAgentCallBehaviour(
         if (voicemailAction == null) {
             voicemailAction = VoicemailAction.LEAVE_MESSAGE;
         }
+    }
+
+    /** Before the reminder, DTMF and ring-duration settings: every one of them stays at the deployment default. */
+    public AiAgentCallBehaviour(InterruptionSensitivity interruptionSensitivity,
+                                boolean dtmfInputEnabled, VoicemailAction voicemailAction, String voicemailMessage,
+                                boolean midCallSmsEnabled, String midCallSmsTemplate, String transferPhoneNumber,
+                                String transferMessage, Long transferQueueId, Long preConversationAudioFileId,
+                                Boolean autoEscalateOnFrustration, Integer frustrationThreshold, Integer responseWaitMs) {
+        this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage, midCallSmsEnabled,
+                midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, preConversationAudioFileId,
+                autoEscalateOnFrustration, frustrationThreshold, responseWaitMs, null, null, null, null, null, null, false);
     }
 
     public AiAgentCallBehaviour(InterruptionSensitivity interruptionSensitivity,

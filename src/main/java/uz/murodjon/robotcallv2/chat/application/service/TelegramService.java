@@ -118,6 +118,12 @@ public class TelegramService implements TelegramUseCase {
     }
 
     @Override
+    public void sendMessage(long companyId, long botId, String chatId, String text) {
+        TelegramBot bot = requireBot(companyId, botId);
+        telegramApi.sendMessage(token(bot), chatId, text);
+    }
+
+    @Override
     public void deleteBot(long companyId, long botId) {
         TelegramBot bot = requireBot(companyId, botId);
         try {

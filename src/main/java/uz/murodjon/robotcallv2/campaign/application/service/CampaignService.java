@@ -29,6 +29,7 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTargetStats;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignKind;
 import uz.murodjon.robotcallv2.campaign.domain.enums.CampaignStatus;
 import uz.murodjon.robotcallv2.campaign.domain.enums.DialMode;
+import uz.murodjon.robotcallv2.campaign.domain.enums.RecurrenceType;
 import uz.murodjon.robotcallv2.campaign.domain.enums.SequenceStepType;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignStateMachine;
 import uz.murodjon.robotcallv2.campaign.domain.service.CampaignValidator;
@@ -154,6 +155,7 @@ public class CampaignService implements CampaignUseCase {
         LocalTime dialWindowEnd = resolveWindowBound(schedule.dialWindowEnd(), draftEnd, LocalTime.of(20, 0));
         requireWindowWithinCompany(companyId, dialWindowStart, dialWindowEnd);
         campaignValidator.validateRetryPolicy(retry.policyOrNone());
+        campaignValidator.validateDialRules(schedule.dialRules());
         requireSequence(companyId, sequence);
         requireNumbers(companyId, request.numbers());
         AutoEnrollment autoEnroll = request.autoEnroll() != null ? request.autoEnroll() : AutoEnrollment.NONE;
@@ -173,7 +175,8 @@ public class CampaignService implements CampaignUseCase {
                 .priority(request.priorityOrDefault())
                 .schedule(new CampaignSchedule(schedule.startAt(), schedule.endAt(), dialWindowStart, dialWindowEnd,
                         schedule.dialDays() != null && !schedule.dialDays().isEmpty()
-                                ? schedule.dialDays() : DEFAULT_DIAL_DAYS))
+                                ? schedule.dialDays() : DEFAULT_DIAL_DAYS,
+                        schedule.dialRules()))
                 .retry(new CampaignRetry(retry.maxAttempts() > 0 ? retry.maxAttempts() : 3,
                         Math.max(0, retry.intervalMinutes()), retry.policyOrNone()))
                 .limits(new CampaignLimits(limits.maxConcurrentCalls() > 0 ? limits.maxConcurrentCalls() : 20,
@@ -214,6 +217,7 @@ public class CampaignService implements CampaignUseCase {
         LocalTime dialWindowEnd = resolveWindowBound(schedule.dialWindowEnd(), existing.schedule().dialWindowEnd(), null);
         requireWindowWithinCompany(existing.companyId(), dialWindowStart, dialWindowEnd);
         campaignValidator.validateRetryPolicy(retry.policyOrNone());
+        campaignValidator.validateDialRules(schedule.dialRules());
         requireSequence(companyId, sequence);
         // Not sent: the numbers the campaign has, as with the sequence.
         CampaignNumbers numbers = request.numbers() != null ? request.numbers() : existing.numbers();
@@ -244,7 +248,9 @@ public class CampaignService implements CampaignUseCase {
                 .autoRetries(request.autoRetries() != null ? request.autoRetries() : existing.autoRetries())
                 .priority(request.priorityOrDefault())
                 .schedule(new CampaignSchedule(schedule.startAt(), schedule.endAt(), dialWindowStart, dialWindowEnd,
-                        schedule.dialDays()))
+                        schedule.dialDays(),
+                        // Not sent: what the campaign has, as with the sequence.
+                        schedule.dialRules() != null ? schedule.dialRules() : existing.schedule().dialRules()))
                 .retry(new CampaignRetry(retry.maxAttempts(), Math.max(0, retry.intervalMinutes()),
                         retry.policyOrNone()))
                 .limits(new CampaignLimits(limits.maxConcurrentCalls(), Math.max(0, limits.dailyCallCap()),
@@ -642,6 +648,24 @@ public class CampaignService implements CampaignUseCase {
     public CampaignStatusResponse pause(long companyId, long campaignId) {
         setStatus(companyId, campaignId, CampaignStatus.PAUSED);
         return new CampaignStatusResponse(campaignId, CampaignStatus.PAUSED);
+    }
+
+    @Override
+    public CampaignStatusResponse stop(long companyId, long campaignId) {
+        Campaign c = requireCampaign(companyId, campaignId);
+        RecurrenceType repeats = c.recurrence().type();
+        if (repeats != null && repeats != RecurrenceType.ONCE) {
+            throw new ConflictException(ErrorCode.CAMPAIGN_STOP_RECURRING_NOT_ALLOWED, campaignId);
+        }
+        setStatus(companyId, campaignId, CampaignStatus.COMPLETED);
+        return new CampaignStatusResponse(campaignId, CampaignStatus.COMPLETED);
+    }
+
+    @Override
+    public CampaignStatusResponse unschedule(long companyId, long campaignId) {
+        requireCampaign(companyId, campaignId);
+        setStatus(companyId, campaignId, CampaignStatus.DRAFT);
+        return new CampaignStatusResponse(campaignId, CampaignStatus.DRAFT);
     }
 
     @Override

@@ -185,6 +185,9 @@ public class CampaignRepositoryAdapter implements CampaignRepository {
             if (filter.createdBy() != null) {
                 predicates.add(cb.equal(root.get("createdBy").get("id"), filter.createdBy()));
             }
+            if (filter.kind() != null) {
+                predicates.add(cb.equal(root.get("kind"), filter.kind()));
+            }
             if (filter.recurrenceType() != null) {
                 predicates.add(cb.equal(root.get("recurrenceType"), filter.recurrenceType()));
             }

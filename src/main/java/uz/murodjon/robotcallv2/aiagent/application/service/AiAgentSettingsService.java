@@ -27,10 +27,12 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
 
     private final AiAgentDrafts drafts;
     private final AuditUseCase auditUseCase;
+    private final AiAgentEngineGuard engineGuard;
 
-    public AiAgentSettingsService(AiAgentDrafts drafts, AuditUseCase auditUseCase) {
+    public AiAgentSettingsService(AiAgentDrafts drafts, AuditUseCase auditUseCase, AiAgentEngineGuard engineGuard) {
         this.drafts = drafts;
         this.auditUseCase = auditUseCase;
+        this.engineGuard = engineGuard;
     }
 
     @Override
@@ -96,20 +98,21 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
     @Override
     public AgentAnalysisDto findAnalysis(long companyId, long agentId) {
         AiAgent agent = drafts.requireAgent(companyId, agentId);
-        return new AgentAnalysisDto(agent.dataNeeded(), agent.dataEvaluation());
+        return new AgentAnalysisDto(agent.dataNeeded(), agent.dataEvaluation(), agent.postCallAnalysis());
     }
 
     @Override
     @Transactional
     public AgentAnalysisDto updateAnalysis(long companyId, long agentId, AgentAnalysisDto request) {
         AiAgent existing = drafts.requireAgent(companyId, agentId);
-        AiAgent updated = existing.withAnalysis(
+        AiAgent updated = existing.toBuilder().postCallAnalysis(request.postCallAnalysis() != null
+                ? engineGuard.requireKnownAnalysisModel(request.postCallAnalysis()) : existing.postCallAnalysis()).build().withAnalysis(
                 request.dataNeeded() != null ? request.dataNeeded() : existing.dataNeeded(),
                 request.dataEvaluation() != null ? request.dataEvaluation() : existing.dataEvaluation()
         );
         drafts.update(companyId, agentId, updated);
         auditUseCase.record(companyId, "AI_AGENT_ANALYSIS_UPDATE", "ai_agent", String.valueOf(agentId), updated.name());
-        return new AgentAnalysisDto(updated.dataNeeded(), updated.dataEvaluation());
+        return new AgentAnalysisDto(updated.dataNeeded(), updated.dataEvaluation(), updated.postCallAnalysis());
     }
 
     @Override

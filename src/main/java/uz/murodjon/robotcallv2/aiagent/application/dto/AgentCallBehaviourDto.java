@@ -25,13 +25,42 @@ public record AgentCallBehaviourDto(
         /** How many consecutive FRUSTRATED turns before auto-escalation triggers (default 2) */
         Integer frustrationThreshold,
         /** Caller silence (ms) the agent waits before its turn; 100-3000 */
-        Integer responseWaitMs
+        Integer responseWaitMs,
+        /** Caller silence (s) before the agent asks whether they are still there; 1-300 */
+        Integer reminderAfterSeconds,
+        /** Reminders before the call is ended; 0-10 */
+        Integer reminderMaxCount,
+        /** Pause (ms) between keypad digits that hands the typed sequence over; 500-10000 */
+        Integer dtmfTimeoutMs,
+        /** Key that hands the sequence over at once: one of 0-9, # or * */
+        String dtmfTerminationKey,
+        /** Digits after which the sequence is handed over; 1-50 */
+        Integer dtmfDigitLimit,
+        /** Seconds an outbound call rings before it counts as unanswered; 5-300 */
+        Integer ringDurationSeconds,
+        /** Whether the agent may press keypad digits on the line itself (IVR navigation); not the caller typing digits */
+        Boolean pressDigitEnabled
 ) {
+
+    /** The shape before the reminder, DTMF and ring-duration fields: they stay as the agent has them. */
+    public AgentCallBehaviourDto(InterruptionSensitivity interruptionSensitivity, Boolean dtmfInputEnabled,
+                                 VoicemailAction voicemailAction, String voicemailMessage, Boolean midCallSmsEnabled,
+                                 String midCallSmsTemplate, String transferPhoneNumber, String transferMessage,
+                                 Long transferQueueId, Long preConversationAudioFileId,
+                                 Boolean autoEscalateOnFrustration, Integer frustrationThreshold,
+                                 Integer responseWaitMs) {
+        this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage, midCallSmsEnabled,
+                midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, preConversationAudioFileId,
+                autoEscalateOnFrustration, frustrationThreshold, responseWaitMs, null, null, null, null, null, null, null);
+    }
 
     public static AgentCallBehaviourDto of(AiAgentCallBehaviour behaviour) {
         return new AgentCallBehaviourDto(behaviour.interruptionSensitivity(), behaviour.dtmfInputEnabled(), behaviour.voicemailAction(), behaviour.voicemailMessage(),
                 behaviour.midCallSmsEnabled(), behaviour.midCallSmsTemplate(), behaviour.transferPhoneNumber(),
                 behaviour.transferMessage(), behaviour.transferQueueId(), behaviour.preConversationAudioFileId(),
-                behaviour.autoEscalateOnFrustration(), behaviour.frustrationThreshold(), behaviour.responseWaitMs());
+                behaviour.autoEscalateOnFrustration(), behaviour.frustrationThreshold(), behaviour.responseWaitMs(),
+                behaviour.reminderAfterSeconds(), behaviour.reminderMaxCount(), behaviour.dtmfTimeoutMs(),
+                behaviour.dtmfTerminationKey(), behaviour.dtmfDigitLimit(), behaviour.ringDurationSeconds(),
+                behaviour.pressDigitEnabled());
     }
 }

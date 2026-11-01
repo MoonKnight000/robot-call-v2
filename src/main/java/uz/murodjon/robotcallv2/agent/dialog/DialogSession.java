@@ -32,6 +32,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.LongFunction;
 import java.util.function.Predicate;
@@ -121,6 +122,8 @@ public class DialogSession implements DialogOutcomeSink {
     private final List<PronunciationRule> pronunciationRules;
     private final AiAgent agent;
     private volatile Predicate<String> midCallSmsSender;
+    /** Sends a text to a number the agent's SEND_SMS function names; null where no SMS function names one. */
+    private volatile BiPredicate<String, String> smsToNumberSender;
     /** The published scenario of one of the call's company agents, by agent id; null when the call cannot hand off. */
     private volatile LongFunction<ScenarioDefinition> agentScenarioResolver;
     /**
@@ -154,6 +157,11 @@ public class DialogSession implements DialogOutcomeSink {
     private volatile boolean lineGone = false;
     /** Whether this call was received as inbound rather than dialled outbound. */
     private volatile boolean inbound;
+    /**
+     * Whether the agent or the platform has a place to hand the caller to, set when the call starts
+     * ({@link TransferTargets}); true until told otherwise, so a session that never sets it keeps the tool.
+     */
+    private volatile boolean transferTargetAvailable = true;
     /** Set by whoever starts hanging the call up ({@code SpeechOutput#finishWhenSpoken}), so it happens once. */
     private final AtomicBoolean closing = new AtomicBoolean();
     private volatile String lastAgentText;
@@ -282,6 +290,17 @@ public class DialogSession implements DialogOutcomeSink {
         return sender != null && text != null && !text.isBlank() && sender.test(text.trim());
     }
 
+    public void setSmsToNumberSender(BiPredicate<String, String> smsToNumberSender) {
+        this.smsToNumberSender = smsToNumberSender;
+    }
+
+    @Override
+    public boolean triggerSmsToNumber(String text, String number) {
+        BiPredicate<String, String> sender = smsToNumberSender;
+        return sender != null && text != null && !text.isBlank() && number != null && !number.isBlank()
+                && sender.test(text.trim(), number.trim());
+    }
+
     public void setAgentScenarioResolver(LongFunction<ScenarioDefinition> agentScenarioResolver) {
         this.agentScenarioResolver = agentScenarioResolver;
     }
@@ -315,6 +334,14 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setInbound(boolean inbound) {
         this.inbound = inbound;
+    }
+
+    public boolean isTransferTargetAvailable() {
+        return transferTargetAvailable;
+    }
+
+    public void setTransferTargetAvailable(boolean transferTargetAvailable) {
+        this.transferTargetAvailable = transferTargetAvailable;
     }
 
     public List<ToolCallback> mcpTools() {

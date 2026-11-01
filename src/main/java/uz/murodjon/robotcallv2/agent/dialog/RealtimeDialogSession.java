@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.LongPredicate;
 import java.util.function.Predicate;
@@ -103,6 +104,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private volatile Consumer<String> dtmfSender;
     /** Set when the agent allows a mid-call SMS ({@link MidCallSmsSender}); null otherwise. */
     private volatile Predicate<String> midCallSmsSender;
+    private volatile BiPredicate<String, String> smsToNumberSender;
     private volatile boolean ended;
     /** Turns the engine completed — the closest realtime equivalent of an LLM turn count. */
     private volatile int turnCount;
@@ -152,6 +154,11 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private volatile String pendingDisclosure;
     /** Whether this call was received as inbound rather than dialled outbound. */
     private volatile boolean inbound;
+    /**
+     * Whether the agent or the platform has a place to hand the caller to, set when the call starts
+     * ({@link TransferTargets}); true until told otherwise, so a session that never sets it keeps the tool.
+     */
+    private volatile boolean transferTargetAvailable = true;
     /** What the engine said before the disclosure was checked. Guarded by {@code this}. */
     private final StringBuilder openingSpeech = new StringBuilder();
 
@@ -269,10 +276,30 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         this.inbound = inbound;
     }
 
+    public boolean isTransferTargetAvailable() {
+        return transferTargetAvailable;
+    }
+
+    public void setTransferTargetAvailable(boolean transferTargetAvailable) {
+        this.transferTargetAvailable = transferTargetAvailable;
+    }
+
     @Override
     public boolean triggerMidCallSms(String text) {
         Predicate<String> sender = midCallSmsSender;
         return sender != null && text != null && !text.isBlank() && sender.test(text.trim());
+    }
+
+    /** Sends a text to a number the agent's SEND_SMS function names; set only where such a function exists. */
+    public void setSmsToNumberSender(BiPredicate<String, String> smsToNumberSender) {
+        this.smsToNumberSender = smsToNumberSender;
+    }
+
+    @Override
+    public boolean triggerSmsToNumber(String text, String number) {
+        BiPredicate<String, String> sender = smsToNumberSender;
+        return sender != null && text != null && !text.isBlank() && number != null && !number.isBlank()
+                && sender.test(text.trim(), number.trim());
     }
 
     public void setAgentHandoff(LongPredicate agentHandoff) {
@@ -336,8 +363,8 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     }
 
     /*
-     * The four below serve only the write-tool confirmation in HttpToolExecutor, and company
-     * HTTP tools are offered on cascade calls only (TurnTools). Failing loudly here is the
+     * The four below serve only the write-tool confirmation in HttpToolExecutor, and a tool that
+     * needs it is offered on cascade calls only (RealtimeToolRunner leaves it out). Failing loudly here is the
      * point: answering "nothing pending, caller said nothing" would hold every write tool
      * for a yes that could never be counted.
      */

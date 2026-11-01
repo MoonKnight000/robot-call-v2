@@ -1,6 +1,9 @@
 package uz.murodjon.robotcallv2.contact.domain.entity;
 
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Domain record for a contact record (1:1 with contact table, §10.8).
@@ -12,16 +15,23 @@ public record Contact(
         String address,
         String tags,
         String notes,
+        Map<String, String> customFields,
         Instant createdAt
 ) {
 
+    public Contact {
+        customFields = customFields == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(customFields));
+    }
+
     /** A contact on its way to storage; identity and {@code createdAt} are stamped there. */
-    public static Contact of(String name, String phone, String address, String tags, String notes) {
-        return new Contact(0, name, phone, address, tags, notes, null);
+    public static Contact of(String name, String phone, String address, String tags, String notes,
+                             Map<String, String> customFields) {
+        return new Contact(0, name, phone, address, tags, notes, customFields, null);
     }
 
     /** The editable fields of an existing contact — the phone is not one of them. */
-    public static Contact profile(String name, String address, String tags, String notes) {
-        return new Contact(0, name, null, address, tags, notes, null);
+    public static Contact profile(String name, String address, String tags, String notes,
+                                  Map<String, String> customFields) {
+        return new Contact(0, name, null, address, tags, notes, customFields, null);
     }
 }

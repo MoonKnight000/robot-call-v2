@@ -152,6 +152,11 @@ public class CampaignEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     private String sequence;
 
+    /** Extra calling rules (time zone, hours per weekday, holidays) as JSON; null means none. */
+    @Column(name = "dial_rules")
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String dialRules;
+
     /** Written only by the consent confirmation, never by an edit. */
     @Column(name = "consent_confirmed_at", insertable = false, updatable = false)
     private Instant consentConfirmedAt;
@@ -492,6 +497,14 @@ public class CampaignEntity {
 
     public void setSequence(String sequence) {
         this.sequence = sequence;
+    }
+
+    public String getDialRules() {
+        return dialRules;
+    }
+
+    public void setDialRules(String dialRules) {
+        this.dialRules = dialRules;
     }
 
     public Instant getStartAt() {

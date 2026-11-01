@@ -1,12 +1,17 @@
 package uz.murodjon.robotcallv2.dialer.domain.service;
 
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
+import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignDialRules;
+import uz.murodjon.robotcallv2.campaign.domain.entity.TimeRange;
+import uz.murodjon.robotcallv2.campaign.domain.enums.TimezoneMode;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -31,6 +36,9 @@ public final class DialWindow {
      * @param holidays dates the company does not dial on
      */
     public static boolean isOpen(Campaign campaign, CompanyConfig config, Set<LocalDate> holidays, Clock clock) {
+        if (hasOwnRules(campaign)) {
+            return isOpenByRules(campaign, config, holidays, null, clock);
+        }
         Clock local = config != null ? clock.withZone(config.zoneId()) : clock;
         if (holidays != null && holidays.contains(LocalDate.now(local))) {
             return false; // a company holiday (NEXT-PLAN C.4)
@@ -57,6 +65,9 @@ public final class DialWindow {
 
     public static boolean isOpenForRecipient(Campaign campaign, CompanyConfig config, Set<LocalDate> holidays,
                                              String recipientPhone, Clock clock) {
+        if (hasOwnRules(campaign)) {
+            return isOpenByRules(campaign, config, holidays, recipientPhone, clock);
+        }
         if (!isOpen(campaign, config, holidays, clock)) {
             return false;
         }
@@ -69,6 +80,61 @@ public final class DialWindow {
         LocalTime start = campaign.schedule().dialWindowStart() != null ? campaign.schedule().dialWindowStart() : LocalTime.of(8, 0);
         LocalTime end = campaign.schedule().dialWindowEnd() != null ? campaign.schedule().dialWindowEnd() : LocalTime.of(20, 0);
         return withinRange(recipientLocalTime, start, end);
+    }
+
+    /** Whether the campaign set rules of its own; without them the window behaves as it always has. */
+    private static boolean hasOwnRules(Campaign campaign) {
+        CampaignDialRules rules = campaign.schedule().dialRules();
+        return rules.timezoneMode() != null || rules.hasDayWindows() || !rules.holidaysExcluded();
+    }
+
+    /**
+     * The window read by the campaign's own rules. Unlike the plain window there is no extra
+     * quiet-hours check on the person called: when the window is to follow them
+     * ({@link TimezoneMode#CONTACT}) it is read on their clock, otherwise on the one the campaign names.
+     * The company's own hours still bind, on the company's clock.
+     *
+     * @param recipientPhone the number about to be called, or null when asking about the campaign as a whole
+     */
+    private static boolean isOpenByRules(Campaign campaign, CompanyConfig config, Set<LocalDate> holidays,
+                                         String recipientPhone, Clock clock) {
+        CampaignDialRules rules = campaign.schedule().dialRules();
+        ZoneId companyZone = config != null ? config.zoneId() : clock.getZone();
+        Clock companyClock = clock.withZone(companyZone);
+        if (rules.holidaysExcluded() && holidays != null && holidays.contains(LocalDate.now(companyClock))) {
+            return false;
+        }
+        Clock local = clock.withZone(zoneOf(rules, companyZone, recipientPhone));
+        LocalDate today = LocalDate.now(local);
+        LocalTime now = LocalTime.now(local);
+        boolean open;
+        if (rules.hasDayWindows()) {
+            List<TimeRange> ranges = rules.dayWindows().get(today.getDayOfWeek());
+            open = ranges != null && ranges.stream().anyMatch(range -> range.contains(now));
+        } else {
+            Set<DayOfWeek> days = campaign.schedule().allowedDays();
+            open = (days == null || days.isEmpty() || days.contains(today.getDayOfWeek()))
+                    && withinRange(now, campaign.schedule().dialWindowStart(), campaign.schedule().dialWindowEnd());
+        }
+        if (!open) {
+            return false;
+        }
+        return config == null || withinRange(LocalTime.now(companyClock), config.dialWindowStart(), config.dialWindowEnd());
+    }
+
+    private static ZoneId zoneOf(CampaignDialRules rules, ZoneId companyZone, String recipientPhone) {
+        TimezoneMode mode = rules.timezoneMode();
+        if (mode == TimezoneMode.FIXED) {
+            try {
+                return ZoneId.of(rules.fixedTimezone());
+            } catch (RuntimeException e) {
+                return companyZone; // validated on save; a stored value that no longer resolves must not stop the dialer
+            }
+        }
+        if (mode == TimezoneMode.CONTACT && recipientPhone != null) {
+            return RecipientTimezoneResolver.resolve(recipientPhone, companyZone);
+        }
+        return companyZone;
     }
 
     private static boolean withinRange(LocalTime now, LocalTime start, LocalTime end) {

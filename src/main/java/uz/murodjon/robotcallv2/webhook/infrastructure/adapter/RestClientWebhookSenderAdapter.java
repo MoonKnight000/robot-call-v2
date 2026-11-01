@@ -43,6 +43,8 @@ public class RestClientWebhookSenderAdapter implements WebhookSenderPort {
     private final ObjectMapper objectMapper;
 
     private final RestClient restClient;
+    /** One client per read timeout asked for; a timeout is the client's, not the request's. */
+    private final Map<Duration, RestClient> timeoutClients = new java.util.concurrent.ConcurrentHashMap<>();
 
     public RestClientWebhookSenderAdapter(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -55,23 +57,23 @@ public class RestClientWebhookSenderAdapter implements WebhookSenderPort {
     @Override
     public void post(String url, Map<String, String> headers, Map<String, Object> payload, String signingSecret,
                      String deliveryId) {
-        request(url, headers, payload, signingSecret, deliveryId).retrieve().toBodilessEntity();
+        request(restClient, url, headers, payload, signingSecret, deliveryId).retrieve().toBodilessEntity();
     }
 
     @Override
     public Map<String, Object> postForObject(String url, Map<String, String> headers, Map<String, Object> payload,
-                                             String signingSecret, String deliveryId) {
-        return request(url, headers, payload, signingSecret, deliveryId).retrieve()
+                                             String signingSecret, String deliveryId, Duration readTimeout) {
+        return request(clientFor(readTimeout), url, headers, payload, signingSecret, deliveryId).retrieve()
                 .body(new ParameterizedTypeReference<>() {});
     }
 
-    private RestClient.RequestBodySpec request(String url, Map<String, String> headers, Map<String, Object> payload,
+    private RestClient.RequestBodySpec request(RestClient client, String url, Map<String, String> headers, Map<String, Object> payload,
                                                String signingSecret, String deliveryId) {
         // Serialised here rather than handed to RestClient as an object, because the
         // signature has to cover the exact bytes that go on the wire.
         String body = serialize(payload);
 
-        RestClient.RequestBodySpec spec = restClient.post()
+        RestClient.RequestBodySpec spec = client.post()
                 .uri(url)
                 .contentType(MediaType.APPLICATION_JSON);
         if (headers != null) {
@@ -85,6 +87,16 @@ public class RestClientWebhookSenderAdapter implements WebhookSenderPort {
                     WebhookSignature.createHeaderValue(body, signingSecret, Instant.now().getEpochSecond()));
         }
         return spec.body(body);
+    }
+
+    private RestClient clientFor(Duration readTimeout) {
+        if (readTimeout == null) {
+            return restClient;
+        }
+        return timeoutClients.computeIfAbsent(readTimeout, timeout -> RestClient.builder()
+                .requestFactory(new HttpComponentsClientHttpRequestFactory(
+                        PublicHttpClientFactory.create(CONNECT_TIMEOUT, timeout)))
+                .build());
     }
 
     private String serialize(Map<String, Object> payload) {

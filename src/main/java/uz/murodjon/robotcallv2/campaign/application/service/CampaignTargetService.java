@@ -507,7 +507,7 @@ public class CampaignTargetService implements CampaignTargetUseCase {
     @Override
     public PageableData<CampaignTarget> listTargets(long companyId, long campaignId, TargetFilter filter) {
         List<CampaignTarget> rows = campaignTargetRepository.findByCampaign(companyId, campaignId, filter);
-        long total = campaignTargetRepository.countByCampaign(companyId, campaignId);
+        long total = campaignTargetRepository.countByCampaign(companyId, campaignId, filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
     }
 

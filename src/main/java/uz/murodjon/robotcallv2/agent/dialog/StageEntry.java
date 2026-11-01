@@ -2,10 +2,12 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.OutcomeField;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageAction;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolParamDef;
 import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
@@ -224,6 +226,71 @@ final class StageEntry {
         String line = SystemPromptFactory.renderStaticLine(stage, variables);
         return "Stage " + stage.id() + ": say " + (line != null ? "EXACTLY this: «" + line + "»" : otherwise)
                 + ", then call " + tool + ".";
+    }
+
+    /**
+     * Whether the scenario has nowhere to move the call: at most one real stage and that stage
+     * names no transition, condition or branch. This is a single-prompt agent — the synthetic
+     * one-stage scenario, or an embedded definition that behaves the same — so there is no
+     * stage graph to walk, {@code transitionTo} has nothing to do and the prompt must not
+     * talk about stages. A property of the scenario, so it holds for the whole call.
+     */
+    static boolean hasNowhereToTransition(ScenarioDefinition scenario) {
+        if (scenario == null || scenario.stages() == null) {
+            return true;
+        }
+        List<StageDef> real = scenario.stages().stream().filter(stage -> stage.type() != StageType.NOTE).toList();
+        if (real.size() > 1) {
+            return false;
+        }
+        if (real.isEmpty()) {
+            return true;
+        }
+        StageDef only = real.getFirst();
+        return findReachableStages(scenario, only).isEmpty()
+                && (only.branches() == null || only.branches().isEmpty())
+                && (only.transitionConditions() == null || only.transitionConditions().isEmpty());
+    }
+
+    /**
+     * Whether the agent's knowledge base is searched on {@code stage}: the stage may switch it
+     * on or off, and sources of its own switch it on unless the stage says otherwise. One rule
+     * for both pipelines — the cascade asks it per turn, a realtime call per tool call.
+     */
+    static boolean isKnowledgeEnabled(AiAgent agent, StageDef stage) {
+        StageOverrides overrides = stage != null ? stage.overrides() : null;
+        boolean hasStageSources = stage != null && stage.knowledgeSourceIds() != null && !stage.knowledgeSourceIds().isEmpty();
+        return agent != null && (overrides != null && overrides.knowledgeRetrieval() != null
+                ? overrides.knowledgeRetrieval()
+                : agent.useRag() || hasStageSources);
+    }
+
+    /**
+     * Whether any stage of the scenario can switch the knowledge base on by itself (own sources,
+     * or an explicit override) — what a realtime call, whose tools are fixed at connect, needs to
+     * know to declare the search tool for an agent that has {@code useRag} off.
+     */
+    static boolean anyStageUsesKnowledge(ScenarioDefinition scenario) {
+        if (scenario == null || scenario.stages() == null) {
+            return false;
+        }
+        return scenario.stages().stream().anyMatch(stage ->
+                (stage.knowledgeSourceIds() != null && !stage.knowledgeSourceIds().isEmpty())
+                        || (stage.overrides() != null && Boolean.TRUE.equals(stage.overrides().knowledgeRetrieval())));
+    }
+
+    /**
+     * The tools {@code stage} restricts the scenario's own tools to, or null when it names no
+     * restriction. A stage with an empty list in a scenario that has nowhere to transition is
+     * the synthetic single stage of a single-prompt agent: its empty list means "not specified",
+     * so every tool the scenario declares stays available.
+     */
+    static List<String> findAllowedTools(ScenarioDefinition scenario, StageDef stage) {
+        if (stage == null) {
+            return null;
+        }
+        List<String> allowed = stage.allowedTools();
+        return allowed != null && allowed.isEmpty() && hasNowhereToTransition(scenario) ? null : allowed;
     }
 
     /**

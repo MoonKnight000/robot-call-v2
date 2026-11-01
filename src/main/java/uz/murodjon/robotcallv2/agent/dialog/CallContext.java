@@ -76,6 +76,16 @@ public record CallContext(Map<String, Object> facts, String goal, ClientMemory m
         return new CallContext(merged, goal, memory, phone);
     }
 
+    /** Adds {@code defaults} for the names the call data does not already carry; they are the lowest-priority layer. */
+    public CallContext withDefaultFacts(Map<String, String> defaults) {
+        if (defaults == null || defaults.isEmpty()) {
+            return this;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(defaults);
+        merged.putAll(facts);
+        return new CallContext(merged, goal, memory, phone);
+    }
+
     /** A {@code phone} or {@code clientPhone} fact when the call data carries one, otherwise the number on the line. */
     public String clientPhone() {
         Object p = fact("phone");

@@ -84,4 +84,26 @@ class PiiRedactorTest {
                 .contains("CVV ***")
                 .contains("1234 ****** 1234");
     }
+
+    @Test
+    void phoneNumbersStayUnlessAskedFor() {
+        String input = "Raqamim +998 90 123 45 67";
+
+        assertThat(PiiRedactor.redact(input)).isEqualTo(input);
+        assertThat(PiiRedactor.redact(input, false)).isEqualTo(input);
+    }
+
+    @Test
+    void redactsInternationalAndLocalPhoneNumbersWhenAsked() {
+        assertThat(PiiRedactor.redact("Raqamim +998 90 123 45 67", true)).isEqualTo("Raqamim [PHONE]");
+        assertThat(PiiRedactor.redact("yoki 998901234567 ga", true)).isEqualTo("yoki [PHONE] ga");
+        assertThat(PiiRedactor.redact("yoki 90 123 45 67 ga", true)).isEqualTo("yoki [PHONE] ga");
+        assertThat(PiiRedactor.redact("yoki 901234567 ga", true)).isEqualTo("yoki [PHONE] ga");
+    }
+
+    @Test
+    void phoneRedactionLeavesAmountsAndCardsAlone() {
+        assertThat(PiiRedactor.redact("Qarz 500000 so'm, kartam 8600 1111 2222 3333", true))
+                .isEqualTo("Qarz 500000 so'm, kartam 8600 **** **** 3333");
+    }
 }

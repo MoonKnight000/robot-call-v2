@@ -48,12 +48,15 @@ public class AiAgentVersionService implements AiAgentVersionUseCase {
     private final AiAgentUseCase aiAgentUseCase;
     private final AgentEvalProperties agentEvalProperties;
     private final AgentRolloutRepository rolloutRepository;
+    private final AgentFunctionsService agentFunctionsService;
 
     public AiAgentVersionService(AiAgentVersionRepository versionRepository, AiAgentDrafts drafts,
                                  UserUseCase userUseCase, AuditUseCase auditUseCase, CurrentUser currentUser,
                                  AgentTestCaseRepository testCaseRepository, AgentEvalRepository evalRepository,
                                  AiAgentUseCase aiAgentUseCase, AgentEvalProperties agentEvalProperties,
-                                 AgentRolloutRepository rolloutRepository) {
+                                 AgentRolloutRepository rolloutRepository,
+                                 AgentFunctionsService agentFunctionsService) {
+        this.agentFunctionsService = agentFunctionsService;
         this.rolloutRepository = rolloutRepository;
         this.versionRepository = versionRepository;
         this.drafts = drafts;
@@ -96,6 +99,10 @@ public class AiAgentVersionService implements AiAgentVersionUseCase {
         AiAgent restored = target.snapshot().withEnabled(draft.enabled()).withPublishedVersion(null)
                 .withVersion(draft.version());
         drafts.update(companyId, id, restored);
+        if (restored.functions() != null) {
+            // The links are live, not versioned: bring them back in step with the restored list.
+            agentFunctionsService.syncTools(companyId, id, restored.functions());
+        }
         AiAgentVersion stored = versionRepository.publish(
                 AiAgentVersion.publishing(restored, "rollback to v" + version, currentUser.id().orElse(null)));
         auditUseCase.record(companyId, "AI_AGENT_ROLLBACK", "ai_agent", String.valueOf(id),

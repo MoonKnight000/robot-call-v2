@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.contact.application.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -37,6 +39,7 @@ import java.util.*;
 @Service
 public class ContactService implements ContactUseCase {
 
+    private static final Logger log = LoggerFactory.getLogger(ContactService.class);
     private static final int CALL_HISTORY_LIMIT = 50;
 
     private final ContactRepository contactRepository;
@@ -105,18 +108,23 @@ public class ContactService implements ContactUseCase {
     public Contact create(long companyId, CreateContactRequest request) {
         String phone = PhoneNumbers.require(request.phone());
         ContactValidator.validatePhone(phone);
+        ContactValidator.validateCustomFields(request.customFields());
         if (contactRepository.existsByPhone(companyId, phone)) {
             throw new ConflictException(ErrorCode.CONTACT_PHONE_EXISTS, phone);
         }
-        long id = contactRepository.create(companyId, Contact.of(request.name(), phone, request.address(), request.tags(), request.notes()));
+        long id = contactRepository.create(companyId, Contact.of(request.name(), phone, request.address(), request.tags(), request.notes(),
+                request.customFields()));
         auditService.record(companyId, "CONTACT_CREATE", "contact", String.valueOf(id), phone);
         return requireContact(companyId, id);
     }
 
     @Override
     public Contact update(long companyId, long id, UpdateContactRequest request) {
+        ContactValidator.validateCustomFields(request.customFields());
         Contact existing = requireContact(companyId, id);
-        contactRepository.update(companyId, id, Contact.profile(request.name(), request.address(), request.tags(), request.notes()));
+        Map<String, String> customFields = request.customFields() != null ? request.customFields() : existing.customFields();
+        contactRepository.update(companyId, id, Contact.profile(request.name(), request.address(), request.tags(), request.notes(),
+                customFields));
         auditService.record(companyId, "CONTACT_UPDATE", "contact", String.valueOf(id), existing.phone());
         return requireContact(companyId, id);
     }
@@ -171,7 +179,7 @@ public class ContactService implements ContactUseCase {
                     errors.add(new CsvRowError(c.line(), "phone " + phone + " already exists"));
                     continue;
                 }
-                long id = contactRepository.create(companyId, Contact.of(c.name(), phone, c.address(), c.tags(), c.notes()));
+                long id = contactRepository.create(companyId, Contact.of(c.name(), phone, c.address(), c.tags(), c.notes(), null));
                 addedIds.add(id);
             } catch (Exception e) {
                 errors.add(new CsvRowError(c.line(), e.getMessage()));
@@ -320,5 +328,48 @@ public class ContactService implements ContactUseCase {
                 "scrubbed " + request.phones().size() + " numbers (" + validCount + " valid, " + invalidCount + " invalid, " + dncCount + " dnc)");
 
         return new ContactScrubResponse(request.phones().size(), validCount, invalidCount, dncCount, items);
+    }
+
+    /**
+     * Runs after a call with nobody to report to, so nothing here throws on bad input: an
+     * unusable number, invalid key or blank value is dropped and logged instead.
+     */
+    @Override
+    public void saveCustomFieldsByPhone(long companyId, String phone, Map<String, String> values) {
+        String normalized = PhoneNumbers.normalize(phone);
+        if (normalized == null || values == null || values.isEmpty()) {
+            return;
+        }
+        Map<String, String> valid = new LinkedHashMap<>();
+        values.forEach((key, value) -> {
+            if (value == null || value.isBlank()) {
+                return;
+            }
+            String trimmed = value.strip();
+            if (ContactValidator.isValidCustomField(key, trimmed)) {
+                valid.put(key, trimmed);
+            } else {
+                log.debug("Dropping invalid contact custom field '{}' for company {}", key, companyId);
+            }
+        });
+        if (valid.isEmpty()) {
+            return;
+        }
+        Contact existing = contactRepository.findByPhone(companyId, normalized);
+        Map<String, String> merged = new LinkedHashMap<>(existing != null ? existing.customFields() : Map.of());
+        valid.forEach((key, value) -> {
+            if (merged.containsKey(key) || merged.size() < ContactValidator.MAX_CUSTOM_FIELDS) {
+                merged.put(key, value);
+            } else {
+                log.debug("Dropping contact custom field '{}' for company {}: the contact already has {} fields",
+                        key, companyId, ContactValidator.MAX_CUSTOM_FIELDS);
+            }
+        });
+        if (existing == null) {
+            contactRepository.create(companyId, Contact.of(normalized, normalized, null, null, null, merged));
+        } else {
+            contactRepository.update(companyId, existing.id(),
+                    Contact.profile(existing.name(), existing.address(), existing.tags(), existing.notes(), merged));
+        }
     }
 }

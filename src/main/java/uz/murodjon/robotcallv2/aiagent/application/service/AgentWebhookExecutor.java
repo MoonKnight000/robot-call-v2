@@ -86,7 +86,8 @@ public class AgentWebhookExecutor implements AgentWebhookUseCase {
             }
 
             Map<String, Object> response = webhookDelivery.postForReply(
-                    targetUrl, resolveHeaders(companyId, config), payload, signingSecret(companyId));
+                    targetUrl, resolveHeaders(companyId, config), payload, signingSecret(companyId),
+                    config.timeoutSeconds() != null ? java.time.Duration.ofSeconds(config.timeoutSeconds()) : null);
 
             if (response != null) {
                 Map<String, Object> vars = new HashMap<>();

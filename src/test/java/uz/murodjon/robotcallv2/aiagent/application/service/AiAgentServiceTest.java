@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentCatalogUseCase;
+import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentFunctionCatalogPort;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AgentRolloutRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentRepository;
 import uz.murodjon.robotcallv2.aiagent.application.port.output.AiAgentVersionRepository;
@@ -83,7 +84,8 @@ class AiAgentServiceTest {
                 mock(AiModelUseCase.class));
         service = new AiAgentService(repository, versionRepository, drafts, engineGuard, mock(ScenarioUseCase.class),
                 mock(UserUseCase.class), auditUseCase, currentUser, eventPublisher,
-                mock(AgentRolloutRepository.class), catalogUseCase);
+                mock(AgentRolloutRepository.class), catalogUseCase,
+                new AgentFunctionsService(repository, mock(AgentFunctionCatalogPort.class)));
     }
 
     private static AiAgent agent() {
@@ -367,7 +369,7 @@ class AiAgentServiceTest {
                 null, null, null, null, null,
                 null,
                 null, null,
-                null, postCallWebhook,
+                null, null, null, null, null, null, null, null, null, postCallWebhook,
                 null, null, null,
                 version,
                 clearFields);

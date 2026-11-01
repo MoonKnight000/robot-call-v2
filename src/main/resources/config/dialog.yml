@@ -134,6 +134,8 @@ voice-agent:
     fact-violation-escalate-after: ${DIALOG_FACT_VIOLATION_ESCALATE_AFTER:2}
     pre-tool-speech: ${DIALOG_PRE_TOOL_SPEECH:true}
     knowledge-passages: ${DIALOG_KNOWLEDGE_PASSAGES:3}
+    # Follow-up model rounds that answer with a data tool's result in the same turn; 0 = off.
+    tool-result-rounds: ${DIALOG_TOOL_RESULT_ROUNDS:2}
     # Deployment-wide token budget of one call, when its AiModelConfig sets none; 0 = no budget.
     max-tokens-per-call: ${DIALOG_MAX_TOKENS_PER_CALL:0}
     test-context:

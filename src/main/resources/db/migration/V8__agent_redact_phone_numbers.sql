@@ -1,0 +1,1 @@
+ALTER TABLE ai_agent ADD COLUMN redact_phone_numbers BOOLEAN NOT NULL DEFAULT FALSE;

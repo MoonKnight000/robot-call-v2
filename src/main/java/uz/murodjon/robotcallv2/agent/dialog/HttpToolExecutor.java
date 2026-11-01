@@ -111,6 +111,15 @@ public class HttpToolExecutor {
         this.httpClient = PublicHttpClient.create(Duration.ofSeconds(10), Duration.ofSeconds(DEFAULT_TIMEOUT_SECONDS));
     }
 
+    /**
+     * Whether a tool is declared to the model at all. A DESTRUCTIVE tool never is, so it is
+     * never argued into — McpToolGuard's rule for MCP tools (UNIVERSAL-OPERATOR-PLAN B.3). One
+     * rule for every HTTP tool, on both pipelines.
+     */
+    public static boolean isOfferedToModel(Tool tool) {
+        return tool.effect() != ToolEffect.DESTRUCTIVE;
+    }
+
     public ToolCallback buildCallback(Tool tool, DialogOutcomeSink session, Map<String, Object> callVariables) {
         String toolName = sanitizeToolName(tool.name());
         return FunctionToolCallback
@@ -196,10 +205,20 @@ public class HttpToolExecutor {
         if (inBackground) {
             // The request still runs to its end after the model has moved on; its mapped fields
             // and status variable reach the call when it finishes.
-            Thread.startVirtualThread(() -> run(tool, session, callVariables, args, canonicalArgs, callNumber, null));
+            Thread.startVirtualThread(() -> run(tool, session, withRecordedOutcome(session, callVariables), args,
+                    canonicalArgs, callNumber, null));
             return toolResponseFormatter.formatStarted();
         }
-        return run(tool, session, callVariables, args, canonicalArgs, callNumber, rawBody);
+        return run(tool, session, withRecordedOutcome(session, callVariables), args, canonicalArgs, callNumber, rawBody);
+    }
+
+    /**
+     * The call's variables plus what earlier tools of this call recorded (their {@code responseMapping}
+     * fields), read when the request is built so a value recorded after the tool list was built still
+     * reaches the template. The panel's test run has no call to read from.
+     */
+    private static Map<String, Object> withRecordedOutcome(DialogOutcomeSink session, Map<String, Object> callVariables) {
+        return session == DRY_RUN ? callVariables : ToolCallVariables.withOutcome(callVariables, session.outcome());
     }
 
     /**
@@ -297,7 +316,7 @@ public class HttpToolExecutor {
                         tool.name(), response.statusCode(), elapsedMs(started), argsHash,
                         SecretPlaceholders.redact(responseBody, secrets.values())));
             }
-            session.recordOutcome("tool_" + tool.name(), Map.of(
+            session.recordOutcome(ToolCallVariables.TOOL_RESULT_PREFIX + tool.name(), Map.of(
                     "status", response.statusCode(),
                     "response", responseBody
             ));
@@ -536,6 +555,11 @@ public class HttpToolExecutor {
 
         @Override
         public boolean triggerMidCallSms(String text) {
+            return false;
+        }
+
+        @Override
+        public boolean triggerSmsToNumber(String text, String number) {
             return false;
         }
 

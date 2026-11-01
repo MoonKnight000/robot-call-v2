@@ -26,6 +26,8 @@ public class NoInputWatchdog {
     private final int maxPrompts;
 
     private Instant lastActivity;
+    /** Last sign of life from the caller only; unlike {@link #lastActivity} neither bot audio nor a prompt moves it. */
+    private Instant lastCallerActivity;
     private int prompts;
     private boolean finished;
     /** The limit of the last {@link #check}, which may be a stage's own; read by {@link #isLastPrompt()}. */
@@ -43,11 +45,13 @@ public class NoInputWatchdog {
         this.maxPrompts = Math.max(0, maxPrompts);
         this.lastMaxPrompts = this.maxPrompts;
         this.lastActivity = now;
+        this.lastCallerActivity = now;
     }
 
     /** Record activity on the line — anything that means the call is alive. */
     public synchronized void touch(Instant now) {
         lastActivity = now;
+        lastCallerActivity = now;
     }
 
     /**
@@ -90,6 +94,14 @@ public class NoInputWatchdog {
         prompts++;
         lastActivity = now; // the prompt itself resets the clock
         return NoInputAction.PROMPT;
+    }
+
+    /**
+     * Whether the caller has been quiet for at least {@code limit} in total. Reminder prompts
+     * and bot speech do not reset this clock, so it is the agent's "end call on silence" ceiling.
+     */
+    public synchronized boolean isCallerSilentFor(Instant now, Duration limit) {
+        return !finished && Duration.between(lastCallerActivity, now).compareTo(limit) >= 0;
     }
 
     /** How many prompts the last check allowed — the stage's own limit when it sets one. */

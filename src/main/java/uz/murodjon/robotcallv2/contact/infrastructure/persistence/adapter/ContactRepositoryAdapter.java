@@ -46,6 +46,7 @@ public class ContactRepositoryAdapter implements ContactRepository {
         entity.setAddress(contact.address());
         entity.setTagsFromString(contact.tags());
         entity.setNotes(contact.notes());
+        entity.setCustomFields(contact.customFields());
         entity.setCreatedAt(Instant.now());
         return contactJpaRepository.save(entity).getId();
     }
@@ -81,6 +82,7 @@ public class ContactRepositoryAdapter implements ContactRepository {
             entity.setAddress(contact.address());
             entity.setTagsFromString(contact.tags());
             entity.setNotes(contact.notes());
+            entity.setCustomFields(contact.customFields());
             contactJpaRepository.save(entity);
         });
     }

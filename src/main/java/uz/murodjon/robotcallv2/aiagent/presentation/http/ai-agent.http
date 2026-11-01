@@ -81,14 +81,12 @@ Authorization: Bearer {{auth_token}}
     "dailyCallsLimit": 1000
   },
   "initiationWebhook": {
-    "url": "https://webhook.site/test-start",
-    "headers": { "Authorization": "Bearer secret" },
-    "timeoutSeconds": 5
+    "webhookUrl": "https://webhook.site/test-start",
+    "headers": { "Authorization": "Bearer secret" }
   },
   "postCallWebhook": {
-    "url": "https://webhook.site/test-end",
-    "headers": { "Authorization": "Bearer secret" },
-    "timeoutSeconds": 10
+    "webhookUrl": "https://webhook.site/test-end",
+    "headers": { "Authorization": "Bearer secret" }
   },
   "ambience": {
     "background": "OFFICE",
@@ -265,14 +263,12 @@ Authorization: Bearer {{auth_token}}
 {
   "useRag": true,
   "initiationWebhook": {
-    "url": "https://api.example.com/webhooks/call-started",
-    "headers": { "Authorization": "Bearer secret_token" },
-    "timeoutSeconds": 5
+    "webhookUrl": "https://api.example.com/webhooks/call-started",
+    "headers": { "Authorization": "Bearer secret_token" }
   },
   "postCallWebhook": {
-    "url": "https://api.example.com/webhooks/call-ended",
-    "headers": { "Authorization": "Bearer secret_token" },
-    "timeoutSeconds": 10
+    "webhookUrl": "https://api.example.com/webhooks/call-ended",
+    "headers": { "Authorization": "Bearer secret_token" }
   },
   "emotionAdaptiveVoice": true,
   "speakingWarmth": "BALANCED",

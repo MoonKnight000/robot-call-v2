@@ -5,9 +5,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeChunkRepository;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeCollectionRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.TextEmbedderPort;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.IndexedChunk;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeQuery;
 
 import java.util.*;
 
@@ -38,11 +40,16 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
     private static final double MIN_KEYWORD_SCORE = 0.20;
     /** A question is not a query below this; "ha", "yo'q", "mmm" match everything and nothing. */
     private static final int MIN_QUERY_CHARS = 8;
+    /** The caller's latest words must be at least this long on their own, whatever context goes with them. */
+    private static final int MIN_QUESTION_CHARS = 3;
     /** Reciprocal-rank fusion constant: the usual 60, so one list's top hit cannot drown the other list. */
     private static final int RRF_K = 60;
 
     private final KnowledgeChunkRepository chunkRepository;
     private final TextEmbedderPort textEmbedder;
+    private final KnowledgeCollectionRepository collectionRepository;
+    /** The collections attached to each agent; read once, forgotten whenever the company is evicted. */
+    private final Map<Long, Set<Long>> attachedCollections = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * How many companies' passages are held at once. Every entry is that company's whole
@@ -70,9 +77,11 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
                 }
             });
 
-    public KnowledgeRetrievalService(KnowledgeChunkRepository chunkRepository, TextEmbedderPort textEmbedder) {
+    public KnowledgeRetrievalService(KnowledgeChunkRepository chunkRepository, TextEmbedderPort textEmbedder,
+                                     KnowledgeCollectionRepository collectionRepository) {
         this.chunkRepository = chunkRepository;
         this.textEmbedder = textEmbedder;
+        this.collectionRepository = collectionRepository;
     }
 
     @Override
@@ -83,7 +92,18 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
     @Override
     public List<KnowledgePassage> findRelevantPassagesIncludingSources(long companyId, Long agentId, List<Long> extraSourceIds,
                                                                        String question, int limit) {
-        if (question == null || question.trim().length() < MIN_QUERY_CHARS || limit <= 0) {
+        return searchPassages(companyId, agentId, extraSourceIds, KnowledgeQuery.of(question), limit);
+    }
+
+    @Override
+    public List<KnowledgePassage> searchPassages(long companyId, Long agentId, List<Long> extraSourceIds,
+                                                 KnowledgeQuery query, int limit) {
+        String question = query.question();
+        String semanticText = query.semanticText() == null || query.semanticText().isBlank() ? question : query.semanticText();
+        // The latest words must be more than a filler, but the length rule is read on the whole query so
+        // a short follow-up ("narxi?") after context still searches.
+        if (question == null || question.trim().length() < MIN_QUESTION_CHARS
+                || semanticText.trim().length() < MIN_QUERY_CHARS || limit <= 0) {
             return List.of();
         }
         List<IndexedChunk> chunks = visibleChunks(companyId, agentId, extraSourceIds == null ? List.of() : extraSourceIds);
@@ -91,19 +111,23 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
             return List.of();
         }
 
+        // Keywords stay on the latest words: earlier turns would make every passage that merely
+        // shares a word with the conversation a keyword hit.
         List<KnowledgePassage> keywordHits = byScore(scoreByKeywords(chunks, question));
-        float[] queryVector = textEmbedder.embedQuery(question);
+        float[] queryVector = textEmbedder.embedQuery(semanticText);
         if (queryVector == null) {
             return keywordHits.stream().limit(limit).toList();
         }
+        double minScore = query.minSemanticScore() != null ? query.minSemanticScore() : MIN_SEMANTIC_SCORE;
         // Hybrid (NEXT-PLAN A.3): the passage an embedding ranks low — a contract number, a
         // product code, a name — is often exactly the one whose words the caller said.
-        return fuse(byScore(scoreBySimilarity(chunks, queryVector)), keywordHits, limit);
+        return fuse(byScore(scoreBySimilarity(chunks, queryVector, minScore)), keywordHits, limit);
     }
 
     @Override
     public void evictCompany(long companyId) {
         cache.remove(companyId);
+        attachedCollections.clear();
     }
 
     private List<IndexedChunk> visibleChunks(long companyId, Long agentId, List<Long> extraSourceIds) {
@@ -121,10 +145,11 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
         if (agentId == null || all.isEmpty()) {
             return all;
         }
+        Set<Long> attached = attachedCollections.computeIfAbsent(agentId, collectionRepository::findCollectionIdsByAgentId);
         // The cache holds the whole company; narrowing to this agent's own sources plus
         // the company-wide ones happens here, on a list that is already in memory.
         return all.stream()
-                .filter(chunk -> chunk.visibleTo(agentId) || extraSourceIds.contains(chunk.sourceId()))
+                .filter(chunk -> chunk.visibleTo(agentId, attached) || extraSourceIds.contains(chunk.sourceId()))
                 .toList();
     }
 
@@ -156,7 +181,7 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
                 .toList();
     }
 
-    private static List<KnowledgePassage> scoreBySimilarity(List<IndexedChunk> chunks, float[] query) {
+    private static List<KnowledgePassage> scoreBySimilarity(List<IndexedChunk> chunks, float[] query, double minScore) {
         double queryNorm = norm(query);
         if (queryNorm == 0.0) {
             return List.of();
@@ -168,7 +193,7 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
                 continue;
             }
             double score = cosine(query, vector, queryNorm);
-            if (score >= MIN_SEMANTIC_SCORE) {
+            if (score >= minScore) {
                 hits.add(new KnowledgePassage(chunk.sourceId(), chunk.sourceName(), chunk.content(), score));
             }
         }

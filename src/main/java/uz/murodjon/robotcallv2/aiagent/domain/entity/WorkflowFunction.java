@@ -24,18 +24,25 @@ import java.util.Map;
  *                  came — before anything is cut for the model
  * @param dependsOn ids of the functions this one waits for; it runs only if they all succeeded
  * @param enabled   whether the function runs
+ * @param code      instead of a tool: a JavaScript function body that reads {@code vars} (the call's variables and
+ *                  what earlier functions produced) and returns an object whose fields become variables.
+ *                  Runs in the {@code StageScriptRunner} sandbox; {@code toolName}, {@code inputs} and
+ *                  {@code outputs} are then unused
  */
 public record WorkflowFunction(
         @NotBlank @Size(max = 64) String id,
-        @NotBlank @Size(max = 100) String toolName,
+        @Size(max = 100) String toolName,
         Map<String, String> inputs,
         Map<String, String> outputs,
         List<String> dependsOn,
-        boolean enabled
+        boolean enabled,
+        @Size(max = 10_000) String code
 ) {
     public WorkflowFunction {
         inputs = inputs == null ? Map.of() : Map.copyOf(inputs);
         outputs = outputs == null ? Map.of() : Map.copyOf(outputs);
         dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
+        toolName = toolName == null || toolName.isBlank() ? null : toolName.trim();
+        code = code == null || code.isBlank() ? null : code;
     }
 }

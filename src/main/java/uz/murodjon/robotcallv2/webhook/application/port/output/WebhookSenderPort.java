@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.webhook.application.port.output;
 
+import java.time.Duration;
 import java.util.Map;
 
 /**
@@ -33,8 +34,9 @@ public interface WebhookSenderPort {
     /**
      * POSTs {@code payload} as JSON and reads the reply as a JSON object.
      *
+     * @param readTimeout how long to wait for the reply; null for the adapter default
      * @return the reply, or {@code null} when the endpoint answered with no body
      */
     Map<String, Object> postForObject(String url, Map<String, String> headers, Map<String, Object> payload,
-                                      String signingSecret, String deliveryId);
+                                      String signingSecret, String deliveryId, Duration readTimeout);
 }

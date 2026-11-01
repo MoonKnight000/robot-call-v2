@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.agent.dialog.DialogRouter;
 import uz.murodjon.robotcallv2.agent.dialog.OperatorSnapshot;
+import uz.murodjon.robotcallv2.agent.dialog.TransferTargets;
 import uz.murodjon.robotcallv2.agent.session.CallSession;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallAttemptUseCase;
@@ -21,6 +22,7 @@ import uz.murodjon.robotcallv2.operator.infrastructure.config.OperatorProperties
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -108,12 +110,11 @@ class OperatorTransferService {
         if (toOperator) {
             targetEndpoint = asteriskProperties.buildOperatorDialString(operatorEndpoint.trim());
         } else if (toStageNumber) {
-            targetEndpoint = "PJSIP/" + stageNumber.trim();
+            targetEndpoint = toDialString(stageNumber);
         } else if (agent != null && agent.callBehaviour().transferPhoneNumber() != null && !agent.callBehaviour().transferPhoneNumber().isBlank()) {
-            String num = agent.callBehaviour().transferPhoneNumber().trim();
-            targetEndpoint = num.startsWith("PJSIP/") || num.startsWith("SIP/") ? num : ("PJSIP/" + num);
-        } else if (operatorProperties.enabled() && operatorProperties.endpoint() != null && !operatorProperties.endpoint().isBlank()) {
-            targetEndpoint = operatorProperties.endpoint();
+            targetEndpoint = toDialString(agent.callBehaviour().transferPhoneNumber());
+        } else {
+            targetEndpoint = TransferTargets.findGlobalOperatorEndpoint(operatorProperties);
         }
 
         if (targetEndpoint == null) {
@@ -166,6 +167,25 @@ class OperatorTransferService {
             log.error("Operator transfer failed for {}: {}", channelId, e.getMessage());
             ariClient.hangup(channelId);
         }
+    }
+
+    /**
+     * The Asterisk dial string of a transfer number: a {@code PJSIP/} or {@code SIP/} endpoint as it is, a
+     * {@code sip:}/{@code sips:} URI reduced to its user part (the number) and a plain number through
+     * {@code PJSIP/}.
+     */
+    static String toDialString(String destination) {
+        String target = destination.trim();
+        if (target.startsWith("PJSIP/") || target.startsWith("SIP/")) {
+            return target;
+        }
+        String lower = target.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("sip:") || lower.startsWith("sips:")) {
+            target = target.substring(target.indexOf(':') + 1);
+            int host = target.indexOf('@');
+            target = host >= 0 ? target.substring(0, host) : target;
+        }
+        return "PJSIP/" + target;
     }
 
     CallOffer buildCallOffer(String channelId, CallSession session, OperatorSnapshot snapshot, String summary) {

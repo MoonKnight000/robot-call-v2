@@ -32,7 +32,7 @@ public class DialogTranscript {
             // summarized already, and a line written now was never heard.
             return;
         }
-        String safeLine = PiiRedactor.redact(line);
+        String safeLine = PiiRedactor.redact(line, s.agent());
         callTranscriptUseCase.addTranscript(s.callAttemptId(), "AGENT", safeLine, s.state(), offsetMs(s), null);
         publishLine(s.companyId(), s.channelId(), "AGENT", safeLine, s.state());
     }
@@ -41,7 +41,7 @@ public class DialogTranscript {
      * Publish one line the caller said.
      */
     public void publishClientLine(DialogSession s, String text) {
-        String safeText = PiiRedactor.redact(text);
+        String safeText = PiiRedactor.redact(text, s.agent());
         publishLine(s.companyId(), s.channelId(), "CLIENT", safeText, s.state());
     }
 

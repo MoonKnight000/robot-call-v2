@@ -7,6 +7,7 @@ import java.util.List;
 
 public record CreateKnowledgeSourceRequest(
         Long agentId,
+        Long collectionId,
         @NotEmpty List<@Valid CreateKnowledgeSourceItem> documents
 ) {
 }

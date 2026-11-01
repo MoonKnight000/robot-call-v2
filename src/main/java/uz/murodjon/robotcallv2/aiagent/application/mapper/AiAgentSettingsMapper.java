@@ -64,7 +64,14 @@ public final class AiAgentSettingsMapper {
                         ? dto.preConversationAudioFileId() : base.preConversationAudioFileId(),
                 dto.autoEscalateOnFrustration() != null ? dto.autoEscalateOnFrustration() : base.autoEscalateOnFrustration(),
                 dto.frustrationThreshold() != null ? dto.frustrationThreshold() : base.frustrationThreshold(),
-                dto.responseWaitMs() != null ? dto.responseWaitMs() : base.responseWaitMs());
+                dto.responseWaitMs() != null ? dto.responseWaitMs() : base.responseWaitMs(),
+                dto.reminderAfterSeconds() != null ? dto.reminderAfterSeconds() : base.reminderAfterSeconds(),
+                dto.reminderMaxCount() != null ? dto.reminderMaxCount() : base.reminderMaxCount(),
+                dto.dtmfTimeoutMs() != null ? dto.dtmfTimeoutMs() : base.dtmfTimeoutMs(),
+                dto.dtmfTerminationKey() != null ? dto.dtmfTerminationKey() : base.dtmfTerminationKey(),
+                dto.dtmfDigitLimit() != null ? dto.dtmfDigitLimit() : base.dtmfDigitLimit(),
+                dto.ringDurationSeconds() != null ? dto.ringDurationSeconds() : base.ringDurationSeconds(),
+                dto.pressDigitEnabled() != null ? dto.pressDigitEnabled() : base.pressDigitEnabled());
     }
 
     public static AiAgentLimits toAiAgentLimits(AgentLimitsDto dto, AiAgentLimits base) {
