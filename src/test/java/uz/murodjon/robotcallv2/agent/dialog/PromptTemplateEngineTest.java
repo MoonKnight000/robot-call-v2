@@ -24,6 +24,13 @@ class PromptTemplateEngineTest {
     }
 
     @Test
+    void usesFallbackEvenWhenThereAreNoVariables() {
+        String template = "Assalomu alaykum, {{clientName | hurmatli mijoz}}! {{other}}";
+        assertThat(PromptTemplateEngine.render(template, null)).isEqualTo("Assalomu alaykum, hurmatli mijoz! {{other}}");
+        assertThat(PromptTemplateEngine.render(template, Map.of())).isEqualTo("Assalomu alaykum, hurmatli mijoz! {{other}}");
+    }
+
+    @Test
     void replacesSimplePlaceholders() {
         String template = "Salom {{name}}, sizning qarzingiz {{amount}} so'm.";
         Map<String, Object> vars = Map.of("name", "Anvar", "amount", "150000");

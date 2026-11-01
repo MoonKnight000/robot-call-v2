@@ -133,17 +133,17 @@ public class RealtimeWatchdogRunner {
             if (watchdog == null) {
                 return;
             }
+            boolean answerComing = s.toolsInFlight().get() > 0 || s.isEngineWorking()
+                    || s.awaitingAnswer(System.nanoTime());
             int silenceEndSeconds = CallLimits.silenceEndCallSeconds(s.agent());
-            if (silenceEndSeconds > 0
-                    && watchdog.isCallerSilentFor(Instant.now(), Duration.ofSeconds(silenceEndSeconds))) {
+            if (silenceEndSeconds > 0 && watchdog.isCallerSilentFor(Instant.now(), s.endpoint().isPlaying(),
+                    answerComing, Duration.ofSeconds(silenceEndSeconds))) {
                 metrics.noInputHangup();
                 CallMdc.with(s.channelId(), () -> log.info("[{}] closing realtime call (caller silent for {}s, agent limit)",
                         s.channelId(), silenceEndSeconds));
                 requestFarewell(s, GIVE_UP, finisher);
                 return;
             }
-            boolean answerComing = s.toolsInFlight().get() > 0 || s.isEngineWorking()
-                    || s.awaitingAnswer(System.nanoTime());
             Duration idle = Duration.ofSeconds(CallLimits.reminderSeconds(s.agent(), dialogProperties.noInputSeconds()));
             int maxPrompts = CallLimits.reminderMaxCount(s.agent(), dialogProperties.noInputMaxPrompts());
             switch (watchdog.check(Instant.now(), s.endpoint().isPlaying(), answerComing, idle, maxPrompts)) {

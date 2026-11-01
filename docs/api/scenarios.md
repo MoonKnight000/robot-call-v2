@@ -27,7 +27,7 @@ bajaradi — pastdagi `PUT` ga qarang.
 
 ## Built-in (Tayyor) Ssenariy Shablonlari
 
-Tizimda biznesning eng ko'p talab qilinadigan sohalari uchun 10 ta built-in stsenariy mavjud:
+Tizimda biznesning eng ko'p talab qilinadigan sohalari uchun 14 ta built-in stsenariy mavjud:
 
 1. **`debt-collection`** — Qarzdorlikni eslatish, to'lov sanasi va summasini kelishish (`promisedDate`, `promisedAmount`), rad etish sababini yozib olish.
 2. **`order-confirmation`** — Yangi buyurtmani tasdiqlash, yetkazib berish manzili va qulay vaqtini aniqlash yoki bekor qilish sababini qayd qilish.
@@ -39,6 +39,10 @@ Tizimda biznesning eng ko'p talab qilinadigan sohalari uchun 10 ta built-in stse
 8. **`reception`** — Kiruvchi qo'ng'iroqlarni qabul qiluvchi aqlli AI kotiba (FAQ va tegishli bo'limga uzatish).
 9. **`inbound-lead`** — Reklamadan kirib kelgan qo'ng'iroqlarni qabul qilish va kontakt ma'lumotlarini bazaga saqlash.
 10. **`callback-request`** — Operatorlar band bo'lganda kiruvchi mijozdan qulay qayta qo'ng'iroq vaqtini so'rab olish.
+11. **`debt-pre-due-reminder`** — To'lov sanasi yaqinlashgan mijozga xushmuomala eslatma (qarz haqida gapirmaydi).
+12. **`debt-promise-follow-up`** — Va'da qilingan sana o'tgach: to'lov bo'lganini aniqlash yoki yangi sana olish.
+13. **`lead-qualification-crm`** — Uysot'dagi yangi lidga: qanday xonadon va qaysi TJM'dan olmoqchiligini aniqlash (`flatType`, `residentialComplex`), CRM'dagi lidga izoh yozish va bosqichini o'zgartirish.
+14. **`debt-collection-crm`** — Qarzni eslatish, kechikish sababini (`reasonCode`, `reasonDetail`) va aniq to'lov sanasini (`promisedDate`) olish, Uysot'dagi lidga o'sha sanaga topshiriq ochish.
 
 ---
 

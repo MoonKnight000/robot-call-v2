@@ -283,6 +283,10 @@ public class SystemPromptFactory {
         ScenarioDefinition def = s.scenario();
         CallContext c = s.context();
         StringBuilder sb = new StringBuilder();
+        // What differs from one call to the next (facts, the time, the client's name) goes into
+        // `call`, appended last: Gemini caches a request by its leading bytes, so everything above
+        // it is then the same on every call of this agent and is served cached from the first turn.
+        StringBuilder call = new StringBuilder();
         // Fixed for the whole call, so it does not disturb the cached prefix.
         boolean singleStage = StageEntry.hasNowhereToTransition(def);
         boolean transferOffered = TransferTargets.isOfferedAnywhere(s.agent(), s.isTransferTargetAvailable(), def);
@@ -299,7 +303,7 @@ public class SystemPromptFactory {
                     .append(". If the client speaks in another supported language, switch naturally and continue in that language.\n\n");
         }
 
-        appendCallFrame(sb, s.isInbound(), def.callPurpose(), c.goal(), c.facts());
+        appendCallFrame(call, s.isInbound(), def.callPurpose(), c.goal(), c.facts());
         appendCompany(sb, s.companyName(), s.isInbound());
 
         if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
@@ -327,21 +331,21 @@ public class SystemPromptFactory {
         ZoneId zone = findCallerZone(s.agent());
         ZonedDateTime now = ZonedDateTime.now(zone);
         LocalDate today = now.toLocalDate();
-        sb.append("TODAY (BUGUNGI SANA): ").append(today).append(" (")
+        call.append("TODAY (BUGUNGI SANA): ").append(today).append(" (")
                 .append(today.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.ENGLISH))
                 .append("), CURRENT TIME: ").append(now.toLocalTime().truncatedTo(ChronoUnit.MINUTES))
                 .append(".\n");
-        sb.append(dateAnchors(today)).append(TIME_ANCHORS).append('\n');
+        call.append(dateAnchors(today)).append(TIME_ANCHORS).append('\n');
 
         List<FactField> factSchema = def.factSchema();
         if (factSchema != null && !factSchema.isEmpty()) {
-            sb.append("FACTS (FAKTLAR — state only these, never change them):\n");
+            call.append("FACTS (FAKTLAR — state only these, never change them):\n");
             for (FactField f : factSchema) {
-                sb.append("- ").append(FACT_LABELS.getOrDefault(f.name(), f.name())).append(": ")
+                call.append("- ").append(FACT_LABELS.getOrDefault(f.name(), f.name())).append(": ")
                         .append(orDash(c.fact(f.name()))).append('\n');
             }
         }
-        appendMemory(sb, c.memory(), zone);
+        appendMemory(call, c.memory(), zone);
 
         Object nameObj = c != null ? c.fact("clientName") : null;
         if ((nameObj == null || nameObj.toString().isBlank()) && c != null && c.memory() != null && c.memory().preferredName() != null && !c.memory().preferredName().isBlank()) {
@@ -351,9 +355,9 @@ public class SystemPromptFactory {
         String sampleIdentityUz = (clientName != null ? clientName : "Murodjon") + " aka, yaxshimisiz?";
 
         if (s.isInbound()) {
-            sb.append('\n').append(inboundOpening(s.isDisclosureSpoken()));
+            call.append('\n').append(inboundOpening(s.isDisclosureSpoken()));
         } else if (s.isDisclosureSpoken()) {
-            sb.append("\n[SYSTEM: The greeting and the \"automated service, the call is being recorded\" ")
+            call.append("\n[SYSTEM: The greeting and the \"automated service, the call is being recorded\" ")
                     .append("disclosure have already been spoken — the client has heard them.\n")
                     .append("So NOWHERE IN THE CALL — not in the first reply, not in any later one — greet, ")
                     .append("reintroduce yourself or the company, or say again that the call is recorded ")
@@ -362,18 +366,18 @@ public class SystemPromptFactory {
                     .append("client asks. Your first reply goes straight to the scenario's next stage and opens ")
                     .append("like a live, natural person: ");
             if (clientName != null) {
-                sb.append("to confirm identity, say the name the way an experienced live operator does: \"")
+                call.append("to confirm identity, say the name the way an experienced live operator does: \"")
                         .append(clientName).append(" aka, yaxshimisiz?\" — a reply that takes the name without objecting ")
                         .append("(\"rahmat, yaxshi\", \"ha, eshitaman\") already confirms it ");
             } else {
-                sb.append("to confirm identity, say the name the way an experienced live operator does: \"[Ism] aka, yaxshimisiz?\" ")
+                call.append("to confirm identity, say the name the way an experienced live operator does: \"[Ism] aka, yaxshimisiz?\" ")
                         .append("(NOTE: if the name is unknown, never ramble with 'men kimligingizni so'ramoqchiman' or 'kimsiz' — address them politely and go straight to the purpose) ");
             }
-            sb.append("(STRICTLY FORBIDDEN: saying \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" or \"mijoz\"). If there is no need to ask who they are, politely go to the purpose.]\n");
+            call.append("(STRICTLY FORBIDDEN: saying \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" or \"mijoz\"). If there is no need to ask who they are, politely go to the purpose.]\n");
         } else {
             if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
                 String personaName = resolveVoicePersonaName(s.ttsVoice(), s.language());
-                sb.append("\n[SYSTEM: In your first reply, greet and introduce yourself like a person: \"Salom, mening ismim ")
+                call.append("\n[SYSTEM: In your first reply, greet and introduce yourself like a person: \"Salom, mening ismim ")
                         .append(personaName).append(". ")
                         .append(s.companyName() != null ? s.companyName().trim() + " kompaniyasidan qo'ng'iroq qilyapman. " : "")
                         .append(singleStage
@@ -382,11 +386,11 @@ public class SystemPromptFactory {
                                 + sampleIdentityUz + "\", or to the main purpose): "
                                 + "write what you say as plain text, then call the transitionTo tool. Do not just greet and stop.]\n");
             } else if (singleStage) {
-                sb.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
+                call.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
                         .append("and IMMEDIATELY go on to the purpose of the call: write what you say as plain text. ")
                         .append("Do not just greet and stop. STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\".]\n");
             } else {
-            sb.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
+            call.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
                     .append("and IMMEDIATELY move to the scenario's next stage (e.g. to confirm identity: \"")
                     .append(sampleIdentityUz).append("\", or to the main purpose): ")
                     .append("write what you say as plain text, then call the transitionTo tool. ")
@@ -431,7 +435,7 @@ public class SystemPromptFactory {
                     .append("the goal, do not repeat it — move to the next stage.\n\n");
         }
 
-        // Numbered, one line each, and last in the prefix. The same rules as prose in one
+        // Numbered, one line each, and last of the shared part. The same rules as prose in one
         // paragraph were being dropped: a real call opened with "Ushbu to'lov qachon amalga
         // oshirilishi kutilmoqda?", two banned words in a sentence whose form was banned too.
         sb.append("SPEECH RULES — check every reply against this list:\n");
@@ -441,6 +445,7 @@ public class SystemPromptFactory {
         }
         sb.append('\n').append(examples(def, s.language())).append('\n');
 
+        sb.append("THIS CALL:\n").append(call);
         return sb.toString();
     }
 

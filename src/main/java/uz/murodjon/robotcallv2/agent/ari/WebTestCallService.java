@@ -19,6 +19,8 @@ import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.campaign.domain.entity.CampaignTarget;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.contact.application.port.input.ContactUseCase;
+import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
@@ -70,6 +72,7 @@ class WebTestCallService {
     private final ObjectMapper objectMapper;
     private final CompanyConfigUseCase companyConfigUseCase;
     private final TelephonyGatewayResolver telephonyGatewayResolver;
+    private final ContactUseCase contactUseCase;
 
     WebTestCallService(PendingCallRegistry pendingCallRegistry,
                        OutboundDialService outboundDialService,
@@ -83,7 +86,9 @@ class WebTestCallService {
                        AuditUseCase audit,
                        ObjectMapper objectMapper,
                        CompanyConfigUseCase companyConfigUseCase,
-                       TelephonyGatewayResolver telephonyGatewayResolver) {
+                       TelephonyGatewayResolver telephonyGatewayResolver,
+                       ContactUseCase contactUseCase) {
+        this.contactUseCase = contactUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
         this.telephonyGatewayResolver = telephonyGatewayResolver;
         this.objectMapper = objectMapper;
@@ -123,10 +128,10 @@ class WebTestCallService {
      * the draft, the scenario, or the default test scenario.
      */
     String prepareWebTest(long companyId, Long campaignId, Long targetId, Long aiAgentId, Integer agentVersion,
-                          Long scenarioId, ScenarioDefinition definition) {
+                          Long contactId, Long scenarioId, ScenarioDefinition definition) {
         pendingCallRegistry.purgeExpiredWebTests();
         OutboundCall outbound = campaignId != null ? buildWebTestProfile(companyId, campaignId, targetId, agentVersion)
-                : aiAgentId != null ? buildAgentWebTestProfile(companyId, aiAgentId, agentVersion)
+                : aiAgentId != null ? buildAgentWebTestProfile(companyId, aiAgentId, agentVersion, contactId)
                 : null;
         // The scenario has to be the caller's own, and the session carries the company: it
         // used to carry neither, so a scenario test ran as the default company — any tenant
@@ -139,7 +144,7 @@ class WebTestCallService {
         pendingCallRegistry.registerWebTest(sessionId, new WebTestCall(outbound, definition, scenarioId, companyId, Instant.now()));
         audit.record(companyId, "CALL_WEB_TEST", "call", sessionId,
                 campaignId != null ? "campaign " + campaignId + (targetId != null ? " target " + targetId : "")
-                        : aiAgentId != null ? "agent " + aiAgentId : null);
+                        : aiAgentId != null ? "agent " + aiAgentId + (contactId != null ? " contact " + contactId : "") : null);
         return sessionId;
     }
 
@@ -211,14 +216,27 @@ class WebTestCallService {
     /**
      * An agent's call profile for a browser test, without a campaign: its voice, persona and
      * models, its scenario, and the configured test facts — how an editor hears the agent
-     * before any campaign points at it.
+     * before any campaign points at it. Given a contact, the call is that contact's: its phone
+     * (so the CRM tools find the client and the extracted fields are saved to the contact),
+     * its name and the memory of its earlier calls.
      */
-    private OutboundCall buildAgentWebTestProfile(long companyId, long aiAgentId, Integer agentVersion) {
+    private OutboundCall buildAgentWebTestProfile(long companyId, long aiAgentId, Integer agentVersion, Long contactId) {
         AiAgent agent = aiAgentService.requireAgentVersion(companyId, aiAgentId, agentVersion);
         Scenario scenario = aiAgentService.resolveScenario(companyId, agent);
         String language = agent.language();
-        return new OutboundCall(null, CallAttempt.NO_TARGET, null, WEB_TEST_PHONE,
-                language, agent.voiceFor(language), buildTestContext(scenario.definition()), agent, companyId,
+        String phone = WEB_TEST_PHONE;
+        CallContext context = buildTestContext(scenario.definition());
+        if (contactId != null) {
+            Contact contact = contactUseCase.requireContact(companyId, contactId);
+            phone = contact.phone();
+            Map<String, Object> facts = new HashMap<>(context.facts());
+            contact.customFields().forEach((name, value) -> putIfDeclared(facts, scenario.definition(), name, value));
+            putIfDeclared(facts, scenario.definition(), "clientName", contact.name());
+            context = new CallContext(facts, context.goal(),
+                    clientMemoryUseCase.findByCompanyIdAndPhone(companyId, phone));
+        }
+        return new OutboundCall(null, CallAttempt.NO_TARGET, null, phone,
+                language, agent.voiceFor(language), context, agent, companyId,
                 null, null, null, null);
     }
 

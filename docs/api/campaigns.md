@@ -1101,10 +1101,25 @@ qisqartirar edi. Keyingi steplardan biri **bitta qator** uchun yiqilsa — o'sha
 
 Chegaralar: 1-stepdan ko'pi bilan 5000 qator, 100 sahifa.
 
-Xuddi shu misol `R__seed_data.sql` da **"Namuna — CHAINED manba"** kampaniyasiga ulangan
-holda turadi: `GET /api/campaigns/{id}/target-source` bilan o'qib olib, uchta URL va
-`extract` yo'llarini o'zingiznikiga almashtirsangiz bo'ldi. Namuna ataylab ishlamaydigan
-qilingan — kampaniya `DRAFT` + `ONCE`, manba `enabled: false`, host esa `example.uz`.
+Seed'da `CHAINED` namunasi yo'q — yuqoridagi misolni `PUT /api/campaigns/{id}/target-source`
+bilan qo'yib, uchta URL va `extract` yo'llarini o'zingiznikiga almashtirsangiz bo'ldi.
+
+### 🌱 Seed'dagi tayyor kampaniyalar
+
+Yangi baza ko'tarilganda (`R__seed_data.sql`) company 1 da to'rtta kampaniya bor, hammasi
+`DRAFT` — operator ishga tushiradi:
+
+| Nomi | `kind` | Agent | Qachon / qayerdan |
+|---|---|---|---|
+| `Yangi lidlar — cascade` | `AUTO_ENROLL` | `Lid kvalifikatsiya (cascade)` | Uysot `LEAD_CREATED` webhook'i yoki `yangi-lid` tegli kontakt; har kuni 09:00–20:00 |
+| `Yangi lidlar — realtime` | `AUTO_ENROLL` | `Lid kvalifikatsiya (realtime)` | xuddi shunday |
+| `Qarzdorlik — kunlik (cascade)` | `STANDARD` | `Qarzdorlik (cascade)` | `DAILY`, 09:00–18:00, dushanba–shanba; nishonlar `UYSOT_DEBTORS` manbasidan |
+| `Qarzdorlik — kunlik (realtime)` | `STANDARD` | `Qarzdorlik (realtime)` | xuddi shunday |
+
+Har juftlikdan **bittasini** ishga tushiring: ikkala qarzdorlik kampaniyasi bir xil ro'yxatni
+oladi (bir vaqtda ishlasa, har qarzdorga ikki marta qo'ng'iroq bo'ladi), Uysot webhook'i esa
+lidni kompaniyaning eng kichik `id` li `ACTIVE` AI kampaniyasiga qo'yadi — lid kampaniyalari
+shuning uchun birinchi yaratiladi.
 
 Validatsiya (`400`): `TARGET_SOURCE_STEPS_REQUIRED` (`CHAINED`, lekin step yo'q),
 `TARGET_SOURCE_STEP_URL_MISSING` (step'da `url` yo'q), `TARGET_SOURCE_STEP_EXTRACTS_NOTHING` (`extract` bo'sh),

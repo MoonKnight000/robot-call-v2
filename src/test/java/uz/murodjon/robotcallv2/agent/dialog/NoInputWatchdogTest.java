@@ -110,4 +110,41 @@ class NoInputWatchdogTest {
         assertThat(w.check(T0.plusSeconds(16), false, false)).isEqualTo(NONE);
         assertThat(w.check(T0.plusSeconds(17), false, false)).isEqualTo(PROMPT);
     }
+
+    @Test
+    void theAgentsOwnTalkingIsNotTheCallersSilence() {
+        // The call of 2026-11-01: the greeting took 9s to compose and 8s to say, and the
+        // caller who answered 4s after it ended was hung up on as "silent for 20s".
+        NoInputWatchdog w = watchdog(2);
+        Duration limit = Duration.ofSeconds(20);
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(1), false, true, limit)).isFalse();
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(9), true, false, limit)).isFalse();
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(17), true, false, limit)).isFalse();
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(21), false, false, limit)).isFalse();
+        // Only the 1s before the turn started and the wait since the greeting ended count.
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(39), false, false, limit)).isFalse();
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(40), false, false, limit)).isTrue();
+    }
+
+    @Test
+    void remindersPauseTheSilenceCeilingButDoNotResetIt() {
+        NoInputWatchdog w = watchdog(5);
+        Duration limit = Duration.ofSeconds(20);
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(10), false, false, limit)).isFalse();
+        // A reminder plays for 3s: the clock stands still, it does not start over.
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(11), true, false, limit)).isFalse();
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(14), false, false, limit)).isFalse();
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(22), false, false, limit)).isFalse();
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(23), false, false, limit)).isTrue();
+    }
+
+    @Test
+    void theCallerSpeakingRestartsTheSilenceCeiling() {
+        NoInputWatchdog w = watchdog(2);
+        Duration limit = Duration.ofSeconds(20);
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(15), false, false, limit)).isFalse();
+        w.touch(T0.plusSeconds(15));
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(34), false, false, limit)).isFalse();
+        assertThat(w.isCallerSilentFor(T0.plusSeconds(35), false, false, limit)).isTrue();
+    }
 }

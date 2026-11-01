@@ -98,14 +98,15 @@ public class CallService implements CallControlUseCase {
         int sources = (request.campaignId() != null ? 1 : 0) + (request.aiAgentId() != null ? 1 : 0)
                 + (request.scenarioId() != null ? 1 : 0) + (request.definition() != null ? 1 : 0);
         if (sources > 1 || (request.targetId() != null && request.campaignId() == null)
-                || (request.agentVersion() != null && request.campaignId() == null && request.aiAgentId() == null)) {
+                || (request.agentVersion() != null && request.campaignId() == null && request.aiAgentId() == null)
+                || (request.contactId() != null && request.aiAgentId() == null)) {
             throw new ValidationException(ErrorCode.WEB_TEST_SOURCE_INVALID);
         }
         if (request.definition() != null) {
             requireValid(request.definition());
         }
         String sessionId = ariService.prepareWebTest(companyId, request.campaignId(), request.targetId(),
-                request.aiAgentId(), request.agentVersion(), request.scenarioId(), request.definition());
+                request.aiAgentId(), request.agentVersion(), request.contactId(), request.scenarioId(), request.definition());
         if (inRoom) {
             WebRtcJoin join = ariService.openBrowserCall(companyId, sessionId);
             return new WebTestCallResponse(sessionId, null, null, null, null, null,

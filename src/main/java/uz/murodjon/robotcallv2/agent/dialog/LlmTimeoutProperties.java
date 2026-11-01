@@ -22,11 +22,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                     no token stream to watch, so without it a hung request held the turn,
  *                     every later caller utterance and the silence watchdog until the ghost
  *                     reaper. 0 = no deadline
+ * @param backupAfterMs how long a streamed turn waits for the configured model's first token
+ *                     before the same request is also sent to the call's fast model; whichever
+ *                     answers first is the one spoken and the other is cancelled (Retell's
+ *                     backup model, which kicks in at 1500 ms). A turn already on the fast model,
+ *                     or one adopting a speculative reply, is not raced. 0 = off
  */
 @ConfigurationProperties(prefix = "voice-agent.dialog.llm-timeout")
 public record LlmTimeoutProperties(
         int tokenGapMs,
         int queueDrainMs,
-        int callTimeoutMs
+        int callTimeoutMs,
+        int backupAfterMs
 ) {
 }

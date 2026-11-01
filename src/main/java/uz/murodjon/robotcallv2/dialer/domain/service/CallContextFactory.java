@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.scenario.domain.entity.FactField;
+import uz.murodjon.robotcallv2.shared.util.PersonNames;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -183,7 +184,8 @@ public final class CallContextFactory {
             return imported;
         }
         Map<String, Object> facts = new HashMap<>(imported.facts());
-        putIfPresent(facts, "clientName", crm.name());
+        // A CRM placeholder ("Пропущенный звонок +998…") is no name to greet with, nor to replace the one imported.
+        putIfPresent(facts, "clientName", PersonNames.isUsable(crm.name()) ? crm.name() : null);
         putIfPresent(facts, "debtAmount", crm.debtAmount());
         putIfPresent(facts, "currency", crm.currency());
         putIfPresent(facts, "dueDate", crm.dueDate());

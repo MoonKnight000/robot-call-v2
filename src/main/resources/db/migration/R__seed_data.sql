@@ -1,8 +1,8 @@
 -- Seed data: everything a fresh database needs to place and answer a call without a
 -- single API call first — bootstrap tenant and the platform admin, the voice and model catalogs, the
--- built-in scenario templates, six ready AI agents (inbound, collections, lead qualification),
--- the debt and lead campaigns, the connected Uysot integration, the inbound route that answers the
--- softphone test extension and the knowledge base. Flyway repeatable migration — reruns whenever this file's checksum changes, so
+-- built-in scenario templates, four ready AI agents (lead qualification and collections, each
+-- on the cascade and on the realtime pipeline), their four campaigns, the connected Uysot
+-- integration, the inbound route that answers the softphone test extension and the knowledge base. Flyway repeatable migration — reruns whenever this file's checksum changes, so
 -- every statement below guards against re-insertion.
 --
 -- The bottom half ("TEST DATA") fills every screen with something to test against: users
@@ -869,54 +869,48 @@ $def$::jsonb,
 ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
     SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
--- Lead qualification that leaves its work in Uysot. The CRM tools (getClientProfile,
--- createLead, addLeadNote, moveLeadStage, createFollowUpTask, searchFlats,
--- listResidentialComplexes) are not declared here: they come from the company's Uysot
--- connection (CrmToolCallbacks) and are offered at every stage, so the stages only say WHEN
--- to use them. The scenario's own tools are the outcome: a booked visit, a refusal, a callback.
+-- Lead qualification for a lead just created in Uysot (the LEAD_CREATED webhook queues the call,
+-- see the lead campaigns below). One question per answer: which flat and in which residential
+-- complex (TJM). The agents copy both answers into the contact's custom fields after the call
+-- (ai_agent.data_needed[].contactField); the lead itself is updated during the call with the
+-- CRM tools (getClientProfile, listResidentialComplexes, addLeadNote, moveLeadStage, createLead).
+-- Those come from the company's Uysot connection (CrmToolCallbacks) and are offered at every
+-- stage, so the stages only say WHEN to use them. The scenario's own tools are the outcome.
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
     'lead-qualification-crm', 1,
     $$Lid kvalifikatsiyasi (Uysot CRM bilan)$$,
-    $$Yangi lidga qo'ng'iroq: ehtiyoj, byudjet, to'lov usuli va muddatni aniqlash, mos xonadon taklif qilish, shourumga uchrashuv belgilash; natijani CRM'ga — izoh, bosqich va menejerga topshiriq qilib yozish.$$,
+    $$Yangi lidga qo'ng'iroq: qanday xonadon va qaysi TJM'dan olmoqchiligini aniqlash; natijani kontakt kartasiga yozish, CRM'dagi lidni yangilash va lidga izoh qoldirish.$$,
     true, true,
 $def$
 {
-  "callPurpose": "Mijoz Uysot loyihalariga qiziqish bildirgan (reklama, sayt yoki qo'ng'iroq orqali). Maqsad — uni kvalifikatsiya qilish, shourumga uchrashuvga yozish va hammasini CRM'dagi lidiga yozib qo'yish.",
+  "callPurpose": "Mijoz Uysot CRM'da yangi lid bo'lib tushdi (reklama, sayt yoki ariza orqali). Maqsad — qanday xonadon (necha xonali) va qaysi turar joy majmuasidan (TJM) olmoqchiligini aniqlash, so'ng CRM'dagi lidni yangilab, izoh yozib qo'yish.",
   "stages": [
-    {"id": "GREETING", "purpose": "Salomlash va sababini bitta gapda ayt: 'Assalomu alaykum, [Ism] aka! Men Uysot'dan, yangi uylarimizga qiziqish bildirgan ekansiz — ikki daqiqa gaplasha olamizmi?'. Ism noma'lum bo'lsa ismini so'ra. Band desa — qulay vaqtni so'rab scheduleCallback. Suhbat boshida getClientProfile ni bir marta chaqir: CRM'da bor narsani qayta so'rama.", "allowedTransitions": ["NEEDS", "NOT_INTERESTED", "CLOSING", "END_CALL"],
-     "transitionConditions": {"NEEDS": "Mijoz gaplashishga rozi bo'ldi", "NOT_INTERESTED": "Mijoz qiziqmasligini yoki ariza qoldirmaganini aytdi", "CLOSING": "Mijoz band, qayta qo'ng'iroq vaqti yozildi"}},
-    {"id": "NEEDS", "purpose": "Ehtiyojni bitta-bitta savol bilan aniqla (har gapda bittadan): necha xonali, taxminiy byudjet, to'lov usuli (naqd, bo'lib to'lash yoki ipoteka), qachonga kerak, o'zi yashash uchunmi yoki investitsiyami, qaysi tuman/majmua. Mijoz aytganini recordQualification bilan yozib bor. Hammasini so'roq qilma — 3-4 asosiy javob yetarli.", "allowedTransitions": ["OFFER", "MEETING", "NOT_INTERESTED", "ESCALATE_TO_HUMAN", "END_CALL"],
-     "transitionConditions": {"OFFER": "Xonalar soni va byudjet ma'lum bo'ldi", "MEETING": "Mijoz o'zi ko'rgani kelmoqchi ekanini aytdi", "NOT_INTERESTED": "Mijoz qiziqmasligini aytdi"}},
-    {"id": "OFFER", "purpose": "searchFlats bilan mijoz shartlariga mos xonadonlarni top (majmua kerak bo'lsa avval listResidentialComplexes). Ko'pi bilan ikkita variantni qisqa ayt: majmua, xonalar, maydon, narx. Faqat tool qaytargan narsani ayt — narx yoki maydon to'qima. Hech narsa topilmasa: 'Aynan shunaqasini menejerimiz tanlab beradi' de. Keyin shourumga taklif qil.", "allowedTransitions": ["MEETING", "NOT_INTERESTED", "CRM_WRAPUP", "ESCALATE_TO_HUMAN", "END_CALL"],
-     "transitionConditions": {"MEETING": "Mijoz ko'rishga yoki uchrashuvga qiziqdi", "CRM_WRAPUP": "Mijoz hozir uchrashuvga tayyor emas, lekin qiziqishi bor"}},
-    {"id": "MEETING", "purpose": "Shourumga uchrashuvni aniq kun va soatga kelish: 'Ertaga yoki indinga, qaysi vaqt qulay?'. Vaqt aytilgach bookShowroomVisit chaqir, so'ng createFollowUpTask bilan menejerga 'Shourumda uchrashuv' topshirig'ini o'sha vaqtga ochib qo'y va moveLeadStage bilan lidni uchrashuv bosqichiga o't (voronkadagi mos bosqich nomi, masalan 'Uchrashuv belgilandi'). Vaqtni bitta gap bilan takrorla.", "allowedTransitions": ["CRM_WRAPUP", "ESCALATE_TO_HUMAN", "END_CALL"],
-     "transitionConditions": {"CRM_WRAPUP": "Uchrashuv vaqti yozildi"}},
-    {"id": "CRM_WRAPUP", "purpose": "Mijozga eshittirmasdan CRM'ni yangila: addLeadNote bilan 1-2 gapli xulosa yoz (xonalar, byudjet, to'lov usuli, muddat, kelishilgan keyingi qadam). Lid CRM'da yo'q bo'lsa — avval createLead. Uchrashuv bo'lmagan, lekin qiziqish bor bo'lsa — createFollowUpTask bilan menejerga qayta qo'ng'iroq topshirig'ini ertangi kunga och. Keyin CLOSING.", "allowedTransitions": ["CLOSING", "END_CALL"],
-     "transitionConditions": {"CLOSING": "CRM'ga izoh yozildi"}},
-    {"id": "NOT_INTERESTED", "purpose": "Bosim qilma. Sababini bitta savol bilan so'ra ('Boshqa joydan oldingizmi yoki hozircha rejada yo'qmi?'), recordNotInterested chaqir, addLeadNote bilan sababni lidga yoz va moveLeadStage bilan lidni rad bosqichiga o't (masalan 'Rad etdi'). Keyin xushmuomalalik bilan xayrlash.", "allowedTransitions": ["CLOSING", "END_CALL"],
+    {"id": "GREETING", "title": "Salomlashish", "purpose": "Salom hali aytilmagan bo'lsa — salomlash va sababini bitta gapda ayt: 'Assalomu alaykum, [Ism] aka! Men Uysot'dan, yangi uylarimizga ariza qoldirgan ekansiz — ikki daqiqa gaplasha olamizmi?' (ayol bo'lsa 'opa'). Salom allaqachon aytilgan bo'lsa — qayta salomlashma, mijoz javobini kut va unga qarab o't. Bu bosqichda hech qanday tool chaqirma va mijoz javob bermaguncha boshqa bosqichga o'tma. Band desa — qulay vaqtni so'rab scheduleCallback.", "allowedTransitions": ["FLAT_TYPE", "NOT_INTERESTED", "CLOSING", "END_CALL"], "allowedTools": ["scheduleCallback"],
+     "transitionConditions": {"FLAT_TYPE": "Mijoz gaplashishga rozi bo'ldi", "NOT_INTERESTED": "Mijoz qiziqmasligini yoki ariza qoldirmaganini aytdi", "CLOSING": "Mijoz band, qayta qo'ng'iroq vaqti yozildi"}},
+    {"id": "FLAT_TYPE", "title": "Xonadon turi", "purpose": "Bitta savol: 'Qanaqa xonadon qarayapsiz, aka — necha xonali?'. Mijoz o'zi qo'shimcha aytsa (maydon, qavat, byudjet) — eslab qol, lekin o'zing so'roq qilma. Javob noaniq bo'lsa ('kattaroq', 'oilaga') — bitta yumshoq aniqlashtiruvchi savol: 'Ikki xonalimi, uch xonali?'.", "allowedTransitions": ["COMPLEX", "NOT_INTERESTED", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["scheduleCallback"],
+     "transitionConditions": {"COMPLEX": "Mijoz xonadon turini (xonalar sonini) aytdi", "NOT_INTERESTED": "Mijoz qiziqmasligini aytdi"}},
+    {"id": "COMPLEX", "title": "TJM tanlash", "purpose": "Bitta savol: 'Qaysi TJM'imizdan olmoqchisiz, aka? Yoki hali tanlamadingizmi?'. Mijoz tanlamagan yoki nomini eslay olmasa — listResidentialComplexes chaqir va ko'pi bilan uchtasining NOMINI ayt (manzil yoki narx to'qima). Mijoz bitta majmuani aytgach yoki 'farqi yo'q' desa — recordLeadInterest ni chaqir: flatType va residentialComplex (farqi yo'q bo'lsa 'Farqi yo'q'). Faqat mijoz aytganini yoz.", "allowedTransitions": ["CRM_UPDATE", "NOT_INTERESTED", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordLeadInterest", "scheduleCallback"],
+     "transitionConditions": {"CRM_UPDATE": "recordLeadInterest chaqirildi", "NOT_INTERESTED": "Mijoz qiziqmasligini aytdi"}},
+    {"id": "CRM_UPDATE", "title": "CRM'ni yangilash", "purpose": "Mijozga eshittirmasdan CRM'dagi lidni yangila. Avval getClientProfile ni BIR MARTA chaqir; lid topilmagan bo'lsa — createLead (interest: xonadon turi va TJM). Keyin addLeadNote bilan 1-2 gapli izoh yoz: 'AI qo'ng'iroq: [xonadon turi], TJM — [majmua]. [mijoz qo'shimcha aytgan narsa, bo'lsa]'. So'ng moveLeadStage bilan lidni voronkadagi kvalifikatsiya bosqichiga o't (voronkadagi nomi bilan, masalan 'Kvalifikatsiya'). Keyin CLOSING.", "allowedTransitions": ["CLOSING", "END_CALL"], "allowedTools": [],
+     "transitionConditions": {"CLOSING": "Lidga izoh yozildi"}},
+    {"id": "NOT_INTERESTED", "title": "Qiziqmadi", "purpose": "Bosim qilma. Sababini bitta savol bilan so'ra ('Boshqa joydan oldingizmi yoki hozircha rejada yo'qmi?'), recordNotInterested chaqir, addLeadNote bilan sababni lidga yoz va moveLeadStage bilan lidni rad bosqichiga o't (voronkadagi nomi bilan, masalan 'Rad etdi'). Keyin xushmuomalalik bilan xayrlash.", "allowedTransitions": ["CLOSING", "END_CALL"], "allowedTools": ["recordNotInterested"],
      "transitionConditions": {"CLOSING": "Rad sababi yozildi"}},
-    {"id": "CLOSING", "purpose": "Qisqa xayrlash: uchrashuv bo'lsa vaqtini eslat, bo'lmasa 'Menejerimiz siz bilan bog'lanadi'. 'Rahmat, kuningiz xayrli bo'lsin!'.", "allowedTransitions": ["END_CALL"]},
-    {"id": "ESCALATE_TO_HUMAN", "purpose": "Mijoz menejer bilan gaplashmoqchi bo'lsa: addLeadNote bilan savolini yozib, operatorga ulashni bildir.", "allowedTransitions": ["END_CALL"]},
-    {"id": "END_CALL", "purpose": "Qo'ng'iroqni yakunlash.", "allowedTransitions": []}
+    {"id": "CLOSING", "title": "Xayrlashish", "purpose": "Qisqa xayrlash: 'Rahmat, aka! Menejerimiz siz aytgan variantlar bilan tez orada bog'lanadi. Kuningiz xayrli bo'lsin!'.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
+    {"id": "ESCALATE_TO_HUMAN", "title": "Operatorga ulash", "purpose": "Mijoz menejer bilan gaplashmoqchi bo'lsa: addLeadNote bilan savolini yozib, operatorga ulashni bildir.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
+    {"id": "END_CALL", "title": "Qo'ng'iroqni tugatish", "purpose": "Qo'ng'iroqni yakunlash.", "allowedTransitions": [], "allowedTools": []}
   ],
   "factSchema": [
     {"name": "clientName", "type": "string", "required": false},
-    {"name": "leadSource", "type": "string", "required": false},
-    {"name": "interest", "type": "string", "required": false}
+    {"name": "leadId", "type": "number", "required": false},
+    {"name": "source", "type": "string", "required": false},
+    {"name": "responsibleName", "type": "string", "required": false}
   ],
   "tools": [
-    {"name": "recordQualification", "description": "Records what the client said about their need. Call it whenever a new answer is given; pass only the fields the client actually said", "params": [
-      {"name": "rooms", "type": "string", "required": false, "constraint": "number of rooms, e.g. '2' or '2-3'"},
-      {"name": "budget", "type": "string", "required": false, "constraint": "budget as the client said it, e.g. '60 ming dollar' or '700 mln so''m gacha'"},
-      {"name": "paymentMethod", "type": "string", "required": false, "constraint": "CASH, INSTALLMENT, MORTGAGE or UNKNOWN"},
-      {"name": "timeline", "type": "string", "required": false, "constraint": "when they need it, e.g. 'shu oy', '3 oy ichida', 'kelasi yil'"},
-      {"name": "purpose", "type": "string", "required": false, "constraint": "LIVING or INVESTMENT"},
-      {"name": "district", "type": "string", "required": false, "constraint": "district or complex they prefer"}
-    ]},
-    {"name": "bookShowroomVisit", "disposition": "GOAL_REACHED", "preToolSpeech": "Hozir yozib qo'yaman.", "description": "Books the client's visit to the sales office. Call only after the client agreed to an exact day and time", "params": [
-      {"name": "meetingTime", "type": "string", "required": true, "constraint": "local date and time, format yyyy-MM-dd HH:mm, in the future"},
-      {"name": "meetingNote", "type": "string", "required": false, "constraint": "what the client wants to see"}
+    {"name": "recordLeadInterest", "disposition": "GOAL_REACHED", "description": "Records which flat and which residential complex (TJM) the client wants. Call it once both answers are known; pass only what the client actually said", "params": [
+      {"name": "flatType", "type": "string", "required": true, "constraint": "flat the client wants as they said it, e.g. '2 xonali', '3 xonali, 80 kvadrat atrofida'"},
+      {"name": "residentialComplex", "type": "string", "required": true, "constraint": "residential complex (TJM) name the client chose, or 'Farqi yo'q' when they have no preference"},
+      {"name": "comment", "type": "string", "required": false, "constraint": "anything else the client volunteered: budget, floor, payment method, timeline"}
     ]},
     {"name": "recordNotInterested", "disposition": "GOAL_NOT_REACHED", "description": "Call when the client clearly is not interested", "params": [
       {"name": "reason", "type": "string", "required": true, "constraint": "BOUGHT_ELSEWHERE, NO_BUDGET, NOT_NOW, NEVER_APPLIED or OTHER"},
@@ -928,34 +922,128 @@ $def$
     ]}
   ],
   "outcomeSchema": [
-    {"name": "rooms", "type": "string", "description": "Kerakli xonalar soni"},
-    {"name": "budget", "type": "string", "description": "Mijoz aytgan byudjet"},
-    {"name": "paymentMethod", "type": "string", "description": "To'lov usuli: CASH, INSTALLMENT, MORTGAGE, UNKNOWN"},
-    {"name": "timeline", "type": "string", "description": "Qachonga kerak"},
-    {"name": "purpose", "type": "string", "description": "LIVING yoki INVESTMENT"},
-    {"name": "meetingTime", "type": "string", "description": "Shourumdagi uchrashuv vaqti"},
+    {"name": "flatType", "type": "string", "description": "Mijoz qidirayotgan xonadon turi (xonalar soni)"},
+    {"name": "residentialComplex", "type": "string", "description": "Mijoz tanlagan turar joy majmuasi (TJM)"},
+    {"name": "comment", "type": "string", "description": "Mijoz qo'shimcha aytgan narsa"},
     {"name": "reason", "type": "string", "description": "Qiziqmaslik sababi"},
     {"name": "callbackTime", "type": "string", "description": "Qayta qo'ng'iroq vaqti"}
   ],
-  "rolePrompt": "Siz \"Uysot\" ko'chmas mulk kompaniyasining sotuv bo'limi xodimidek gaplashasiz. Mijoz yangi uylarimizga qiziqish bildirgan. Siz unga yordam berasiz: nimani izlayotganini tushunasiz, mos variantni aytasiz va shourumga taklif qilasiz. Ohang: samimiy, quvnoq, lekin ortiqcha maqtovsiz; savollar qisqa, bittadan.",
+  "rolePrompt": "Siz \"Uysot\" ko'chmas mulk kompaniyasining sotuv bo'limi xodimidek gaplashasiz. Mijoz yangi uylarimizga ariza qoldirgan. Sizning ishingiz qisqa: qanday xonadon va qaysi TJM'dan olmoqchiligini bilib olish, qolganini menejer davom ettiradi. Ohang: samimiy, quvnoq, lekin ortiqcha maqtovsiz; savollar qisqa, bittadan.",
   "guardrails": [
-    "Narx, maydon, qavat, topshirish muddati — faqat searchFlats / listResidentialComplexes qaytargan ma'lumot. O'zingdan to'qima.",
-    "Chegirma, aksiya, bo'lib to'lash shartlari yoki ipoteka foizini o'zingdan va'da qilma — 'Buni menejerimiz aniq aytib beradi' de.",
+    "Narx, maydon, qavat, topshirish muddati, chegirma, bo'lib to'lash yoki ipoteka shartlarini o'zingdan aytma — 'Buni menejerimiz aniq aytib beradi' de.",
+    "Majmua nomlarini faqat listResidentialComplexes qaytargan ro'yxatdan ayt. O'zingdan to'qima.",
     "Bir gapda bitta savol. Mijoz javob bermaguncha keyingi savolga o'tma.",
     "Mijoz qiziqmasa — ikkinchi marta ko'ndirishga urinma.",
-    "CRM'ga yozish (addLeadNote, moveLeadStage, createFollowUpTask, createLead) haqida mijozga gapirma — jim bajar.",
-    "Mijoz 'robotmisiz?' deb so'rasa — rost javob ber.",
-    "Raqam va narxni og'zaki ayt: '65 ming dollar', 'yetti yuz million so'm'."
+    "CRM'ga yozish (createLead, addLeadNote, moveLeadStage) haqida mijozga gapirma — jim bajar.",
+    "Mijoz 'robotmisiz?' deb so'rasa — rost javob ber."
   ],
   "globalNodes": [
-    {"question": "Siz kimsiz? Qayerdan qo'ng'iroq qilyapsiz?", "answer": "Uysot kompaniyasining sotuv bo'limidan. Yangi uylarimizga qiziqish bildirgan ekansiz, shuning uchun qo'ng'iroq qildim."},
+    {"question": "Siz kimsiz? Qayerdan qo'ng'iroq qilyapsiz?", "answer": "Uysot kompaniyasining sotuv bo'limidan. Yangi uylarimizga ariza qoldirgan ekansiz, shuning uchun qo'ng'iroq qildim."},
     {"question": "Raqamimni qayerdan oldingiz?", "answer": "Siz reklama yoki saytimiz orqali ariza qoldirgansiz. Agar xato bo'lsa, uzr so'rayman — boshqa bezovta qilmaymiz."},
-    {"question": "Ofisingiz qayerda?", "answer": "Aniq manzilni menejerimiz SMS qilib yuboradi, uchrashuv vaqtini kelishib olsak bo'ladi."}
+    {"question": "Narxi qancha?", "answer": "Aniq narxni menejerimiz siz tanlagan xonadon bo'yicha aytib beradi — shuning uchun qanaqa xonadon qarayotganingizni so'rayapman."}
   ],
   "styleExamples": [
-    {"language": "uz", "wrong": "\"Iltimos, xonalar soni, byudjet, to'lov usuli va muddatni ayting.\"", "right": "\"Necha xonali uy qarayapsiz, aka?\""},
-    {"language": "uz", "wrong": "\"Bizda 2 xonali 55 kv.m 450 mln so'mdan boshlanadi.\" (tool chaqirilmagan)", "right": "\"Hozir qarab beraman... Mana, 'Navro'z' majmuasida ikki xonali, ellik besh kvadrat — to'rt yuz ellik million so'm.\""},
-    {"language": "ru", "wrong": "\"Предоставьте, пожалуйста, информацию о вашем бюджете.\"", "right": "\"На какой бюджет примерно ориентируетесь?\""}
+    {"language": "uz", "wrong": "\"Iltimos, xonalar soni, majmua, byudjet va to'lov usulini ayting.\"", "right": "\"Necha xonali uy qarayapsiz, aka?\""},
+    {"language": "uz", "wrong": "\"Sizga 'Navro'z' majmuasini tavsiya qilaman, u yerda narxlar arzon.\" (tool chaqirilmagan)", "right": "\"Hozir qarab beraman... Bizda 'Navro'z', 'Bahor' va 'Yashnobod' majmualari bor. Qaysi biri sizga yaqinroq?\""},
+    {"language": "ru", "wrong": "\"Предоставьте, пожалуйста, информацию о желаемом объекте недвижимости.\"", "right": "\"Какую квартиру ищете — сколько комнат?\""}
+  ]
+}
+$def$::jsonb,
+    NULL
+)
+ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
+    SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
+
+-- The daily collections call the two debt agents speak: greet, remind of the debt, find out WHY
+-- it is not paid, get an exact day. The reason and the day go to the contact's custom fields
+-- after the call (ai_agent.data_needed[].contactField); the day also becomes a task on the
+-- client's Uysot lead during the call (createFollowUpTask), due on the day promised. The facts
+-- are the ones the UYSOT_DEBTORS target source writes (CampaignTargetService#fetchDebtors).
+-- Kept apart from 'debt-collection', which never asks for the reason.
+INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
+VALUES (
+    'debt-collection-crm', 1,
+    $$Qarzdorlik: sabab va to'lov sanasi (Uysot CRM bilan)$$,
+    $$Qarzdorga qo'ng'iroq: qarzni eslatish, nega to'lanmayotganini aniqlash, aniq to'lov sanasini olish; sabab va sanani kontakt kartasiga, sanani Uysot'dagi lidga topshiriq qilib yozish.$$,
+    true, true,
+$def$
+{
+  "callPurpose": "Mijoz Uysot'dan uy olgan, oylik to'lovdan qarzi bor. Maqsad — qarzni yumshoq eslatish, nega to'lanmayotganini bilib olish va qachon to'lashini aniq kunga kelishish.",
+  "stages": [
+    {"id": "GREETING", "title": "Salomlashish", "purpose": "Tirik operatordek, ismini aytib salomlash: 'Assalomu alaykum, [Ism] aka, yaxshimisiz?' (ayol bo'lsa 'opa'). Mijoz hol so'rasa — qisqa javob ber ('Rahmat, yaxshi') va QAYTA hol so'rama. Bu bosqichda qarz haqida gapirma.", "allowedTransitions": ["IDENTITY_CHECK", "DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": [],
+     "transitionConditions": {"DEBT_NOTICE": "Mijoz ismga e'tiroz bildirmay alik oldi", "IDENTITY_CHECK": "Mijoz kim qo'ng'iroq qilayotganini so'radi yoki telefonni boshqa odam ko'targani bilindi"}},
+    {"id": "IDENTITY_CHECK", "title": "Shaxsni aniqlash", "purpose": "Faqat 'alo', 'kim bu?' bo'lsa — qisqa tanishtir: 'Aka, men Uysot'dan, uyingiz bo'yicha telefon qilyapman. [Ism] aka o'zlarimi?'. Telefonni boshqa odam ko'targan bo'lsa — qarz summasini AYTMA: egasi qachon bo'lishini so'rab scheduleCallback bilan yoz va xayrlash.", "allowedTransitions": ["DEBT_NOTICE", "END_CALL", "ESCALATE_TO_HUMAN"], "allowedTools": ["scheduleCallback"],
+     "transitionConditions": {"DEBT_NOTICE": "Mijoz telefon egasi ekani aniq bo'ldi"}},
+    {"id": "DEBT_NOTICE", "title": "Qarzni eslatish", "purpose": "Qarzni bitta qisqa, yumshoq gap bilan eslat: 'Aka, men Uysot'dan, uyingiz bo'yicha oylik to'lovdan [summa] so'm qarzdorlik bor ekan, shuni eslatib qo'yay degandim.' Keyin JIM bo'l va tingla. Mijoz eshitmagan bo'lsa — boshqa, soddaroq so'zlar bilan qayta ayt. Mijoz 'to'ladim' desa — qachon va qayerga to'laganini BITTA savol bilan so'rab recordPaymentClaim. Mijoz darrov sanani aytsa — PAYMENT_DATE ga o't.", "allowedTransitions": ["REASON_INQUIRY", "PAYMENT_DATE", "CLOSING", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentClaim", "scheduleCallback"],
+     "transitionConditions": {"REASON_INQUIRY": "Mijoz qarzni eshitdi va sana aytmadi", "PAYMENT_DATE": "Mijoz o'zi to'lash sanasini aytdi", "CLOSING": "Mijoz to'laganini aytdi va recordPaymentClaim chaqirildi"}},
+    {"id": "REASON_INQUIRY", "title": "Sababini so'rash", "purpose": "Ayblamasdan, hamdardlik bilan sababini so'ra: 'To'lov nega kechikib qoldi, aka? Biror muammo chiqdimi?'. Mijoz aytgan sababni tingla, tan ol ('Tushunaman, aka') va recordDelayReason bilan yoz (reasonCode va mijozning o'z so'zlari). Mijoz sababni aytishni istamasa — tergov qilma, reasonCode OTHER bilan yoz. Keyin PAYMENT_DATE ga o't. Mijoz umuman to'lay olmasligini aytsa — recordRefusalReason.", "allowedTransitions": ["PAYMENT_DATE", "CLOSING", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordDelayReason", "recordRefusalReason", "recordPaymentClaim", "scheduleCallback"],
+     "transitionConditions": {"PAYMENT_DATE": "Sabab yozib olindi (recordDelayReason chaqirildi)", "CLOSING": "Mijoz to'lay olmasligini aytdi va recordRefusalReason chaqirildi"}},
+    {"id": "PAYMENT_DATE", "title": "To'lov sanasi", "purpose": "Aniq kunni so'ra: 'Qachonga to'lab bera olasiz, aka?'. Noaniq javobga ('oy oxirida', 'pul bo'lganda', '12 yo 13-ga') yumshoq aniqlashtir: 'Bo'lmasa 12-sanaga yozib qo'yaymi?'. Aniq kun aytilishi bilan recordPaymentPromise chaqir, so'ng createFollowUpTask bilan Uysot'dagi lidga topshiriq och: title 'To'lov va'dasi: [summa] so'm', dueTime '[promisedDate] 10:00', details — mijoz aytgan sabab va summa. Keyin CONFIRMATION.", "allowedTransitions": ["CONFIRMATION", "CLOSING", "ESCALATE_TO_HUMAN", "END_CALL"], "allowedTools": ["recordPaymentPromise", "recordRefusalReason", "scheduleCallback"],
+     "transitionConditions": {"CONFIRMATION": "recordPaymentPromise chaqirildi va CRM topshirig'i ochildi", "CLOSING": "Mijoz to'lay olmasligini aytdi va recordRefusalReason chaqirildi"}},
+    {"id": "CONFIRMATION", "title": "Sanani tasdiqlash", "purpose": "Sanani BITTA xabar gapi bilan qayd et (savol emas, qayta tasdiqlatma) va shu zahoti xayrlash: 'Bo'ldi, aka, 12-sanaga yozib qo'ydim. Salomat bo'ling, charchamang!'.", "allowedTransitions": ["CLOSING", "END_CALL"], "allowedTools": []},
+    {"id": "CLOSING", "title": "Xayrlashish", "purpose": "Qisqa, iliq xayrlash: 'Xo'p, aka, rahmat. Salomat bo'ling, charchamang!'.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
+    {"id": "ESCALATE_TO_HUMAN", "title": "Operatorga ulash", "purpose": "Mijoz o'zi operator so'rasa: addLeadNote bilan savolini yozib, operatorga ulashni bildirib xayrlash.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
+    {"id": "END_CALL", "title": "Qo'ng'iroqni tugatish", "purpose": "Qo'ng'iroqni yakunlash.", "allowedTransitions": [], "allowedTools": []}
+  ],
+  "factSchema": [
+    {"name": "clientName", "type": "string", "required": true},
+    {"name": "debtAmount", "type": "number", "required": true},
+    {"name": "currency", "type": "string", "required": true},
+    {"name": "contractNumber", "type": "string", "required": false},
+    {"name": "delayDays", "type": "number", "required": false}
+  ],
+  "tools": [
+    {"name": "recordDelayReason", "description": "Records WHY the payment is late, in the client's own words. Call it as soon as the client explains; it does not end the call", "params": [
+      {"name": "reasonCode", "type": "string", "required": true, "constraint": "NO_MONEY, SALARY_DELAY, JOB_LOSS, ILLNESS, FORGOT, DISPUTES_DEBT, TECHNICAL_ISSUE or OTHER"},
+      {"name": "reasonDetail", "type": "string", "required": false, "constraint": "the reason as the client said it, one sentence"}
+    ]},
+    {"name": "recordPaymentPromise", "disposition": "PROMISE_TO_PAY", "description": "Call when the client names an EXACT DAY themselves (e.g. \"10-oktabr\", \"ertaga\"). Do NOT call it on a vague answer like \"oy oxirida\" or \"pul bo'lganda\" — first ask which day. Guessing the date yourself is FORBIDDEN", "params": [
+      {"name": "promisedDate", "type": "futureDate", "required": true, "constraint": "promised date, today or later, yyyy-MM-dd"},
+      {"name": "promisedAmount", "type": "number", "required": false, "constraint": "promised amount, only if the client named one"}
+    ]},
+    {"name": "recordRefusalReason", "disposition": "REFUSED", "description": "Call when the client says they cannot pay at all and gives no day", "params": [
+      {"name": "reasonCode", "type": "string", "required": true, "constraint": "NO_MONEY, JOB_LOSS, ILLNESS, DISPUTES_DEBT or OTHER"},
+      {"name": "reasonDetail", "type": "string", "required": false, "constraint": "details of the reason"}
+    ]},
+    {"name": "recordPaymentClaim", "disposition": "PAYMENT_CLAIMED", "description": "Call when the client says they have ALREADY paid. Ask when and where first. Do not argue: it will be checked", "params": [
+      {"name": "paidDate", "type": "pastDate", "required": false, "constraint": "payment date the client named, today or earlier"},
+      {"name": "paymentChannel", "type": "string", "required": false, "constraint": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL or OTHER"}
+    ]},
+    {"name": "scheduleCallback", "disposition": "CALLBACK_REQUESTED", "description": "Call when the client (or whoever answered) asks to be called back later", "params": [
+      {"name": "callbackTime", "type": "string", "required": true, "constraint": "callback date and time (e.g. 2026-09-02T16:00:00 or 'ertaga soat 16:00')"},
+      {"name": "callbackReason", "type": "string", "required": false, "constraint": "reason or note"}
+    ]}
+  ],
+  "outcomeSchema": [
+    {"name": "reasonCode", "type": "string", "description": "To'lov kechikish sababi: NO_MONEY, SALARY_DELAY, JOB_LOSS, ILLNESS, FORGOT, DISPUTES_DEBT, TECHNICAL_ISSUE, OTHER"},
+    {"name": "reasonDetail", "type": "string", "description": "Sabab mijozning o'z so'zlari bilan"},
+    {"name": "promisedDate", "type": "date", "description": "Mijoz va'da qilgan to'lov sanasi"},
+    {"name": "promisedAmount", "type": "number", "description": "Mijoz va'da qilgan summa"},
+    {"name": "paidDate", "type": "date", "description": "Mijoz 'to'laganman' desa — aytgan sanasi"},
+    {"name": "callbackTime", "type": "string", "description": "Mijoz so'ragan qayta qo'ng'iroq vaqti"}
+  ],
+  "rolePrompt": "Siz \"Uysot\" kompaniyasining to'lovlar bo'limi xodimidek gaplashasiz: mijozlar uy sotib olgan, oylik to'lovdan qarzi bor. Ohangingiz — iliq, samimiy toshkentlik operator: hurmat bilan, lekin rasmiyatchiliksiz. Siz qarzni talab qilmaysiz — eslatasiz, sababini tushunasiz va sanani kelishasiz.",
+  "guardrails": [
+    "Qarz summasini HECH QACHON o'zgartirma. Faqat berilgan raqamni ayt.",
+    "Chegirma, imtiyoz, muddat uzaytirish yoki qarz kechirishni HECH QACHON taklif qilma.",
+    "Huquqiy oqibatlar, sud, jarima yoki ijro haqida o'zingdan gapirma, qo'rqitma.",
+    "Sababni bir marta so'ra; tergov qilma, mijozni ayblama va uyaltirma.",
+    "Mijoz nisbiy sana aytsa (\"ertaga\", \"dushanba\", \"kelasi oyning 5-sanasi\") — uni BUGUNGI SANAdan hisoblab yyyy-MM-dd ko'rinishida ber. Yilni o'zingdan to'qima.",
+    "Telefonni boshqa odam ko'targan bo'lsa — qarz summasini aytma.",
+    "CRM'ga yozish (createFollowUpTask, addLeadNote) haqida mijozga gapirma — jim bajar.",
+    "Summani og'zaki ayt: 10436000 emas — '10 million 436 ming so'm'.",
+    "Mijoz 'robotmisiz?' deb so'rasa — rost javob ber.",
+    "Operatorga faqat mijoz o'zi 'operator', 'odam bilan gaplashmoqchiman' desa ula."
+  ],
+  "globalNodes": [
+    {"question": "Siz kimsiz? Qayerdan qo'ng'iroq qilyapsiz?", "answer": "Uysot kompaniyasining to'lovlar bo'limidan, uyingiz bo'yicha qo'ng'iroq qilyapman."},
+    {"question": "Qayerga, qanday to'lasam bo'ladi?", "answer": "Click, Payme, Uzum ilovalari orqali yoki bank filialida shartnoma raqamingiz bilan to'lashingiz mumkin."}
+  ],
+  "styleExamples": [
+    {"language": "uz", "wrong": "\"Nima sababdan to'lovni amalga oshirmadingiz? Izoh bering.\"", "right": "\"To'lov nega kechikib qoldi, aka? Biror muammo chiqdimi?\""},
+    {"language": "uz", "wrong": "(mijoz \"maosh kechikdi\" dedi) \"Bu sizning muammoingiz, to'lashingiz shart.\"", "right": "\"Tushunaman, aka, bo'lib turadi. Bo'lmasa qachonga to'lab bera olasiz?\""},
+    {"language": "uz", "wrong": "(mijoz \"20-sanada\" dedi) \"20-oktabrda 1500000 so'm to'lay olasizmi?\"", "right": "\"Bo'ldi, aka, 20-sanaga yozib qo'ydim. Salomat bo'ling, charchamang!\""},
+    {"language": "ru", "wrong": "\"Укажите причину неоплаты задолженности.\"", "right": "\"Подскажите, почему задержался платёж? Что-то случилось?\""}
   ]
 }
 $def$::jsonb,
@@ -965,71 +1053,93 @@ ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
     SET definition = EXCLUDED.definition WHERE scenario.is_builtin;
 
 -- ---------------------------------------------------------------------------
--- AI agents. Six, each one ready to place or take a real call the day the database is
--- created — speech engine, voices per language, greeting, handbook, pronunciation, data to
--- extract and judge, limits, retention and follow-up actions all filled in:
+-- AI agents. Four, each one ready to place a real call the day the database is created —
+-- speech engine, voices per language, greeting, handbook, pronunciation, data to extract
+-- and judge, limits and retention all filled in:
 --
---   Kiruvchi qabulxona              inbound  · CASCADE  · reception
---   Qarzdorlik (cascade)            outbound · CASCADE  · debt-collection
---   Qarzdorlik (realtime)           outbound · REALTIME · debt-collection
---   To'lov eslatmasi (oldindan)     outbound · CASCADE  · debt-pre-due-reminder
---   Va'da nazorati                  outbound · CASCADE  · debt-promise-follow-up
---   Lid kvalifikatsiya (Uysot)      outbound · CASCADE  · lead-qualification-crm
+--   Lid kvalifikatsiya (cascade)    outbound · CASCADE  · lead-qualification-crm
+--   Lid kvalifikatsiya (realtime)   outbound · REALTIME · lead-qualification-crm
+--   Qarzdorlik (cascade)            outbound · CASCADE  · debt-collection-crm
+--   Qarzdorlik (realtime)           outbound · REALTIME · debt-collection-crm
 --
--- The two collection agents deliberately differ in nothing but the engine: the same
--- scenario, the same guardrails, the same wording, so a call placed by one can be
--- compared with a call placed by the other and the difference is the pipeline alone (the
--- daily campaign below A/B-tests exactly that).
+-- Each pair differs in nothing but the engine: the same scenario, the same guardrails, the
+-- same data to extract, so a call placed by one can be compared with a call placed by the
+-- other and the difference is the pipeline alone.
+--
+-- data_needed[].contactField is what lands on the contact card after the call
+-- (CallMemoryWriter#saveContactFields): the lead agents write xonadon_turi and tjm, the debt
+-- agents tolamaslik_sababi and tolov_sanasi.
 --
 -- The Uysot tools (getClientProfile, addLeadNote, moveLeadStage, createFollowUpTask,
--- createLead, searchFlats, the debt lookups...) are not attached per agent: every agent of a
--- company connected to Uysot is offered the tools the company has switched on
--- (CrmToolCallbacks), which is why the integration is seeded CONNECTED further down.
+-- createLead, listResidentialComplexes, the debt lookups...) are not attached per agent:
+-- every agent of a company connected to Uysot is offered the tools the company has switched
+-- on (CrmToolCallbacks), which is why the integration is seeded CONNECTED further down.
 --
 -- Looked up by name (there is no unique constraint on it), so a rerun adds nothing and
 -- overwrites nothing an operator has since edited.
 -- ---------------------------------------------------------------------------
 
--- Answers inbound calls. CASCADE: an inbound caller asks unpredictable questions, and
--- the cascade pipeline is the one that can search the knowledge base between turns.
--- voicemail_action IGNORE — a person dialled in, there is no answering machine to detect.
---
--- use_rag off: it costs an embedding round trip inside every turn the caller is waiting
--- through, and nothing is uploaded yet for it to find. Turn it on once a knowledge source
--- is. The keyword knowledge base seeded at the bottom of this file answers without it.
--- OMNICHANNEL: the same agent answers the phone, the website widget and the Telegram bot.
+-- Lead qualification, cascade pipeline: Yandex recognition, Gemini for the turn, Yandex
+-- synthesis. HIGH interruption sensitivity: a prospect who starts talking is interested and
+-- should not be talked over.
 INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language,
-                      speech_languages, persona, first_message, greeting, pipeline_mode, stt_provider, tts_provider,
+                      speech_languages, persona, greeting, pipeline_mode, stt_provider, tts_provider,
                       llm_model, fast_llm_model, temperature, tts_voice, speaking_warmth, interruption_sensitivity,
-                      use_rag, voicemail_action, transfer_message, boosted_keywords, timezone,
+                      use_rag, voicemail_action, voicemail_message, transfer_message, boosted_keywords, timezone,
                       max_conversation_duration_seconds, silence_end_call_timeout_seconds, concurrent_calls_limit,
-                      conversation_retention_days, data_needed, data_evaluation)
-SELECT 1, 'Kiruvchi qabulxona',
-       'Kiruvchi qo''ng''iroqlarga javob beradi: savolga bilim bazasidan javob, kerak bo''lsa operatorga uzatadi.',
-       'OMNICHANNEL', 'CONVERSATIONAL_FLOW',
-       (SELECT id FROM scenario WHERE scenario_key = 'reception' AND is_active LIMIT 1),
+                      daily_calls_limit, conversation_retention_days, data_needed, data_evaluation)
+SELECT 1, 'Lid kvalifikatsiya (cascade)',
+       'Uysot''da yangi lid yaratilganda qo''ng''iroq qiladi: qanday xonadon va qaysi TJM''dan olmoqchiligini aniqlab kontaktga yozadi, CRM''dagi lidni yangilab izoh qoldiradi. STT + LLM + TTS (Yandex + Gemini).',
+       'VOICE', 'CONVERSATIONAL_FLOW',
+       (SELECT id FROM scenario WHERE scenario_key = 'lead-qualification-crm' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', '["uz-UZ", "ru-RU"]'::jsonb, 'AI_ASSISTANT',
-       -- Opens with the question, not with a greeting: the platform's §11.1 disclosure is
-       -- spoken from code just before this, and it already says hello.
-       'Sizni tinglayapman, qanday yordam bera olaman?',
-       '{"mode": "AI_CUSTOM", "pauseBeforeSpeakingMs": 300, "lines": [
-          {"direction": "INBOUND", "language": "ru", "text": "Слушаю вас, чем могу помочь?"}]}'::jsonb,
-       'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.5, 'nigora', 'BALANCED', 'MEDIUM',
-       false, 'IGNORE',
-       'Hozir sizni operatorga ulayman, bir daqiqa kuting.',
-       '["Uysot", "shartnoma", "xonadon", "shourum", "Click", "Payme", "Uzum"]'::jsonb, 'Asia/Tashkent',
-       600, 20, 20, 90,
-       '[{"id": "caller_name", "type": "String", "name": "Qo''ng''iroq qiluvchi ismi", "description": "Mijoz o''zini qanday tanishtirgan bo''lsa"},
-         {"id": "topic", "type": "String", "name": "Murojaat mavzusi", "description": "Bir necha so''z: to''lov, xonadon tanlash, hujjat, shikoyat yoki boshqa"},
-         {"id": "callback_number", "type": "String", "name": "Qayta aloqa raqami", "description": "Mijoz boshqa raqamga qo''ng''iroq qilishni so''ragan bo''lsa — o''sha raqam"}]'::jsonb,
-       '[{"id": "resolved", "name": "Savol hal bo''ldi", "criteria": "Mijozning savoliga aniq javob berildimi yoki to''g''ri yo''naltirildimi?"},
-         {"id": "human_follow_up_needed", "name": "Menejer aralashuvi kerak", "criteria": "Mijoz menejer qayta qo''ng''iroq qilishini kutyaptimi yoki savol ochiq qoldimi?"}]'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona');
+       -- A fixed opening line per language, spoken the moment the call connects: left to the
+       -- model, the greeting waited on two LLM rounds and a CRM lookup (9s of dead air, then a
+       -- "let me check" filler before the hello). The client's name comes from the call's facts.
+       '{"mode": "AI_CUSTOM", "pauseBeforeSpeakingMs": 400, "lines": [
+          {"direction": "OUTBOUND", "language": "uz", "text": "Assalomu alaykum, {{clientName | hurmatli mijoz}}! Men Uysot kompaniyasidanman, yangi uylarimizga ariza qoldirgan ekansiz — ikki daqiqa gaplashishga vaqtingiz bormi?"},
+          {"direction": "OUTBOUND", "language": "ru", "text": "Здравствуйте! Это Uysot, вы оставили заявку на квартиру в наших новостройках — удобно поговорить пару минут?"}]}'::jsonb,
+       'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.5, 'zamira', 'WARM', 'HIGH',
+       false, 'LEAVE_MESSAGE',
+       'Assalomu alaykum! Uysot''dan, yangi uylarimizga ariza qoldirgan ekansiz. Qulay vaqtda qayta qo''ng''iroq qilamiz.',
+       'Hozir sizni menejerimizga ulayman, bir daqiqa kuting.',
+       '["Uysot", "xonadon", "xonali", "TJM", "majmua", "kvadrat", "ipoteka"]'::jsonb, 'Asia/Tashkent',
+       300, 20, 10, 500, 180,
+       '[{"id": "xonadon_turi", "type": "String", "name": "Xonadon turi", "description": "Mijoz qidirayotgan xonadon: necha xonali (masalan ''2 xonali''); maydon yoki qavat aytgan bo''lsa qo''shib yoz. Aytmagan bo''lsa bo''sh", "contactField": "xonadon_turi"},
+         {"id": "tjm", "type": "String", "name": "TJM", "description": "Mijoz olmoqchi bo''lgan turar joy majmuasining nomi; tanlamagan bo''lsa ''Farqi yo''q''. Aytmagan bo''lsa bo''sh", "contactField": "tjm"}]'::jsonb,
+       '[{"id": "qualified", "name": "Kvalifikatsiyadan o''tdi", "criteria": "Xonadon turi va TJM ikkalasi ham aniqlandimi?"},
+         {"id": "crm_updated", "name": "CRM yangilandi", "criteria": "Agent addLeadNote bilan lidga izoh yozdimi va moveLeadStage bilan bosqichini o''zgartirdimi?"},
+         {"id": "no_invented_facts", "name": "Faktlar to''qilmadi", "criteria": "Agent narx, maydon yoki muddat haqida o''zidan gapirmadimi, majmua nomlari faqat tool natijasidanmi?"}]'::jsonb
+WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (cascade)');
 
--- Outbound collections, cascade pipeline: Yandex recognition, Gemini for the turn,
--- Yandex synthesis. The default for placed calls — every tuning knob in
--- config/speech.yml is calibrated against this chain. Low temperature: the wording of a
--- debt call is the scenario's, not the model's.
+-- The same call on a speech-to-speech engine. llm_model is the realtime model here, not
+-- a text one (RealtimeCallConfig#modelOr), and tts_voice must be a catalog id owned by
+-- the same provider or the engine falls back to the voice it was deployed with.
+-- realtime_facts_delivery TOOL: the lead's facts are handed over when the model asks, never
+-- written into the vendor-side instructions.
+INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language,
+                      speech_languages, persona, pipeline_mode, realtime_provider, llm_model, tts_voice,
+                      realtime_facts_delivery, temperature, speaking_warmth, interruption_sensitivity,
+                      use_rag, voicemail_action, voicemail_message, transfer_message, timezone,
+                      max_conversation_duration_seconds, silence_end_call_timeout_seconds, concurrent_calls_limit,
+                      daily_calls_limit, conversation_retention_days, data_needed, data_evaluation)
+SELECT 1, 'Lid kvalifikatsiya (realtime)',
+       'Uysot''da yangi lid yaratilganda qo''ng''iroq qiladi: Gemini Live nativ audio (speech-to-speech). Cascade agent bilan bir xil ssenariy.',
+       'VOICE', 'CONVERSATIONAL_FLOW',
+       (SELECT id FROM scenario WHERE scenario_key = 'lead-qualification-crm' AND is_active LIMIT 1),
+       'STRUCTURED_STEPS', 'uz-UZ', '["uz-UZ", "ru-RU"]'::jsonb, 'AI_ASSISTANT',
+       'REALTIME', 'gemini-live', 'gemini-3.8-live', 'gemini-kore-uz',
+       'TOOL', 0.5, 'WARM', 'HIGH',
+       false, 'LEAVE_MESSAGE',
+       'Assalomu alaykum! Uysot''dan, yangi uylarimizga ariza qoldirgan ekansiz. Qulay vaqtda qayta qo''ng''iroq qilamiz.',
+       'Hozir sizni menejerimizga ulayman, bir daqiqa kuting.', 'Asia/Tashkent',
+       300, 20, 10, 500, 180,
+       (SELECT data_needed FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (cascade)' LIMIT 1),
+       (SELECT data_evaluation FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (cascade)' LIMIT 1)
+WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (realtime)');
+
+-- Outbound collections, cascade pipeline. Low temperature: the wording of a debt call is the
+-- scenario's, not the model's.
 INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language,
                       speech_languages, persona, greeting, pipeline_mode, stt_provider, tts_provider,
                       llm_model, fast_llm_model, temperature, tts_voice, speaking_warmth, interruption_sensitivity,
@@ -1037,12 +1147,10 @@ INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenar
                       max_conversation_duration_seconds, silence_end_call_timeout_seconds, concurrent_calls_limit,
                       daily_calls_limit, conversation_retention_days, data_needed, data_evaluation, post_call_actions)
 SELECT 1, 'Qarzdorlik (cascade)',
-       'Chiquvchi qarzdorlik qo''ng''irog''i: STT + LLM + TTS zanjiri (Yandex + Gemini). To''lov sanasini kelishadi, rad sababini yozadi.',
+       'Har kuni Uysot''dagi qarzdorlarga qo''ng''iroq: qarzni eslatadi, nega to''lanmayotganini va qachon to''lashini aniqlab kontaktga yozadi, CRM''da o''sha sanaga topshiriq ochadi. STT + LLM + TTS (Yandex + Gemini).',
        'VOICE', 'CONVERSATIONAL_FLOW',
-       (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
+       (SELECT id FROM scenario WHERE scenario_key = 'debt-collection-crm' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', '["uz-UZ", "ru-RU"]'::jsonb, 'AI_ASSISTANT',
-       -- No first_message: the scenario's GREETING stage says the client's name, which a fixed
-       -- line could not. The Russian line is for a call whose language is Russian.
        '{"mode": "AI_CUSTOM", "pauseBeforeSpeakingMs": 500, "lines": [
           {"direction": "OUTBOUND", "language": "ru", "text": "Здравствуйте, {{clientName}}! Это компания Uysot, по вашей квартире."}]}'::jsonb,
        'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.3, 'nigora', 'WARM', 'MEDIUM',
@@ -1051,25 +1159,20 @@ SELECT 1, 'Qarzdorlik (cascade)',
        -- saying either without the client on the line to confirm who is listening.
        'Assalomu alaykum. Shartnomangiz bo''yicha savol bilan qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.',
        'Hozir sizni operatorga ulayman, bir daqiqa kuting.',
-       '["Uysot", "shartnoma", "to''lov", "qarzdorlik", "Click", "Payme", "Uzum", "terminal"]'::jsonb, 'Asia/Tashkent',
+       '["Uysot", "shartnoma", "to''lov", "qarzdorlik", "maosh", "Click", "Payme", "Uzum", "terminal"]'::jsonb, 'Asia/Tashkent',
        300, 15, 10, 500, 90,
-       '[{"id": "promised_date", "type": "String", "name": "Va''da sanasi", "description": "Mijoz to''lashini aytgan aniq sana, yyyy-MM-dd"},
-         {"id": "promised_amount", "type": "Number", "name": "Va''da summasi", "description": "Mijoz aytgan summa, so''mda; aytmagan bo''lsa bo''sh"},
-         {"id": "payment_channel", "type": "String", "name": "To''lov kanali", "description": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL yoki OTHER"},
-         {"id": "refusal_reason", "type": "String", "name": "Rad sababi", "description": "Mijoz to''lay olmasligi sababi, o''z so''zlari bilan qisqa"},
-         {"id": "owner_phone", "type": "String", "name": "Egasining raqami", "description": "Telefonni boshqa odam ko''targan bo''lsa — egasining aytilgan raqami"}]'::jsonb,
+       '[{"id": "tolamaslik_sababi", "type": "String", "name": "To''lamaslik sababi", "description": "Mijoz to''lov nega kechikkanini qanday tushuntirgan bo''lsa — qisqa, o''z so''zlari bilan (masalan ''maosh kechikdi''). Aytmagan bo''lsa bo''sh", "contactField": "tolamaslik_sababi"},
+         {"id": "tolov_sanasi", "type": "String", "name": "To''lov sanasi", "description": "Mijoz to''lashini aytgan aniq sana, yyyy-MM-dd. Aniq kun aytmagan bo''lsa bo''sh", "contactField": "tolov_sanasi"}]'::jsonb,
        '[{"id": "clear_commitment", "name": "Aniq va''da olindi", "criteria": "Mijoz aniq kun aytdimi (\"oy oxirida\" emas, aniq sana)?"},
-         {"id": "guardrails_kept", "name": "Qoidalar buzilmadi", "criteria": "Agent summani o''zgartirmadi, chegirma va''da qilmadi, qo''rqitmadi va sud/jarima haqida gapirmadimi?"},
-         {"id": "disputes_debt", "name": "Qarz bahsli", "criteria": "Mijoz qarz noto''g''ri yoki allaqachon to''langan deb da''vo qildimi?"}]'::jsonb,
+         {"id": "reason_found", "name": "Sabab aniqlandi", "criteria": "Agent to''lov nega kechikkanini so''radimi va mijoz javobini recordDelayReason bilan yozdimi?"},
+         {"id": "crm_task_created", "name": "CRM topshirig''i ochildi", "criteria": "Sana kelishilgan bo''lsa, agent createFollowUpTask bilan o''sha sanaga topshiriq ochdimi?"},
+         {"id": "guardrails_kept", "name": "Qoidalar buzilmadi", "criteria": "Agent summani o''zgartirmadi, chegirma va''da qilmadi, qo''rqitmadi va sud/jarima haqida gapirmadimi?"}]'::jsonb,
        '[{"id": "promise-sms", "name": "Va''da tasdig''i SMS", "actionType": "SEND_SMS", "triggerDisposition": "PROMISE_TO_PAY", "onlyOnSuccess": true,
           "template": "{{client_name}}, to''lov sanasini kelishganimiz uchun rahmat. To''lovni Click, Payme yoki Uzum orqali qilishingiz mumkin. Uysot", "webhookUrl": null, "headers": {}, "enabled": true}]'::jsonb
 WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)');
 
--- The same call on a speech-to-speech engine. llm_model is the realtime model here, not
--- a text one (RealtimeCallConfig#modelOr), and tts_voice must be a catalog id owned by
--- the same provider or the engine falls back to the voice it was deployed with.
--- realtime_facts_delivery TOOL: the debt figures are handed over one at a time when the
--- model asks, never written into the vendor-side instructions.
+-- The same call on Gemini Live. realtime_facts_delivery TOOL: the debt figures are handed
+-- over one at a time when the model asks, never written into the vendor-side instructions.
 INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language,
                       speech_languages, persona, pipeline_mode, realtime_provider, llm_model, tts_voice,
                       realtime_facts_delivery, temperature, speaking_warmth, interruption_sensitivity,
@@ -1077,9 +1180,9 @@ INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenar
                       max_conversation_duration_seconds, silence_end_call_timeout_seconds, concurrent_calls_limit,
                       daily_calls_limit, conversation_retention_days, data_needed, data_evaluation, post_call_actions)
 SELECT 1, 'Qarzdorlik (realtime)',
-       'Chiquvchi qarzdorlik qo''ng''irog''i: Gemini Live nativ audio (speech-to-speech). Cascade agent bilan bir xil ssenariy.',
+       'Har kuni Uysot''dagi qarzdorlarga qo''ng''iroq: Gemini Live nativ audio (speech-to-speech). Cascade agent bilan bir xil ssenariy.',
        'VOICE', 'CONVERSATIONAL_FLOW',
-       (SELECT id FROM scenario WHERE scenario_key = 'debt-collection' AND is_active LIMIT 1),
+       (SELECT id FROM scenario WHERE scenario_key = 'debt-collection-crm' AND is_active LIMIT 1),
        'STRUCTURED_STEPS', 'uz-UZ', '["uz-UZ", "ru-RU"]'::jsonb, 'AI_ASSISTANT',
        'REALTIME', 'gemini-live', 'gemini-3.8-live', 'gemini-aoede-uz',
        'TOOL', 0.3, 'WARM', 'MEDIUM',
@@ -1092,147 +1195,72 @@ SELECT 1, 'Qarzdorlik (realtime)',
        (SELECT post_call_actions FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1)
 WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (realtime)');
 
--- Before the due date: a courtesy reminder, so a lighter voice and a shorter call.
--- voicemail_action HANGUP — a reminder left on a machine is worth less than the retry.
-INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language,
-                      speech_languages, persona, greeting, pipeline_mode, stt_provider, tts_provider,
-                      llm_model, fast_llm_model, temperature, tts_voice, speaking_warmth, interruption_sensitivity,
-                      use_rag, voicemail_action, transfer_message, boosted_keywords, timezone,
-                      max_conversation_duration_seconds, silence_end_call_timeout_seconds, concurrent_calls_limit,
-                      daily_calls_limit, conversation_retention_days, data_needed, data_evaluation)
-SELECT 1, 'To''lov eslatmasi (oldindan)',
-       'To''lov sanasi yaqinlashgan mijozga xushmuomala eslatma: qachon to''lashini yozib oladi. Qarz haqida gapirmaydi.',
-       'VOICE', 'CONVERSATIONAL_FLOW',
-       (SELECT id FROM scenario WHERE scenario_key = 'debt-pre-due-reminder' AND is_active LIMIT 1),
-       'STRUCTURED_STEPS', 'uz-UZ', '["uz-UZ", "ru-RU"]'::jsonb, 'AI_ASSISTANT',
-       '{"mode": "AI_CUSTOM", "pauseBeforeSpeakingMs": 500, "lines": [
-          {"direction": "OUTBOUND", "language": "ru", "text": "Здравствуйте, {{clientName}}! Это Uysot, небольшое напоминание по вашей квартире."}]}'::jsonb,
-       'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.4, 'yulduz', 'WARM', 'MEDIUM',
-       false, 'HANGUP',
-       'Hozir sizni operatorga ulayman, bir daqiqa kuting.',
-       '["Uysot", "shartnoma", "to''lov", "Click", "Payme", "Uzum"]'::jsonb, 'Asia/Tashkent',
-       180, 15, 10, 1000, 60,
-       '[{"id": "promised_date", "type": "String", "name": "To''lov sanasi", "description": "Mijoz to''lashini aytgan sana, yyyy-MM-dd"},
-         {"id": "payment_channel", "type": "String", "name": "To''lov kanali", "description": "CLICK, PAYME, UZUM, BANK_BRANCH, TERMINAL yoki OTHER"}]'::jsonb,
-       '[{"id": "will_pay_on_time", "name": "Vaqtida to''laydi", "criteria": "Mijoz to''lov sanasigacha to''lashini tasdiqladimi?"},
-         {"id": "no_debt_wording", "name": "Qarz so''zi ishlatilmadi", "criteria": "Agent ''qarz'', ''qarzdorlik'', ''kechikish'' so''zlarini ishlatmadimi?"}]'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'To''lov eslatmasi (oldindan)');
+-- Each agent's own function list (Retell "Functions"): only the Uysot tools its call needs, so the
+-- editor shows what the agent can do and a lead call is not offered the debt lookups (or the
+-- reverse). The HTTP "_LIVE" twins are left out: the built-in tool of the same job is listed.
+-- Written only while an agent has never saved a list, so an edit made in the studio stays.
+UPDATE ai_agent SET functions = '[
+    {"id": "fn_end_call", "type": "END_CALL", "name": "endCall", "speakDuringExecution": false},
+    {"id": "fn_transfer_call", "type": "TRANSFER_CALL", "name": "requestHumanTransfer", "speakDuringExecution": false},
+    {"id": "fn_int_getClientProfile", "type": "INTEGRATION", "name": "getClientProfile", "speakDuringExecution": false, "integrationTool": "getClientProfile"},
+    {"id": "fn_int_listResidentialComplexes", "type": "INTEGRATION", "name": "listResidentialComplexes", "speakDuringExecution": false, "integrationTool": "listResidentialComplexes"},
+    {"id": "fn_int_searchFlats", "type": "INTEGRATION", "name": "searchFlats", "speakDuringExecution": false, "integrationTool": "searchFlats"},
+    {"id": "fn_int_rememberFlatInterest", "type": "INTEGRATION", "name": "rememberFlatInterest", "speakDuringExecution": false, "integrationTool": "rememberFlatInterest"},
+    {"id": "fn_int_createLead", "type": "INTEGRATION", "name": "createLead", "speakDuringExecution": false, "integrationTool": "createLead"},
+    {"id": "fn_int_addLeadNote", "type": "INTEGRATION", "name": "addLeadNote", "speakDuringExecution": false, "integrationTool": "addLeadNote"},
+    {"id": "fn_int_moveLeadStage", "type": "INTEGRATION", "name": "moveLeadStage", "speakDuringExecution": false, "integrationTool": "moveLeadStage"},
+    {"id": "fn_int_createFollowUpTask", "type": "INTEGRATION", "name": "createFollowUpTask", "speakDuringExecution": false, "integrationTool": "createFollowUpTask"}
+  ]'::jsonb
+ WHERE company_id = 1 AND name IN ('Lid kvalifikatsiya (cascade)', 'Lid kvalifikatsiya (realtime)') AND functions IS NULL;
 
--- The call a few days after a promise (the sequence campaign routes PROMISE_TO_PAY here).
-INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language,
-                      speech_languages, persona, pipeline_mode, stt_provider, tts_provider,
-                      llm_model, fast_llm_model, temperature, tts_voice, speaking_warmth, interruption_sensitivity,
-                      use_rag, voicemail_action, voicemail_message, transfer_message, boosted_keywords, timezone,
-                      max_conversation_duration_seconds, silence_end_call_timeout_seconds, concurrent_calls_limit,
-                      daily_calls_limit, conversation_retention_days, data_needed, data_evaluation, post_call_actions)
-SELECT 1, 'Va''da nazorati',
-       'Va''da qilingan sana o''tgach qo''ng''iroq: to''lov bo''lganini aniqlaydi, bo''lmagan bo''lsa yangi sanani yozib oladi.',
-       'VOICE', 'CONVERSATIONAL_FLOW',
-       (SELECT id FROM scenario WHERE scenario_key = 'debt-promise-follow-up' AND is_active LIMIT 1),
-       'STRUCTURED_STEPS', 'uz-UZ', '["uz-UZ", "ru-RU"]'::jsonb, 'AI_ASSISTANT',
-       'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.3, 'nigora', 'BALANCED', 'MEDIUM',
-       false, 'LEAVE_MESSAGE',
-       'Assalomu alaykum. Uysot''dan, shartnomangiz bo''yicha qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.',
-       'Hozir sizni operatorga ulayman, bir daqiqa kuting.',
-       '["Uysot", "shartnoma", "to''lov", "va''da", "Click", "Payme", "Uzum"]'::jsonb, 'Asia/Tashkent',
-       240, 15, 10, 500, 90,
-       '[{"id": "paid", "type": "Boolean", "name": "To''langan", "description": "Mijoz va''da qilingan to''lovni qilganini aytdimi"},
-         {"id": "new_promised_date", "type": "String", "name": "Yangi sana", "description": "To''lanmagan bo''lsa — yangi aytilgan sana, yyyy-MM-dd"},
-         {"id": "refusal_reason", "type": "String", "name": "Rad sababi", "description": "To''lay olmasligi sababi, qisqa"}]'::jsonb,
-       '[{"id": "promise_kept", "name": "Va''da bajarildi", "criteria": "Mijoz to''lovni qilganini aytdimi?"},
-         {"id": "repeat_broken_promise", "name": "Takroriy buzilgan va''da", "criteria": "Mijoz to''lamagan va yana aniq sana bermadimi?"}]'::jsonb,
-       '[{"id": "promise-sms", "name": "Yangi sana tasdig''i SMS", "actionType": "SEND_SMS", "triggerDisposition": "PROMISE_TO_PAY", "onlyOnSuccess": true,
-          "template": "{{client_name}}, yangi to''lov sanasini yozib qo''ydik. Rahmat! Uysot", "webhookUrl": null, "headers": {}, "enabled": true}]'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Va''da nazorati');
-
--- Lead qualification with the CRM in the loop: looks the lead up, offers flats from the
--- live catalogue, books the showroom visit, and leaves a note, a stage move and a manager
--- task on the lead. HIGH interruption sensitivity: a prospect who starts talking is
--- interested and should not be talked over.
-INSERT INTO ai_agent (company_id, name, description, channel, agent_mode, scenario_id, scenario_mode, language,
-                      speech_languages, persona, greeting, pipeline_mode, stt_provider, tts_provider,
-                      llm_model, fast_llm_model, temperature, tts_voice, speaking_warmth, interruption_sensitivity,
-                      use_rag, voicemail_action, voicemail_message, transfer_message, boosted_keywords, timezone,
-                      max_conversation_duration_seconds, silence_end_call_timeout_seconds, concurrent_calls_limit,
-                      daily_calls_limit, conversation_retention_days, data_needed, data_evaluation, post_call_actions)
-SELECT 1, 'Lid kvalifikatsiya (Uysot)',
-       'Yangi lidga qo''ng''iroq: ehtiyoj va byudjetni aniqlaydi, mos xonadon taklif qiladi, shourumga yozadi; CRM''da lidga izoh yozadi, bosqichini o''zgartiradi va menejerga topshiriq ochadi.',
-       'VOICE', 'CONVERSATIONAL_FLOW',
-       (SELECT id FROM scenario WHERE scenario_key = 'lead-qualification-crm' AND is_active LIMIT 1),
-       'STRUCTURED_STEPS', 'uz-UZ', '["uz-UZ", "ru-RU"]'::jsonb, 'AI_ASSISTANT',
-       '{"mode": "AI_CUSTOM", "pauseBeforeSpeakingMs": 400, "lines": [
-          {"direction": "OUTBOUND", "language": "ru", "text": "Здравствуйте! Это Uysot, вы интересовались нашими новостройками — удобно поговорить пару минут?"}]}'::jsonb,
-       'CASCADE', 'yandex', 'yandex', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.6, 'zamira', 'WARM', 'HIGH',
-       false, 'LEAVE_MESSAGE',
-       'Assalomu alaykum! Uysot''dan, yangi uylarimizga qiziqish bildirgan ekansiz. Qulay vaqtda qayta qo''ng''iroq qilamiz.',
-       'Hozir sizni menejerimizga ulayman, bir daqiqa kuting.',
-       '["Uysot", "xonadon", "xonali", "shourum", "ipoteka", "bo''lib to''lash", "kvadrat", "majmua"]'::jsonb, 'Asia/Tashkent',
-       420, 20, 10, 500, 180,
-       '[{"id": "rooms", "type": "String", "name": "Xonalar soni", "description": "Mijoz qidirayotgan xonalar soni"},
-         {"id": "budget", "type": "String", "name": "Byudjet", "description": "Mijoz aytgan byudjet, valyutasi bilan"},
-         {"id": "payment_method", "type": "String", "name": "To''lov usuli", "description": "CASH, INSTALLMENT, MORTGAGE yoki UNKNOWN"},
-         {"id": "timeline", "type": "String", "name": "Muddat", "description": "Uy qachonga kerakligi"},
-         {"id": "purpose", "type": "String", "name": "Maqsad", "description": "LIVING (yashash) yoki INVESTMENT"},
-         {"id": "meeting_time", "type": "String", "name": "Uchrashuv vaqti", "description": "Shourumga kelishilgan vaqt, yyyy-MM-dd HH:mm"},
-         {"id": "decision_maker", "type": "Boolean", "name": "Qaror qabul qiluvchi", "description": "Suhbatdosh qarorni o''zi qabul qiladimi"}]'::jsonb,
-       '[{"id": "qualified", "name": "Kvalifikatsiyadan o''tdi", "criteria": "Xonalar soni, byudjet va to''lov usuli aniqlandimi va mijozda real qiziqish bormi?"},
-         {"id": "meeting_booked", "name": "Uchrashuv belgilandi", "criteria": "Shourumga aniq kun va soatga uchrashuv kelishildimi?"},
-         {"id": "crm_updated", "name": "CRM yangilandi", "criteria": "Agent addLeadNote bilan lidga xulosa yozdimi?"},
-         {"id": "no_invented_facts", "name": "Faktlar to''qilmadi", "criteria": "Agent aytgan narx, maydon va muddatlar faqat tool natijasidan olinganmi?"}]'::jsonb,
-       '[{"id": "meeting-sms", "name": "Uchrashuv tasdig''i SMS", "actionType": "SEND_SMS", "triggerDisposition": "GOAL_REACHED", "onlyOnSuccess": true,
-          "template": "{{client_name}}, shourumdagi uchrashuvingiz belgilandi. Menejerimiz manzil va vaqtni tasdiqlash uchun bog''lanadi. Uysot", "webhookUrl": null, "headers": {}, "enabled": true}]'::jsonb
-WHERE NOT EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (Uysot)');
+UPDATE ai_agent SET functions = '[
+    {"id": "fn_end_call", "type": "END_CALL", "name": "endCall", "speakDuringExecution": false},
+    {"id": "fn_transfer_call", "type": "TRANSFER_CALL", "name": "requestHumanTransfer", "speakDuringExecution": false},
+    {"id": "fn_int_getClientProfile", "type": "INTEGRATION", "name": "getClientProfile", "speakDuringExecution": false, "integrationTool": "getClientProfile"},
+    {"id": "fn_int_getDebtSummary", "type": "INTEGRATION", "name": "getDebtSummary", "speakDuringExecution": false, "integrationTool": "getDebtSummary"},
+    {"id": "fn_int_getContractBalance", "type": "INTEGRATION", "name": "getContractBalance", "speakDuringExecution": false, "integrationTool": "getContractBalance"},
+    {"id": "fn_int_getPaymentSchedule", "type": "INTEGRATION", "name": "getPaymentSchedule", "speakDuringExecution": false, "integrationTool": "getPaymentSchedule"},
+    {"id": "fn_int_addLeadNote", "type": "INTEGRATION", "name": "addLeadNote", "speakDuringExecution": false, "integrationTool": "addLeadNote"},
+    {"id": "fn_int_createFollowUpTask", "type": "INTEGRATION", "name": "createFollowUpTask", "speakDuringExecution": false, "integrationTool": "createFollowUpTask"},
+    {"id": "fn_int_requestManagerCallback", "type": "INTEGRATION", "name": "requestManagerCallback", "speakDuringExecution": false, "integrationTool": "requestManagerCallback"}
+  ]'::jsonb
+ WHERE company_id = 1 AND name IN ('Qarzdorlik (cascade)', 'Qarzdorlik (realtime)') AND functions IS NULL;
 
 -- The room behind each agent, and the typing that covers a tool call in flight — a lead
--- call waits on searchFlats and the CRM, a debt call on the debt lookups.
+-- call waits on the CRM, a debt call on the debt lookups and the CRM task.
 INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound, ambient_sound_volume, thinking_sound, thinking_sound_volume)
 SELECT a.id, 'OFFICE', 0.6, 'KEYBOARD_TYPING', 0.8
 FROM ai_agent a
-WHERE a.company_id = 1 AND a.name IN ('Kiruvchi qabulxona', 'Qarzdorlik (cascade)', 'Qarzdorlik (realtime)',
-                                      'To''lov eslatmasi (oldindan)', 'Va''da nazorati', 'Lid kvalifikatsiya (Uysot)')
+WHERE a.company_id = 1 AND a.name IN ('Lid kvalifikatsiya (cascade)', 'Lid kvalifikatsiya (realtime)',
+                                      'Qarzdorlik (cascade)', 'Qarzdorlik (realtime)')
 ON CONFLICT (ai_agent_id) DO NOTHING;
 
--- Which voice each cascade agent speaks a given call language in. The realtime agent is
--- left out on purpose: its voice has to belong to gemini-live, and one Gemini voice
+-- Which voice each cascade agent speaks a given call language in. The realtime agents are
+-- left out on purpose: their voice has to belong to gemini-live, and one Gemini voice
 -- already covers both languages.
 INSERT INTO ai_agent_voice (ai_agent_id, language, voice_id)
 SELECT a.id, v.language, v.voice_id
 FROM ai_agent a
-JOIN (VALUES ('Kiruvchi qabulxona',           'uz-UZ', 'nigora'), ('Kiruvchi qabulxona',           'ru-RU', 'alena'),
-             ('Qarzdorlik (cascade)',         'uz-UZ', 'nigora'), ('Qarzdorlik (cascade)',         'ru-RU', 'alena'),
-             ('To''lov eslatmasi (oldindan)', 'uz-UZ', 'yulduz'), ('To''lov eslatmasi (oldindan)', 'ru-RU', 'yulduz_ru'),
-             ('Va''da nazorati',              'uz-UZ', 'nigora'), ('Va''da nazorati',              'ru-RU', 'alena'),
-             ('Lid kvalifikatsiya (Uysot)',   'uz-UZ', 'zamira'), ('Lid kvalifikatsiya (Uysot)',   'ru-RU', 'zamira_ru'))
+JOIN (VALUES ('Lid kvalifikatsiya (cascade)', 'uz-UZ', 'zamira'), ('Lid kvalifikatsiya (cascade)', 'ru-RU', 'zamira_ru'),
+             ('Qarzdorlik (cascade)',         'uz-UZ', 'nigora'), ('Qarzdorlik (cascade)',         'ru-RU', 'alena'))
      AS v(agent_name, language, voice_id) ON v.agent_name = a.name
 WHERE a.company_id = 1
 ON CONFLICT (ai_agent_id, language) DO NOTHING;
 
--- Agent Handbook: the best-practice rules each agent switches on (HandbookRule). Every
--- money call speaks numbers aloud and keeps to its topic; the lead agent also reads back
--- what the client dictates and matches near-spellings of complex names.
+-- Agent Handbook: the best-practice rules each agent switches on (HandbookRule). The debt
+-- agents speak numbers aloud and give no advice; the lead agents read back what the client
+-- says and match near-spellings of complex names.
 INSERT INTO ai_agent_handbook_rule (ai_agent_id, rule)
 SELECT a.id, r.rule
 FROM ai_agent a
-JOIN (VALUES ('Kiruvchi qabulxona', 'HIGH_EMPATHY'), ('Kiruvchi qabulxona', 'CONFIRM_DETAILS'),
-             ('Kiruvchi qabulxona', 'SPELL_OUT_CODES'), ('Kiruvchi qabulxona', 'KNOWLEDGE_ONLY'),
-             ('Kiruvchi qabulxona', 'PROTECT_INSTRUCTIONS'), ('Kiruvchi qabulxona', 'STAY_ON_TOPIC'),
-             ('Qarzdorlik (cascade)', 'HIGH_EMPATHY'), ('Qarzdorlik (cascade)', 'SPOKEN_NUMBERS'),
-             ('Qarzdorlik (cascade)', 'PROTECT_INSTRUCTIONS'), ('Qarzdorlik (cascade)', 'STAY_ON_TOPIC'),
-             ('Qarzdorlik (cascade)', 'NO_PROFESSIONAL_ADVICE'),
-             ('Qarzdorlik (realtime)', 'HIGH_EMPATHY'), ('Qarzdorlik (realtime)', 'SPOKEN_NUMBERS'),
-             ('Qarzdorlik (realtime)', 'PROTECT_INSTRUCTIONS'), ('Qarzdorlik (realtime)', 'STAY_ON_TOPIC'),
-             ('Qarzdorlik (realtime)', 'NO_PROFESSIONAL_ADVICE'),
-             ('To''lov eslatmasi (oldindan)', 'SPOKEN_NUMBERS'), ('To''lov eslatmasi (oldindan)', 'PROTECT_INSTRUCTIONS'),
-             ('To''lov eslatmasi (oldindan)', 'STAY_ON_TOPIC'),
-             ('Va''da nazorati', 'HIGH_EMPATHY'), ('Va''da nazorati', 'SPOKEN_NUMBERS'),
-             ('Va''da nazorati', 'PROTECT_INSTRUCTIONS'), ('Va''da nazorati', 'STAY_ON_TOPIC'),
-             ('Va''da nazorati', 'NO_PROFESSIONAL_ADVICE'),
-             ('Lid kvalifikatsiya (Uysot)', 'HIGH_EMPATHY'), ('Lid kvalifikatsiya (Uysot)', 'CONFIRM_DETAILS'),
-             ('Lid kvalifikatsiya (Uysot)', 'SPOKEN_NUMBERS'), ('Lid kvalifikatsiya (Uysot)', 'SMART_MATCHING'),
-             ('Lid kvalifikatsiya (Uysot)', 'KNOWLEDGE_ONLY'), ('Lid kvalifikatsiya (Uysot)', 'PROTECT_INSTRUCTIONS'),
-             ('Lid kvalifikatsiya (Uysot)', 'STAY_ON_TOPIC'))
-     AS r(agent_name, rule) ON r.agent_name = a.name
-WHERE a.company_id = 1
+JOIN (VALUES ('lead', 'HIGH_EMPATHY'), ('lead', 'CONFIRM_DETAILS'), ('lead', 'SMART_MATCHING'),
+             ('lead', 'KNOWLEDGE_ONLY'), ('lead', 'PROTECT_INSTRUCTIONS'), ('lead', 'STAY_ON_TOPIC'),
+             ('debt', 'HIGH_EMPATHY'), ('debt', 'SPOKEN_NUMBERS'), ('debt', 'PROTECT_INSTRUCTIONS'),
+             ('debt', 'STAY_ON_TOPIC'), ('debt', 'NO_PROFESSIONAL_ADVICE'))
+     AS r(kind, rule)
+  ON r.kind = CASE WHEN a.name LIKE 'Lid kvalifikatsiya%' THEN 'lead' ELSE 'debt' END
+WHERE a.company_id = 1 AND a.name IN ('Lid kvalifikatsiya (cascade)', 'Lid kvalifikatsiya (realtime)',
+                                      'Qarzdorlik (cascade)', 'Qarzdorlik (realtime)')
 ON CONFLICT DO NOTHING;
 
 -- Words the synthesiser would otherwise read letter by letter or in English.
@@ -1243,8 +1271,8 @@ CROSS JOIN (VALUES ('UZS', 'so''m', 'uz-UZ'), ('UZS', 'сум', 'ru-RU'), ('USD'
                    ('Payme', 'Peymi', '*'), ('Click', 'Klik', '*'), ('m²', 'kvadrat metr', 'uz-UZ'),
                    ('kv.m', 'kvadrat metr', 'uz-UZ'))
      AS p(word, replacement, language)
-WHERE a.company_id = 1 AND a.name IN ('Kiruvchi qabulxona', 'Qarzdorlik (cascade)', 'Qarzdorlik (realtime)',
-                                      'To''lov eslatmasi (oldindan)', 'Va''da nazorati', 'Lid kvalifikatsiya (Uysot)')
+WHERE a.company_id = 1 AND a.name IN ('Lid kvalifikatsiya (cascade)', 'Lid kvalifikatsiya (realtime)',
+                                      'Qarzdorlik (cascade)', 'Qarzdorlik (realtime)')
   AND NOT EXISTS (SELECT 1 FROM ai_agent_pronunciation_rule x
                   WHERE x.ai_agent_id = a.id AND x.word = p.word AND x.language = p.language);
 
@@ -1256,7 +1284,8 @@ WHERE a.company_id = 1 AND a.name IN ('Kiruvchi qabulxona', 'Qarzdorlik (cascade
 -- asterisk/etc/asterisk/extensions.conf) — a registered softphone dialling it reaches the
 -- full pipeline with no trunk involved, which is the only way to try an inbound call on a
 -- developer machine. A real DID is added through POST /api/inbound-routes; this row is
--- what makes the installation answer at all out of the box.
+-- what makes the installation answer at all out of the box. It answers with the realtime
+-- lead agent, so a softphone call is the quickest way to hear that pipeline.
 --
 -- business_hours_* stay NULL, which means "always": a seeded route that stopped answering
 -- at 18:00 would look like a broken install to whoever tries it in the evening. Fill them
@@ -1264,7 +1293,7 @@ WHERE a.company_id = 1 AND a.name IN ('Kiruvchi qabulxona', 'Qarzdorlik (cascade
 -- ---------------------------------------------------------------------------
 INSERT INTO inbound_route (company_id, did_number, ai_agent_id, after_hours_action, fallback_message, enabled)
 SELECT 1, '600',
-       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona' LIMIT 1),
+       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (realtime)' LIMIT 1),
        'PLAY_MESSAGE_AND_HANGUP',
        'Hozir ish vaqtimiz tugagan. Iltimos, dushanbadan jumagacha soat 9:00 dan 18:00 gacha qo''ng''iroq qiling.',
        true
@@ -1322,19 +1351,25 @@ WHERE t.provider = 'UYSOT'
 ON CONFLICT DO NOTHING;
 
 -- ---------------------------------------------------------------------------
--- Campaigns. Four, one per way a contact reaches a collections or sales call:
+-- Campaigns. Four, one per agent:
 --
---   Qarzdorlik — kunlik              STANDARD    · today's overdue list from Uysot, daily 09:00,
---                                                  A/B: cascade vs realtime agent
---   Qarzdorlik — ketma-ketlik        AUTO_ENROLL · contacts tagged "qarzdor": debt call →
---                                                  (promise) 3 days → promise follow-up;
---                                                  (no answer) → SMS
---   To'lov eslatmasi — oldindan      AUTO_ENROLL · contacts tagged "tolov-yaqin": one reminder call
---   Lid kvalifikatsiya — yangi lidlar AUTO_ENROLL · contacts tagged "yangi-lid": qualification
---                                                  call → (no answer) → SMS
+--   Yangi lidlar — cascade            AUTO_ENROLL · a lead created in Uysot → qualification call
+--   Yangi lidlar — realtime           AUTO_ENROLL · the same on the realtime agent
+--   Qarzdorlik — kunlik (cascade)     STANDARD    · today's overdue list from Uysot, daily 09:00
+--   Qarzdorlik — kunlik (realtime)    STANDARD    · the same on the realtime agent
+--
+-- Run ONE campaign of each pair at a time. Both debt campaigns read the same Uysot list, so
+-- two active at once call every debtor twice. And Uysot's LEAD_CREATED webhook
+-- (UysotWebhookService → InstantCallTriggerService) queues the lead into the company's
+-- ACTIVE AI campaign with the lowest id — which is why the lead campaigns are inserted
+-- first: with one lead campaign active, a new lead lands in it, never in a debt campaign.
+--
+-- The lead campaigns are AUTO_ENROLL because an AUTO_ENROLL campaign is never closed for
+-- running out of targets (CampaignJpaRepository#completeIfFinished): it keeps waiting for the
+-- next lead. A contact tagged "yangi-lid" (an import, the API) joins them the same way.
 --
 -- All four are DRAFT and none dials on its own: an operator launches it (and confirms the
--- contacts' consent for an AUTO_ENROLL one — POST /api/campaigns/{id}/consent). The daily one
+-- contacts' consent for an AUTO_ENROLL one — POST /api/campaigns/{id}/consent). A daily one
 -- then repeats by itself: RecurringCampaignScheduler starts the next run of a recurring
 -- campaign once the previous run is COMPLETED, at the first sweep inside its window.
 --
@@ -1342,7 +1377,51 @@ ON CONFLICT DO NOTHING;
 -- second copy.
 -- ---------------------------------------------------------------------------
 
--- The daily collections run: every morning at 09:00, call whoever Uysot says is behind.
+-- The lead pair: one CONVERSATION step, three tries (now, 2 hours later, the next day). A
+-- qualified lead (recordLeadInterest → GOAL_REACHED) ends it successfully. The agent ids
+-- are spliced in by name; the sequence JSON is otherwise exactly what PUT /api/campaigns/{id}
+-- stores.
+INSERT INTO campaign (company_id, name, type, kind, status, ai_agent_id, priority, max_attempts,
+                      retry_interval_minutes, double_dial, auto_schedule_callbacks, auto_enroll, sequence)
+SELECT 1, v.name, 'LEAD_QUALIFICATION', 'AUTO_ENROLL', 'DRAFT', a.id, 1, 3, 120, true, true,
+       '{"matchAll": true, "rules": [{"field": "TAG", "operator": "EQUALS", "value": "yangi-lid"}], "excludedContactIds": []}'::jsonb,
+       replace($seq$
+{
+  "startStepId": "qualify",
+  "steps": [
+    {"id": "qualify", "type": "CONVERSATION", "name": "Kvalifikatsiya qo'ng'irog'i",
+     "conversation": {"aiAgentId": __AGENT__, "attempts": [
+        {"delay": 0, "unit": "MINUTES"}, {"delay": 2, "unit": "HOURS"}, {"delay": 1, "unit": "DAYS"}]},
+     "outcomes": {
+        "outcomes": [
+          {"id": "qualified", "name": "Kvalifikatsiyadan o'tdi", "evaluation": "METRICS", "match": "ANY",
+           "conditions": [{"variable": "disposition", "operator": "EQUALS", "value": "GOAL_REACHED"}],
+           "saveToContact": {"doNotCall": false, "tags": ["kvalifikatsiya"]},
+           "next": {"exit": "END_SUCCESSFUL", "stepId": null, "delayMinutes": 0}},
+          {"id": "not_interested", "name": "Qiziqmadi", "evaluation": "METRICS", "match": "ANY",
+           "conditions": [{"variable": "disposition", "operator": "EQUALS", "value": "GOAL_NOT_REACHED"}],
+           "saveToContact": {"doNotCall": false, "tags": ["qiziqmadi"]},
+           "next": {"exit": "END", "stepId": null, "delayMinutes": 0}}
+        ],
+        "other": {"exit": "END", "stepId": null, "delayMinutes": 0},
+        "noResponse": {"exit": "END", "stepId": null, "delayMinutes": 0}},
+     "position": {"x": 0, "y": 0}}
+  ],
+  "globalOutcomes": [
+    {"id": "do_not_call", "name": "Qo'ng'iroq qilinmasin", "evaluation": "PROMPT",
+     "prompt": "The lead asked not to be called or contacted again.",
+     "saveToContact": {"doNotCall": true, "tags": []},
+     "next": {"exit": "END", "stepId": null, "delayMinutes": 0}}
+  ]
+}
+$seq$, '__AGENT__', a.id::text)::jsonb
+FROM (VALUES ('Yangi lidlar — cascade', 'Lid kvalifikatsiya (cascade)'),
+             ('Yangi lidlar — realtime', 'Lid kvalifikatsiya (realtime)')) AS v(name, agent_name)
+JOIN ai_agent a ON a.company_id = 1 AND a.name = v.agent_name
+WHERE NOT EXISTS (SELECT 1 FROM campaign c WHERE c.company_id = 1 AND c.name = v.name)
+ORDER BY v.name;
+
+-- The daily collections pair: every morning at 09:00, call whoever Uysot says is behind.
 --
 -- dial_window_end is 18:00 rather than the company's own 23:00 because collections calls at
 -- night are how a company gets complained about, not how it gets paid.
@@ -1355,8 +1434,7 @@ ON CONFLICT DO NOTHING;
 -- the second ring); auto_schedule_callbacks: "call me at 16:00" is honoured.
 INSERT INTO campaign (company_id, name, type, status, ai_agent_id, priority,
                       max_attempts, retry_interval_minutes, retry_policy, double_dial, auto_schedule_callbacks)
-SELECT 1, 'Qarzdorlik — kunlik', 'DEBT_COLLECTION', 'DRAFT',
-       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1), 2,
+SELECT 1, v.name, 'DEBT_COLLECTION', 'DRAFT', a.id, 2,
        3, 120,
        -- What the scenario's outcome tools leave behind, answered per disposition: nobody picked up
        -- or hung up — try again later the same day; "I already paid" (recordPaymentClaim) — three
@@ -1365,24 +1443,13 @@ SELECT 1, 'Qarzdorlik — kunlik', 'DEBT_COLLECTION', 'DRAFT',
        -- at the time the client named.
        '{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}, "HUNG_UP": {"maxAttempts": 2, "delayMinutes": 60}, "PAYMENT_CLAIMED": {"maxAttempts": 2, "delayMinutes": 4320}}'::jsonb,
        true, true
-WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik');
+FROM (VALUES ('Qarzdorlik — kunlik (cascade)', 'Qarzdorlik (cascade)'),
+             ('Qarzdorlik — kunlik (realtime)', 'Qarzdorlik (realtime)')) AS v(name, agent_name)
+JOIN ai_agent a ON a.company_id = 1 AND a.name = v.agent_name
+WHERE NOT EXISTS (SELECT 1 FROM campaign c WHERE c.company_id = 1 AND c.name = v.name)
+ORDER BY v.name;
 
-INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls, daily_call_cap, max_cps, daily_budget_uzs)
-SELECT id, 10, 200, 2, 500000 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik'
-ON CONFLICT (campaign_id) DO NOTHING;
-
-INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end, recurrence_type, auto_reset_targets)
-SELECT id, '09:00:00', '18:00:00', 'DAILY', false FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik'
-ON CONFLICT (campaign_id) DO NOTHING;
-
--- Monday to Saturday: Sunday is a day off, and a collections call on it is a complaint.
-INSERT INTO campaign_dial_day (campaign_id, day)
-SELECT id, day FROM campaign,
-     unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']) AS day
-WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik'
-ON CONFLICT (campaign_id, day) DO NOTHING;
-
--- Where that campaign's list comes from: Uysot, read through the three-call chain
+-- Where the debt campaigns' list comes from: Uysot, read through the three-call chain
 -- UysotDebtorSourceAdapter documents. url and every other request column stay NULL — a
 -- UYSOT_DEBTORS source has no request of its own to describe, and reads voice-agent.crm.*
 -- instead, so switching between the prod and dev hosts is one environment variable.
@@ -1392,181 +1459,30 @@ ON CONFLICT (campaign_id, day) DO NOTHING;
 -- the list it already had rather than with nothing.
 INSERT INTO campaign_target_source (campaign_id, provider, replace_targets, sync_on_recurrence, enabled)
 SELECT id, 'UYSOT_DEBTORS', true, true, true
-FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik'
+FROM campaign WHERE company_id = 1 AND name IN ('Qarzdorlik — kunlik (cascade)', 'Qarzdorlik — kunlik (realtime)')
 ON CONFLICT (campaign_id) DO NOTHING;
 
--- The A/B test the two collection agents exist for: same scenario, different engine. 80/20
--- rather than 50/50 so the proven cascade chain carries the day while the realtime one
--- collects enough calls to compare (the bandit optimiser shifts the weights from there).
-INSERT INTO campaign_variant (campaign_id, company_id, name, ai_agent_id, traffic_weight)
-SELECT c.id, 1, v.name, a.id, v.weight
+-- Dialer settings, calling window and days. Leads are called until 20:00 and on Sunday too —
+-- a prospect answers in the evening; money calls stop at 18:00 and skip Sunday.
+INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls, daily_call_cap, max_cps, daily_budget_uzs)
+SELECT c.id, v.concurrent, v.cap, 2, v.budget
 FROM campaign c
-JOIN (VALUES ('A — cascade (Yandex + Gemini)', 'Qarzdorlik (cascade)', 80),
-             ('B — realtime (Gemini Live)',    'Qarzdorlik (realtime)', 20)) AS v(name, agent_name, weight) ON true
-JOIN ai_agent a ON a.company_id = 1 AND a.name = v.agent_name
-WHERE c.company_id = 1 AND c.name = 'Qarzdorlik — kunlik'
-  AND NOT EXISTS (SELECT 1 FROM campaign_variant x WHERE x.campaign_id = c.id AND x.name = v.name);
-
--- The collections sequence for contacts tagged "qarzdor" (AUTO_ENROLL: a contact who gets the
--- tag later joins on its own while the campaign runs).
---
---   debt_call      the debt call, up to three times: now, 3 hours later, the next day
---     PROMISE_TO_PAY  → 3 days later: promise_check (and the contact is tagged)
---     PAYMENT_CLAIMED → done, successfully
---     no answer       → sms_reminder → end
---   promise_check  the follow-up call: was the promised payment made?
---
--- A METRICS outcome on `disposition` is what the scenario's own outcome tools leave behind, so
--- the routing does not depend on an LLM reading the transcript. The agent ids are spliced in
--- by name below; the sequence JSON is otherwise exactly what PUT /api/campaigns/{id} stores.
-INSERT INTO campaign (company_id, name, type, kind, status, ai_agent_id, priority, max_attempts,
-                      retry_interval_minutes, double_dial, auto_schedule_callbacks, auto_enroll, sequence)
-SELECT 1, 'Qarzdorlik — ketma-ketlik', 'DEBT_COLLECTION', 'AUTO_ENROLL', 'DRAFT', debt.id, 2, 3, 180, true, true,
-       '{"matchAll": true, "rules": [{"field": "TAG", "operator": "EQUALS", "value": "qarzdor"}], "excludedContactIds": []}'::jsonb,
-       replace(replace($seq$
-{
-  "startStepId": "debt_call",
-  "steps": [
-    {"id": "debt_call", "type": "CONVERSATION", "name": "Qarz haqida qo'ng'iroq",
-     "conversation": {"aiAgentId": __DEBT_AGENT__, "attempts": [
-        {"delay": 0, "unit": "MINUTES"}, {"delay": 3, "unit": "HOURS"}, {"delay": 1, "unit": "DAYS"}]},
-     "outcomes": {
-        "outcomes": [
-          {"id": "promised", "name": "To'lov va'dasi", "evaluation": "METRICS", "match": "ANY",
-           "conditions": [{"variable": "disposition", "operator": "EQUALS", "value": "PROMISE_TO_PAY"}],
-           "saveToContact": {"doNotCall": false, "tags": ["vada-berdi"]},
-           "next": {"exit": "STEP", "stepId": "promise_check", "delayMinutes": 4320}},
-          {"id": "paid", "name": "To'lagan", "evaluation": "METRICS", "match": "ANY",
-           "conditions": [{"variable": "disposition", "operator": "EQUALS", "value": "PAYMENT_CLAIMED"}],
-           "saveToContact": {"doNotCall": false, "tags": ["tolagan"]},
-           "next": {"exit": "END_SUCCESSFUL", "stepId": null, "delayMinutes": 0}}
-        ],
-        "other": {"exit": "END", "stepId": null, "delayMinutes": 0},
-        "noResponse": {"exit": "STEP", "stepId": "sms_reminder", "delayMinutes": 0}},
-     "position": {"x": 0, "y": 0}},
-    {"id": "sms_reminder", "type": "SMS", "name": "SMS eslatma",
-     "smsText": "Assalomu alaykum, {{clientName}}! Uysot: uyingiz bo'yicha oylik to'lovdan qarzdorlik bor. Iltimos, qulay vaqtda biz bilan bog'laning.",
-     "next": null, "position": {"x": 320, "y": 160}},
-    {"id": "promise_check", "type": "CONVERSATION", "name": "Va'da nazorati",
-     "conversation": {"aiAgentId": __FOLLOW_UP_AGENT__, "attempts": [
-        {"delay": 0, "unit": "MINUTES"}, {"delay": 4, "unit": "HOURS"}, {"delay": 1, "unit": "DAYS"}]},
-     "outcomes": {
-        "outcomes": [
-          {"id": "paid", "name": "To'lagan", "evaluation": "METRICS", "match": "ANY",
-           "conditions": [{"variable": "disposition", "operator": "EQUALS", "value": "PAYMENT_CLAIMED"}],
-           "saveToContact": {"doNotCall": false, "tags": ["tolagan"]},
-           "next": {"exit": "END_SUCCESSFUL", "stepId": null, "delayMinutes": 0}},
-          {"id": "promised_again", "name": "Yangi sana", "evaluation": "METRICS", "match": "ANY",
-           "conditions": [{"variable": "disposition", "operator": "EQUALS", "value": "PROMISE_TO_PAY"}],
-           "saveToContact": {"doNotCall": false, "tags": ["vada-qayta"]},
-           "next": {"exit": "END", "stepId": null, "delayMinutes": 0}}
-        ],
-        "other": {"exit": "END", "stepId": null, "delayMinutes": 0},
-        "noResponse": {"exit": "END", "stepId": null, "delayMinutes": 0}},
-     "position": {"x": 320, "y": -160}}
-  ],
-  "globalOutcomes": [
-    {"id": "do_not_call", "name": "Qo'ng'iroq qilinmasin", "evaluation": "PROMPT",
-     "prompt": "The client asked not to be called or contacted again.",
-     "saveToContact": {"doNotCall": true, "tags": []},
-     "next": {"exit": "END", "stepId": null, "delayMinutes": 0}}
-  ]
-}
-$seq$, '__DEBT_AGENT__', debt.id::text), '__FOLLOW_UP_AGENT__', follow.id::text)::jsonb
-FROM ai_agent debt, ai_agent follow
-WHERE debt.company_id = 1 AND debt.name = 'Qarzdorlik (cascade)'
-  AND follow.company_id = 1 AND follow.name = 'Va''da nazorati'
-  AND NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — ketma-ketlik');
-
--- A courtesy reminder a few days before the instalment is due, for contacts tagged
--- "tolov-yaqin". One call step; nothing to route — a promise or a claim ends it either way.
-INSERT INTO campaign (company_id, name, type, kind, status, ai_agent_id, priority, max_attempts,
-                      retry_interval_minutes, double_dial, auto_schedule_callbacks, auto_enroll, sequence)
-SELECT 1, 'To''lov eslatmasi — oldindan', 'DEBT_COLLECTION', 'AUTO_ENROLL', 'DRAFT', a.id, 4, 2, 240, false, true,
-       '{"matchAll": true, "rules": [{"field": "TAG", "operator": "EQUALS", "value": "tolov-yaqin"}], "excludedContactIds": []}'::jsonb,
-       replace($seq$
-{
-  "startStepId": "reminder_call",
-  "steps": [
-    {"id": "reminder_call", "type": "CONVERSATION", "name": "Eslatma qo'ng'irog'i",
-     "conversation": {"aiAgentId": __AGENT__, "attempts": [{"delay": 0, "unit": "MINUTES"}, {"delay": 4, "unit": "HOURS"}]},
-     "outcomes": {"outcomes": [],
-        "other": {"exit": "END", "stepId": null, "delayMinutes": 0},
-        "noResponse": {"exit": "END", "stepId": null, "delayMinutes": 0}},
-     "position": {"x": 0, "y": 0}}
-  ],
-  "globalOutcomes": [
-    {"id": "do_not_call", "name": "Qo'ng'iroq qilinmasin", "evaluation": "PROMPT",
-     "prompt": "The client asked not to be called or contacted again.",
-     "saveToContact": {"doNotCall": true, "tags": []},
-     "next": {"exit": "END", "stepId": null, "delayMinutes": 0}}
-  ]
-}
-$seq$, '__AGENT__', a.id::text)::jsonb
-FROM ai_agent a
-WHERE a.company_id = 1 AND a.name = 'To''lov eslatmasi (oldindan)'
-  AND NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'To''lov eslatmasi — oldindan');
-
--- New leads, for contacts tagged "yangi-lid" (an inbound webhook or an import tags them). A
--- booked showroom visit is the success; a lead who never answers gets an SMS instead.
-INSERT INTO campaign (company_id, name, type, kind, status, ai_agent_id, priority, max_attempts,
-                      retry_interval_minutes, double_dial, auto_schedule_callbacks, auto_enroll, sequence)
-SELECT 1, 'Lid kvalifikatsiya — yangi lidlar', 'LEAD_QUALIFICATION', 'AUTO_ENROLL', 'DRAFT', a.id, 1, 4, 120, true, true,
-       '{"matchAll": true, "rules": [{"field": "TAG", "operator": "EQUALS", "value": "yangi-lid"}], "excludedContactIds": []}'::jsonb,
-       replace($seq$
-{
-  "startStepId": "qualify",
-  "steps": [
-    {"id": "qualify", "type": "CONVERSATION", "name": "Kvalifikatsiya qo'ng'irog'i",
-     "conversation": {"aiAgentId": __AGENT__, "attempts": [
-        {"delay": 0, "unit": "MINUTES"}, {"delay": 2, "unit": "HOURS"}, {"delay": 1, "unit": "DAYS"}, {"delay": 3, "unit": "DAYS"}]},
-     "outcomes": {
-        "outcomes": [
-          {"id": "meeting_booked", "name": "Uchrashuv belgilandi", "evaluation": "METRICS", "match": "ANY",
-           "conditions": [{"variable": "disposition", "operator": "EQUALS", "value": "GOAL_REACHED"}],
-           "saveToContact": {"doNotCall": false, "tags": ["uchrashuv"]},
-           "next": {"exit": "END_SUCCESSFUL", "stepId": null, "delayMinutes": 0}},
-          {"id": "not_interested", "name": "Qiziqmadi", "evaluation": "METRICS", "match": "ANY",
-           "conditions": [{"variable": "disposition", "operator": "EQUALS", "value": "GOAL_NOT_REACHED"}],
-           "saveToContact": {"doNotCall": false, "tags": ["qiziqmadi"]},
-           "next": {"exit": "END", "stepId": null, "delayMinutes": 0}}
-        ],
-        "other": {"exit": "END", "stepId": null, "delayMinutes": 0},
-        "noResponse": {"exit": "STEP", "stepId": "sms_missed", "delayMinutes": 0}},
-     "position": {"x": 0, "y": 0}},
-    {"id": "sms_missed", "type": "SMS", "name": "Javobsiz lidga SMS",
-     "smsText": "Assalomu alaykum! Uysot'dan qo'ng'iroq qildik — yangi uylarimizga qiziqish bildirgan ekansiz. Qulay vaqtda qo'ng'iroq qiling, menejerimiz yordam beradi.",
-     "next": null, "position": {"x": 320, "y": 160}}
-  ],
-  "globalOutcomes": [
-    {"id": "do_not_call", "name": "Qo'ng'iroq qilinmasin", "evaluation": "PROMPT",
-     "prompt": "The lead asked not to be called or contacted again.",
-     "saveToContact": {"doNotCall": true, "tags": []},
-     "next": {"exit": "END", "stepId": null, "delayMinutes": 0}}
-  ]
-}
-$seq$, '__AGENT__', a.id::text)::jsonb
-FROM ai_agent a
-WHERE a.company_id = 1 AND a.name = 'Lid kvalifikatsiya (Uysot)'
-  AND NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Lid kvalifikatsiya — yangi lidlar');
-
--- Dialer settings, calling window and days for the three sequence campaigns. Leads are called
--- until 20:00 and on Sunday too — a prospect answers in the evening; money calls stop at 18:00.
-INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls, daily_call_cap, max_cps)
-SELECT c.id, v.concurrent, v.cap, 2
-FROM campaign c
-JOIN (VALUES ('Qarzdorlik — ketma-ketlik', 10, 300),
-             ('To''lov eslatmasi — oldindan', 10, 500),
-             ('Lid kvalifikatsiya — yangi lidlar', 5, 200)) AS v(name, concurrent, cap) ON v.name = c.name
+JOIN (VALUES ('Yangi lidlar — cascade', 5, 200, NULL::bigint),
+             ('Yangi lidlar — realtime', 5, 200, NULL::bigint),
+             ('Qarzdorlik — kunlik (cascade)', 10, 200, 500000::bigint),
+             ('Qarzdorlik — kunlik (realtime)', 10, 200, 500000::bigint)) AS v(name, concurrent, cap, budget)
+  ON v.name = c.name
 WHERE c.company_id = 1
 ON CONFLICT (campaign_id) DO NOTHING;
 
-INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end, recurrence_type)
-SELECT c.id, v.starts::time, v.ends::time, 'ONCE'
+INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end, recurrence_type, auto_reset_targets)
+SELECT c.id, v.starts::time, v.ends::time, v.recurrence, false
 FROM campaign c
-JOIN (VALUES ('Qarzdorlik — ketma-ketlik', '09:00', '18:00'),
-             ('To''lov eslatmasi — oldindan', '10:00', '18:00'),
-             ('Lid kvalifikatsiya — yangi lidlar', '09:00', '20:00')) AS v(name, starts, ends) ON v.name = c.name
+JOIN (VALUES ('Yangi lidlar — cascade', '09:00', '20:00', 'ONCE'),
+             ('Yangi lidlar — realtime', '09:00', '20:00', 'ONCE'),
+             ('Qarzdorlik — kunlik (cascade)', '09:00', '18:00', 'DAILY'),
+             ('Qarzdorlik — kunlik (realtime)', '09:00', '18:00', 'DAILY')) AS v(name, starts, ends, recurrence)
+  ON v.name = c.name
 WHERE c.company_id = 1
 ON CONFLICT (campaign_id) DO NOTHING;
 
@@ -1575,79 +1491,10 @@ SELECT c.id, d.day
 FROM campaign c
 CROSS JOIN unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']) AS d(day)
 WHERE c.company_id = 1
-  AND c.name IN ('Qarzdorlik — ketma-ketlik', 'To''lov eslatmasi — oldindan', 'Lid kvalifikatsiya — yangi lidlar')
-  AND (d.day <> 'SUNDAY' OR c.name = 'Lid kvalifikatsiya — yangi lidlar')
+  AND c.name IN ('Yangi lidlar — cascade', 'Yangi lidlar — realtime',
+                 'Qarzdorlik — kunlik (cascade)', 'Qarzdorlik — kunlik (realtime)')
+  AND (d.day <> 'SUNDAY' OR c.name LIKE 'Yangi lidlar%')
 ON CONFLICT (campaign_id, day) DO NOTHING;
-
--- ---------------------------------------------------------------------------
--- A worked CHAINED target source, so the shape is visible without reading the code.
---
--- The campaign above reads Uysot through a provider compiled into the platform. Every
--- other CRM splits the same problem the same way — the endpoint that knows who to call is
--- not the endpoint that knows their number — and CHAINED is that chain as configuration,
--- settable from the campaign screen for any service. This row is the Uysot chain written
--- out that way: a company pointing at their own API copies it, changes the three URLs and
--- the paths in `extract`, and needs nothing from us.
---
--- Deliberately inert. The campaign is DRAFT with recurrence ONCE, which
--- RecurringCampaignScheduler never picks up, and the source is enabled = false, so no
--- sweep touches it. The host is example.uz and resolves nowhere, so even a hand-run
--- POST /api/campaigns/{id}/targets/sync fails on the list step and — by design — leaves
--- the campaign's targets exactly as they were.
---
--- Read it alongside docs/api/campaigns.md: `{{page}}` counts up while `paginate` is set,
--- `{{contractId}}` and `{{leadId}}` come from the `extract` of an earlier step, `filters`
--- is what stops the two per-row requests from being spent on clients who owe nothing, and
--- whichever collected variable is not named as the phone, the client id or the language
--- becomes one of the target's facts.
--- ---------------------------------------------------------------------------
-INSERT INTO campaign (company_id, name, type, status, ai_agent_id)
-SELECT 1, 'Namuna — CHAINED manba', 'DEBT_COLLECTION', 'DRAFT',
-       (SELECT id FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)' LIMIT 1)
-WHERE NOT EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Namuna — CHAINED manba');
-
-INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end, recurrence_type)
-SELECT id, '09:00:00', '18:00:00', 'ONCE' FROM campaign WHERE company_id = 1 AND name = 'Namuna — CHAINED manba'
-ON CONFLICT (campaign_id) DO UPDATE SET dial_window_start = EXCLUDED.dial_window_start, dial_window_end = EXCLUDED.dial_window_end, recurrence_type = EXCLUDED.recurrence_type;
-
-INSERT INTO campaign_target_source (campaign_id, provider, phone_field, client_id_field,
-                                    auth_header_name, replace_targets, sync_on_recurrence, enabled, steps)
-SELECT id, 'CHAINED', 'phone', 'leadId', 'X-Open-Api-Token', true, true, false,
-       '[
-          {
-            "name": "contracts",
-            "method": "POST",
-            "url": "https://crm.example.uz/v1/contract/filter",
-            "body": "{\"page\":{{page}},\"size\":100,\"statuses\":[\"ACTIVE\"]}",
-            "itemsPath": "data.data",
-            "paginate": true,
-            "filters": [
-              {"path": "delay",   "operator": "GTE", "value": "1"},
-              {"path": "residue", "operator": "GT",  "value": "0"}
-            ],
-            "extract": {
-              "contractId": "id",
-              "clientName": "client.name",
-              "debtAmount": "residue",
-              "currency": "currency.ccy",
-              "contractNumber": "number"
-            }
-          },
-          {
-            "name": "contract",
-            "method": "GET",
-            "url": "https://crm.example.uz/v1/contract/{{contractId}}",
-            "extract": {"leadId": "data.lead.id"}
-          },
-          {
-            "name": "lead",
-            "method": "GET",
-            "url": "https://crm.example.uz/v1/lead/{{leadId}}",
-            "extract": {"phone": "data.contacts.0.phones.0"}
-          }
-        ]'::jsonb
-FROM campaign WHERE company_id = 1 AND name = 'Namuna — CHAINED manba'
-ON CONFLICT (campaign_id) DO NOTHING;
 
 -- Knowledge base: the answers the agent is allowed to give when a caller asks something
 -- the scenario does not script (KnowledgeBaseService). Guardrails forbid it from inventing
@@ -1729,10 +1576,10 @@ ON CONFLICT (item_id, language) DO NOTHING;
 -- block therefore changes nothing in a database that already has it — drop the database to
 -- see an edit.
 --
--- No campaign here can dial a real number on its own. Every ACTIVE or SCHEDULED campaign's
--- PENDING targets are due 30 days out; the numbers are made up and may still belong to
--- somebody. The one campaign meant to be started — "Softfon test" — dials 600, the local
--- softphone (voice-agent.asterisk.local-number-pattern), never the trunk.
+-- Company 1 gets no test agent, campaign or call history here: its four agents and four
+-- campaigns are the ones at the top of this file. The contacts below are made up and may
+-- still belong to somebody, so none of them is a campaign target. To hear an agent without
+-- a trunk, dial 600 from the local softphone (the realtime lead agent answers).
 -- ===========================================================================
 
 -- ---------------------------------------------------------------------------
@@ -1935,25 +1782,17 @@ END
 $seed$;
 
 -- ---------------------------------------------------------------------------
--- Agents of every shape, queues, tools, MCP, widgets.
+-- Queues, tools, MCP, widgets.
 --
--- Provider columns name engines that exist only once their API key is set (speech.yml):
--- an agent on gemini / openai / aisha speech needs that provider configured, or its call
--- fails at start. The three agents at the top of this file need only Yandex and Gemini.
+-- No test agent: the four agents at the top of this file are the only ones company 1 has,
+-- and the queues and widgets below point at them. The HTTP tools and the MCP connections
+-- are left unattached on purpose — their hosts are example.uz, and an agent that offered
+-- them would hear them fail on every real call.
 -- ---------------------------------------------------------------------------
 DO $seed$
 DECLARE
-    v_reception BIGINT;
-    v_debt      BIGINT;
-    v_sales     BIGINT;
-    v_survey    BIGINT;
-    v_reminder  BIGINT;
-    v_order     BIGINT;
-    v_notify    BIGINT;
-    v_night     BIGINT;
-    v_prompt    BIGINT;
-    v_embedded  BIGINT;
-    v_onboard   BIGINT;
+    v_lead_rt   BIGINT;
+    v_lead      BIGINT;
     v_sup       BIGINT;
     v_op1       BIGINT;
     v_op2       BIGINT;
@@ -1961,206 +1800,18 @@ DECLARE
     v_q_support BIGINT;
     v_q_sales   BIGINT;
     v_q_vip     BIGINT;
-    v_t_order   BIGINT;
-    v_t_balance BIGINT;
-    v_t_booking BIGINT;
-    v_mcp       BIGINT;
     v_theme     JSONB;
 BEGIN
-    IF EXISTS (SELECT 1 FROM ai_agent WHERE company_id = 1 AND name = 'Sotuv menejeri') THEN
+    IF EXISTS (SELECT 1 FROM call_queue WHERE company_id = 1 AND name = 'Qo''llab-quvvatlash') THEN
         RETURN;
     END IF;
 
-    SELECT id INTO v_reception FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona';
-    SELECT id INTO v_debt FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)';
+    SELECT id INTO v_lead_rt FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (realtime)';
+    SELECT id INTO v_lead FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (cascade)';
     SELECT id INTO v_sup FROM app_user WHERE username = 'supervisor';
     SELECT id INTO v_op1 FROM app_user WHERE username = 'operator1';
     SELECT id INTO v_op2 FROM app_user WHERE username = 'operator2';
     SELECT id INTO v_op3 FROM app_user WHERE username = 'operator3';
-
-    -- Outbound sales on Gemini end to end: Gemini recognition, Gemini TTS, a lite model for
-    -- short turns. Everything optional is filled in, so this is the agent to open to see
-    -- every field of the form with a value in it.
-    INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona,
-                          pipeline_mode, stt_provider, stt_model, tts_provider, tts_model, tts_voice,
-                          llm_model, fast_llm_model, temperature, max_output_tokens,
-                          interruption_sensitivity, voicemail_action, voicemail_message,
-                          transfer_message, post_call_actions, data_needed, data_evaluation,
-                          max_conversation_duration_seconds, concurrent_calls_limit, daily_calls_limit, created_by)
-    VALUES (1, 'Sotuv menejeri', 'Chiquvchi sotuv: qiziqish, byudjet va uchrashuv vaqtini aniqlaydi (Gemini STT/LLM/TTS).',
-            (SELECT id FROM scenario WHERE scenario_key = 'lead-qualification' AND is_active),
-            'STRUCTURED_STEPS', 'uz-UZ', 'AI_ASSISTANT',
-            'CASCADE', 'gemini', 'gemini-3.5-transcribe-live', 'gemini', 'gemini-3.8-flash-tts', 'gemini-tts-kore-uz',
-            'gemini-3.8-flash', 'gemini-3.5-flash-lite', 0.4, 250,
-            'HIGH', 'LEAVE_MESSAGE',
-            'Assalomu alaykum. Siz qiziqqan xizmat bo''yicha qo''ng''iroq qildik. Qulay vaqtda qayta bog''laning.',
-            'Sizni sotuv bo''limi mutaxassisiga ulayman.',
-            $j$[{"id": "sms-demo", "name": "Demo eslatma SMS", "actionType": "SEND_SMS", "triggerDisposition": "COMPLETED",
-                 "onlyOnSuccess": true, "template": "{{client_name}}, demo uchrashuvingiz tasdiqlandi. Uysot jamoasi.",
-                 "webhookUrl": null, "headers": {}, "enabled": false}]$j$::jsonb,
-            $j$[{"id": "budget", "type": "Number", "name": "Byudjet", "description": "Mijoz aytgan taxminiy byudjet, so'mda"},
-                {"id": "decision_maker", "type": "Boolean", "name": "Qaror qabul qiluvchi", "description": "Suhbatdosh qarorni o'zi qabul qiladimi"}]$j$::jsonb,
-            $j$[{"id": "needs_follow_up", "name": "Qayta aloqa kerak", "criteria": "Mijoz qo'shimcha ma'lumot yoki qayta qo'ng'iroq so'radimi?"}]$j$::jsonb,
-            300, 5, 300, v_sup)
-    RETURNING id INTO v_sales;
-    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound, ambient_sound_volume, thinking_sound, thinking_sound_volume)
-    VALUES (v_sales, 'CALL_CENTER', 0.8, 'KEYBOARD_TYPING', 0.6)
-    ON CONFLICT (ai_agent_id) DO NOTHING;
-    INSERT INTO ai_agent_pronunciation_rule (ai_agent_id, word, replacement, case_sensitive, language)
-    VALUES (v_sales, 'MChJ', 'mas''uliyati cheklangan jamiyat', false, 'uz-UZ'),
-           (v_sales, 'CRM', 'si-ar-em', true, '*');
-
-    -- A short survey, Yandex recognition with Aisha's cheerful Uzbek voice.
-    INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, first_message,
-                          pipeline_mode, stt_provider, tts_provider, tts_voice, llm_model,
-                          emotion_adaptive_voice, voicemail_action, created_by)
-    VALUES (1, 'So''rovnoma (NPS)', 'Xizmat sifati bo''yicha 3 savollik so''rovnoma (Yandex STT + Aisha TTS).',
-            (SELECT id FROM scenario WHERE scenario_key = 'survey' AND is_active),
-            'STRUCTURED_STEPS', 'uz-UZ',
-            'Assalomu alaykum! Xizmatimiz haqida bir daqiqalik so''rovnomada qatnashishga rozimisiz?',
-            'CASCADE', 'yandex', 'aisha', 'gulnoza-cheerful', 'gemini-3.6-flash',
-            false, 'HANGUP', v_sup)
-    RETURNING id INTO v_survey;
-    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
-    VALUES (v_survey, 'OFF')
-    ON CONFLICT (ai_agent_id) DO NOTHING;
-
-    -- Russian first, Uzbek when the call is in Uzbek; each language at its own pace.
-    INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, first_message,
-                          pipeline_mode, stt_provider, tts_provider, tts_voice, llm_model,
-                          voice_speed, voice_speed_per_language, interruption_sensitivity,
-                          voicemail_action, voicemail_message, created_by)
-    VALUES (1, 'Uchrashuv eslatmasi (ru)', 'Uchrashuvni rus tilida eslatadi, tasdiqlash yoki ko''chirishni yozib oladi.',
-            (SELECT id FROM scenario WHERE scenario_key = 'appointment-reminder' AND is_active),
-            'STRUCTURED_STEPS', 'ru-RU',
-            'Здравствуйте! Напоминаем о вашей записи. Удобно сейчас говорить?',
-            'CASCADE', 'yandex', 'yandex', 'alena', 'gemini-3.8-flash',
-            1.1, '{"ru-RU": 1.1, "uz-UZ": 0.95}'::jsonb, 'LOW',
-            'LEAVE_MESSAGE',
-            'Здравствуйте. Напоминаем о вашей записи. Пожалуйста, перезвоните нам для подтверждения.', v_sup)
-    RETURNING id INTO v_reminder;
-    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound, noise_cancellation_mode)
-    VALUES (v_reminder, 'NATURAL_LINE', 'VOICE_ISOLATION')
-    ON CONFLICT (ai_agent_id) DO NOTHING;
-
-    -- OpenAI recognition and synthesis around a Gemini turn.
-    INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language,
-                          pipeline_mode, stt_provider, stt_model, tts_provider, tts_model, tts_voice, llm_model,
-                          voicemail_action, created_by)
-    VALUES (1, 'Buyurtma tasdiqlash (OpenAI ovoz)', 'Do''kon buyurtmasini, manzil va vaqtni tasdiqlaydi (OpenAI STT/TTS, Gemini LLM).',
-            (SELECT id FROM scenario WHERE scenario_key = 'order-confirmation' AND is_active),
-            'STRUCTURED_STEPS', 'uz-UZ',
-            'CASCADE', 'openai', 'gpt-live-transcribe', 'openai', 'gpt-4o-mini-tts', 'openai-nova-uz', 'gemini-3.8-flash',
-            'HANGUP', v_sup)
-    RETURNING id INTO v_order;
-    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
-    VALUES (v_order, 'NATURAL_LINE')
-    ON CONFLICT (ai_agent_id) DO NOTHING;
-
-    -- Speech-to-speech on OpenAI's realtime engine, facts fetched by tool rather than
-    -- written into its instructions. No tts_voice: the catalog has no openai-realtime voice.
-    INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language,
-                          pipeline_mode, realtime_provider, llm_model, realtime_facts_delivery,
-                          voicemail_action, created_by)
-    VALUES (1, 'Bildirishnoma (OpenAI realtime)', 'Bir tomonlama xabar yetkazadi: OpenAI Realtime, faktlar tool orqali.',
-            (SELECT id FROM scenario WHERE scenario_key = 'notification' AND is_active),
-            'STRUCTURED_STEPS', 'uz-UZ',
-            'REALTIME', 'openai-realtime', 'gpt-realtime-2.1', 'TOOL',
-            'HANGUP', v_sup)
-    RETURNING id INTO v_notify;
-    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
-    VALUES (v_notify, 'OFF')
-    ON CONFLICT (ai_agent_id) DO NOTHING;
-
-    -- After hours, presenting as a person: allowed only because company_config says so,
-    -- and it skips the automated-call disclosure — which is exactly what to test.
-    INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language, persona, first_message,
-                          pipeline_mode, stt_provider, tts_provider, tts_voice, llm_model,
-                          voicemail_action, transfer_message, created_by)
-    VALUES (1, 'Kechki navbatchi', 'Ish vaqtidan keyin kiruvchi qo''ng''iroqqa javob beradi va qayta qo''ng''iroq vaqtini yozib oladi (HUMAN_LIKE).',
-            (SELECT id FROM scenario WHERE scenario_key = 'callback-request' AND is_active),
-            'STRUCTURED_STEPS', 'uz-UZ', 'HUMAN_LIKE',
-            'Assalomu alaykum, men Nilufar, navbatchi yordamchiman. Sizga qanday yordam bera olaman?',
-            'CASCADE', 'yandex', 'yandex', 'yulduz', 'gemini-3.8-flash',
-            'IGNORE', 'Hozir navbatchi mutaxassisga ulayman.', v_sup)
-    RETURNING id INTO v_night;
-    INSERT INTO ai_agent_ambience (ai_agent_id, ambient_sound)
-    VALUES (v_night, 'OFFICE')
-    ON CONFLICT (ai_agent_id) DO NOTHING;
-
-    -- PROMPT mode: no scenario at all, the system prompt is the whole script. Engines left
-    -- NULL run on whatever speech.yml / the company settings say; RAG is on.
-    INSERT INTO ai_agent (company_id, name, description, scenario_mode, template_id, language,
-                          system_prompt, first_message, use_rag, pipeline_mode, created_by)
-    VALUES (1, 'Erkin suhbat (PROMPT rejimi)', 'Ssenariysiz, faqat system prompt bilan ishlaydigan yordamchi; bilim bazasidan qidiradi.',
-            'PROMPT', 'SUPPORT', 'uz-UZ',
-            'Siz Uysot kompaniyasining qo''llab-quvvatlash yordamchisisiz. Qisqa va aniq javob bering, bir javobda ikki gapdan oshmang. '
-            || 'Bilmagan savolingizga javob to''qimang — bilim bazasidan qidiring, topilmasa operatorga ulashni taklif qiling. '
-            || 'Narx, chegirma yoki qarz summasi haqida o''zingizdan hech narsa aytmang.',
-            'Assalomu alaykum! Savolingizni bering.', true, 'CASCADE', v_sup)
-    RETURNING id INTO v_prompt;
-
-    -- STRUCTURED_STEPS with the definition embedded in the agent instead of a scenario row.
-    INSERT INTO ai_agent (company_id, name, description, scenario_mode, scenario_definition, template_id, language,
-                          pipeline_mode, stt_provider, tts_provider, tts_voice, created_by)
-    VALUES (1, 'Yetkazib berish holati (ichki ssenariy)', 'Ssenariy agentning o''zida saqlangan (scenario_definition): buyurtma holatini aytadi.',
-            'STRUCTURED_STEPS',
-$j${"stages": [
-  {"id": "GREETING", "purpose": "Salomlashish va buyurtma raqamini so'rash", "allowedTransitions": ["STATUS", "END_CALL"]},
-  {"id": "STATUS", "purpose": "buyurtma_holati tool'i bilan holatni tekshirib aytish", "allowedTransitions": ["CLOSING", "ESCALATE_TO_HUMAN", "END_CALL"]},
-  {"id": "CLOSING", "purpose": "Xayrlashish", "allowedTransitions": ["END_CALL"]},
-  {"id": "ESCALATE_TO_HUMAN", "purpose": "Operatorga uzatish", "allowedTransitions": ["END_CALL"]},
-  {"id": "END_CALL", "purpose": "Qo'ng'iroqni tugatish", "allowedTransitions": []}
- ],
- "factSchema": [{"name": "clientName", "type": "string", "required": false}],
- "tools": [],
- "outcomeSchema": [{"name": "orderStatus", "type": "string", "description": "Mijozga aytilgan buyurtma holati"}],
- "rolePrompt": "Siz internet-do'konning yetkazib berish bo'yicha yordamchisisiz.",
- "guardrails": ["Yetkazish sanasini tool javobisiz aytmang"]}$j$::jsonb,
-            'BUSINESS', 'uz-UZ', 'CASCADE', 'yandex', 'yandex', 'nigora', v_sup)
-    RETURNING id INTO v_embedded;
-
-    -- Disabled, and the only agent carrying webhooks and post-call actions: they point at
-    -- example.uz, so they are here to be looked at, not to fire after every test call.
-    INSERT INTO ai_agent (company_id, name, description, scenario_id, scenario_mode, language,
-                          pipeline_mode, stt_provider, tts_provider, tts_voice, llm_model,
-                          dtmf_input_enabled, mid_call_sms_enabled, mid_call_sms_template,
-                          zero_pii_retention, store_call_audio, conversation_retention_days,
-                          silence_end_call_timeout_seconds,
-                          initiation_webhook, post_call_webhook, post_call_actions, enabled, created_by)
-    VALUES (1, 'Onboarding (o''chirilgan)', 'Yangi mijozni tabriklaydi va demo taklif qiladi. O''chirilgan: webhook va post-call amallar namunasi.',
-            (SELECT id FROM scenario WHERE scenario_key = 'welcome-onboarding' AND is_active),
-            'STRUCTURED_STEPS', 'uz-UZ',
-            'CASCADE', 'yandex', 'yandex', 'zamira', 'gemini-3.6-flash',
-            false, true, 'Video qo''llanma: https://uysot.uz/guide — {{client_name}}, savollaringiz bo''lsa yozing.',
-            true, false, 7,
-            20,
-            $j${"webhookUrl": "https://crm.example.uz/voice/initiate", "method": "POST", "headers": {},
-                "dynamicVariables": {"source": "voice-agent"}, "transcript": null, "audioUrl": null}$j$::jsonb,
-            $j${"webhookUrl": "https://hooks.example.uz/call-finished", "method": "POST",
-                "headers": {"X-Api-Key": "{{secrets.CRM_API_TOKEN}}"}, "dynamicVariables": {},
-                "transcript": true, "audioUrl": false}$j$::jsonb,
-            $j$[{"id": "sms-thanks", "name": "Rahmat SMS", "actionType": "SEND_SMS", "triggerDisposition": "COMPLETED",
-                 "onlyOnSuccess": true, "template": "{{client_name}}, qo'ng'iroq uchun rahmat!", "webhookUrl": null,
-                 "headers": {}, "enabled": true},
-                {"id": "tg-summary", "name": "Telegram xulosa", "actionType": "TELEGRAM", "triggerDisposition": null,
-                 "onlyOnSuccess": false, "template": "{{summary}}", "webhookUrl": null, "headers": {}, "enabled": true},
-                {"id": "crm-hook", "name": "CRM webhook", "actionType": "WEBHOOK", "triggerDisposition": "CALLBACK_REQUESTED",
-                 "onlyOnSuccess": false, "template": null, "webhookUrl": "https://crm.example.uz/webhooks/callback",
-                 "headers": {"X-Api-Key": "{{secrets.CRM_API_TOKEN}}"}, "enabled": true}]$j$::jsonb,
-            false, v_sup)
-    RETURNING id INTO v_onboard;
-
-    INSERT INTO ai_agent_voice (ai_agent_id, language, voice_id) VALUES
-        (v_sales,    'uz-UZ', 'gemini-tts-kore-uz'),
-        (v_sales,    'ru-RU', 'gemini-tts-kore-ru'),
-        (v_survey,   'uz-UZ', 'gulnoza-cheerful'),
-        (v_reminder, 'ru-RU', 'alena'),
-        (v_reminder, 'uz-UZ', 'zamira'),
-        (v_order,    'uz-UZ', 'openai-nova-uz'),
-        (v_order,    'ru-RU', 'openai-nova-ru'),
-        (v_night,    'uz-UZ', 'yulduz'),
-        (v_night,    'ru-RU', 'jane');
 
     -- Queues. overflow targets are typed foreign keys and external phone.
     INSERT INTO call_queue (company_id, name, strategy, ring_timeout_sec, wrap_up_sec, max_wait_sec, max_length,
@@ -2170,12 +1821,12 @@ $j${"stages": [
     VALUES (1, 'Qo''llab-quvvatlash', 'LEAST_RECENT', 15, 10, 300, 20, 60, true,
             'Qo''ng''iroqingiz biz uchun muhim. Birinchi bo''sh operator sizga javob beradi.', 90, 120,
             'VOICEMAIL', (SELECT id FROM voicemail_box WHERE company_id = 1 AND name = 'Umumiy ovozli pochta'),
-            20, true, v_reception)
+            20, true, NULL)
     RETURNING id INTO v_q_support;
 
     INSERT INTO call_queue (company_id, name, strategy, ring_timeout_sec, wrap_up_sec, max_wait_sec,
                             announce_position_every_sec, overflow_action, overflow_agent_id, service_level_sec, sticky_seconds)
-    VALUES (1, 'Sotuv', 'SKILL_BASED', 20, 15, 180, 45, 'AI_AGENT', v_sales, 30, 86400)
+    VALUES (1, 'Sotuv', 'SKILL_BASED', 20, 15, 180, 45, 'AI_AGENT', v_lead, 30, 86400)
     RETURNING id INTO v_q_sales;
 
     INSERT INTO call_queue (company_id, name, strategy, ring_timeout_sec, wrap_up_sec, max_wait_sec,
@@ -2209,11 +1860,13 @@ $j${"stages": [
         (v_q_vip,     v_sup, 'ru-RU'),
         (v_q_vip,     v_op1, 'uz-UZ');
 
-    UPDATE ai_agent SET transfer_queue_id = v_q_support WHERE id IN (v_reception, v_debt, v_night, v_prompt);
-    UPDATE ai_agent SET transfer_queue_id = v_q_sales WHERE id = v_sales;
+    -- Where each agent hands a caller who asks for a person.
+    UPDATE ai_agent SET transfer_queue_id = v_q_sales
+     WHERE company_id = 1 AND name IN ('Lid kvalifikatsiya (cascade)', 'Lid kvalifikatsiya (realtime)');
+    UPDATE ai_agent SET transfer_queue_id = v_q_support
+     WHERE company_id = 1 AND name IN ('Qarzdorlik (cascade)', 'Qarzdorlik (realtime)');
 
-    -- HTTP tools. The hosts are example.uz: a test call that uses one hears the tool fail,
-    -- which is also worth testing.
+    -- HTTP tools. The hosts are example.uz: attach one to an agent to hear a tool fail.
     INSERT INTO tool (company_id, name, description, api_url, api_method, api_headers, api_path_params,
                       response_timeout_secs, pre_tool_speech, response_mapping, retry_attempts, max_calls_per_call,
                       effect)
@@ -2223,8 +1876,7 @@ $j${"stages": [
             $j$[{"name": "order_id", "type": "string", "valueType": "LLM Prompt", "value": null,
                  "description": "Buyurtma raqami, mijoz aytgan ko'rinishda", "allowedValues": [], "required": true}]$j$::jsonb,
             8, 'Bir soniya, buyurtmangizni tekshiryapman.',
-            '{"status": "$.data.status", "eta": "$.data.eta"}'::jsonb, 1, 3, 'READ')
-    RETURNING id INTO v_t_order;
+            '{"status": "$.data.status", "eta": "$.data.eta"}'::jsonb, 1, 3, 'READ');
 
     INSERT INTO tool (company_id, name, description, api_url, api_method, api_headers, api_body, dynamic_variables,
                       response_timeout_secs, disable_interruptions, pre_tool_speech, retry_attempts, max_calls_per_call,
@@ -2238,8 +1890,7 @@ $j${"stages": [
                  "description": "Qo'ng'iroq qilingan raqam", "allowedValues": [], "required": true}]$j$::jsonb,
             $j$[{"key": "contractNumber", "value": "", "type": "string", "redacted": false}]$j$::jsonb,
             -- A POST, but a lookup: it only reads the balance.
-            10, true, 'Hisobingizni tekshirib ko''raman.', 0, 2, 'READ')
-    RETURNING id INTO v_t_balance;
+            10, true, 'Hisobingizni tekshirib ko''raman.', 0, 2, 'READ');
 
     INSERT INTO tool (company_id, name, description, api_url, api_method, api_body, api_query_params,
                       response_timeout_secs, force_pre_tool_speech, retry_attempts, max_calls_per_call,
@@ -2255,21 +1906,12 @@ $j${"stages": [
             $j$[{"name": "branch_id", "type": "number", "valueType": "Static Value", "value": 3,
                  "description": "Filial", "allowedValues": [], "required": false}]$j$::jsonb,
             -- Writes: read back for the caller's yes before it is sent (UNIVERSAL-OPERATOR-PLAN B.3).
-            10, false, 0, 2, 'WRITE', true, '{{date}} kuni soat {{time}} ga filialga yozib qo''yaymi?')
-    RETURNING id INTO v_t_booking;
-
-    INSERT INTO ai_agent_tool (ai_agent_id, tool_id) VALUES
-        (v_sales, v_t_booking), (v_sales, v_t_order),
-        (v_debt, v_t_balance),
-        (v_reception, v_t_order), (v_reception, v_t_balance),
-        (v_embedded, v_t_order);
+            10, false, 0, 2, 'WRITE', true, '{{date}} kuni soat {{time}} ga filialga yozib qo''yaymi?');
 
     INSERT INTO mcp_connection (company_id, name, url, auth_type, secret_key, status, allow_writes)
-    VALUES (1, 'Ichki CRM MCP', 'https://mcp.example.uz/mcp', 'BEARER', 'MCP_BEARER_TOKEN', 'PENDING', false)
-    RETURNING id INTO v_mcp;
+    VALUES (1, 'Ichki CRM MCP', 'https://mcp.example.uz/mcp', 'BEARER', 'MCP_BEARER_TOKEN', 'PENDING', false);
     INSERT INTO mcp_connection (company_id, name, url, auth_type, status, last_error)
     VALUES (1, 'Hujjatlar MCP (o''chiq)', 'https://docs-mcp.example.uz/mcp', 'NONE', 'DISABLED', NULL);
-    INSERT INTO ai_agent_mcp_connection (ai_agent_id, mcp_connection_id) VALUES (v_sales, v_mcp);
 
     v_theme := $j${"primaryColor": "#002FA7", "accentColor": "#0F172A", "surfaceColor": "#FFFFFF", "textColor": "#111827",
         "mutedTextColor": "#667085", "buttonTextColor": "#FFFFFF", "borderColor": "#DADDE3", "position": "bottom-right",
@@ -2281,19 +1923,17 @@ $j${"stages": [
         "whiteLabel": false}$j$::jsonb;
 
     INSERT INTO agent_widget (widget_key, company_id, agent_id, name, enabled, allowed_origins, theme, consent_required, consent_text)
-    VALUES ('wgt_seedreception01', 1, v_reception, 'Sayt vidjeti', true,
+    VALUES ('wgt_seedreception01', 1, v_lead_rt, 'Sayt vidjeti', true,
             '["http://localhost:5173", "http://localhost:3000", "https://uysot.uz"]'::jsonb, v_theme, true,
             'Suhbat sifat nazorati uchun yozib olinadi. Davom etish orqali rozilik bildirasiz.');
     INSERT INTO agent_widget (widget_key, company_id, agent_id, name, enabled, allowed_origins, theme, consent_required)
-    VALUES ('wgt_seedsales000002', 1, v_sales, 'Sotuv vidjeti (o''chiq)', false,
+    VALUES ('wgt_seedsales000002', 1, v_lead, 'Sotuv vidjeti (o''chiq)', false,
             '["https://shop.example.uz"]'::jsonb,
             v_theme || '{"primaryColor": "#0F766E", "position": "bottom-left", "brandName": "Sotuv bo''limi", "defaultOpen": true}'::jsonb,
             false);
 
-    -- Knowledge only the sales agent answers from, and a switched-off company-wide item.
+    -- A switched-off company-wide knowledge item.
     INSERT INTO knowledge_base_item (company_id, agent_id, item_key, topic, title, keywords, is_active) VALUES
-        (1, v_sales, 'sales_pricing', 'pricing', 'Tariflar', 'narx,tarif,qancha,цена,тариф,сколько,price,plan', true),
-        (1, v_sales, 'sales_demo', 'sales', 'Demo uchrashuv', 'demo,taqdimot,ko''rsatib bering,демо,презентация,demo', true),
         (1, NULL, 'old_promo', 'general', 'Yozgi aksiya (tugagan)', 'aksiya,chegirma,акция,скидка,promo', false)
     ON CONFLICT (company_id, item_key) DO NOTHING;
 
@@ -2301,14 +1941,6 @@ $j${"stages": [
     SELECT k.id, t.lang, t.ans
     FROM (
         VALUES
-        ('sales_pricing', 'uz', 'Uchta tarif bor: Start — oyiga 1 000 daqiqa, Pro — 5 000 daqiqa, Enterprise — kelishuv asosida. Aniq narxni menejer taklifnomada yuboradi.'),
-        ('sales_pricing', 'ru', 'Есть три тарифа: Start — 1 000 минут в месяц, Pro — 5 000 минут, Enterprise — по договорённости. Точную цену менеджер пришлёт в предложении.'),
-        ('sales_pricing', 'en', 'There are three plans: Start (1,000 minutes a month), Pro (5,000 minutes) and Enterprise (by agreement). The manager sends the exact price in a proposal.'),
-
-        ('sales_demo', 'uz', 'Demo 30 daqiqa davom etadi, onlayn yoki ofisimizda. Qulay kun va vaqtni aytsangiz, yozib qo''yaman.'),
-        ('sales_demo', 'ru', 'Демо длится 30 минут, онлайн или у нас в офисе. Назовите удобный день и время — я запишу.'),
-        ('sales_demo', 'en', 'The demo takes 30 minutes, online or at our office. Tell me a convenient day and time and I will book it.'),
-
         ('old_promo', 'uz', 'Yozgi aksiya 31-avgustda tugagan.'),
         ('old_promo', 'ru', 'Летняя акция завершилась 31 августа.'),
         ('old_promo', 'en', 'The summer promotion ended on 31 August.')
@@ -2319,34 +1951,14 @@ END
 $seed$;
 
 -- ---------------------------------------------------------------------------
--- Contacts, opt-outs, client memory, campaigns in every status, A/B variants, targets
+-- Contacts, opt-outs, client memory. No test campaign: the four campaigns at the top of this
+-- file are the only ones company 1 has.
 -- ---------------------------------------------------------------------------
 DO $seed$
-DECLARE
-    v_admin    BIGINT;
-    v_debt     BIGINT;
-    v_debt_rt  BIGINT;
-    v_survey   BIGINT;
-    v_reminder BIGINT;
-    v_notify   BIGINT;
-    v_night    BIGINT;
-    v_camp     BIGINT;
-    v_var_a    BIGINT;
-    v_var_b    BIGINT;
-    v_callback BIGINT;
-    v_later    CONSTANT TIMESTAMPTZ := now() + interval '30 days';
 BEGIN
-    IF EXISTS (SELECT 1 FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — sentabr') THEN
+    IF EXISTS (SELECT 1 FROM contact WHERE company_id = 1 AND phone = '+998901230001') THEN
         RETURN;
     END IF;
-
-    SELECT id INTO v_admin FROM app_user WHERE username = 'admin';
-    SELECT id INTO v_debt FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)';
-    SELECT id INTO v_debt_rt FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (realtime)';
-    SELECT id INTO v_survey FROM ai_agent WHERE company_id = 1 AND name = 'So''rovnoma (NPS)';
-    SELECT id INTO v_reminder FROM ai_agent WHERE company_id = 1 AND name = 'Uchrashuv eslatmasi (ru)';
-    SELECT id INTO v_notify FROM ai_agent WHERE company_id = 1 AND name = 'Bildirishnoma (OpenAI realtime)';
-    SELECT id INTO v_night FROM ai_agent WHERE company_id = 1 AND name = 'Kechki navbatchi';
 
     INSERT INTO contact (company_id, name, phone, address, notes, created_at) VALUES
         (1, 'Aziz Karimov',        '+998901230001', 'Toshkent, Chilonzor 9-kvartal',   'Odatda oyning 10-sanasida to''laydi.', now() - interval '40 days'),
@@ -2373,7 +1985,7 @@ BEGIN
         (1, 'Сергей Ким',          '+998901230022', 'Ташкент, Чиланзар',              NULL, now() - interval '7 days'),
         (1, 'Shahzod Umarov',      '+998901230023', 'Toshkent, Shayxontohur',         'Reklamadan kelgan.', now() - interval '5 days'),
         (1, 'Yulduz Berdiyeva',    '+998901230024', NULL,                             NULL, now() - interval '3 days'),
-        (1, 'Softfon (test)',      '600',           NULL,                             'Mahalliy softfon: "Softfon test" kampaniyasi shu raqamga qo''ng''iroq qiladi.', now() - interval '1 day');
+        (1, 'Softfon (test)',      '600',           NULL,                             'Mahalliy softfon: 600 ga qo''ng''iroq realtime lid agentiga tushadi.', now() - interval '1 day');
 
     INSERT INTO contact_tag (contact_id, tag)
     SELECT c.id, t.tag
@@ -2444,178 +2056,6 @@ BEGIN
              'summary', 'Reklama orqali qo''ng''iroq qildi, payshanba kuni demo so''radi.')),
          '{}'::jsonb,
          now() - interval '1 day', now() - interval '1 day');
-
-    -- ACTIVE, split A/B between the cascade pipeline and the realtime one. The targets still
-    -- waiting are due 30 days out, so this campaign is live on every screen without dialling.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
-                          max_attempts, retry_interval_minutes, priority, retry_policy,
-                          last_run_at, created_at, created_by)
-    VALUES (1, v_debt, 'Qarzdorlik — sentabr', 'DEBT_COLLECTION', 'ACTIVE',
-            3, 120, 4,
-            '{"NO_ANSWER": {"maxAttempts": 3, "delayMinutes": 180}, "VOICEMAIL": {"maxAttempts": 1, "delayMinutes": 120}, "HUNG_UP": {"maxAttempts": 2, "delayMinutes": 60}}'::jsonb,
-            now() - interval '1 day', now() - interval '6 days', v_admin)
-    RETURNING id INTO v_camp;
-    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls, daily_call_cap, budget_uzs, daily_budget_uzs)
-    VALUES (v_camp, 10, 150, 2000000, 300000)
-    ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
-    VALUES (v_camp, '09:00', '19:00')
-    ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_dial_day (campaign_id, day)
-    SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']) AS d;
-
-    INSERT INTO campaign_variant (campaign_id, company_id, name, ai_agent_id, prompt_override, tts_voice_id, pipeline_mode,
-                                  traffic_weight, calls_count, answered_count, converted_count, is_active)
-    VALUES (v_camp, 1, 'A — cascade', v_debt, NULL, NULL, NULL, 50, 7, 4, 1, true)
-    RETURNING id INTO v_var_a;
-    INSERT INTO campaign_variant (campaign_id, company_id, name, ai_agent_id, prompt_override, tts_voice_id, pipeline_mode,
-                                  traffic_weight, calls_count, answered_count, converted_count, is_active)
-    VALUES (v_camp, 1, 'B — realtime', v_debt, 'Qisqaroq gapiring: har javob bitta gapdan oshmasin.', 'gemini-aoede-uz', 'REALTIME',
-            50, 8, 3, 0, true)
-    RETURNING id INTO v_var_b;
-
-    INSERT INTO campaign_target (company_id, campaign_id, variant_id, client_id, phone, language, context_data, status,
-                                 attempts, next_attempt_at, do_not_call, created_at)
-    SELECT 1, v_camp, CASE t.variant WHEN 'A' THEN v_var_a WHEN 'B' THEN v_var_b END, c.id, c.phone, t.lang,
-           jsonb_build_object('clientName', t.client_name, 'debtAmount', t.amount, 'currency', 'UZS',
-                              'dueDate', t.due, 'contractNumber', t.contract),
-           t.status, t.attempts, CASE WHEN t.status = 'PENDING' THEN v_later END, t.dnc, now() - interval '6 days'
-    FROM (VALUES
-        ('+998901230001', 'A', 'uz-UZ', 'Aziz aka',        1250000, '2026-09-01', 'SH-2025-0141', 'DONE',      1, false),
-        ('+998901230002', 'B', 'uz-UZ', 'Dilnoza opa',      840000, '2026-08-25', 'SH-2025-0142', 'DONE',      1, false),
-        ('+998901230003', 'A', 'uz-UZ', 'Bekzod aka',      2100000, '2026-08-20', 'SH-2025-0143', 'PENDING',   1, false),
-        ('+998901230004', 'B', 'uz-UZ', 'Gulnora opa',      560000, '2026-09-05', 'SH-2025-0144', 'EXHAUSTED', 1, false),
-        ('+998901230005', 'A', 'uz-UZ', 'Sherzod aka',      990000, '2026-08-15', 'SH-2025-0145', 'FAILED',    1, false),
-        ('+998901230006', 'B', 'uz-UZ', 'Kamola opa',      1500000, '2026-09-03', 'SH-2025-0146', 'DONE',      1, false),
-        ('+998901230007', 'A', 'uz-UZ', 'Rustam aka',      3200000, '2026-07-30', 'SH-2025-0147', 'DONE',      1, false),
-        ('+998901230008', 'B', 'uz-UZ', 'Feruza opa',       720000, '2026-09-08', 'SH-2025-0148', 'PENDING',   1, false),
-        ('+998901230009', 'A', 'uz-UZ', 'Otabek aka',      1100000, '2026-08-28', 'SH-2025-0149', 'DONE',      1, true),
-        ('+998901230010', 'B', 'uz-UZ', 'Zarina opa',       450000, '2026-09-10', 'SH-2025-0150', 'PENDING',   1, false),
-        ('+998901230011', 'A', 'uz-UZ', 'Ulug''bek aka',   1800000, '2026-08-18', 'SH-2025-0151', 'FAILED',    1, false),
-        ('+998901230012', 'B', 'uz-UZ', 'Mohira opa',       630000, '2026-08-22', 'SH-2025-0152', 'EXHAUSTED', 3, false),
-        ('+998901230013', 'A', 'uz-UZ', 'Jamshid aka',     2750000, '2026-09-12', 'SH-2025-0153', 'PENDING',   0, false),
-        ('+998901230014', 'B', 'ru-RU', 'Нигина',           910000, '2026-09-12', 'SH-2025-0154', 'PENDING',   0, false)
-    ) AS t(phone, variant, lang, client_name, amount, due, contract, status, attempts, dnc)
-    JOIN contact c ON c.company_id = 1 AND c.phone = t.phone;
-
-    -- A GENERIC source as the campaign screen shows it after one sync; disabled, since the
-    -- host resolves nowhere.
-    INSERT INTO campaign_target_source (campaign_id, provider, url, http_method, auth_header_name, items_path,
-                                        phone_field, client_id_field, language_field, replace_targets,
-                                        sync_on_recurrence, enabled, last_sync_at, last_sync_added)
-    VALUES (v_camp, 'GENERIC', 'https://api.example.uz/v1/debtors', 'GET', 'Authorization', 'data.items',
-            'phone', 'id', 'lang', false, false, false, now() - interval '6 days', 14);
-
-    -- PAUSED on the realtime agent; resuming it dials nothing for 30 days.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
-                          max_attempts, retry_interval_minutes, created_at, created_by)
-    VALUES (1, v_debt_rt, 'Qarzdorlik — realtime test', 'DEBT_COLLECTION', 'PAUSED',
-            2, 60, now() - interval '4 days', v_admin)
-    RETURNING id INTO v_camp;
-    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
-    VALUES (v_camp, 5) ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
-    VALUES (v_camp, '09:00', '18:00') ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_dial_day (campaign_id, day)
-    SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
-    INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts, next_attempt_at)
-    SELECT 1, v_camp, c.id, c.phone, 'uz-UZ',
-           jsonb_build_object('clientName', t.client_name, 'debtAmount', t.amount, 'currency', 'UZS', 'dueDate', '2026-09-10'),
-           'PENDING', 0, v_later
-    FROM (VALUES ('+998901230018', 'Akmal aka', 1340000), ('+998901230019', 'Madina opa', 670000),
-                 ('+998901230020', 'Anvar aka', 2200000)) AS t(phone, client_name, amount)
-    JOIN contact c ON c.company_id = 1 AND c.phone = t.phone;
-
-    -- The one campaign meant to be started: its only target is 600, which the dialer rings
-    -- on the local softphone endpoint instead of the trunk — the whole outbound path, free.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
-                          max_attempts, retry_interval_minutes, priority, created_at, created_by)
-    VALUES (1, v_debt, 'Softfon test', 'DEBT_COLLECTION', 'PAUSED',
-            1, 0, 5, now() - interval '1 day', v_admin)
-    RETURNING id INTO v_camp;
-    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
-    VALUES (v_camp, 1) ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
-    VALUES (v_camp, '00:00', '23:59') ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_dial_day (campaign_id, day)
-    SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']) AS d;
-    INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts)
-    SELECT 1, v_camp, c.id, '600', 'uz-UZ',
-           '{"clientName": "Test mijoz", "debtAmount": 1250000, "currency": "UZS", "dueDate": "2026-09-01", "contractNumber": "SH-TEST-0001"}'::jsonb,
-           'PENDING', 0
-    FROM contact c WHERE c.company_id = 1 AND c.phone = '600';
-
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
-                          max_attempts, last_run_at, created_at, created_by)
-    VALUES (1, v_survey, 'Mijozlar so''rovnomasi (NPS)', 'SURVEY', 'COMPLETED',
-            2, now() - interval '4 days', now() - interval '8 days', v_admin)
-    RETURNING id INTO v_camp;
-    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
-    VALUES (v_camp, 5) ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
-    VALUES (v_camp, '10:00', '19:00') ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_dial_day (campaign_id, day)
-    SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
-    INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts, created_at)
-    SELECT 1, v_camp, c.id, c.phone, t.lang, '{"topicName": "Uysot mobil ilovasi"}'::jsonb, 'DONE', 1, now() - interval '8 days'
-    FROM (VALUES ('+998901230015', 'uz-UZ'), ('+998901230016', 'ru-RU'), ('+998901230017', 'uz-UZ')) AS t(phone, lang)
-    JOIN contact c ON c.company_id = 1 AND c.phone = t.phone;
-
-    -- SCHEDULED: goes ACTIVE by itself at start_at, 30 days from the day the database was seeded.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
-                          max_attempts, created_at, created_by)
-    VALUES (1, v_reminder, 'Uchrashuv eslatmasi — oktabr', 'SURVEY', 'SCHEDULED',
-            2, now() - interval '2 days', v_admin)
-    RETURNING id INTO v_camp;
-    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
-    VALUES (v_camp, 3) ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end, start_at, end_at)
-    VALUES (v_camp, '10:00', '18:00', v_later, v_later + interval '7 days') ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_dial_day (campaign_id, day)
-    SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
-    INSERT INTO campaign_target (company_id, campaign_id, client_id, phone, language, context_data, status, attempts, next_attempt_at)
-    SELECT 1, v_camp, c.id, c.phone, 'ru-RU',
-           jsonb_build_object('appointmentTime', '2026-10-20', 'clientName', t.client_name), 'PENDING', 0, v_later
-    FROM (VALUES ('+998901230021', 'Ирина'), ('+998901230022', 'Сергей')) AS t(phone, client_name)
-    JOIN contact c ON c.company_id = 1 AND c.phone = t.phone;
-
-    -- Recurring shapes, none of which can dial: no targets, or ARCHIVED.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, created_at, created_by)
-    VALUES (1, v_notify, 'Haftalik to''lov eslatmasi', 'DEBT_COLLECTION', 'ARCHIVED', now() - interval '60 days', v_admin)
-    RETURNING id INTO v_camp;
-    INSERT INTO campaign_schedule (campaign_id, recurrence_type)
-    VALUES (v_camp, 'WEEKLY') ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_dial_day (campaign_id, day) VALUES (v_camp, 'MONDAY');
-
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, created_at, created_by)
-    VALUES (1, v_notify, 'Oylik eslatma (5-sana)', 'SURVEY', 'DRAFT', now() - interval '14 days', v_admin)
-    RETURNING id INTO v_camp;
-    INSERT INTO campaign_schedule (campaign_id, recurrence_type, recurring_day_of_month, dial_window_start, dial_window_end)
-    VALUES (v_camp, 'MONTHLY', 5, '10:00', '17:00') ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_dial_day (campaign_id, day)
-    SELECT v_camp, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']) AS d;
-
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status, created_at, created_by)
-    VALUES (1, v_debt, 'CRON — dushanba 10:00', 'DEBT_COLLECTION', 'ARCHIVED', now() - interval '30 days', v_admin)
-    RETURNING id INTO v_camp;
-    INSERT INTO campaign_schedule (campaign_id, recurrence_type, cron_expression)
-    VALUES (v_camp, 'CRON', '0 0 10 * * MON') ON CONFLICT (campaign_id) DO NOTHING;
-
-    -- Where callers who ask to be called back land: the queues and the sales route point here.
-    INSERT INTO campaign (company_id, ai_agent_id, name, type, status,
-                          max_attempts, retry_interval_minutes, created_at, created_by)
-    VALUES (1, v_night, 'Qayta qo''ng''iroqlar (callback)', 'SURVEY', 'DRAFT',
-            2, 30, now() - interval '10 days', v_admin)
-    RETURNING id INTO v_callback;
-    INSERT INTO campaign_dialer_config (campaign_id, max_concurrent_calls)
-    VALUES (v_callback, 2) ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_schedule (campaign_id, dial_window_start, dial_window_end)
-    VALUES (v_callback, '09:00', '18:00') ON CONFLICT (campaign_id) DO NOTHING;
-    INSERT INTO campaign_dial_day (campaign_id, day)
-    SELECT v_callback, d FROM unnest(ARRAY['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']) AS d;
-
-    UPDATE call_queue SET callback_campaign_id = v_callback
-     WHERE company_id = 1 AND name IN ('Qo''llab-quvvatlash', 'Sotuv');
 END
 $seed$;
 
@@ -2637,7 +2077,6 @@ DECLARE
     v_q_vip      BIGINT;
     v_vm         BIGINT;
     v_vm_sales   BIGINT;
-    v_callback   BIGINT;
     v_sup        BIGINT;
     v_op1        BIGINT;
     v_graph      JSONB;
@@ -2648,16 +2087,15 @@ BEGIN
     END IF;
 
     SELECT id INTO v_sched FROM business_schedule WHERE company_id = 1 AND name = 'Asosiy ish vaqti';
-    SELECT id INTO v_reception FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona';
-    SELECT id INTO v_night FROM ai_agent WHERE company_id = 1 AND name = 'Kechki navbatchi';
-    SELECT id INTO v_sales FROM ai_agent WHERE company_id = 1 AND name = 'Sotuv menejeri';
-    SELECT id INTO v_prompt FROM ai_agent WHERE company_id = 1 AND name = 'Erkin suhbat (PROMPT rejimi)';
+    SELECT id INTO v_reception FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (realtime)';
+    SELECT id INTO v_night FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (realtime)';
+    SELECT id INTO v_sales FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (cascade)';
+    SELECT id INTO v_prompt FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (cascade)';
     SELECT id INTO v_q_support FROM call_queue WHERE company_id = 1 AND name = 'Qo''llab-quvvatlash';
     SELECT id INTO v_q_sales FROM call_queue WHERE company_id = 1 AND name = 'Sotuv';
     SELECT id INTO v_q_vip FROM call_queue WHERE company_id = 1 AND name = 'VIP liniya';
     SELECT id INTO v_vm FROM voicemail_box WHERE company_id = 1 AND name = 'Umumiy ovozli pochta';
     SELECT id INTO v_vm_sales FROM voicemail_box WHERE company_id = 1 AND name = 'Sotuv bo''limi pochtasi';
-    SELECT id INTO v_callback FROM campaign WHERE company_id = 1 AND name = 'Qayta qo''ng''iroqlar (callback)';
     SELECT id INTO v_sup FROM app_user WHERE username = 'supervisor';
     SELECT id INTO v_op1 FROM app_user WHERE username = 'operator1';
 
@@ -2754,9 +2192,9 @@ BEGIN
 
     INSERT INTO inbound_route (company_id, did_number, ai_agent_id, schedule_id, call_flow_id,
                                callback_campaign_id, fallback_message, enabled, created_at) VALUES
-        (1, '+998712000100', v_reception, v_sched, v_flow, v_callback,
+        (1, '+998712000100', v_reception, v_sched, v_flow, NULL,
          'Hozir ish vaqtimiz tugagan. Iltimos, ertaga soat 9:00 dan keyin qo''ng''iroq qiling.', true, now() - interval '10 days'),
-        (1, '+998712000200', v_sales, v_sched, NULL, v_callback,
+        (1, '+998712000200', v_sales, v_sched, NULL, NULL,
          'Sotuv bo''limi ish vaqti: dushanba–shanba, 9:00–18:00.', true, now() - interval '8 days'),
         (1, '+998712000300', v_prompt, NULL, NULL, NULL, NULL, true, now() - interval '5 days'),
         (1, '+998712000400', v_reception, NULL, NULL, NULL, NULL, false, now() - interval '30 days');
@@ -2773,368 +2211,11 @@ END
 $seed$;
 
 -- ---------------------------------------------------------------------------
--- Call history: every disposition outbound, inbound through routes, queues and operators,
--- with technical metrics, timelines, voicemails and missed calls. sip_call_id 'seed-*'
--- marks them. Every call is finished, so no sweeper treats one as still on the line.
--- ---------------------------------------------------------------------------
-DO $seed$
-DECLARE
-    v_flow      BIGINT;
-    v_q_support BIGINT;
-    v_q_sales   BIGINT;
-    v_q_vip     BIGINT;
-    v_vm        BIGINT;
-    v_vm_sales  BIGINT;
-    v_route     BIGINT;
-    v_route_s   BIGINT;
-    v_sup       BIGINT;
-    v_op1       BIGINT;
-    v_op2       BIGINT;
-    v_c07       call_attempt%ROWTYPE;
-    v_c18       call_attempt%ROWTYPE;
-    v_c19       call_attempt%ROWTYPE;
-    v_c20       call_attempt%ROWTYPE;
-    v_c21       call_attempt%ROWTYPE;
-    v_c22       call_attempt%ROWTYPE;
-    v_vmsg20    BIGINT;
-    v_vmsg22    BIGINT;
-BEGIN
-    IF EXISTS (SELECT 1 FROM call_attempt WHERE sip_call_id = 'seed-c01') THEN
-        RETURN;
-    END IF;
-
-    SELECT id INTO v_flow FROM call_flow WHERE company_id = 1 AND name = 'Asosiy IVR';
-    SELECT id INTO v_q_support FROM call_queue WHERE company_id = 1 AND name = 'Qo''llab-quvvatlash';
-    SELECT id INTO v_q_sales FROM call_queue WHERE company_id = 1 AND name = 'Sotuv';
-    SELECT id INTO v_q_vip FROM call_queue WHERE company_id = 1 AND name = 'VIP liniya';
-    SELECT id INTO v_vm FROM voicemail_box WHERE company_id = 1 AND name = 'Umumiy ovozli pochta';
-    SELECT id INTO v_vm_sales FROM voicemail_box WHERE company_id = 1 AND name = 'Sotuv bo''limi pochtasi';
-    SELECT id INTO v_route FROM inbound_route WHERE company_id = 1 AND did_number = '+998712000100';
-    SELECT id INTO v_route_s FROM inbound_route WHERE company_id = 1 AND did_number = '+998712000200';
-    SELECT id INTO v_sup FROM app_user WHERE username = 'supervisor';
-    SELECT id INTO v_op1 FROM app_user WHERE username = 'operator1';
-    SELECT id INTO v_op2 FROM app_user WHERE username = 'operator2';
-
-    -- Outbound: `ago` is when the call started, `ring` the seconds before an answer, `talk`
-    -- the seconds after it (NULL = never answered). Each target has exactly as many attempts
-    -- here as its attempts counter says.
-    INSERT INTO call_attempt (company_id, target_id, variant_id, phone, sip_call_id, asterisk_channel, language,
-                              started_at, answered_at, ended_at, duration_sec, disposition, hangup_cause, error_message,
-                              finalize_attempts, ai_agent_id, created_at)
-    SELECT 1, t.id, t.variant_id, t.phone, 'seed-' || v.k, 'PJSIP/trunk-endpoint-' || v.k, v.lang,
-           now() - v.ago,
-           CASE WHEN v.talk IS NOT NULL THEN now() - v.ago + make_interval(secs => v.ring) END,
-           now() - v.ago + make_interval(secs => v.ring + coalesce(v.talk, 0)),
-           coalesce(v.talk, 0), v.disp, v.cause, v.err,
-           CASE WHEN v.talk IS NOT NULL THEN 1 ELSE 0 END, cp.ai_agent_id, now() - v.ago
-    FROM (VALUES
-        ('c01',  '+998901230001', 'Qarzdorlik — sentabr', interval '2 days 03:10', 8,  96,   'PROMISE_TO_PAY',     'normal clearing',    NULL, 'uz-UZ'),
-        ('c02',  '+998901230002', 'Qarzdorlik — sentabr', '2 days 02:40',          11, 74,   'REFUSED',            'normal clearing',    NULL, 'uz-UZ'),
-        ('c03',  '+998901230003', 'Qarzdorlik — sentabr', '2 days 02:00',          30, NULL, 'NO_ANSWER',          'no answer',          NULL, 'uz-UZ'),
-        ('c04',  '+998901230004', 'Qarzdorlik — sentabr', '2 days 01:30',          14, 22,   'VOICEMAIL',          'normal clearing',    NULL, 'uz-UZ'),
-        ('c05',  '+998901230005', 'Qarzdorlik — sentabr', '1 day 05:00',           2,  NULL, 'WRONG_NUMBER',       'unallocated number', NULL, 'uz-UZ'),
-        ('c06',  '+998901230006', 'Qarzdorlik — sentabr', '1 day 04:20',           9,  58,   'CALLBACK_REQUESTED', 'normal clearing',    NULL, 'uz-UZ'),
-        ('c07',  '+998901230007', 'Qarzdorlik — sentabr', '1 day 03:50',           6,  142,  'TRANSFERRED',        'normal clearing',    NULL, 'uz-UZ'),
-        ('c08',  '+998901230008', 'Qarzdorlik — sentabr', '1 day 03:00',           25, NULL, 'FAILED',             'no user responding', 'SIP 408 Request Timeout from carrier (cause 18)', 'uz-UZ'),
-        ('c09',  '+998901230009', 'Qarzdorlik — sentabr', '1 day 02:10',           7,  35,   'DO_NOT_CALL',        'normal clearing',    NULL, 'uz-UZ'),
-        ('c10',  '+998901230010', 'Qarzdorlik — sentabr', '05:00',                 10, 19,   'HUNG_UP',            'normal clearing',    NULL, 'uz-UZ'),
-        ('c11',  '+998901230011', 'Qarzdorlik — sentabr', '04:30',                 1,  NULL, 'CARRIER_REJECTED',   'call rejected',      'SIP 403 Forbidden: caller id not allowed on this trunk', 'uz-UZ'),
-        ('c12a', '+998901230012', 'Qarzdorlik — sentabr', '3 days 02:00',          30, NULL, 'NO_ANSWER',          'no answer',          NULL, 'uz-UZ'),
-        ('c12b', '+998901230012', 'Qarzdorlik — sentabr', '2 days 23:00',          30, NULL, 'NO_ANSWER',          'no answer',          NULL, 'uz-UZ'),
-        ('c12c', '+998901230012', 'Qarzdorlik — sentabr', '2 days 20:00',          30, NULL, 'NO_ANSWER',          'user busy',          NULL, 'uz-UZ'),
-        ('c13',  '+998901230015', 'Mijozlar so''rovnomasi (NPS)', '4 days 05:00',  9,  81,   'COMPLETED',          'normal clearing',    NULL, 'uz-UZ'),
-        ('c14',  '+998901230016', 'Mijozlar so''rovnomasi (NPS)', '4 days 04:30',  12, 95,   'COMPLETED',          'normal clearing',    NULL, 'ru-RU'),
-        ('c15',  '+998901230017', 'Mijozlar so''rovnomasi (NPS)', '4 days 04:00',  7,  40,   'COMPLETED',          'normal clearing',    NULL, 'uz-UZ')
-    ) AS v(k, phone, camp, ago, ring, talk, disp, cause, err, lang)
-    JOIN campaign cp ON cp.company_id = 1 AND cp.name = v.camp
-    JOIN campaign_target t ON t.campaign_id = cp.id AND t.phone = v.phone;
-
-    -- Inbound: answered by Asterisk at once; `enq` is seconds until the call joined a queue,
-    -- `wait` the seconds it then waited.
-    INSERT INTO call_attempt (company_id, phone, sip_call_id, asterisk_channel, language, started_at, answered_at, ended_at,
-                              duration_sec, disposition, hangup_cause, finalize_attempts, inbound_route_id, operator_user_id,
-                              queue_id, enqueued_at, operator_answered_at, wait_seconds, abandoned, survey_score,
-                              ai_agent_id, created_at)
-    SELECT 1, v.phone, 'seed-' || v.k, 'PJSIP/trunk-endpoint-' || v.k, v.lang,
-           now() - v.ago, now() - v.ago, now() - v.ago + make_interval(secs => v.dur),
-           v.dur, v.disp, 'normal clearing', CASE WHEN a.id IS NOT NULL THEN 1 ELSE 0 END, r.id, u.id, q.id,
-           CASE WHEN q.id IS NOT NULL THEN now() - v.ago + make_interval(secs => v.enq) END,
-           CASE WHEN u.id IS NOT NULL THEN now() - v.ago + make_interval(secs => v.enq + v.wait) END,
-           CASE WHEN q.id IS NOT NULL THEN v.wait END,
-           v.abandoned, v.survey, a.id, now() - v.ago
-    FROM (VALUES
-        ('c16', '+998901230023', '+998712000200', interval '1 day 01:00', 128, 'COMPLETED',   'Sotuv menejeri',     'uz-UZ', NULL,                  NULL, NULL, NULL,         false, NULL),
-        ('c17', '+998935550101', '600',           '01:40',                66,  'COMPLETED',   'Kiruvchi qabulxona', 'uz-UZ', NULL,                  NULL, NULL, NULL,         false, NULL),
-        ('c18', '+998935550102', '+998712000100', '04:01:20',             560, 'TRANSFERRED', NULL,                 'uz-UZ', 'Qo''llab-quvvatlash', 40,   40,   'operator2',  false, 5),
-        ('c19', '+998935550103', '+998712000100', '02:30',                125, 'HUNG_UP',     NULL,                 'uz-UZ', 'Qo''llab-quvvatlash', 30,   95,   NULL,         true,  NULL),
-        ('c20', '+998935550104', '+998712000100', '14:00',                70,  'VOICEMAIL',   NULL,                 'uz-UZ', NULL,                  NULL, NULL, NULL,         false, NULL),
-        ('c21', '+998901230024', '+998712000100', '1 day 06:00',          310, 'TRANSFERRED', NULL,                 'uz-UZ', 'VIP liniya',          8,    12,   'supervisor', false, 2),
-        ('c22', '+998935550105', '+998712000200', '2 days 01:00',         250, 'VOICEMAIL',   NULL,                 'ru-RU', 'Sotuv',               10,   180,  NULL,         false, NULL)
-    ) AS v(k, phone, did, ago, dur, disp, agent, lang, queue, enq, wait, op, abandoned, survey)
-    JOIN inbound_route r ON r.company_id = 1 AND r.did_number = v.did AND r.enabled
-    LEFT JOIN ai_agent a ON a.company_id = 1 AND a.name = v.agent
-    LEFT JOIN call_queue q ON q.company_id = 1 AND q.name = v.queue
-    LEFT JOIN app_user u ON u.username = v.op;
-
-    -- The collections call the agent handed to a human.
-    UPDATE call_attempt
-       SET operator_user_id = v_op1, queue_id = v_q_support,
-           enqueued_at = answered_at + interval '95 seconds',
-           operator_answered_at = answered_at + interval '113 seconds', wait_seconds = 18
-     WHERE sip_call_id = 'seed-c07';
-
-    -- Technical tab. The engine columns come from the agent that ran the call; a variant B
-    -- call ran on the realtime engine. Latencies and tokens scale with the call's length.
-    INSERT INTO call_technical (call_id, channel_name, trunk, amd_result, stt_provider, tts_provider, tts_voice, llm_model,
-                                prompt_tokens, completion_tokens, cached_tokens, turn_count,
-                                avg_turn_latency_ms, max_turn_latency_ms, avg_llm_latency_ms, max_llm_latency_ms,
-                                rtp_packets_received, rtp_packets_lost, rtp_jitter_ms, rtp_mos, created_at)
-    SELECT c.id, c.asterisk_channel, 'trunk-endpoint',
-           CASE WHEN c.inbound_route_id IS NOT NULL THEN NULL
-                WHEN c.disposition = 'VOICEMAIL' THEN 'MACHINE' ELSE 'HUMAN' END,
-           CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-live' ELSE coalesce(a.stt_provider, 'yandex') END,
-           CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-live' ELSE coalesce(a.tts_provider, 'yandex') END,
-           CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'Aoede' ELSE coalesce(a.tts_voice, 'nigora') END,
-           CASE WHEN cv.pipeline_mode = 'REALTIME' THEN 'gemini-3.8-live' ELSE coalesce(a.llm_model, 'gemini-3.8-flash') END,
-           c.duration_sec * 42, c.duration_sec * 7, c.duration_sec * 25, greatest(2, c.duration_sec / 12),
-           850 + (c.id % 7) * 70, 1600 + (c.id % 5) * 180, 420 + (c.id % 6) * 45, 900 + (c.id % 4) * 150,
-           c.duration_sec * 50, (c.id % 4) * c.duration_sec / 20, 8 + (c.id % 5) * 3,
-           CASE WHEN c.id % 9 = 0 THEN 3.1 ELSE 4.2 + (c.id % 3) * 0.1 END,
-           c.ended_at
-    FROM call_attempt c
-    LEFT JOIN ai_agent a ON a.id = c.ai_agent_id
-    LEFT JOIN campaign_variant cv ON cv.id = c.variant_id
-    WHERE c.sip_call_id LIKE 'seed-%' AND c.answered_at IS NOT NULL;
-
-    SELECT * INTO v_c07 FROM call_attempt WHERE sip_call_id = 'seed-c07';
-    SELECT * INTO v_c18 FROM call_attempt WHERE sip_call_id = 'seed-c18';
-    SELECT * INTO v_c19 FROM call_attempt WHERE sip_call_id = 'seed-c19';
-    SELECT * INTO v_c20 FROM call_attempt WHERE sip_call_id = 'seed-c20';
-    SELECT * INTO v_c21 FROM call_attempt WHERE sip_call_id = 'seed-c21';
-    SELECT * INTO v_c22 FROM call_attempt WHERE sip_call_id = 'seed-c22';
-
-    INSERT INTO call_event (company_id, call_attempt_id, at, type, payload) VALUES
-        (1, v_c07.id, v_c07.answered_at + interval '93 seconds', 'TRANSFER', jsonb_build_object('to', 'queue ' || v_q_support, 'mode', 'BLIND')),
-        (1, v_c07.id, v_c07.enqueued_at, 'ENQUEUED', jsonb_build_object('queueId', v_q_support, 'position', 1)),
-        (1, v_c07.id, v_c07.enqueued_at + interval '3 seconds', 'OPERATOR_RINGING', jsonb_build_object('userId', v_op1)),
-        (1, v_c07.id, v_c07.operator_answered_at, 'OPERATOR_ANSWERED', jsonb_build_object('userId', v_op1, 'waitSeconds', 18)),
-        (1, v_c07.id, v_c07.operator_answered_at + interval '1 second', 'WHISPER', jsonb_build_object('userId', v_op1, 'seconds', 6)),
-
-        (1, v_c18.id, v_c18.started_at, 'FLOW_ENTERED', jsonb_build_object('flowId', v_flow)),
-        (1, v_c18.id, v_c18.started_at, 'NODE_ENTERED', jsonb_build_object('node', 'start', 'type', 'CALLER_ROUTER')),
-        (1, v_c18.id, v_c18.started_at + interval '1 second', 'NODE_ENTERED', jsonb_build_object('node', 'hours', 'type', 'SCHEDULE')),
-        (1, v_c18.id, v_c18.started_at + interval '12 seconds', 'LANGUAGE_SET', jsonb_build_object('language', 'uz-UZ')),
-        (1, v_c18.id, v_c18.started_at + interval '14 seconds', 'NODE_ENTERED', jsonb_build_object('node', 'menu', 'type', 'MENU')),
-        (1, v_c18.id, v_c18.started_at + interval '31 seconds', 'DTMF', jsonb_build_object('key', '2')),
-        (1, v_c18.id, v_c18.enqueued_at, 'ENQUEUED', jsonb_build_object('queueId', v_q_support, 'position', 1)),
-        (1, v_c18.id, v_c18.enqueued_at + interval '30 seconds', 'OPERATOR_RINGING', jsonb_build_object('userId', v_op2)),
-        (1, v_c18.id, v_c18.operator_answered_at, 'OPERATOR_ANSWERED', jsonb_build_object('userId', v_op2, 'waitSeconds', 40)),
-        (1, v_c18.id, v_c18.ended_at - interval '10 seconds', 'SURVEY_SCORE', jsonb_build_object('score', 5)),
-
-        (1, v_c19.id, v_c19.started_at, 'FLOW_ENTERED', jsonb_build_object('flowId', v_flow)),
-        (1, v_c19.id, v_c19.started_at + interval '24 seconds', 'DTMF', jsonb_build_object('key', '2')),
-        (1, v_c19.id, v_c19.enqueued_at, 'ENQUEUED', jsonb_build_object('queueId', v_q_support, 'position', 3)),
-        (1, v_c19.id, v_c19.enqueued_at + interval '20 seconds', 'OPERATOR_RINGING', jsonb_build_object('userId', v_op1)),
-        (1, v_c19.id, v_c19.enqueued_at + interval '35 seconds', 'OPERATOR_MISSED', jsonb_build_object('userId', v_op1, 'cause', 'no answer')),
-        (1, v_c19.id, v_c19.enqueued_at + interval '60 seconds', 'POSITION_ANNOUNCED', jsonb_build_object('position', 2, 'waitMinutes', 2)),
-        (1, v_c19.id, v_c19.ended_at, 'ABANDONED', jsonb_build_object('queueId', v_q_support, 'waitSeconds', 95)),
-
-        (1, v_c20.id, v_c20.started_at, 'FLOW_ENTERED', jsonb_build_object('flowId', v_flow)),
-        (1, v_c20.id, v_c20.started_at + interval '1 second', 'NODE_ENTERED', jsonb_build_object('node', 'hours', 'type', 'SCHEDULE')),
-        (1, v_c20.id, v_c20.started_at + interval '2 seconds', 'NODE_ENTERED', jsonb_build_object('node', 'vm', 'type', 'VOICEMAIL')),
-        (1, v_c20.id, v_c20.ended_at, 'VOICEMAIL', jsonb_build_object('boxId', v_vm, 'seconds', 48)),
-
-        (1, v_c21.id, v_c21.started_at, 'FLOW_ENTERED', jsonb_build_object('flowId', v_flow)),
-        (1, v_c21.id, v_c21.started_at, 'NODE_ENTERED', jsonb_build_object('node', 'start', 'type', 'CALLER_ROUTER')),
-        (1, v_c21.id, v_c21.enqueued_at, 'ENQUEUED', jsonb_build_object('queueId', v_q_vip, 'position', 1)),
-        (1, v_c21.id, v_c21.operator_answered_at, 'OPERATOR_ANSWERED', jsonb_build_object('userId', v_sup, 'waitSeconds', 12)),
-        (1, v_c21.id, v_c21.operator_answered_at + interval '90 seconds', 'HOLD', NULL),
-        (1, v_c21.id, v_c21.operator_answered_at + interval '150 seconds', 'UNHOLD', NULL),
-        (1, v_c21.id, v_c21.ended_at - interval '8 seconds', 'SURVEY_SCORE', jsonb_build_object('score', 2)),
-
-        (1, v_c22.id, v_c22.enqueued_at, 'ENQUEUED', jsonb_build_object('queueId', v_q_sales, 'position', 2)),
-        (1, v_c22.id, v_c22.enqueued_at + interval '180 seconds', 'OVERFLOW', jsonb_build_object('queueId', v_q_sales, 'action', 'VOICEMAIL')),
-        (1, v_c22.id, v_c22.ended_at, 'VOICEMAIL', jsonb_build_object('boxId', v_vm_sales, 'seconds', 52));
-
-    INSERT INTO voicemail_message (company_id, box_id, call_attempt_id, caller_phone, duration_sec, transcript, status, created_at)
-    VALUES (1, v_vm, v_c20.id, v_c20.phone, 48,
-            'Assalomu alaykum, men Botir. Shartnoma bo''yicha savolim bor edi, ertaga ertalab qo''ng''iroq qilib qo''ysangiz. Raqamim shu.',
-            'NEW', v_c20.ended_at)
-    RETURNING id INTO v_vmsg20;
-    INSERT INTO voicemail_message (company_id, box_id, call_attempt_id, caller_phone, duration_sec, transcript, status, created_at)
-    VALUES (1, v_vm_sales, v_c22.id, v_c22.phone, 52,
-            'Здравствуйте, меня зовут Олег. Интересует ваш тариф для колл-центра на 20 операторов, перезвоните, пожалуйста.',
-            'HEARD', v_c22.ended_at)
-    RETURNING id INTO v_vmsg22;
-    INSERT INTO voicemail_message (company_id, box_id, call_attempt_id, caller_phone, duration_sec, transcript, status, created_at)
-    VALUES (1, v_vm, NULL, '+998935550107', 17, 'Xato raqamga tushib qoldim, uzr.', 'ARCHIVED', now() - interval '9 days');
-
-    INSERT INTO missed_call (company_id, phone, reason, status, call_count, first_at, last_at, queue_id, inbound_route_id,
-                             last_call_attempt_id, voicemail_message_id, assigned_user_id, callback_attempts,
-                             last_callback_at, resolved_at, resolved_by_user_id, note) VALUES
-        (1, v_c19.phone, 'ABANDONED', 'NEW', 1, v_c19.started_at, v_c19.started_at, v_q_support, v_route,
-         v_c19.id, NULL, NULL, 0, NULL, NULL, NULL, NULL),
-        (1, v_c20.phone, 'VOICEMAIL', 'NEW', 1, v_c20.started_at, v_c20.started_at, NULL, v_route,
-         v_c20.id, v_vmsg20, NULL, 0, NULL, NULL, NULL, NULL),
-        (1, '+998935550106', 'AFTER_HOURS', 'IN_PROGRESS', 3, now() - interval '1 day 15:00', now() - interval '13:20', NULL, v_route,
-         NULL, NULL, v_op1, 1, now() - interval '02:00', NULL, NULL, 'Birinchi qayta qo''ng''iroqqa javob bermadi.'),
-        (1, v_c22.phone, 'VOICEMAIL', 'RESOLVED', 1, v_c22.started_at, v_c22.started_at, v_q_sales, v_route_s,
-         v_c22.id, v_vmsg22, v_op2, 1, v_c22.started_at + interval '2 hours', v_c22.started_at + interval '2 hours 5 minutes',
-         v_op2, 'Qayta qo''ng''iroq qilindi, taklifnoma yuborildi.');
-END
-$seed$;
-
--- ---------------------------------------------------------------------------
--- Transcripts and post-call results of the calls above. Every call with a transcript has a
--- result, so the summary outbox never picks one up; every result carries a CRM note id
--- except one that shows a CRM write-back that ran out of retries (outbox.max-attempts 5).
--- ---------------------------------------------------------------------------
-DO $seed$
-DECLARE
-    v_disclosure CONSTANT TEXT := 'Assalomu alaykum! Bu Default kompaniyasining avtomatik ovozli xizmati. Suhbat yozib olinmoqda. ';
-    v_promised   CONSTANT DATE := current_date + 5;
-BEGIN
-    IF EXISTS (SELECT 1 FROM call_result r JOIN call_attempt c ON c.id = r.call_id WHERE c.sip_call_id = 'seed-c01') THEN
-        RETURN;
-    END IF;
-
-    INSERT INTO call_transcript (call_id, seq, role, text, dialog_state, ts_offset_ms, stt_confidence)
-    SELECT c.id, t.seq, t.role, t.text, t.state, t.off, t.conf
-    FROM (VALUES
-        ('c01', 0, 'AGENT',  v_disclosure || 'Men Aziz aka bilan gaplashayapmanmi?', 'GREETING', 0, NULL),
-        ('c01', 1, 'CLIENT', 'Ha, men Azizman, eshitaman.', 'IDENTITY_CHECK', 7200, 0.94),
-        ('c01', 2, 'AGENT',  'Aziz aka, SH-2025-0141 shartnomasi bo''yicha 1 250 000 so''m qarzdorlik bor, muddati 1-sentabrda o''tgan. Nima sababdan to''lov kechikdi?', 'DEBT_NOTICE', 9800, NULL),
-        ('c01', 3, 'CLIENT', 'Maosh kechikdi, shu hafta ichida to''layman.', 'REASON_INQUIRY', 21500, 0.90),
-        ('c01', 4, 'AGENT',  'Tushunarli. Aniq qaysi kuni to''lay olasiz?', 'PAYMENT_DATE', 25800, NULL),
-        ('c01', 5, 'CLIENT', 'Juma kuni, besh kundan keyin.', 'PAYMENT_DATE', 31000, 0.88),
-        ('c01', 6, 'AGENT',  'Yaxshi, ' || to_char(v_promised, 'DD.MM.YYYY') || ' sanasida 1 250 000 so''m to''lov kutamiz. Rahmat, Aziz aka, xayr!', 'CONFIRMATION', 35200, NULL),
-        ('c01', 7, 'CLIENT', 'Rahmat, xayr.', 'CLOSING', 44000, 0.97),
-
-        ('c02', 0, 'AGENT',  v_disclosure || 'Dilnoza opa bilan gaplashayapmanmi?', 'GREETING', 0, NULL),
-        ('c02', 1, 'CLIENT', 'Ha, men.', 'IDENTITY_CHECK', 6900, 0.95),
-        ('c02', 2, 'AGENT',  'Dilnoza opa, SH-2025-0142 shartnomasi bo''yicha 840 000 so''m qarzdorlik bor, muddati 25-avgustda o''tgan. To''lov nima sababdan kechikdi?', 'DEBT_NOTICE', 8700, NULL),
-        ('c02', 3, 'CLIENT', 'Ishdan bo''shab qoldim, hozir umuman pulim yo''q. To''lay olmayman.', 'REASON_INQUIRY', 19800, 0.87),
-        ('c02', 4, 'AGENT',  'Tushundim, vaziyatingiz og''ir ekan. Moliyaviy qiyinchilikda filialga ariza bilan murojaat qilib, to''lov muddatini qayta ko''rib chiqishni so''rashingiz mumkin.', 'REASON_INQUIRY', 27400, NULL),
-        ('c02', 5, 'CLIENT', 'Hozir hech qanday sana ayta olmayman.', 'PAYMENT_DATE', 41000, 0.90),
-        ('c02', 6, 'AGENT',  'Yaxshi, sababingizni yozib oldim. Ishingiz tez orada yurishib ketsin. Xayr!', 'CLOSING', 46500, NULL),
-
-        ('c04', 0, 'AGENT',  'Assalomu alaykum. Shartnomangiz bo''yicha savol bilan qo''ng''iroq qildik. Iltimos, qulay vaqtda qayta bog''laning.', 'GREETING', 0, NULL),
-
-        ('c06', 0, 'AGENT',  v_disclosure || 'Kamola opa bilan gaplashayapmanmi?', 'GREETING', 0, NULL),
-        ('c06', 1, 'CLIENT', 'Ha, lekin hozir ishdaman, gaplasha olmayman.', 'IDENTITY_CHECK', 7100, 0.91),
-        ('c06', 2, 'AGENT',  'Tushunarli. Qachon qo''ng''iroq qilsak qulay bo''ladi?', 'IDENTITY_CHECK', 11300, NULL),
-        ('c06', 3, 'CLIENT', 'Kechqurun soat yettilarda.', 'IDENTITY_CHECK', 16200, 0.89),
-        ('c06', 4, 'AGENT',  'Yaxshi, soat 19:00 da qayta qo''ng''iroq qilamiz. Xayr!', 'CLOSING', 20100, NULL),
-
-        ('c07', 0, 'AGENT',  v_disclosure || 'Rustam aka bilan gaplashayapmanmi?', 'GREETING', 0, NULL),
-        ('c07', 1, 'CLIENT', 'Ha, Rustamman.', 'IDENTITY_CHECK', 6800, 0.96),
-        ('c07', 2, 'AGENT',  'Rustam aka, SH-2025-0147 shartnomasi bo''yicha 3 200 000 so''m qarzdorlik bor, muddati 30-iyulda o''tgan. Nima sababdan to''lanmagan?', 'DEBT_NOTICE', 8900, NULL),
-        ('c07', 3, 'CLIENT', 'Bu summa noto''g''ri! Men iyun oyida ikki million to''laganman, chek ham bor.', 'REASON_INQUIRY', 21000, 0.86),
-        ('c07', 4, 'AGENT',  'Tushundim. Summani men o''zgartira olmayman, lekin hisob-kitobni mutaxassis tekshirib beradi. Sizni operatorga ulaymi?', 'REASON_INQUIRY', 30200, NULL),
-        ('c07', 5, 'CLIENT', 'Ha, ulang.', 'ESCALATE_TO_HUMAN', 39800, 0.97),
-        ('c07', 6, 'AGENT',  'Hozir sizni operatorga ulayman, bir daqiqa kuting.', 'ESCALATE_TO_HUMAN', 42500, NULL),
-
-        ('c09', 0, 'AGENT',  v_disclosure || 'Otabek aka bilan gaplashayapmanmi?', 'GREETING', 0, NULL),
-        ('c09', 1, 'CLIENT', 'Menga boshqa qo''ng''iroq qilmanglar! Raqamimni o''chiring.', 'IDENTITY_CHECK', 7400, 0.92),
-        ('c09', 2, 'AGENT',  'Uzr, bezovta qilganimiz uchun. Raqamingizni qo''ng''iroqlar ro''yxatidan chiqaramiz. Xayr.', 'CLOSING', 12800, NULL),
-
-        ('c10', 0, 'AGENT',  v_disclosure || 'Zarina opa bilan gaplashayapmanmi?', 'GREETING', 0, NULL),
-        ('c10', 1, 'CLIENT', 'Band man hozir.', 'IDENTITY_CHECK', 7800, 0.83),
-
-        ('c13', 0, 'AGENT',  'Assalomu alaykum! Xizmatimiz haqida bir daqiqalik so''rovnomada qatnashishga rozimisiz?', 'GREETING', 0, NULL),
-        ('c13', 1, 'CLIENT', 'Ha, mayli.', 'GREETING', 5200, 0.95),
-        ('c13', 2, 'AGENT',  'Uysot mobil ilovasidan qanchalik mamnunsiz?', 'QUESTION_1', 7100, NULL),
-        ('c13', 3, 'CLIENT', 'Juda qulay, hammasi tushunarli.', 'QUESTION_1', 12900, 0.90),
-        ('c13', 4, 'AGENT',  'Nimani yaxshilashimiz kerak deb o''ylaysiz?', 'QUESTION_2', 16000, NULL),
-        ('c13', 5, 'CLIENT', 'Bildirishnomalar biroz kech keladi.', 'QUESTION_2', 21500, 0.88),
-        ('c13', 6, 'AGENT',  'Bizni do''stlaringizga 0 dan 10 gacha qanchalik tavsiya qilasiz?', 'QUESTION_3', 25400, NULL),
-        ('c13', 7, 'CLIENT', 'To''qqiz.', 'QUESTION_3', 31200, 0.93),
-        ('c13', 8, 'AGENT',  'Katta rahmat! Fikringiz biz uchun muhim. Xayr!', 'CLOSING', 34000, NULL),
-
-        ('c14', 0, 'AGENT',  'Здравствуйте! Примите участие в коротком опросе о нашем сервисе?', 'GREETING', 0, NULL),
-        ('c14', 1, 'CLIENT', 'Да, давайте.', 'GREETING', 5600, 0.94),
-        ('c14', 2, 'AGENT',  'Насколько вы довольны мобильным приложением Uysot?', 'QUESTION_1', 7900, NULL),
-        ('c14', 3, 'CLIENT', 'В целом нормально, но иногда вылетает.', 'QUESTION_1', 14800, 0.89),
-        ('c14', 4, 'AGENT',  'Насколько вероятно, что вы порекомендуете нас друзьям, от 0 до 10?', 'QUESTION_3', 19300, NULL),
-        ('c14', 5, 'CLIENT', 'Шесть.', 'QUESTION_3', 25100, 0.95),
-        ('c14', 6, 'AGENT',  'Спасибо за ответы! До свидания.', 'CLOSING', 27700, NULL),
-
-        ('c15', 0, 'AGENT',  'Assalomu alaykum! Xizmatimiz haqida bir daqiqalik so''rovnomada qatnashishga rozimisiz?', 'GREETING', 0, NULL),
-        ('c15', 1, 'CLIENT', 'Ha.', 'GREETING', 4800, 0.96),
-        ('c15', 2, 'AGENT',  'Bizni do''stlaringizga 0 dan 10 gacha qanchalik tavsiya qilasiz?', 'QUESTION_3', 6400, NULL),
-        ('c15', 3, 'CLIENT', 'O''n, albatta.', 'QUESTION_3', 11900, 0.94),
-        ('c15', 4, 'AGENT',  'Rahmat! Xayr!', 'CLOSING', 14200, NULL),
-
-        ('c16', 0, 'AGENT',  'Assalomu alaykum! Uysot sotuv bo''limi, qanday yordam bera olaman?', 'GREETING', 0, NULL),
-        ('c16', 1, 'CLIENT', 'Reklamangizni ko''rdim, qo''ng''iroq markazi uchun robot kerak edi.', 'GREETING', 5100, 0.91),
-        ('c16', 2, 'AGENT',  'Ajoyib! Nechta operator bilan ishlaysiz va qanday qo''ng''iroqlar ko''p?', 'INTEREST_CHECK', 11800, NULL),
-        ('c16', 3, 'CLIENT', 'O''nta operator, asosan qarzdorlik bo''yicha chiquvchi qo''ng''iroqlar.', 'INTEREST_CHECK', 18600, 0.89),
-        ('c16', 4, 'AGENT',  'Tushunarli. Qachondan boshlashni rejalashtiryapsiz va taxminiy byudjetingiz qancha?', 'BUDGET_TIMELINE', 26100, NULL),
-        ('c16', 5, 'CLIENT', 'Keyingi oydan, oyiga besh million atrofida.', 'BUDGET_TIMELINE', 34200, 0.87),
-        ('c16', 6, 'AGENT',  'Demo uchrashuv o''tkazaylik: payshanba soat 15:00 qulaymi?', 'MEETING_SCHEDULING', 41000, NULL),
-        ('c16', 7, 'CLIENT', 'Ha, bo''ladi.', 'MEETING_SCHEDULING', 47300, 0.96),
-        ('c16', 8, 'AGENT',  'Yaxshi, payshanba 15:00 ga yozib qo''ydim. Rahmat, xayr!', 'CLOSING', 50400, NULL),
-
-        ('c17', 0, 'AGENT',  v_disclosure || 'Sizni tinglayapman, qanday yordam bera olaman?', 'GREETING', 0, NULL),
-        ('c17', 1, 'CLIENT', 'To''lovni qanday qilsam bo''ladi?', 'GREETING', 8300, 0.93),
-        ('c17', 2, 'AGENT',  'To''lovni Click, Payme, Uzum Bank ilovalari orqali yoki bank kassalarida shartnoma raqamingizni ko''rsatib amalga oshirishingiz mumkin.', 'ANSWER_QUESTION', 11200, NULL),
-        ('c17', 3, 'CLIENT', 'Payme orqali bo''ladimi?', 'ANSWER_QUESTION', 22900, 0.90),
-        ('c17', 4, 'AGENT',  'Ha, Payme ilovasida shartnoma raqamingizni kiritib to''lashingiz mumkin.', 'ANSWER_QUESTION', 25600, NULL),
-        ('c17', 5, 'CLIENT', 'Rahmat.', 'CLOSING', 33100, 0.97),
-        ('c17', 6, 'AGENT',  'Arzimaydi, xayr!', 'CLOSING', 34500, NULL)
-    ) AS t(k, seq, role, text, state, off, conf)
-    JOIN call_attempt c ON c.sip_call_id = 'seed-' || t.k;
-
-    INSERT INTO call_result (call_id, summary, reason_code, promised_date, promised_amount, sentiment, needs_follow_up,
-                             follow_up_note, escalated, crm_note_id, crm_attempts, crm_last_error, outcome, created_at)
-    SELECT c.id, r.summary, r.reason, r.promised_date, r.promised_amount, r.sentiment, r.follow_up, r.note, r.escalated,
-           CASE WHEN r.crm_ok THEN gen_random_uuid()::text END,
-           CASE WHEN r.crm_ok THEN 1 ELSE 5 END,
-           CASE WHEN r.crm_ok THEN NULL ELSE 'CRM ulanmagan: Uysot OAuth tokeni yo''q (CRM_INTEGRATION_NOT_CONNECTED)' END,
-           r.outcome, c.ended_at + interval '20 seconds'
-    FROM (VALUES
-        ('c01', 'Mijoz (Aziz aka) qarzni tan oldi: maosh kechikkani uchun to''lov kechikkan. ' || to_char(v_promised, 'DD.MM.YYYY') || ' sanasida 1 250 000 so''m to''lashga va''da berdi.',
-                NULL, v_promised, 1250000.00, 'POSITIVE', true, 'To''lov sanasidan keyingi kuni tushumni tekshirish.', false, true,
-                jsonb_build_object('promisedDate', v_promised, 'promisedAmount', 1250000, 'reasonCode', NULL)),
-        ('c02', 'Mijoz ishdan bo''shagani sababli hozir to''lay olmasligini aytdi. Restrukturizatsiya uchun filialga murojaat qilish tushuntirildi.',
-                'JOB_LOSS', NULL, NULL, 'NEGATIVE', true, 'Bir oydan keyin qayta qo''ng''iroq qilish.', false, false,
-                '{"reasonCode": "JOB_LOSS"}'::jsonb),
-        ('c04', 'Avtojavobgich javob berdi, qayta bog''lanish so''ralgan xabar qoldirildi.',
-                NULL, NULL, NULL, NULL, false, NULL, false, true, '{}'::jsonb),
-        ('c06', 'Mijoz ishda ekanini aytib, kechqurun soat 19:00 da qayta qo''ng''iroq qilishni so''radi.',
-                NULL, NULL, NULL, 'NEUTRAL', true, 'Bugun 19:00 da qayta qo''ng''iroq.', false, true,
-                '{"callbackTime": "19:00"}'::jsonb),
-        ('c07', 'Mijoz summaga e''tiroz bildirdi: iyunda 2 000 000 so''m to''laganini va cheki borligini aytdi. Operatorga ulandi.',
-                'DISPUTES_DEBT', NULL, NULL, 'NEGATIVE', true, 'Iyundagi 2 000 000 so''mlik to''lov chekini tekshirish.', true, true,
-                '{"reasonCode": "DISPUTES_DEBT"}'::jsonb),
-        ('c09', 'Mijoz qo''ng''iroq qilmaslikni qat''iy talab qildi; raqam DNC ro''yxatiga qo''shildi.',
-                NULL, NULL, NULL, 'HOSTILE', false, NULL, false, true, '{}'::jsonb),
-        ('c10', 'Mijoz bandligini aytib, go''shakni qo''ydi.',
-                NULL, NULL, NULL, 'NEUTRAL', false, NULL, false, true, '{}'::jsonb),
-        ('c13', 'Mijoz ilovadan mamnun, bildirishnomalar kech kelishini aytdi. NPS: 9.',
-                NULL, NULL, NULL, 'POSITIVE', false, NULL, false, true,
-                '{"answers": [{"question": "Ilovadan mamnunmisiz?", "answer": "Juda qulay"}, {"question": "Nimani yaxshilash kerak?", "answer": "Bildirishnomalar kech keladi"}], "score": 9}'::jsonb),
-        ('c14', 'Mijoz ilovadan umuman mamnun, lekin ba''zan ishdan chiqishini aytdi. NPS: 6.',
-                NULL, NULL, NULL, 'NEUTRAL', true, 'Ilova ishdan chiqishi haqida texnik jamoaga xabar berish.', false, true,
-                '{"answers": [{"question": "Ilovadan mamnunmisiz?", "answer": "Normal, ba''zan ishdan chiqadi"}], "score": 6}'::jsonb),
-        ('c15', 'Mijoz xizmatni to''liq tavsiya qiladi. NPS: 10.',
-                NULL, NULL, NULL, 'POSITIVE', false, NULL, false, true, '{"answers": [], "score": 10}'::jsonb),
-        ('c16', 'Reklamadan kelgan lead: 10 operatorli qarzdorlik markazi, oyiga ~5 mln so''m byudjet, keyingi oydan boshlamoqchi. Payshanba 15:00 ga demo belgilandi.',
-                NULL, NULL, NULL, 'POSITIVE', true, 'Demo: payshanba 15:00.', false, true,
-                '{"interest": "high", "budget": 5000000, "meetingAt": "payshanba 15:00"}'::jsonb),
-        ('c17', 'Mijoz to''lov usullarini so''radi, bilim bazasidan javob berildi (Payme).',
-                NULL, NULL, NULL, 'POSITIVE', false, NULL, false, true, '{"resolved": true, "escalated": false}'::jsonb)
-    ) AS r(k, summary, reason, promised_date, promised_amount, sentiment, follow_up, note, escalated, crm_ok, outcome)
-    JOIN call_attempt c ON c.sip_call_id = 'seed-' || r.k;
-END
-$seed$;
-
--- ---------------------------------------------------------------------------
 -- Billing, conversions, agent evaluation, notifications, reports, audit, API keys, webhooks.
 --
--- The money adds up: two top-ups credit 7 000 000, every settled call is a CALL_CHARGE,
--- one ADJUSTMENT, and company_billing.balance_uzs is where the ledger ends. Unanswered
--- calls are RELEASED holds and cost nothing. No hold is left open.
+-- The money adds up: two top-ups credit 7 000 000, one ADJUSTMENT, and
+-- company_billing.balance_uzs is where the ledger ends. No call is seeded for company 1, so
+-- there is no CALL_CHARGE and no hold.
 -- ---------------------------------------------------------------------------
 DO $seed$
 DECLARE
@@ -3143,21 +2224,14 @@ DECLARE
     v_sup        BIGINT;
     v_op1        BIGINT;
     v_debt       BIGINT;
-    v_sales      BIGINT;
-    v_camp_sept  BIGINT;
-    v_camp_nps   BIGINT;
+    v_camp_debt  BIGINT;
     v_topup1     BIGINT;
     v_topup2     BIGINT;
     v_topup5     BIGINT;
-    v_charged    BIGINT;
-    v_balance    BIGINT;
+    v_balance    BIGINT := 7000000;
     v_run        BIGINT;
     v_key        BIGINT;
     v_notif      BIGINT;
-    v_c01        call_attempt%ROWTYPE;
-    v_c02        call_attempt%ROWTYPE;
-    v_c16        call_attempt%ROWTYPE;
-    v_event      BIGINT;
     v_case1      BIGINT;
     v_case2      BIGINT;
     v_case3      BIGINT;
@@ -3172,12 +2246,7 @@ BEGIN
     SELECT id INTO v_sup FROM app_user WHERE username = 'supervisor';
     SELECT id INTO v_op1 FROM app_user WHERE username = 'operator1';
     SELECT id INTO v_debt FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)';
-    SELECT id INTO v_sales FROM ai_agent WHERE company_id = 1 AND name = 'Sotuv menejeri';
-    SELECT id INTO v_camp_sept FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — sentabr';
-    SELECT id INTO v_camp_nps FROM campaign WHERE company_id = 1 AND name = 'Mijozlar so''rovnomasi (NPS)';
-    SELECT * INTO v_c01 FROM call_attempt WHERE sip_call_id = 'seed-c01';
-    SELECT * INTO v_c02 FROM call_attempt WHERE sip_call_id = 'seed-c02';
-    SELECT * INTO v_c16 FROM call_attempt WHERE sip_call_id = 'seed-c16';
+    SELECT id INTO v_camp_debt FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik (cascade)';
 
     -- Top-ups in every status, and the provider transactions behind the paid ones.
     INSERT INTO payment_topup (payment_id, company_id, user_id, amount_uzs, payment_method, status, checkout_url, created_at, paid_at)
@@ -3202,53 +2271,11 @@ BEGIN
         ('CLICK', '2934561777', v_topup5, 50000000, 'CANCELLED', NULL,
          now() - interval '3 days', NULL, now() - interval '3 days' + interval '15 minutes', -9);
 
-    -- What each seeded call of company 1 cost. A variant B call ran on the realtime engine
-    -- and is priced per engine second instead of per token/character.
-    INSERT INTO call_billing (call_attempt_id, target_id, company_id, status, rate_version, reserved_uzs, duration_sec,
-                              prompt_tokens, completion_tokens, cached_tokens, tts_chars, realtime_seconds,
-                              llm_cost_uzs, stt_cost_uzs, tts_cost_uzs, telephony_cost_uzs, realtime_cost_uzs,
-                              platform_fee_uzs, total_uzs, created_at, settled_at)
-    SELECT c.id, c.target_id, 1,
-           CASE WHEN c.answered_at IS NULL THEN 'RELEASED' ELSE 'SETTLED' END,
-           '2026-09-v1', 5000, c.duration_sec,
-           coalesce(ct.prompt_tokens, 0), coalesce(ct.completion_tokens, 0), coalesce(ct.cached_tokens, 0),
-           CASE WHEN rt THEN 0 ELSE c.duration_sec * 12 END,
-           CASE WHEN rt THEN c.duration_sec ELSE 0 END,
-           CASE WHEN rt OR c.answered_at IS NULL THEN 0 ELSE c.duration_sec * 5 END,
-           CASE WHEN rt OR c.answered_at IS NULL THEN 0 ELSE c.duration_sec * 3 END,
-           CASE WHEN rt OR c.answered_at IS NULL THEN 0 ELSE c.duration_sec * 4 END,
-           CASE WHEN c.answered_at IS NULL THEN 0 ELSE ceil(c.duration_sec / 60.0)::bigint * 300 END,
-           CASE WHEN rt AND c.answered_at IS NOT NULL THEN c.duration_sec * 15 ELSE 0 END,
-           CASE WHEN c.answered_at IS NULL THEN 0 ELSE 100 END,
-           CASE WHEN c.answered_at IS NULL THEN 0
-                WHEN rt THEN c.duration_sec * 15 + ceil(c.duration_sec / 60.0)::bigint * 300 + 100
-                ELSE c.duration_sec * 12 + ceil(c.duration_sec / 60.0)::bigint * 300 + 100 END,
-           c.started_at, c.ended_at + interval '30 seconds'
-    FROM call_attempt c
-    LEFT JOIN call_technical ct ON ct.call_id = c.id
-    LEFT JOIN campaign_variant cv ON cv.id = c.variant_id
-    CROSS JOIN LATERAL (SELECT coalesce(cv.pipeline_mode = 'REALTIME', false) AS rt) p
-    WHERE c.company_id = 1 AND c.sip_call_id LIKE 'seed-%';
-
     INSERT INTO billing_ledger (company_id, entry_type, amount_uzs, balance_before_uzs, balance_after_uzs, reference_type,
                                 reference_id, idempotency_key, created_at) VALUES
         (1, 'TOPUP', 5000000, 0, 5000000, 'payment_topup', 'PAY-SEED-0001', 'topup:PAY-SEED-0001', now() - interval '20 days' + interval '2 minutes'),
         (1, 'TOPUP', 2000000, 5000000, 7000000, 'payment_topup', 'PAY-SEED-0002', 'topup:PAY-SEED-0002', now() - interval '5 days' + interval '1 minute');
 
-    WITH charges AS (
-        SELECT b.id, b.call_attempt_id, b.total_uzs, b.settled_at,
-               sum(b.total_uzs) OVER (ORDER BY b.settled_at, b.id) AS running
-        FROM call_billing b
-        WHERE b.company_id = 1 AND b.status = 'SETTLED'
-    )
-    INSERT INTO billing_ledger (company_id, entry_type, amount_uzs, balance_before_uzs, balance_after_uzs, reference_type,
-                                reference_id, idempotency_key, created_at)
-    SELECT 1, 'CALL_CHARGE', -total_uzs, 7000000 - (running - total_uzs), 7000000 - running,
-           'call_attempt', call_attempt_id::text, 'settle:' || call_attempt_id, settled_at
-    FROM charges;
-
-    SELECT coalesce(sum(total_uzs), 0) INTO v_charged FROM call_billing WHERE company_id = 1 AND status = 'SETTLED';
-    v_balance := 7000000 - v_charged;
     INSERT INTO billing_ledger (company_id, entry_type, amount_uzs, balance_before_uzs, balance_after_uzs, reference_type,
                                 reference_id, idempotency_key, created_at)
     VALUES (1, 'ADJUSTMENT', 50000, v_balance, v_balance + 50000, 'manual', 'CRM uzilishi uchun kompensatsiya',
@@ -3259,49 +2286,19 @@ BEGIN
             (date_trunc('month', now() AT TIME ZONE 'Asia/Tashkent') + interval '1 month') AT TIME ZONE 'Asia/Tashkent');
 
     INSERT INTO billing_usage (company_id, billing_period, used_minutes, used_tokens, used_tts_chars, used_channels, total_spend_uzs)
-    SELECT 1, to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM'),
-           coalesce(sum(ceil(b.duration_sec / 60.0)), 0)::int,
-           coalesce(sum(b.prompt_tokens + b.completion_tokens), 0),
-           coalesce(sum(b.tts_chars), 0), 3, v_charged
-    FROM call_billing b WHERE b.company_id = 1 AND b.status = 'SETTLED';
-    INSERT INTO billing_usage (company_id, billing_period, used_minutes, used_tokens, used_tts_chars, used_channels, total_spend_uzs)
-    VALUES (1, to_char((now() - interval '1 month') AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM'), 3120, 1450000, 610000, 18, 4850000);
+    VALUES (1, to_char(now() AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM'), 0, 0, 0, 3, 0),
+           (1, to_char((now() - interval '1 month') AT TIME ZONE 'Asia/Tashkent', 'YYYY-MM'), 3120, 1450000, 610000, 18, 4850000);
 
     INSERT INTO invoice (id, company_id, period_name, amount_uzs, status, paid_at, created_at) VALUES
         ('INV-2026-007', 1, 'Iyul 2026',    4200000, 'PAID',    '2026-08-03 11:20:00+05', '2026-08-01 09:00:00+05'),
         ('INV-2026-008', 1, 'Avgust 2026',  4850000, 'PAID',    '2026-09-02 15:05:00+05', '2026-09-01 09:00:00+05'),
         ('INV-2026-009', 1, 'Sentabr 2026', 1900000, 'PENDING', NULL,                     now() - interval '1 day');
 
-    -- Conversions: a payment and a meeting credited to the calls that earned them, a partial
-    -- payment after a refusal, and one event with no call in its window.
+    -- Conversion goals, and one payment event with no call in its window (so it is rejected).
     INSERT INTO conversion_goal (company_id, goal_key, name, attribution_window_hours, attribution_model, enabled) VALUES
         (1, 'payment',     'To''lov',             72,  'LAST_CALL',  true),
         (1, 'appointment', 'Uchrashuv',           48,  'FIRST_CALL', true),
         (1, 'renewal',     'Shartnoma yangilash', 168, 'LAST_CALL',  false);
-
-    INSERT INTO conversion_event (company_id, goal_key, phone, occurred_at, value_uzs, source, evidence, dedupe_key, ingested_at)
-    VALUES (1, 'payment', v_c01.phone, v_c01.ended_at + interval '1 day', 1250000, 'payme',
-            '{"receipt": "PM-883921", "contractNumber": "SH-2025-0141"}'::jsonb, 'payme-883921', v_c01.ended_at + interval '1 day 1 minute')
-    RETURNING id INTO v_event;
-    INSERT INTO conversion_attribution (conversion_event_id, company_id, campaign_id, variant_id, call_attempt_id,
-                                        attribution_model, window_hours, attributed_value_uzs, computed_at)
-    VALUES (v_event, 1, v_camp_sept, v_c01.variant_id, v_c01.id, 'LAST_CALL', 72, 1250000, v_c01.ended_at + interval '1 day 1 minute');
-
-    INSERT INTO conversion_event (company_id, goal_key, phone, occurred_at, value_uzs, source, evidence, dedupe_key, ingested_at)
-    VALUES (1, 'payment', v_c02.phone, now() - interval '3 hours', 200000, 'click',
-            '{"receipt": "CL-5521", "partial": true}'::jsonb, 'click-5521', now() - interval '3 hours')
-    RETURNING id INTO v_event;
-    INSERT INTO conversion_attribution (conversion_event_id, company_id, campaign_id, variant_id, call_attempt_id,
-                                        attribution_model, window_hours, attributed_value_uzs, computed_at)
-    VALUES (v_event, 1, v_camp_sept, v_c02.variant_id, v_c02.id, 'LAST_CALL', 72, 200000, now() - interval '3 hours');
-
-    INSERT INTO conversion_event (company_id, goal_key, phone, occurred_at, value_uzs, source, evidence, dedupe_key, ingested_at)
-    VALUES (1, 'appointment', v_c16.phone, v_c16.ended_at + interval '20 hours', NULL, 'crm',
-            '{"meetingId": 1041}'::jsonb, 'crm-meet-1041', v_c16.ended_at + interval '20 hours')
-    RETURNING id INTO v_event;
-    INSERT INTO conversion_attribution (conversion_event_id, company_id, campaign_id, variant_id, call_attempt_id,
-                                        attribution_model, window_hours, attributed_value_uzs, computed_at)
-    VALUES (v_event, 1, NULL, NULL, v_c16.id, 'FIRST_CALL', 48, NULL, v_c16.ended_at + interval '20 hours');
 
     INSERT INTO conversion_event (company_id, goal_key, phone, occurred_at, value_uzs, source, evidence, dedupe_key,
                                   rejected, rejection_reason, ingested_at)
@@ -3337,9 +2334,6 @@ BEGIN
             '{"clientName": "Нигина", "debtAmount": 910000, "currency": "UZS"}'::jsonb,
             'ru-RU', 'PROMISE_TO_PAY', 'CONFIRMATION', '["910 000"]'::jsonb, '["скидка"]'::jsonb, 12)
     RETURNING id INTO v_case4;
-    INSERT INTO agent_test_case (company_id, agent_id, name, persona_prompt, facts, language, expect_disposition, must_say, must_not_say)
-    VALUES (1, v_sales, 'Qiziqqan lead', 'Siz 10 operatorli call-markaz rahbarisiz, demo so''raysiz.', '{}'::jsonb,
-            'uz-UZ', 'COMPLETED', '["demo"]'::jsonb, '["chegirma"]'::jsonb);
 
     INSERT INTO agent_eval_run (company_id, agent_id, agent_version, status, total, passed, avg_qa_score, error, started_at, finished_at)
     VALUES (1, v_debt, NULL, 'DONE', 4, 3, 82, NULL, now() - interval '1 day', now() - interval '1 day' + interval '6 minutes')
@@ -3361,13 +2355,13 @@ BEGIN
     -- Notifications, each to the three people who run the floor; the older ones read.
     FOR v_notif IN
         INSERT INTO notification (company_id, type, title, message, link, created_at) VALUES
-            (1, 'CAMPAIGN_FINISHED', 'Kampaniya yakunlandi', '"Mijozlar so''rovnomasi (NPS)" yakunlandi: 3 mijozdan 3 tasi bilan gaplashildi.', '/campaigns/' || v_camp_nps, now() - interval '4 days'),
+            (1, 'CAMPAIGN_FINISHED', 'Kampaniya yakunlandi', '"Qarzdorlik — kunlik (cascade)" bugungi ro''yxat bo''yicha yakunlandi.', '/campaigns/' || v_camp_debt, now() - interval '4 days'),
             (1, 'DAILY_REPORT', 'Kunlik hisobot', 'Kecha: 9 qo''ng''iroq, 6 javob, 1 va''da, 1 operatorga uzatildi.', '/reports', now() - interval '10 hours'),
             (1, 'OPERATOR_REQUEST', 'Mijoz operator so''radi', 'Rustam Qodirov summaga e''tiroz bildirib, operatorga ulandi.', '/calls', now() - interval '1 day 03:48'),
             (1, 'LOW_SURVEY_SCORE', 'Past baho: 2 / 5', 'VIP mijoz (+998 90 123 00 24) operator Dilshod Karimovning suhbatiga 2 baho qo''ydi.', '/calls', now() - interval '1 day 05:55'),
             (1, 'ERROR_OCCURRED', 'CRM yozuvi muvaffaqiyatsiz', 'Dilnoza Rashidova qo''ng''irog''i xulosasi 5 urinishdan keyin ham CRM ga yozilmadi.', '/calls', now() - interval '1 day 20:00'),
-            (1, 'TARGET_SYNC_FAILED', 'Ro''yxatni yuklab bo''lmadi', '"Qarzdorlik — kunlik": Uysot ulanmagan, ro''yxat bo''sh qoldi.', '/campaigns', now() - interval '6 hours'),
-            (1, 'CAMPAIGN_PAUSED', 'Kampaniya to''xtatildi', '"Qarzdorlik — realtime test": ishlaydigan SIP trunk topilmadi.', '/campaigns', now() - interval '4 days'),
+            (1, 'TARGET_SYNC_FAILED', 'Ro''yxatni yuklab bo''lmadi', '"Qarzdorlik — kunlik (cascade)": Uysot ulanmagan, ro''yxat bo''sh qoldi.', '/campaigns', now() - interval '6 hours'),
+            (1, 'CAMPAIGN_PAUSED', 'Kampaniya to''xtatildi', '"Qarzdorlik — kunlik (realtime)": ishlaydigan SIP trunk topilmadi.', '/campaigns', now() - interval '4 days'),
             (1, 'WEBHOOK_DELIVERY_FAILED', 'Webhook yetkazilmadi', 'crm.example.uz ga post-call webhook 4 urinishdan keyin ham yetkazilmadi.', '/settings/webhooks', now() - interval '3 hours'),
             (1, 'MISSED_CALL', 'O''tkazib yuborilgan qo''ng''iroq', '+998 93 555 01 03 navbatda 95 soniya kutib, go''shakni qo''ydi.', '/missed-calls', now() - interval '02:28'),
             (1, 'VOICEMAIL_RECEIVED', 'Yangi ovozli xabar', '+998 93 555 01 04 "Umumiy ovozli pochta"ga 48 soniyalik xabar qoldirdi.', '/voicemail', now() - interval '13:59')
@@ -3398,18 +2392,18 @@ BEGIN
 
     INSERT INTO report_schedule (company_id, email, periodicity, format, campaign_id, enabled, last_sent_at, created_by) VALUES
         (1, 'admin@test.uz',      'DAILY',   'pdf',  NULL,        true,  now() - interval '1 day', v_admin),
-        (1, 'supervisor@test.uz', 'WEEKLY',  'xlsx', v_camp_sept, true,  NULL,                     v_admin),
+        (1, 'supervisor@test.uz', 'WEEKLY',  'xlsx', v_camp_debt, true,  NULL,                     v_admin),
         (1, 'finance@test.uz',    'MONTHLY', 'csv',  NULL,        false, NULL,                     v_admin);
 
     INSERT INTO audit_log (company_id, actor, action, entity, entity_id, detail, ip_address, created_at) VALUES
         (1, 'admin',      'LOGIN',                       'app_user',     v_admin::text,     NULL,                                    '192.168.0.10', now() - interval '3 hours'),
-        (1, 'admin',      'CAMPAIGN_CREATE',             'campaign',     v_camp_sept::text, 'Qarzdorlik — sentabr',                  '192.168.0.10', now() - interval '6 days'),
-        (1, 'supervisor', 'AI_AGENT_UPDATE',             'ai_agent',     v_sales::text,     'Sotuv menejeri: interruption HIGH',     '192.168.0.23', now() - interval '2 days'),
+        (1, 'admin',      'CAMPAIGN_CREATE',             'campaign',     v_camp_debt::text, 'Qarzdorlik — kunlik (cascade)',         '192.168.0.10', now() - interval '6 days'),
+        (1, 'supervisor', 'AI_AGENT_UPDATE',             'ai_agent',     v_debt::text,      'Qarzdorlik (cascade): temperature 0.3', '192.168.0.23', now() - interval '2 days'),
         (1, 'admin',      'SECRET_CREATE',               'secret',       NULL,              'CRM_API_TOKEN',                         '192.168.0.10', now() - interval '6 days'),
         (1, 'admin',      'USER_BLOCK',                  'app_user',     NULL,              'operator4',                             '192.168.0.10', now() - interval '20 days'),
         (1, 'admin',      'OPERATOR_SIP_ACCOUNT_CREATE', 'operator_sip_account', v_op1::text, 'webrtc',                              '192.168.0.10', now() - interval '15 days'),
         (1, 'admin',      'API_KEY_CREATED',             'api_key',      NULL,              'CRM integratsiyasi (rc_live_d70d8b812ab4)', '192.168.0.10', now() - interval '10 days'),
-        (1, 'superadmin', 'CAMPAIGN_PAUSE',              'campaign',     NULL,              'Qarzdorlik — realtime test',            '10.0.0.5',     now() - interval '4 days');
+        (1, 'superadmin', 'CAMPAIGN_PAUSE',              'campaign',     NULL,              'Qarzdorlik — kunlik (realtime)',        '10.0.0.5',     now() - interval '4 days');
 
     -- The working key is the one written at the top of TEST DATA.
     INSERT INTO api_key (company_id, name, key_prefix, key_hash, created_by, last_used_at, expires_at, created_at)
@@ -3423,16 +2417,17 @@ BEGIN
     RETURNING id INTO v_key;
     INSERT INTO api_key_scope (api_key_id, permission) VALUES (v_key, 'CAMPAIGN_READ');
 
-    -- Neither is PENDING, so the retry sweep leaves both alone.
+    -- Neither is PENDING, so the retry sweep leaves both alone. No call is seeded, so the
+    -- payloads carry no call id.
     INSERT INTO webhook_delivery (company_id, source, host, sealed_target, payload, status, attempts, next_attempt_at,
                                   last_error, created_at, delivered_at) VALUES
         (1, 'post_call', 'hooks.example.uz',
          '9ESYpBBkrRgoNEjVJZmPMCST2mb14lqdA2ajpGhUXCIqsMoxPTuPm2cT4c1U4AiuOnNOZLbKbydv9qBsJf4UGWJxqyur7L9A8zFSCmUn2PZ24qBNJTLNHdQTP0v42d1krV2ZBmvbN9y73pz706C0p907QH4=',
-         jsonb_build_object('callId', v_c01.id, 'disposition', 'PROMISE_TO_PAY', 'phone', v_c01.phone),
+         jsonb_build_object('disposition', 'PROMISE_TO_PAY', 'phone', '+998901230001'),
          'DELIVERED', 2, NULL, 'HTTP 503 on first try', now() - interval '2 days', now() - interval '2 days' + interval '1 minute'),
         (1, 'post_call', 'crm.example.uz',
          'yWq/bW8KfDQIFAv9vD4v/rePNDLP9zGOfo+qHeL4w28aYUJ2sKkzcXXRG+ntNRM7RwHuaL5qNUWX5JxMSeY63cdfEdfU94vbS17oey1vWHC8nnQs1UoP4w==',
-         jsonb_build_object('callId', v_c02.id, 'disposition', 'REFUSED', 'phone', v_c02.phone),
+         jsonb_build_object('disposition', 'REFUSED', 'phone', '+998901230002'),
          'FAILED', 4, NULL, 'I/O error: crm.example.uz: Name or service not known', now() - interval '1 day', NULL);
 END
 $seed$;
@@ -3603,89 +2598,47 @@ $seed$;
 
 -- ---------------------------------------------------------------------------
 -- Company 1's newer screens: agent channels, caller ID rotation, the number marketplace,
--- alerts, promises to pay, operator wrap-up and scorecards, AI call quality and insights,
--- tool logs, the Telegram bot and chats, the copilot, analytics boards.
+-- alerts, operator wrap-up codes and scorecard criteria, the copilot, analytics boards.
 --
--- Built on the call history above (sip_call_id 'seed-*'), so every row here points at a
--- call that exists. Nothing here creates a call or moves money: the billing block above
--- stays the whole story of company 1's balance.
+-- No call history is seeded for company 1, so nothing here points at a call: wrap-ups,
+-- scorecards, quality verdicts, insights and tool logs fill in as real calls are made.
+-- Nothing here moves money: the billing block above stays the whole story of company 1's
+-- balance.
 -- ---------------------------------------------------------------------------
 DO $seed$
 DECLARE
     v_admin     BIGINT;
-    v_sup       BIGINT;
-    v_op1       BIGINT;
-    v_op2       BIGINT;
-    v_reception BIGINT;
+    v_lead      BIGINT;
     v_debt      BIGINT;
-    v_sales     BIGINT;
-    v_prompt    BIGINT;
     v_trunk     BIGINT;
     v_flow      BIGINT;
-    v_camp_sept BIGINT;
+    v_camp_debt BIGINT;
     v_pool      BIGINT;
-    v_wu_done   BIGINT;
-    v_wu_retry  BIGINT;
-    v_wu_ptp    BIGINT;
-    v_crit1     BIGINT;
-    v_crit2     BIGINT;
-    v_crit3     BIGINT;
-    v_crit4     BIGINT;
-    v_t_order   BIGINT;
-    v_t_balance BIGINT;
-    v_kb_paid   BIGINT;
-    v_bot       BIGINT;
-    v_widget    BIGINT;
-    v_chat      BIGINT;
     v_copilot   BIGINT;
     v_board     BIGINT;
-    v_c01       call_attempt%ROWTYPE;
-    v_c02       call_attempt%ROWTYPE;
-    v_c07       call_attempt%ROWTYPE;
-    v_c17       call_attempt%ROWTYPE;
-    v_c18       call_attempt%ROWTYPE;
-    v_c21       call_attempt%ROWTYPE;
 BEGIN
     IF EXISTS (SELECT 1 FROM wrap_up_code WHERE company_id = 1 AND name = 'To''lovga rozi') THEN
         RETURN;
     END IF;
 
     SELECT id INTO v_admin FROM app_user WHERE username = 'admin';
-    SELECT id INTO v_sup FROM app_user WHERE username = 'supervisor';
-    SELECT id INTO v_op1 FROM app_user WHERE username = 'operator1';
-    SELECT id INTO v_op2 FROM app_user WHERE username = 'operator2';
-    SELECT id INTO v_reception FROM ai_agent WHERE company_id = 1 AND name = 'Kiruvchi qabulxona';
+    SELECT id INTO v_lead FROM ai_agent WHERE company_id = 1 AND name = 'Lid kvalifikatsiya (cascade)';
     SELECT id INTO v_debt FROM ai_agent WHERE company_id = 1 AND name = 'Qarzdorlik (cascade)';
-    SELECT id INTO v_sales FROM ai_agent WHERE company_id = 1 AND name = 'Sotuv menejeri';
-    SELECT id INTO v_prompt FROM ai_agent WHERE company_id = 1 AND name = 'Erkin suhbat (PROMPT rejimi)';
     SELECT id INTO v_trunk FROM sip_trunk WHERE company_id = 1 AND pjsip_endpoint = 'trunk-endpoint';
     SELECT id INTO v_flow FROM call_flow WHERE company_id = 1 AND name = 'Asosiy IVR';
-    SELECT id INTO v_camp_sept FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — sentabr';
-    SELECT id INTO v_t_order FROM tool WHERE company_id = 1 AND name = 'buyurtma_holati';
-    SELECT id INTO v_t_balance FROM tool WHERE company_id = 1 AND name = 'tolov_qoldigi';
-    SELECT id INTO v_kb_paid FROM knowledge_base_item WHERE company_id = 1 AND topic = 'payment' ORDER BY id LIMIT 1;
-    SELECT * INTO v_c01 FROM call_attempt WHERE sip_call_id = 'seed-c01';
-    SELECT * INTO v_c02 FROM call_attempt WHERE sip_call_id = 'seed-c02';
-    SELECT * INTO v_c07 FROM call_attempt WHERE sip_call_id = 'seed-c07';
-    SELECT * INTO v_c17 FROM call_attempt WHERE sip_call_id = 'seed-c17';
-    SELECT * INTO v_c18 FROM call_attempt WHERE sip_call_id = 'seed-c18';
-    SELECT * INTO v_c21 FROM call_attempt WHERE sip_call_id = 'seed-c21';
+    SELECT id INTO v_camp_debt FROM campaign WHERE company_id = 1 AND name = 'Qarzdorlik — kunlik (cascade)';
 
-    -- Agent channel and mode, for every agent seeded so far (the demo tenant's too): a
-    -- scenario-driven agent is a CONVERSATIONAL_FLOW, a prompt-only one a SINGLE_PROMPT.
-    -- Outbound agents only ever speak; the reception and PROMPT agents also chat.
+    -- Agent mode, for every agent seeded so far (the demo tenant's too): a scenario-driven
+    -- agent is a CONVERSATIONAL_FLOW, a prompt-only one a SINGLE_PROMPT. All of them speak.
     UPDATE ai_agent SET agent_mode = CASE WHEN scenario_mode = 'STRUCTURED_STEPS' THEN 'CONVERSATIONAL_FLOW'
                                           ELSE 'SINGLE_PROMPT' END;
-    UPDATE ai_agent SET channel = 'VOICE'
-     WHERE id NOT IN (v_reception, v_prompt);
-    UPDATE ai_agent SET channel = 'OMNICHANNEL', speaking_warmth = 'WARM' WHERE id = v_prompt;
-    UPDATE ai_agent SET speaking_warmth = 'RESERVED' WHERE company_id = 1 AND name = 'Bildirishnoma (OpenAI realtime)';
+    UPDATE ai_agent SET channel = 'VOICE';
 
     -- Company limits the platform sets, and the main trunk's contracted channels.
     UPDATE company SET max_concurrent_calls = 20 WHERE id = 1;
     UPDATE sip_trunk SET max_channels = 30, max_cps = 5 WHERE id = v_trunk;
 
-    -- Caller ID rotation for the collections campaign, which also orders its queue by score.
+    -- Caller ID rotation for the cascade collections campaign.
     INSERT INTO caller_id_pool (company_id, name, strategy, description)
     VALUES (1, 'Qarzdorlik raqamlari', 'HIGHEST_ANSWER_RATE', 'Undiruv kampaniyalari uchun chiquvchi raqamlar')
     RETURNING id INTO v_pool;
@@ -3695,19 +2648,11 @@ BEGIN
         (v_pool, '+998712000103', 'Zaxira 2',          530,  92, 'COOLING_DOWN', now() + interval '2 days',   now() - interval '2 days'),
         (v_pool, '+998712000104', 'Eski (spam deb belgilangan)', 260, 21, 'DISABLED', NULL,                    now() - interval '25 days');
     INSERT INTO caller_id_pool (company_id, name, strategy, description)
-    VALUES (1, 'So''rovnoma raqamlari', 'ROUND_ROBIN', NULL);
+    VALUES (1, 'Lid raqamlari', 'ROUND_ROBIN', NULL);
 
-    INSERT INTO campaign_dialer_config (campaign_id, target_ordering, caller_id_pool_id)
-    VALUES (v_camp_sept, 'SCORE', v_pool)
-    ON CONFLICT (campaign_id) DO UPDATE SET target_ordering = EXCLUDED.target_ordering,
-                                            caller_id_pool_id = EXCLUDED.caller_id_pool_id;
-    UPDATE campaign_target t
-       SET score = s.score, best_call_hour = s.hour, scored_at = now() - interval '6 hours'
-      FROM (VALUES ('+998901230003', 64, 18), ('+998901230008', 41, 10), ('+998901230010', 77, 12),
-                   ('+998901230013', 58, 19)) AS s(phone, score, hour)
-     WHERE t.campaign_id = v_camp_sept AND t.phone = s.phone;
+    UPDATE campaign_dialer_config SET caller_id_pool_id = v_pool WHERE campaign_id = v_camp_debt;
 
-    -- The marketplace: numbers the platform still holds (company NULL), and the two company 1
+    -- The marketplace: numbers the platform still holds (company NULL), and the ones company 1
     -- bought — the main IVR number and the sales line.
     INSERT INTO phone_number (company_id, phone_number, nickname, type, category, status, monthly_fee, price_per_channel,
                               max_supported_channels, allocated_channels, provider_trunk_id, inbound_agent_id,
@@ -3715,185 +2660,40 @@ BEGIN
         (1,    '+998712000100', 'Asosiy raqam (IVR)', 'MARKETPLACE_PURCHASED', 'GOLD',     'ASSIGNED',  450000.00, 25000.00, 30, 10,
          v_trunk, NULL, v_flow, true,  now() - interval '40 days', now() + interval '20 days', v_admin),
         (1,    '+998712000200', 'Sotuv liniyasi',     'MARKETPLACE_PURCHASED', 'SILVER',   'ASSIGNED',  250000.00, 20000.00, 20, 5,
-         v_trunk, v_sales, NULL, true,  now() - interval '35 days', now() + interval '25 days', v_admin),
+         v_trunk, v_lead, NULL, true,  now() - interval '35 days', now() + interval '25 days', v_admin),
         (1,    '+998712000300', 'O''z trunkimiz',     'BYO_SIP_TRUNK',         'STANDARD', 'ASSIGNED',       0.00,     0.00, 10, 2,
-         v_trunk, v_prompt, NULL, false, now() - interval '5 days', NULL, v_admin),
+         v_trunk, v_lead, NULL, false, now() - interval '5 days', NULL, v_admin),
         (NULL, '+998712007777', NULL, 'MARKETPLACE_PURCHASED', 'PLATINUM', 'AVAILABLE', 1500000.00, 30000.00, 60, 1, NULL, NULL, NULL, true, NULL, NULL, NULL),
         (NULL, '+998712001000', NULL, 'MARKETPLACE_PURCHASED', 'GOLD',     'AVAILABLE',  450000.00, 25000.00, 30, 1, NULL, NULL, NULL, true, NULL, NULL, NULL),
         (NULL, '+998712003030', NULL, 'MARKETPLACE_PURCHASED', 'SILVER',   'AVAILABLE',  250000.00, 20000.00, 20, 1, NULL, NULL, NULL, true, NULL, NULL, NULL),
         (NULL, '+998712004581', NULL, 'MARKETPLACE_PURCHASED', 'STANDARD', 'AVAILABLE',  120000.00, 15000.00, 10, 1, NULL, NULL, NULL, true, NULL, NULL, NULL),
         (NULL, '+998712004592', NULL, 'MARKETPLACE_PURCHASED', 'STANDARD', 'AVAILABLE',  120000.00, 15000.00, 10, 1, NULL, NULL, NULL, true, NULL, NULL, NULL);
 
-    -- Alert rules: one fired yesterday (and is cooling down), one quiet, one per agent, one off.
+    -- Alert rules: one quiet, one per agent, one off. None has been evaluated yet.
     INSERT INTO alert_rule (company_id, name, metric, comparator, threshold, window_minutes, min_calls, cooldown_minutes,
-                            ai_agent_id, enabled, last_value, last_evaluated_at, last_triggered_at) VALUES
-        (1, 'Muvaffaqiyat 20% dan pastga tushdi', 'SUCCESS_RATE', 'BELOW', 20, 1440, 10, 360,
-         NULL, true, 14.3, now() - interval '5 minutes', now() - interval '1 day 01:00'),
-        (1, 'Texnik xatolar ko''paydi', 'FAILED_CALL_RATE', 'ABOVE', 15, 60, 10, 60,
-         NULL, true, 9.1, now() - interval '5 minutes', NULL),
-        (1, 'Qarzdorlik agenti sekin javob bermoqda', 'AVG_TURN_LATENCY_MS', 'ABOVE', 1800, 30, 5, 120,
-         v_debt, true, 1120, now() - interval '5 minutes', NULL),
-        (1, 'Qo''ng''iroqlar to''xtab qoldi', 'CALL_COUNT', 'BELOW', 1, 120, 0, 240,
-         NULL, false, NULL, NULL, NULL);
+                            ai_agent_id, enabled) VALUES
+        (1, 'Muvaffaqiyat 20% dan pastga tushdi', 'SUCCESS_RATE', 'BELOW', 20, 1440, 10, 360, NULL, true),
+        (1, 'Texnik xatolar ko''paydi', 'FAILED_CALL_RATE', 'ABOVE', 15, 60, 10, 60, NULL, true),
+        (1, 'Qarzdorlik agenti sekin javob bermoqda', 'AVG_TURN_LATENCY_MS', 'ABOVE', 1800, 30, 5, 120, v_debt, true),
+        (1, 'Qo''ng''iroqlar to''xtab qoldi', 'CALL_COUNT', 'BELOW', 1, 120, 0, 240, NULL, false);
 
-    -- Wrap-up codes, and the three operator calls closed with them.
-    INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at) VALUES (1, 'Muammo hal qilindi', 'DONE', false)
-    RETURNING id INTO v_wu_done;
-    INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at) VALUES (1, 'Qayta qo''ng''iroq', 'RETRY', true)
-    RETURNING id INTO v_wu_retry;
-    INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at) VALUES (1, 'To''lovga rozi', 'DONE', false)
-    RETURNING id INTO v_wu_ptp;
+    -- Wrap-up codes the operators close a call with.
     INSERT INTO wrap_up_code (company_id, name, outcome, requires_callback_at, enabled) VALUES
+        (1, 'Muammo hal qilindi', 'DONE', false, true),
+        (1, 'Qayta qo''ng''iroq', 'RETRY', true, true),
+        (1, 'To''lovga rozi', 'DONE', false, true),
         (1, 'Noto''g''ri raqam', 'EXHAUSTED', false, true),
         (1, 'Eski kod (o''chiq)', 'DONE', false, false);
 
-    INSERT INTO call_wrap_up (call_attempt_id, company_id, wrap_up_code_id, code_name, outcome, operator_user_id, note,
-                              callback_at, created_at) VALUES
-        (v_c07.id, 1, v_wu_retry, 'Qayta qo''ng''iroq', 'RETRY', v_op1,
-         'Mijoz iyundagi chekni yuboradi, buxgalteriya tekshirgach qayta qo''ng''iroq qilamiz.',
-         now() + interval '2 days', v_c07.ended_at + interval '40 seconds'),
-        (v_c18.id, 1, v_wu_done, 'Muammo hal qilindi', 'DONE', v_op2,
-         'Shartnoma bo''yicha savolga javob berildi.', NULL, v_c18.ended_at + interval '25 seconds'),
-        (v_c21.id, 1, v_wu_ptp, 'To''lovga rozi', 'DONE', v_sup,
-         'VIP mijoz, oy oxirigacha to''laydi. Kutish uzoq bo''lganidan norozi.', NULL, v_c21.ended_at + interval '30 seconds');
-
-    -- Who talked how much on the two inbound operator calls.
-    INSERT INTO call_talk_metrics (call_id, analysed_ms, client_talk_ms, operator_talk_ms, overtalk_ms, silence_ms,
-                                   longest_silence_ms, created_at) VALUES
-        (v_c18.id, 480000, 205000, 231000, 6000, 38000, 7000, v_c18.ended_at + interval '1 minute'),
-        (v_c21.id, 290000, 168000,  82000, 14000, 26000, 61000, v_c21.ended_at + interval '1 minute');
-
-    -- Scorecards: the judge's marks, one confirmed, one waiting in the review inbox.
-    INSERT INTO scorecard_criterion (company_id, name, instruction, weight) VALUES
-        (1, 'Salomlashish', 'Operator o''zini va kompaniyani tanishtirdimi?', 2) RETURNING id INTO v_crit1;
-    INSERT INTO scorecard_criterion (company_id, name, instruction, weight) VALUES
-        (1, 'Ehtiyojni aniqlash', 'Operator mijozning savolini aniqlashtiruvchi savollar bilan tushundimi?', 3) RETURNING id INTO v_crit2;
-    INSERT INTO scorecard_criterion (company_id, name, instruction, weight) VALUES
-        (1, 'Yechim taklif qilish', 'Operator aniq yechim yoki keyingi qadamni aytdimi?', 4) RETURNING id INTO v_crit3;
-    INSERT INTO scorecard_criterion (company_id, name, instruction, weight) VALUES
-        (1, 'Xayrlashish', 'Operator suhbatni xushmuomalalik bilan yakunladimi?', 1) RETURNING id INTO v_crit4;
+    -- Scorecard criteria the judge marks operator calls against.
     INSERT INTO scorecard_criterion (company_id, name, instruction, weight, enabled) VALUES
+        (1, 'Salomlashish', 'Operator o''zini va kompaniyani tanishtirdimi?', 2, true),
+        (1, 'Ehtiyojni aniqlash', 'Operator mijozning savolini aniqlashtiruvchi savollar bilan tushundimi?', 3, true),
+        (1, 'Yechim taklif qilish', 'Operator aniq yechim yoki keyingi qadamni aytdimi?', 4, true),
+        (1, 'Xayrlashish', 'Operator suhbatni xushmuomalalik bilan yakunladimi?', 1, true),
         (1, 'Skript bo''yicha gapirish (eski)', 'Operator skriptdagi iboralarni so''zma-so''z aytdimi?', 1, false);
 
-    INSERT INTO call_scorecard (call_id, company_id, operator_user_id, score, judged_score, sentiment, needs_review,
-                                review_status, review_note, reviewed_by, reviewed_at, prompt_tokens, completion_tokens,
-                                cached_tokens, created_at) VALUES
-        (v_c18.id, 1, v_op2, 90, 90, 'POSITIVE', false, 'CONFIRMED', NULL, v_sup, v_c18.ended_at + interval '3 hours',
-         5400, 620, 1800, v_c18.ended_at + interval '2 minutes'),
-        (v_c21.id, 1, v_sup, NULL, 40, 'NEGATIVE', true, 'PENDING', NULL, NULL, NULL,
-         3900, 540, 1200, v_c21.ended_at + interval '2 minutes');
-    INSERT INTO call_scorecard_answer (call_id, criterion_id, criterion_name, weight, answer, judged_answer, evidence) VALUES
-        (v_c18.id, v_crit1, 'Salomlashish',         2, 'YES', 'YES', '"Assalomu alaykum, Uysot, Aziz eshitadi"'),
-        (v_c18.id, v_crit2, 'Ehtiyojni aniqlash',   3, 'YES', 'YES', '"Qaysi shartnoma haqida so''rayapsiz?"'),
-        (v_c18.id, v_crit3, 'Yechim taklif qilish', 4, 'YES', 'YES', 'To''lov jadvalini SMS bilan yuborishni taklif qildi'),
-        (v_c18.id, v_crit4, 'Xayrlashish',          1, 'NO',  'NO',  NULL),
-        (v_c21.id, v_crit1, 'Salomlashish',         2, 'YES', 'YES', NULL),
-        (v_c21.id, v_crit2, 'Ehtiyojni aniqlash',   3, 'NO',  'NO',  'Mijozni ikki marta kuttirib qo''ydi'),
-        (v_c21.id, v_crit3, 'Yechim taklif qilish', 4, 'NO',  'NO',  'Aniq to''lov sanasi kelishilmadi'),
-        (v_c21.id, v_crit4, 'Xayrlashish',          1, 'YES', 'YES', NULL);
-    INSERT INTO call_scorecard_topic (call_id, topic) VALUES
-        (v_c18.id, 'shartnoma'), (v_c18.id, 'to''lov jadvali'),
-        (v_c21.id, 'kutish vaqti'), (v_c21.id, 'to''lov'), (v_c21.id, 'shikoyat');
-
-    -- The quality judge's verdict on the AI calls, and what a person made of the flagged ones.
-    INSERT INTO call_quality (company_id, call_attempt_id, score,
-                              guardrail_violation, language_mismatch, talked_over_client, outcome_correct, goal_reached,
-                              unanswered_question, tool_misuse, note, needs_review, turn_count, repair_count,
-                              tool_error_count, barge_in_count, no_input_prompt_count, low_confidence_count, repeat_call,
-                              review_status, review_reason, reviewed_by, reviewed_at, knowledge_item_id, created_at)
-    SELECT 1, c.id, q.score,
-           q.guardrail, false, q.talked_over, q.outcome_ok, q.goal, q.unanswered, false, q.note, q.review IS NOT NULL,
-           q.turns, q.repairs, 0, q.barge, 0, q.lowconf, false,
-           q.review, q.reason,
-           CASE WHEN q.review IN ('AGENT_CORRECT', 'AGENT_WRONG') THEN v_sup END,
-           CASE WHEN q.review IN ('AGENT_CORRECT', 'AGENT_WRONG') THEN c.ended_at + interval '5 hours' END,
-           CASE WHEN q.k = 'c17' THEN v_kb_paid END,
-           c.ended_at + interval '1 minute'
-    FROM (VALUES
-        ('c01', 94, false, false, true,  true,  false, 'Va''da aniq sana va summa bilan olindi.',              NULL,            NULL,                                      8, 0, 1, 0),
-        ('c02', 78, false, false, true,  false, false, 'Mijozning holatiga hamdardlik bildirildi, bosim yo''q.', NULL,            NULL,                                      7, 1, 0, 1),
-        ('c07', 71, false, true,  true,  false, false, 'Agent mijozning gapini bir marta bo''lib yubordi.',     'AGENT_CORRECT', 'Summaga e''tirozda operatorga to''g''ri uzatdi', 7, 1, 2, 0),
-        ('c09', 88, false, false, true,  false, false, NULL,                                                  NULL,            NULL,                                      3, 0, 0, 0),
-        ('c10', 52, false, false, false, false, true,  'Mijoz band ekanini aytdi, agent qayta qo''ng''iroq vaqtini so''ramadi.', 'PENDING', 'Callback taklif qilinmagan', 2, 0, 0, 1),
-        ('c13', 96, false, false, true,  true,  false, NULL,                                                  NULL,            NULL,                                      9, 0, 0, 0),
-        ('c16', 91, false, false, true,  true,  false, 'Byudjet va muddat aniqlandi, demo belgilandi.',        NULL,            NULL,                                      9, 0, 0, 0),
-        ('c17', 64, false, false, true,  true,  true,  'Uzum Bank orqali to''lov haqidagi savolga to''liq javob yo''q edi.', 'AGENT_WRONG', 'Bilim bazasida Uzum Bank yo''q edi — qo''shildi', 7, 1, 0, 2)
-    ) AS q(k, score, guardrail, talked_over, outcome_ok, goal, unanswered, note, review, reason, turns, repairs, barge, lowconf)
-    JOIN call_attempt c ON c.sip_call_id = 'seed-' || q.k;
-
-    INSERT INTO agent_insight (company_id, ai_agent_id, type, title, detail, suggestion, call_count, sample_call_ids, status,
-                               decision_reason, decided_by, decided_at, created_at) VALUES
-        (1, v_debt, 'PROMPT_FIX', 'Band mijozga qayta qo''ng''iroq vaqti taklif qilinmayapti',
-         'Kecha 3 ta qo''ng''iroqda mijoz "band man" deganda agent suhbatni tugatgan.',
-         'IDENTITY_CHECK bosqichiga: "Mijoz band bo''lsa, qulay vaqtni so''rab, callback yozing" qoidasini qo''shing.',
-         3, jsonb_build_array((SELECT id FROM call_attempt WHERE sip_call_id = 'seed-c10')), 'PROPOSED', NULL, NULL, NULL,
-         now() - interval '8 hours'),
-        (1, v_reception, 'KB_GAP', 'Uzum Bank orqali to''lov haqida javob yo''q',
-         'Mijozlar Uzum Bank ilovasi orqali to''lash mumkinmi deb so''rashmoqda.',
-         'Bilim bazasiga Uzum Bank orqali to''lov yo''riqnomasini qo''shing.',
-         2, jsonb_build_array(v_c17.id), 'ACCEPTED', 'Qo''shildi', v_sup, now() - interval '20 hours',
-         now() - interval '1 day 02:00'),
-        (1, v_debt, 'PRONUNCIATION', '"SH-2025" shartnoma raqami harfma-harf o''qilmoqda',
-         'Agent shartnoma raqamini "es-ha" deb o''qiydi.', 'Talaffuz qoidasi: "SH" → "sha".',
-         4, jsonb_build_array(v_c01.id, v_c02.id), 'REJECTED', 'Mijozlar raqamni shunday tushunadi', v_admin,
-         now() - interval '2 days', now() - interval '3 days');
-
-    -- A finished re-analysis of last week's collections calls.
-    INSERT INTO call_reanalysis_job (company_id, ai_agent_id, range_from, range_to, status, total_calls, processed_calls,
-                                     updated_calls, failed_calls, prompt_tokens, completion_tokens, charged_uzs, last_call_id,
-                                     created_at, started_at, finished_at)
-    VALUES (1, v_debt, now() - interval '7 days', now() - interval '1 day', 'COMPLETED', 14, 14, 11, 0, 68000, 9400, 3100,
-            (SELECT max(id) FROM call_attempt WHERE sip_call_id LIKE 'seed-c%'),
-            now() - interval '20 hours', now() - interval '20 hours', now() - interval '19 hours 52 minutes');
-
-    -- What the company tools answered on the calls that used them.
-    INSERT INTO tool_execution (company_id, tool_id, call_attempt_id, tool_name, status, http_status, latency_ms, args_hash,
-                                error, created_at) VALUES
-        (1, v_t_balance, v_c01.id, 'tolov_qoldigi', 'OK',         200,  420, md5('c01-balance') || md5('1'), NULL,
-         v_c01.answered_at + interval '12 seconds'),
-        (1, v_t_balance, v_c07.id, 'tolov_qoldigi', 'OK',         200,  380, md5('c07-balance') || md5('1'), NULL,
-         v_c07.answered_at + interval '25 seconds'),
-        (1, v_t_balance, v_c02.id, 'tolov_qoldigi', 'HTTP_ERROR', 503, 1210, md5('c02-balance') || md5('1'),
-         'HTTP 503: {"error":"maintenance"}', v_c02.answered_at + interval '14 seconds'),
-        (1, v_t_order,   v_c17.id, 'buyurtma_holati', 'FAILED',  NULL, 8000, md5('c17-order') || md5('1'),
-         'Read timed out after 8 s', v_c17.answered_at + interval '15 seconds');
-
-    -- The CRM note for c02 that ran out of retries (its call_result says so too).
-    INSERT INTO outbox_message (company_id, kind, call_attempt_id, payload, idempotency_key, status, attempts,
-                                next_attempt_at, last_error, created_at)
-    VALUES (1, 'CRM_NOTE', v_c02.id, jsonb_build_object('callId', v_c02.id, 'phone', v_c02.phone),
-            'CRM_NOTE:' || v_c02.id, 'DEAD', 5, v_c02.ended_at + interval '3 hours',
-            'CRM ulanmagan: Uysot OAuth tokeni yo''q (CRM_INTEGRATION_NOT_CONNECTED)', v_c02.ended_at + interval '20 seconds');
-
-    -- The reception agent on Telegram (token in the TELEGRAM_BOT_TOKEN secret; no webhook
-    -- registered yet), and conversations from both text channels.
-    INSERT INTO telegram_bot (company_id, ai_agent_id, name, token_secret_key, webhook_secret, language, webhook_url, enabled)
-    VALUES (1, v_reception, 'Uysot yordamchi bot', 'TELEGRAM_BOT_TOKEN', md5('seed-telegram-webhook'), 'uz-UZ', NULL, true)
-    RETURNING id INTO v_bot;
-    SELECT id INTO v_widget FROM agent_widget WHERE widget_key = 'wgt_seedreception01';
-
-    INSERT INTO chat_session (session_key, company_id, ai_agent_id, widget_id, language, stage, outcome, disposition, ended,
-                              message_count, created_at, last_message_at)
-    VALUES (md5('seed-chat-1'), 1, v_reception, v_widget, 'uz-UZ', 'CLOSING', '{"resolved": true}'::jsonb, 'COMPLETED', true,
-            4, now() - interval '3 hours', now() - interval '2 hours 57 minutes')
-    RETURNING id INTO v_chat;
-    INSERT INTO chat_message (chat_session_id, role, text, created_at) VALUES
-        (v_chat, 'CLIENT', 'Salom, to''lovni kartadan qilsa bo''ladimi?', now() - interval '3 hours'),
-        (v_chat, 'AGENT',  'Ha, Click, Payme yoki Uzum Bank ilovasida shartnoma raqamingizni kiritib to''lashingiz mumkin.', now() - interval '2 hours 59 minutes'),
-        (v_chat, 'CLIENT', 'Rahmat!', now() - interval '2 hours 58 minutes'),
-        (v_chat, 'AGENT',  'Arzimaydi! Yana savolingiz bo''lsa, yozing.', now() - interval '2 hours 57 minutes');
-
-    INSERT INTO chat_session (session_key, company_id, ai_agent_id, telegram_bot_id, telegram_chat_id, language, stage,
-                              outcome, ended, message_count, created_at, last_message_at)
-    VALUES (md5('seed-chat-2'), 1, v_reception, v_bot, '512340001', 'ru-RU', 'ANSWER_QUESTION', '{}'::jsonb, false,
-            3, now() - interval '25 minutes', now() - interval '24 minutes')
-    RETURNING id INTO v_chat;
-    INSERT INTO chat_message (chat_session_id, role, text, created_at) VALUES
-        (v_chat, 'CLIENT', 'Здравствуйте, до скольки вы работаете в субботу?', now() - interval '25 minutes'),
-        (v_chat, 'AGENT',  'Здравствуйте! В субботу мы работаем с 10:00 до 15:00.', now() - interval '24 minutes 50 seconds'),
-        (v_chat, 'CLIENT', 'А можно приехать без записи?', now() - interval '24 minutes');
-
-    -- The admin asked the copilot about yesterday; it called one tool to answer.
+    -- The admin asked the copilot about yesterday; there was nothing to report yet.
     INSERT INTO copilot_session (company_id, user_id, title, created_at, updated_at)
     VALUES (1, v_admin, 'Kechagi qo''ng''iroqlar tahlili', now() - interval '2 hours', now() - interval '1 hour 58 minutes')
     RETURNING id INTO v_copilot;
@@ -3901,9 +2701,9 @@ BEGIN
                                  completion_tokens, charged_uzs, created_at) VALUES
         (v_copilot, 1, 'USER', 'Kecha nechta qo''ng''iroq bo''ldi va nechtasi va''da bilan tugadi?', NULL, NULL, 0, 0, 0,
          now() - interval '2 hours'),
-        (v_copilot, 1, 'TOOL', '{"total": 9, "items": [{"disposition": "PROMISE_TO_PAY"}, {"disposition": "TRANSFERRED"}, "…"]}',
+        (v_copilot, 1, 'TOOL', '{"total": 0, "items": []}',
          'list_calls', '{"from": "yesterday", "size": 50}', 0, 0, 0, now() - interval '1 hour 59 minutes'),
-        (v_copilot, 1, 'ASSISTANT', 'Kecha 9 ta qo''ng''iroq bo''ldi: 6 tasiga javob berildi, 1 tasi to''lov va''dasi bilan tugadi, 1 tasi operatorga uzatildi.',
+        (v_copilot, 1, 'ASSISTANT', 'Kecha qo''ng''iroq bo''lmagan. Kampaniyalardan birini ishga tushirsangiz, natijalar shu yerda ko''rinadi.',
          NULL, NULL, 2400, 180, 140, now() - interval '1 hour 58 minutes');
 
     -- The default analytics board the dashboard opens with.

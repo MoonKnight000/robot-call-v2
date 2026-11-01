@@ -190,6 +190,43 @@ class FastPathRouterTest {
         assertThat(result.reply()).isEqualTo("Takrorlayman: Qarzingiz 500000 so'm, qachon to'laysiz?");
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"ikki xonali", "trente allais", "narxi nima", "a ikki xonali"})
+    void anAnswerContainingARepeatWordIsNotARepeatRequest(String phrase) {
+        // The call of 2026-11-01: "a" matched inside "ikki xonali" and the agent repeated its question.
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.lastAgentText()).thenReturn("Necha xonali xonadon qidiryapsiz?");
+
+        assertThat(router.evaluate(session, phrase).handled()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"a?", "Nima?"})
+    void aRepeatWordAloneIsARepeatRequest(String phrase) {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.lastAgentText()).thenReturn("Necha xonali xonadon qidiryapsiz?");
+
+        assertThat(router.evaluate(session, phrase).reply()).isEqualTo("Takrorlayman: Necha xonali xonadon qidiryapsiz?");
+    }
+
+    @Test
+    void aRussianAnswerStartingWithARepeatWordIsNotARepeatRequest() {
+        when(session.language()).thenReturn("ru-RU");
+        when(session.lastAgentText()).thenReturn("Сколько комнат ищете?");
+
+        assertThat(router.evaluate(session, "а сколько стоит").handled()).isFalse();
+    }
+
+    @Test
+    void repeatingTwiceDoesNotStackTheLeadIn() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.lastAgentText()).thenReturn("Takrorlayman: Takrorlayman: Necha xonali xonadon qidiryapsiz?");
+
+        FastPathResult result = router.evaluate(session, "eshitmadim");
+
+        assertThat(result.reply()).isEqualTo("Takrorlayman: Necha xonali xonadon qidiryapsiz?");
+    }
+
     @Test
     void matchesIdentityUzbekWithCompanyAndLastQuestion() {
         when(session.language()).thenReturn("uz-UZ");

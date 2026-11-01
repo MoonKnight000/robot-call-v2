@@ -73,6 +73,15 @@ public class GeminiLiveProvider implements RealtimeProvider {
      */
     private static final String ASYNC_TOOL_MODEL_PREFIX = "gemini-3.8-live";
 
+    /**
+     * Tools answered in-process within milliseconds: the call's own bookkeeping
+     * ({@code DialogTools}) and the fact lookup ({@code RealtimeFactTools}). Plain 3.8 Live
+     * waits for these instead of talking on while they run ({@link #declaresNonBlocking}).
+     */
+    private static final Set<String> INSTANT_TOOL_NAMES = Set.of(
+            "transitionTo", "getCallFact", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall",
+            "endCall", "sendDtmfTones", "waitForCaller", "switchLanguage", "noteCallerMood");
+
     private final RealtimeProperties realtimeProperties;
     private volatile HttpClient client;
 
@@ -251,9 +260,8 @@ public class GeminiLiveProvider implements RealtimeProvider {
         List<ToolCallback> tools = config.tools();
         if (tools != null && !tools.isEmpty()) {
             ArrayNode declarations = setup.putArray("tools").addObject().putArray("functionDeclarations");
-            boolean asyncTools = supportsAsyncTools(model);
             for (ToolCallback tool : tools) {
-                declarations.add(declarationFor(tool, asyncTools));
+                declarations.add(declarationFor(tool, declaresNonBlocking(model, tool.getToolDefinition().name())));
             }
         }
         return root.toString();
@@ -305,6 +313,17 @@ public class GeminiLiveProvider implements RealtimeProvider {
     /** See {@link #ASYNC_TOOL_MODEL_PREFIX}; takes the already resolved model name. */
     private static boolean supportsAsyncTools(String model) {
         return model.startsWith(ASYNC_TOOL_MODEL_PREFIX);
+    }
+
+    /**
+     * Whether one tool is declared {@code NON_BLOCKING}. Extended Thinking takes nothing else;
+     * plain 3.8 Live waits for an in-process tool ({@link #INSTANT_TOOL_NAMES}). Declared
+     * non-blocking, such a result came back {@code WHEN_IDLE} after the engine had already said
+     * its line without it, and the engine said the line a second time — on a recorded call in a
+     * different, lower voice.
+     */
+    static boolean declaresNonBlocking(String model, String toolName) {
+        return supportsAsyncTools(model) && (model.contains("thinking") || !INSTANT_TOOL_NAMES.contains(toolName));
     }
 
     static String resolveThinkingLevel(String model, GeminiLiveProperties live) {
@@ -603,14 +622,16 @@ public class GeminiLiveProvider implements RealtimeProvider {
             List<JsonNode> calls = new ArrayList<>();
             toolCall.path("functionCalls").forEach(calls::add);
             List<String> ids = new ArrayList<>(calls.size());
+            List<String> names = new ArrayList<>(calls.size());
             for (JsonNode call : calls) {
                 ids.add(call.path("id").asText(""));
+                names.add(call.path("name").asText(""));
             }
             // The engine wants one toolResponse carrying every result of the batch, so it
             // has to be told what the batch is before the first tool finishes: the calls
             // run in parallel on the dialog engine's executor and come back in whatever
             // order they happen to finish.
-            session.expectToolResults(ids);
+            session.expectToolResults(ids, names);
             for (JsonNode call : calls) {
                 String id = call.path("id").asText("");
                 String name = call.path("name").asText("");
@@ -671,8 +692,10 @@ public class GeminiLiveProvider implements RealtimeProvider {
         private final GeminiLiveProperties live;
         private final RealtimeCallConfig config;
         private final RealtimeListener listener;
-        /** Tools declared {@code NON_BLOCKING}: each result is sent on its own, as soon as it is ready. */
-        private final boolean asyncTools;
+        /** The resolved model, which decides how each tool was declared ({@link #declaresNonBlocking}). */
+        private final String model;
+        /** Calls to tools declared {@code NON_BLOCKING}: each result is sent on its own, as soon as it is ready. */
+        private final Set<String> asyncCallIds = ConcurrentHashMap.newKeySet();
         /** Survives a reconnect: a tool call made before the drop is answered after it. */
         private final Map<String, String> pendingToolNames = new ConcurrentHashMap<>();
         /**
@@ -704,7 +727,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
             this.live = live;
             this.config = config;
             this.listener = listener;
-            this.asyncTools = supportsAsyncTools(resolveModelName(config.modelOr(live.model())));
+            this.model = resolveModelName(config.modelOr(live.model()));
         }
 
         /**
@@ -851,15 +874,23 @@ public class GeminiLiveProvider implements RealtimeProvider {
          *
          * <p>Order is the engine's, not the order the tools happen to finish in.
          */
-        private void expectToolResults(List<String> ids) {
-            if (asyncTools) {
+        private void expectToolResults(List<String> ids, List<String> names) {
+            List<String> blocking = new ArrayList<>(ids.size());
+            for (int i = 0; i < ids.size(); i++) {
+                if (declaresNonBlocking(model, names.get(i))) {
+                    asyncCallIds.add(ids.get(i));
+                } else {
+                    blocking.add(ids.get(i));
+                }
+            }
+            if (blocking.isEmpty()) {
                 // Non-blocking calls are not answered as a batch, and a new call may come
                 // while earlier ones are still running — clearing here would lose them.
                 return;
             }
             synchronized (toolBatch) {
                 toolBatch.clear();
-                ids.forEach(id -> toolBatch.put(id, null));
+                blocking.forEach(id -> toolBatch.put(id, null));
             }
         }
 
@@ -875,7 +906,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
          */
         @Override
         public void sendToolResult(String callId, String result) {
-            if (asyncTools) {
+            if (asyncCallIds.remove(callId)) {
                 sendAsyncToolResult(callId, result == null ? "" : result);
                 return;
             }
@@ -906,7 +937,7 @@ public class GeminiLiveProvider implements RealtimeProvider {
         }
 
         private void cancelToolCall(String callId) {
-            if (asyncTools) {
+            if (asyncCallIds.contains(callId)) {
                 pendingToolNames.remove(callId);
             }
         }

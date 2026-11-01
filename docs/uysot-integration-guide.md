@@ -38,6 +38,7 @@ Ushbu qo'llanma **UySot CRM** (`https://uysot.uz`, API: `https://apidoc.app.uyso
 UySot CRM administrator panelida Webhook bo'limiga o'ting va quyidagi manzilni kiriting:
 
 - **Webhook URL:** `POST https://<sizning-domen>/api/public/uysot/webhook`
+- **Kampaniya (ixtiyoriy):** `?campaignId=<id>` — lid shu kampaniyaga qo'yiladi. Kampaniya `ACTIVE` va AI rejimida bo'lishi shart, aks holda qo'ng'iroq navbatga qo'yilmaydi. Berilmasa lid kompaniyaning eng kichik `id` li `ACTIVE` AI kampaniyasiga tushadi — qarzdorlik kampaniyasi ham bo'lishi mumkin, shuning uchun lid kampaniyasi id'sini ko'rsatish tavsiya etiladi (masalan `.../api/public/uysot/webhook?campaignId=1`).
 - **Hodisa turi (EventType):** `LEAD_CREATED`
 - **Autentifikatsiya:** Ochiq havola (yoki `X-Webhook-Secret` sarlavhasi orqali).
 

@@ -18,7 +18,7 @@ public class UysotWebhookControllerImpl implements UysotWebhookController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<UysotWebhookResult>> handleWebhook(String secret, UysotLeadWebhookEvent event) {
-        return ResponseEntity.ok(ResponseData.ok(uysotWebhookUseCase.handleWebhook(event, secret)));
+    public ResponseEntity<ResponseData<UysotWebhookResult>> handleWebhook(String secret, Long campaignId, UysotLeadWebhookEvent event) {
+        return ResponseEntity.ok(ResponseData.ok(uysotWebhookUseCase.handleWebhook(event, secret, campaignId)));
     }
 }

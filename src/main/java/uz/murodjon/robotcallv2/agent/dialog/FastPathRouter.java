@@ -78,13 +78,26 @@ public class FastPathRouter {
             "nima dedingiz", "nima deding", "nima deyapsiz", "nima deysiz", "nima deyishdi",
             "eshitmay qoldim", "eshitmadim", "eshitolmadim", "qaytaring", "qaytarib yuboring",
             "qaytarvoring", "tushunmadim", "qaytadan ayting", "qaytadan aytvorasizmi",
-            "qaytadan aytingchi", "a", "nima"
+            "qaytadan aytingchi"
     );
 
     private static final Set<String> REPEAT_RU = Set.of(
             "повторите", "повторите пожалуйста", "что вы сказали", "что ты сказал",
-            "не расслышал", "не услышал", "не понял", "плохо слышно", "что", "а"
+            "не расслышал", "не услышал", "не понял", "плохо слышно"
     );
+
+    /**
+     * A repeat request only when it is the whole utterance: these words are also part of ordinary
+     * answers ("narxi nima", "а сколько стоит"), and taken as a request they made the agent repeat
+     * itself at every answer instead of hearing it.
+     */
+    private static final Set<String> REPEAT_ALONE_UZ = Set.of("a", "nima");
+
+    private static final Set<String> REPEAT_ALONE_RU = Set.of("что", "а");
+
+    private static final String REPEAT_PREFIX_UZ = "Takrorlayman: ";
+
+    private static final String REPEAT_PREFIX_RU = "Повторяю: ";
 
     private static final Set<String> IDENTITY_UZ = Set.of(
             "siz kimsiz", "kim bu", "kim bu o'zi", "kim bu ozi", "robotmisiz", "odammisiz",
@@ -150,12 +163,11 @@ public class FastPathRouter {
         }
 
         // 5. Repeat Request / Clarification
-        if (words.length <= 5 && matchesAny(normalized, isRu ? REPEAT_RU : REPEAT_UZ)) {
-            String lastText = s.lastAgentText();
+        if ((words.length <= 5 && matchesAny(normalized, isRu ? REPEAT_RU : REPEAT_UZ))
+                || (isRu ? REPEAT_ALONE_RU : REPEAT_ALONE_UZ).contains(normalized)) {
+            String lastText = withoutRepeatPrefix(s.lastAgentText());
             if (lastText != null && !lastText.isBlank()) {
-                String reply = isRu
-                        ? "Повторяю: " + lastText
-                        : "Takrorlayman: " + lastText;
+                String reply = (isRu ? REPEAT_PREFIX_RU : REPEAT_PREFIX_UZ) + lastText;
                 log.info("[{}] Fast-path matched: REPEAT", s.channelId());
                 return FastPathResult.replyOnly(reply);
             }
@@ -213,13 +225,30 @@ public class FastPathRouter {
         return false;
     }
 
+    /** Whether one of {@code phrases} occurs in {@code input} as whole words, never as part of a word. */
     private static boolean matchesAny(String input, Set<String> phrases) {
+        String padded = " " + input + " ";
         for (String phrase : phrases) {
-            if (input.equals(phrase) || input.contains(phrase)) {
+            if (padded.contains(" " + phrase + " ")) {
                 return true;
             }
         }
         return false;
+    }
+
+    /** The agent's last line without the "repeating:" lead-ins earlier repeats put in front of it. */
+    private static String withoutRepeatPrefix(String text) {
+        String line = text;
+        while (line != null) {
+            if (line.startsWith(REPEAT_PREFIX_UZ)) {
+                line = line.substring(REPEAT_PREFIX_UZ.length());
+            } else if (line.startsWith(REPEAT_PREFIX_RU)) {
+                line = line.substring(REPEAT_PREFIX_RU.length());
+            } else {
+                break;
+            }
+        }
+        return line;
     }
 
     private static String normalize(String text) {

@@ -22,9 +22,12 @@ public final class PromptTemplateEngine {
      * Example: "Salom {{clientName | Hurmatli mijoz}}, sizda {{debtAmount}} so'm to'lov bor."
      */
     public static String render(String template, Map<String, Object> variables) {
-        if (template == null || template.isBlank() || variables == null || variables.isEmpty()) {
+        if (template == null || template.isBlank()) {
             return template;
         }
+        // With no variables at all a placeholder that has a fallback still gets it (a greeting
+        // must never say "{{clientName | ...}}" aloud); one without a fallback is left as written.
+        boolean noVariables = variables == null || variables.isEmpty();
 
         Matcher matcher = PLACEHOLDER_PATTERN.matcher(template);
         StringBuilder sb = new StringBuilder();
@@ -33,6 +36,15 @@ public final class PromptTemplateEngine {
             String varName = matcher.group("var");
             String fallbackQuoted = matcher.group("fallbackQuoted");
             String fallbackPlain = matcher.group("fallbackPlain");
+            if (noVariables) {
+                if (fallbackQuoted == null && fallbackPlain == null) {
+                    matcher.appendReplacement(sb, Matcher.quoteReplacement(matcher.group()));
+                } else {
+                    matcher.appendReplacement(sb, Matcher.quoteReplacement(
+                            fallbackQuoted != null ? fallbackQuoted : fallbackPlain.trim()));
+                }
+                continue;
+            }
             String fallback = fallbackQuoted != null ? fallbackQuoted : (fallbackPlain != null ? fallbackPlain.trim() : "");
 
             Object value = variables.get(varName);

@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.dialer.application.dto.InstantCallResponse;
 import uz.murodjon.robotcallv2.dialer.application.port.input.InstantCallUseCase;
 import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
+import uz.murodjon.robotcallv2.shared.util.PersonNames;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 
 import java.nio.charset.StandardCharsets;
@@ -44,7 +45,7 @@ public class UysotWebhookService implements UysotWebhookUseCase {
     }
 
     @Override
-    public UysotWebhookResult handleWebhook(UysotLeadWebhookEvent event, String secret) {
+    public UysotWebhookResult handleWebhook(UysotLeadWebhookEvent event, String secret, Long campaignId) {
         if (event == null) {
             return UysotWebhookResult.skipped(null, null, "Webhook payload is empty");
         }
@@ -100,7 +101,7 @@ public class UysotWebhookService implements UysotWebhookUseCase {
 
         try {
             InstantCallRequest instantCallRequest = new InstantCallRequest(
-                    null,
+                    campaignId,
                     phone.trim(),
                     sanitizedName,
                     contextData,
@@ -124,7 +125,7 @@ public class UysotWebhookService implements UysotWebhookUseCase {
         if (lead.id() != null) {
             context.put("leadId", lead.id());
         }
-        if (lead.name() != null) {
+        if (PersonNames.isUsable(lead.name())) {
             context.put("clientName", PromptSafeText.sanitize(lead.name().trim(), 100));
         }
         if (lead.statusId() != null) {

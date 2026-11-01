@@ -26,8 +26,14 @@ public class NoInputWatchdog {
     private final int maxPrompts;
 
     private Instant lastActivity;
-    /** Last sign of life from the caller only; unlike {@link #lastActivity} neither bot audio nor a prompt moves it. */
-    private Instant lastCallerActivity;
+    /**
+     * How long the caller has kept the agent waiting since their last sign of life, not counting
+     * the stretch since {@link #waitingSince}. Time the agent spends speaking or composing a reply
+     * is not the caller's silence; unlike {@link #lastActivity}, a prompt does not reset it either.
+     */
+    private Duration callerSilence = Duration.ZERO;
+    /** Since when the agent has been waiting on the caller; null while it is speaking or composing a reply. */
+    private Instant waitingSince;
     private int prompts;
     private boolean finished;
     /** The limit of the last {@link #check}, which may be a stage's own; read by {@link #isLastPrompt()}. */
@@ -45,13 +51,14 @@ public class NoInputWatchdog {
         this.maxPrompts = Math.max(0, maxPrompts);
         this.lastMaxPrompts = this.maxPrompts;
         this.lastActivity = now;
-        this.lastCallerActivity = now;
+        this.waitingSince = now;
     }
 
     /** Record activity on the line — anything that means the call is alive. */
     public synchronized void touch(Instant now) {
         lastActivity = now;
-        lastCallerActivity = now;
+        callerSilence = Duration.ZERO;
+        waitingSince = now;
     }
 
     /**
@@ -75,6 +82,7 @@ public class NoInputWatchdog {
     public synchronized NoInputAction check(Instant now, boolean botSpeaking, boolean turnInFlight,
                                             Duration idleThreshold, int maxPrompts) {
         lastMaxPrompts = Math.max(0, maxPrompts);
+        trackCallerSilence(now, botSpeaking || turnInFlight);
         if (finished) {
             return NoInputAction.NONE;
         }
@@ -97,11 +105,29 @@ public class NoInputWatchdog {
     }
 
     /**
-     * Whether the caller has been quiet for at least {@code limit} in total. Reminder prompts
-     * and bot speech do not reset this clock, so it is the agent's "end call on silence" ceiling.
+     * Whether the caller has kept the agent waiting for at least {@code limit} in total — the
+     * agent's "end call on silence" ceiling. Only time spent waiting on the caller counts: the
+     * clock stands still while the bot speaks or a turn is in flight (a slow greeting is not the
+     * caller's silence), and reminder prompts do not reset it.
+     *
+     * @param botSpeaking  whether queued bot audio is still playing
+     * @param turnInFlight whether a reply is being composed
      */
-    public synchronized boolean isCallerSilentFor(Instant now, Duration limit) {
-        return !finished && Duration.between(lastCallerActivity, now).compareTo(limit) >= 0;
+    public synchronized boolean isCallerSilentFor(Instant now, boolean botSpeaking, boolean turnInFlight,
+                                                  Duration limit) {
+        trackCallerSilence(now, botSpeaking || turnInFlight);
+        Duration silent = waitingSince == null ? callerSilence : callerSilence.plus(Duration.between(waitingSince, now));
+        return !finished && silent.compareTo(limit) >= 0;
+    }
+
+    /** Stops the caller-silence clock while the agent is busy and restarts it once the agent waits again. */
+    private void trackCallerSilence(Instant now, boolean agentBusy) {
+        if (agentBusy && waitingSince != null) {
+            callerSilence = callerSilence.plus(Duration.between(waitingSince, now));
+            waitingSince = null;
+        } else if (!agentBusy && waitingSince == null) {
+            waitingSince = now;
+        }
     }
 
     /** How many prompts the last check allowed — the stage's own limit when it sets one. */

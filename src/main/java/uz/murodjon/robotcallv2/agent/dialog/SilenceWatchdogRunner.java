@@ -94,7 +94,8 @@ public class SilenceWatchdogRunner {
             }
 
             int silenceEndSec = CallLimits.silenceEndCallSeconds(s.agent());
-            if (silenceEndSec > 0 && s.watchdog().isCallerSilentFor(Instant.now(), Duration.ofSeconds(silenceEndSec))) {
+            if (silenceEndSec > 0 && s.watchdog().isCallerSilentFor(Instant.now(), s.endpoint().isPlaying(),
+                    s.busy().get(), Duration.ofSeconds(silenceEndSec))) {
                 log.info("[{}] caller silent for {}s (agent limit) - ending call", s.channelId(), silenceEndSec);
                 executors.submit(() -> closeOnSilence(s));
                 return;

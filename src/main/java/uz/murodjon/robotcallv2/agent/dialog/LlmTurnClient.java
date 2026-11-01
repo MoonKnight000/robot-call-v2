@@ -408,13 +408,15 @@ class LlmTurnClient {
                                   List<ToolCallback> tools, Flux<ChatResponse> speculated, String model) {
         TokenUsage turnUsage = new TokenUsage();
         List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
+        // What the request carries, so a slow or uncached turn can be traced to its size.
+        log.info("[{}] llm request: system={} chars, messages={}, tools={} ({} chars)", s.channelId(),
+                system.length(), messages.size(), tools.size(), tools.stream()
+                        .mapToInt(tool -> Objects.toString(tool.getToolDefinition().description(), "").length()
+                                + Objects.toString(tool.getToolDefinition().inputSchema(), "").length())
+                        .sum());
 
-        StreamedReply reply = consume(s, speculated != null ? speculated : clientFor(s).prompt()
-                .system(system)
-                .messages(messages)
-                .options(turnTools.buildOptions(s, tools, model).mutate())
-                .stream()
-                .chatResponse(), turnUsage, toolCalls);
+        StreamedReply reply = consume(s, speculated != null ? speculated
+                : withBackupModel(s, system, messages, tools, model), turnUsage, toolCalls);
         publishUsage(s, turnUsage);
         maybeSpeakPreToolSpeech(s, toolCalls, reply.spoken());
         // No tool runs for a caller who has hung up — a webhook or an SMS "for" a call
@@ -462,6 +464,36 @@ class LlmTurnClient {
         publishUsage(s, retryUsage);
         // toolNote dropped: the retry has already shown it to the model.
         return new TurnResult(retry.text(), retry.spoken(), retry.blocked(), null);
+    }
+
+    /**
+     * The turn's request, raced against the fast model when the configured one is slow to
+     * start ({@link LlmTimeoutProperties#backupAfterMs}). The backup is only sent once the
+     * wait has passed, so a turn that starts in time costs nothing extra; the stream that
+     * signals first is kept and the other one cancelled.
+     */
+    private Flux<ChatResponse> withBackupModel(DialogSession s, String system, List<Message> messages,
+                                               List<ToolCallback> tools, String model) {
+        Flux<ChatResponse> primary = clientFor(s).prompt()
+                .system(system)
+                .messages(messages)
+                .options(turnTools.buildOptions(s, tools, model).mutate())
+                .stream()
+                .chatResponse();
+        String backup = resolveFastModel(s);
+        if (llmTimeout.backupAfterMs() <= 0 || model != null || backup == null || backup.isBlank()) {
+            return primary;
+        }
+        Flux<ChatResponse> backupStream = clientFor(s).prompt()
+                .system(system)
+                .messages(messages)
+                .options(turnTools.buildOptions(s, tools, backup).mutate())
+                .stream()
+                .chatResponse()
+                .doOnSubscribe(subscription -> log.info("[{}] no first token in {} ms — racing backup model '{}'",
+                        s.channelId(), llmTimeout.backupAfterMs(), backup))
+                .delaySubscription(Duration.ofMillis(llmTimeout.backupAfterMs()));
+        return Flux.firstWithSignal(primary, backupStream);
     }
 
     /**
@@ -838,6 +870,11 @@ class LlmTurnClient {
     private void maybeSpeakPreToolSpeech(DialogSession s, List<AssistantMessage.ToolCall> calls, boolean alreadySpoken) {
         // A model that already spoke has its own waiting line; a filler on top would double it.
         if (alreadySpoken || s.isCancelled() || s.isEnded() || calls == null || calls.isEmpty()) {
+            return;
+        }
+        // Nothing said yet means this is the greeting turn: "let me check" before the hello sounds
+        // like the agent talking to itself.
+        if (s.lastAgentText() == null) {
             return;
         }
         // The agent's function list can ask for a waiting line of its own ("talk while waiting"), which then

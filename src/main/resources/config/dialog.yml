@@ -104,6 +104,8 @@ voice-agent:
       queue-drain-ms: ${DIALOG_LLM_QUEUE_DRAIN_TIMEOUT_MS:30000}
       # One blocking (non-streaming) model call — LlmTimeoutProperties#callTimeoutMs. 0 = none.
       call-timeout-ms: ${DIALOG_LLM_CALL_TIMEOUT_MS:15000}
+      # No first token by then: the fast model is raced against it — LlmTimeoutProperties#backupAfterMs. 0 = off.
+      backup-after-ms: ${DIALOG_LLM_BACKUP_AFTER_MS:1500}
     # DialogTuningProperties — former constants of the dialog loop; these are the values they had.
     tuning:
       drain-timeout-ms: ${DIALOG_DRAIN_TIMEOUT_MS:30000}

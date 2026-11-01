@@ -178,7 +178,7 @@ bilan tekshirib olish mumkin (u qo'ng'iroq qilmaydi).
 
 ## `POST /api/calls/web-test` — Brauzerdan test qo'ng'irog'i (mikrofon ↔ AI)
 
-Kampaniyani (yoki ssenariyni) telefon va trunk daqiqasisiz, **to'g'ridan-to'g'ri brauzerda** sinash: foydalanuvchi mikrofonga gapiradi, AI javobi dinamikdan eshitiladi. Audio yo'li real qo'ng'iroq bilan bir xil — brauzer WebRTC orqali Asterisk'ga ulanadi, u yog'i odatdagi Stasis → RTP → STT/LLM/TTS pipeline. Qo'ng'iroq `call_attempt` da target'siz (`target_id = null`), telefon `WEB-TEST` bilan yoziladi; kampaniya statistikasi va target holati **o'zgarmaydi**, CRM ga hech narsa yozilmaydi.
+Kampaniyani (yoki ssenariyni) telefon va trunk daqiqasisiz, **to'g'ridan-to'g'ri brauzerda** sinash: foydalanuvchi mikrofonga gapiradi, AI javobi dinamikdan eshitiladi. Audio yo'li real qo'ng'iroq bilan bir xil — brauzer WebRTC orqali Asterisk'ga ulanadi, u yog'i odatdagi Stasis → RTP → STT/LLM/TTS pipeline. Qo'ng'iroq `call_attempt` da target'siz (`target_id = null`), telefon `WEB-TEST` bilan (`contactId` berilsa — kontakt telefoni bilan) yoziladi; kampaniya statistikasi va target holati **o'zgarmaydi**, CRM ga hech narsa yozilmaydi.
 
 Endpoint qo'ng'iroq qilmaydi — u bir martalik **sessiya** yaratadi va brauzer o'zi ulanishi uchun kerak bo'lgan hamma narsani qaytaradi. Sessiya 5 daqiqa ichida terilmasa unutiladi.
 
@@ -188,6 +188,7 @@ Endpoint qo'ng'iroq qilmaydi — u bir martalik **sessiya** yaratadi va brauzer 
 |---|---|---|
 | `campaignId` | number | Kampaniya [agentining](ai-agents.md) to'liq profili bilan: ssenariy, tillar bo'yicha ovozlar, persona, ambient sound, disclosure, DTMF |
 | `aiAgentId` | number | Agentni kampaniyasiz, o'z to'liq profili bilan sinash (ovoz, persona, LLM, ssenariy). Faktlar — `voice-agent.dialog.test-context`. Boshqa kompaniyaning agenti — `404 AI_AGENT_NOT_FOUND` |
+| `contactId` | number | Ixtiyoriy, faqat `aiAgentId` bilan. Agent shu [kontakt](contacts.md)ga qo'ng'iroq qilgandek ishlaydi: `call_attempt.phone` — kontakt telefoni (`WEB-TEST` emas), `clientName` — kontakt ismi, kontaktning custom field'lari ssenariy `factSchema` sida e'lon qilingan bo'lsa fakt bo'ladi, mijoz xotirasi shu raqamniki. Qo'ng'iroq oxirida agentning `dataNeeded[].contactField` qiymatlari shu kontaktga yoziladi va mijoz xotirasi yangilanadi — haqiqiy qo'ng'iroqdagidek. CRM tool'lari (`getClientProfile` va h.k.) ham shu raqam bilan ishlaydi; qo'ng'iroq ichidagi SMS (`SEND_SMS`, `CALLER`) shu raqamga **haqiqatan yuboriladi**. Boshqa kompaniyaning kontakti — `404 CONTACT_NOT_FOUND` |
 | `targetId` | number | Ixtiyoriy, faqat `campaignId` bilan. Shu target faktlari (contextData + CRM + memory) ishlatiladi; berilmasa `voice-agent.dialog.test-context` faktlari |
 | `agentVersion` | number | Ixtiyoriy, faqat `campaignId` yoki `aiAgentId` bilan. Agentning qaysi [versiyasi](ai-agents.md#14-versiyalar--draft--publish--rollback) bilan gaplashish: e'lon qilingan raqam yoki `null` — **qoralama** (e'lon qilishdan oldin sinash uchun). Noma'lum raqam `404 AI_AGENT_VERSION_NOT_FOUND` |
 | `scenarioId` | number | Saqlangan ssenariyni standart sozlamalar bilan sinash (`POST /api/calls?scenarioId=` kabi) |
@@ -214,7 +215,7 @@ Endpoint qo'ng'iroq qilmaydi — u bir martalik **sessiya** yaratadi va brauzer 
 }
 ```
 
-**Xatolar:** `400 WEB_TEST_SOURCE_INVALID` (bir nechta manba, `targetId` `campaignId`siz yoki `agentVersion` `campaignId`/`aiAgentId`siz), `400 SCENARIO_DEFINITION_INVALID` (`definition` noto'g'ri; muammolar `errors` ro'yxatida), `404 CAMPAIGN_NOT_FOUND` / `TARGET_NOT_FOUND` / `SCENARIO_NOT_FOUND` / `AI_AGENT_NOT_FOUND` / `AI_AGENT_VERSION_NOT_FOUND`, `409 CAMPAIGN_NOT_AI` (kampaniyada AI agent yo'q — operator kampaniyasi)
+**Xatolar:** `400 WEB_TEST_SOURCE_INVALID` (bir nechta manba, `targetId` `campaignId`siz, `agentVersion` `campaignId`/`aiAgentId`siz yoki `contactId` `aiAgentId`siz), `400 SCENARIO_DEFINITION_INVALID` (`definition` noto'g'ri; muammolar `errors` ro'yxatida), `404 CAMPAIGN_NOT_FOUND` / `TARGET_NOT_FOUND` / `CONTACT_NOT_FOUND` / `SCENARIO_NOT_FOUND` / `AI_AGENT_NOT_FOUND` / `AI_AGENT_VERSION_NOT_FOUND`, `409 CAMPAIGN_NOT_AI` (kampaniyada AI agent yo'q — operator kampaniyasi)
 (`scenarioId` boshqa kompaniyaniki bo'lsa ham — test qo'ng'irog'i endi doim chaqiruvchi kompaniya nomidan ishlaydi), `403 COMPANY_SUSPENDED`,
 `409 CALL_BALANCE_INSUFFICIENT` (faqat `BILLING_ENFORCE_BALANCE=true` bo'lganda), `409 WEB_TEST_NOT_CONFIGURED` (serverda `ws-url` bo'sh).
 

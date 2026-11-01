@@ -1831,22 +1831,30 @@ urinishlar o'tgan, ba'zilari yo'q (agent bu holatda ishonchsiz). `repeat` 1–10
 
 ## 🌱 Seed'dagi tayyor agentlar
 
-Yangi baza ko'tarilganda (`R__seed_data.sql`) uchta agent tayyor turadi — bittasi kiruvchi
-qo'ng'iroqlar uchun, ikkitasi chiquvchi qarzdorlik qo'ng'iroqlari uchun (pipeline'lari
-bilan farq qiladi):
+Yangi baza ko'tarilganda (`R__seed_data.sql`) to'rtta chiquvchi agent tayyor turadi — ikki
+vazifa, har biri ikki pipeline'da:
 
-| Nomi | Yo'nalish | `pipelineMode` | Senariy | Engine |
-|---|---|---|---|---|
-| `Kiruvchi qabulxona` | kiruvchi | `CASCADE` | `reception` | Yandex STT/TTS + `gemini-3.8-flash` |
-| `Qarzdorlik (cascade)` | chiquvchi | `CASCADE` | `debt-collection` | Yandex STT/TTS + `gemini-3.8-flash` |
-| `Qarzdorlik (realtime)` | chiquvchi | `REALTIME` | `debt-collection` | `gemini-live` · `gemini-3.8-live-extended-thinking` |
+| Nomi | `pipelineMode` | Senariy | Engine |
+|---|---|---|---|
+| `Lid kvalifikatsiya (cascade)` | `CASCADE` | `lead-qualification-crm` | Yandex STT/TTS + `gemini-3.8-flash` |
+| `Lid kvalifikatsiya (realtime)` | `REALTIME` | `lead-qualification-crm` | `gemini-live` · `gemini-3.8-live` |
+| `Qarzdorlik (cascade)` | `CASCADE` | `debt-collection-crm` | Yandex STT/TTS + `gemini-3.8-flash` |
+| `Qarzdorlik (realtime)` | `REALTIME` | `debt-collection-crm` | `gemini-live` · `gemini-3.8-live` |
 
-Ikkala qarzdorlik agenti bir xil senariy, bir xil guardrail va bir xil matn bilan ishlaydi
-— farqi faqat pipeline'da, shuning uchun ularni yonma-yon solishtirish mumkin.
+Har juftlik bir xil senariy, guardrail va `dataNeeded` bilan ishlaydi — farqi faqat
+pipeline'da, shuning uchun ularni yonma-yon solishtirish mumkin.
 
-`useRag` uchalasida ham `false`: hali hech qanday knowledge source yuklanmagan, RAG esa
+- **Lid kvalifikatsiya** — Uysot'da yangi lid yaratilganda qo'ng'iroq qiladi: qanday xonadon
+  va qaysi TJM'dan olmoqchiligini so'raydi; qo'ng'iroq davomida CRM'dagi lidga izoh yozadi
+  (`addLeadNote`) va bosqichini o'zgartiradi (`moveLeadStage`). Qo'ng'iroqdan keyin kontaktning
+  custom field'lariga `xonadon_turi` va `tjm` yoziladi.
+- **Qarzdorlik** — qarzni eslatadi, nega to'lanmayotganini va qachon to'lashini so'raydi;
+  sana kelishilsa Uysot'dagi lidga o'sha sanaga topshiriq ochadi (`createFollowUpTask`).
+  Qo'ng'iroqdan keyin kontaktga `tolamaslik_sababi` va `tolov_sanasi` yoziladi.
+
+`useRag` to'rttalasida ham `false`: hali hech qanday knowledge source yuklanmagan, RAG esa
 har bir turnga embedding so'rovi qo'shadi. Hujjat yuklangandan keyin yoqiladi.
 
-Ovozlar: `Kiruvchi qabulxona` va `Qarzdorlik (cascade)` uchun `uz-UZ → nigora`,
-`ru-RU → alena`; realtime agent Gemini ovozi bilan (`gemini-aoede-uz`) ikkala tilda ham
-gapiradi.
+Ovozlar: lid cascade agenti `uz-UZ → zamira`, `ru-RU → zamira_ru`; qarzdorlik cascade agenti
+`uz-UZ → nigora`, `ru-RU → alena`; realtime agentlar Gemini ovozi bilan (`gemini-kore-uz` va
+`gemini-aoede-uz`) ikkala tilda ham gapiradi.

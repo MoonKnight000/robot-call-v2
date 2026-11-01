@@ -387,7 +387,7 @@ Yangi baza ko'tarilganda (`R__seed_data.sql`) bitta marshrut allaqachon mavjud:
 
 | `didNumber` | `aiAgentId` | Ish vaqti |
 |---|---|---|
-| `600` | `Kiruvchi qabulxona` agenti | belgilanmagan (24/7) |
+| `600` | `Lid kvalifikatsiya (realtime)` agenti | belgilanmagan (24/7) |
 
 `600` — dialplan'dagi softphone test raqami (`asterisk/etc/asterisk/extensions.conf`,
 `[from-internal]`): trunk'siz, faqat registratsiya qilingan softphone bilan kiruvchi

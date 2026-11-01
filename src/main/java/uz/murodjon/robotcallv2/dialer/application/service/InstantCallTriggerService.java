@@ -16,6 +16,7 @@ import uz.murodjon.robotcallv2.dialer.application.port.input.InstantCallUseCase;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
+import uz.murodjon.robotcallv2.shared.util.PersonNames;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 
@@ -105,7 +106,8 @@ public class InstantCallTriggerService implements InstantCallUseCase {
     private String writeFacts(InstantCallRequest request) {
         Map<String, Object> facts =
                 request.contextData() != null ? new HashMap<>(request.contextData()) : new HashMap<>();
-        if (request.clientName() != null && !request.clientName().isBlank()) {
+        // A CRM placeholder ("Пропущенный звонок +998…") is not said as the client's name.
+        if (PersonNames.isUsable(request.clientName())) {
             facts.put("clientName", PromptSafeText.sanitize(request.clientName().trim(), 100));
         }
         try {

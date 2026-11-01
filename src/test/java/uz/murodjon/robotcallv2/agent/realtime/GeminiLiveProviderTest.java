@@ -74,4 +74,21 @@ class GeminiLiveProviderTest {
         JsonNode generationConfig = root.path("setup").path("generationConfig");
         assertThat(generationConfig.has("thinkingConfig")).isFalse();
     }
+
+    @Test
+    void plainLiveModelWaitsForInstantToolsOnly() {
+        assertThat(GeminiLiveProvider.declaresNonBlocking("gemini-3.8-live", "getCallFact")).isFalse();
+        assertThat(GeminiLiveProvider.declaresNonBlocking("gemini-3.8-live", "transitionTo")).isFalse();
+        assertThat(GeminiLiveProvider.declaresNonBlocking("gemini-3.8-live", "searchFlats")).isTrue();
+    }
+
+    @Test
+    void extendedThinkingDeclaresEveryToolNonBlocking() {
+        assertThat(GeminiLiveProvider.declaresNonBlocking("gemini-3.8-live-extended-thinking", "getCallFact")).isTrue();
+    }
+
+    @Test
+    void olderLiveModelDeclaresNoToolNonBlocking() {
+        assertThat(GeminiLiveProvider.declaresNonBlocking("gemini-3.1-flash-live-preview", "searchFlats")).isFalse();
+    }
 }
