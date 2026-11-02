@@ -9,7 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
+import uz.murodjon.robotcallv2.sms.application.port.output.EskizConnectionRepository;
 import uz.murodjon.robotcallv2.sms.application.port.output.SmsSenderPort;
+import uz.murodjon.robotcallv2.sms.domain.entity.EskizConnection;
 import uz.murodjon.robotcallv2.sms.domain.entity.SmsMessage;
 import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsEskizProperties;
 import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsProperties;
@@ -23,6 +25,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -49,34 +52,41 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
     private static final Pattern UZ_MOBILE_PHONE = Pattern.compile("^998\\d{9}$");
 
     private final SmsEskizProperties eskizProperties;
+    private final EskizConnectionRepository connectionRepository;
     private final String sender;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private final String host;
     private final Object loginLock = new Object();
-    private volatile String token;
+    /** The kept bearer token of each login, by its email. */
+    private final Map<String, String> tokens = new ConcurrentHashMap<>();
 
     @Autowired
-    public EskizSmsClientAdapter(SmsProperties smsProperties, ObjectMapper objectMapper) {
-        this(smsProperties, HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build(), objectMapper);
+    public EskizSmsClientAdapter(SmsProperties smsProperties, ObjectMapper objectMapper,
+                                 EskizConnectionRepository connectionRepository) {
+        this(smsProperties, HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build(), objectMapper,
+                connectionRepository);
     }
 
     /** Lets a unit test answer for the gateway. */
-    EskizSmsClientAdapter(SmsProperties smsProperties, HttpClient httpClient, ObjectMapper objectMapper) {
+    EskizSmsClientAdapter(SmsProperties smsProperties, HttpClient httpClient, ObjectMapper objectMapper,
+                          EskizConnectionRepository connectionRepository) {
         this.eskizProperties = smsProperties.eskiz();
+        this.connectionRepository = connectionRepository;
         this.sender = smsProperties.defaultSender();
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.host = URI.create(eskizProperties.baseUrl()).getHost();
         if (smsProperties.enabled() && !eskizProperties.hasCredentials()) {
             log.warn("SMS is enabled but SMS_ESKIZ_EMAIL / SMS_ESKIZ_PASSWORD are not set — "
-                    + "every SMS will be reported as not sent");
+                    + "a company without its own Eskiz account will have its SMS reported as not sent");
         }
     }
 
     @Override
-    public boolean send(SmsMessage message) {
-        if (!eskizProperties.hasCredentials()) {
+    public boolean send(long companyId, SmsMessage message) {
+        Login login = findLogin(companyId);
+        if (login == null) {
             return false;
         }
         String masked = PhoneMasker.mask(message.getPhone());
@@ -86,17 +96,17 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
             return false;
         }
         try {
-            String usedToken = requireToken();
+            String usedToken = requireToken(login);
             if (usedToken == null) {
                 return false;
             }
-            HttpResponse<String> response = postSms(usedToken, mobilePhone, message.getMessage());
+            HttpResponse<String> response = postSms(login, usedToken, mobilePhone, message.getMessage());
             if (response.statusCode() == 401) {
-                String renewedToken = renewToken(usedToken);
+                String renewedToken = renewToken(login, usedToken);
                 if (renewedToken == null) {
                     return false;
                 }
-                response = postSms(renewedToken, mobilePhone, message.getMessage());
+                response = postSms(login, renewedToken, mobilePhone, message.getMessage());
             }
             String gatewayStatus = readText(response.body(), "/status");
             boolean accepted = response.statusCode() == 200 && gatewayStatus != null
@@ -117,17 +127,40 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
         }
     }
 
+    @Override
+    public boolean verifyLogin(String email, String password) {
+        try {
+            return login(new Login(email, password, sender)) != null;
+        } catch (IOException e) {
+            log.warn("Eskiz {} unreachable, login not checked: {}", host, e.getClass().getSimpleName());
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    /** The company's own account, else the platform's; {@code null} when neither is set. */
+    private Login findLogin(long companyId) {
+        Optional<EskizConnection> own = connectionRepository.findByCompanyId(companyId);
+        if (own.isPresent()) {
+            EskizConnection connection = own.get();
+            return new Login(connection.email(), connection.password(),
+                    connection.sender() != null ? connection.sender() : sender);
+        }
+        return eskizProperties.hasCredentials()
+                ? new Login(eskizProperties.email(), eskizProperties.password(), sender) : null;
+    }
+
     /** The kept token, logging in first when there is none yet; {@code null} when login fails. */
-    private String requireToken() throws IOException, InterruptedException {
-        String current = token;
+    private String requireToken(Login login) throws IOException, InterruptedException {
+        String current = tokens.get(login.email());
         if (current != null) {
             return current;
         }
         synchronized (loginLock) {
-            if (token == null) {
-                token = login();
-            }
-            return token;
+            String kept = tokens.get(login.email());
+            return kept != null ? kept : keep(login, login(login));
         }
     }
 
@@ -135,19 +168,26 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
      * A fresh token after {@code rejectedToken} drew a 401. The first send to get here logs
      * in; one that was racing with it finds the token already replaced and reuses it.
      */
-    private String renewToken(String rejectedToken) throws IOException, InterruptedException {
+    private String renewToken(Login login, String rejectedToken) throws IOException, InterruptedException {
         synchronized (loginLock) {
-            if (token == null || Objects.equals(token, rejectedToken)) {
-                token = login();
-            }
-            return token;
+            String kept = tokens.get(login.email());
+            return kept == null || Objects.equals(kept, rejectedToken) ? keep(login, login(login)) : kept;
         }
     }
 
-    private String login() throws IOException, InterruptedException {
+    private String keep(Login login, String issuedToken) {
+        if (issuedToken == null) {
+            tokens.remove(login.email());
+        } else {
+            tokens.put(login.email(), issuedToken);
+        }
+        return issuedToken;
+    }
+
+    private String login(Login login) throws IOException, InterruptedException {
         Map<String, String> fields = new LinkedHashMap<>();
-        fields.put("email", eskizProperties.email());
-        fields.put("password", eskizProperties.password());
+        fields.put("email", login.email());
+        fields.put("password", login.password());
         HttpResponse<String> response = httpClient.send(buildFormPost("/auth/login", fields, null),
                 HttpResponse.BodyHandlers.ofString());
         String issuedToken = response.statusCode() == 200 ? readText(response.body(), "/data/token") : null;
@@ -157,12 +197,12 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
         return issuedToken;
     }
 
-    private HttpResponse<String> postSms(String bearerToken, String mobilePhone, String text)
+    private HttpResponse<String> postSms(Login login, String bearerToken, String mobilePhone, String text)
             throws IOException, InterruptedException {
         Map<String, String> fields = new LinkedHashMap<>();
         fields.put("mobile_phone", mobilePhone);
         fields.put("message", text);
-        fields.put("from", sender);
+        fields.put("from", login.sender());
         if (eskizProperties.callbackUrl() != null && !eskizProperties.callbackUrl().isBlank()) {
             fields.put("callback_url", eskizProperties.callbackUrl());
         }
@@ -194,6 +234,10 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
         }
         String digits = normalized.replaceAll("\\D", "");
         return UZ_MOBILE_PHONE.matcher(digits).matches() ? digits : null;
+    }
+
+    /** One Eskiz login with the sender its messages go out under; its password is never logged. */
+    private record Login(String email, String password, String sender) {
     }
 
     private String readText(String body, String pointer) {

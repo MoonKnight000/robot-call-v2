@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.Company
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanySwitchRow;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.mapper.CompanyEntityMapper;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
+import uz.murodjon.robotcallv2.integration.infrastructure.persistence.repository.IntegrationProviderJpaRepository;
 import uz.murodjon.robotcallv2.role.domain.enums.Feature;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
@@ -32,13 +33,16 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
     private final CompanyJpaRepository jpaRepository;
     private final CompanyEntityMapper mapper;
     private final StoredFileJpaRepository storedFileJpaRepository;
+    private final IntegrationProviderJpaRepository integrationProviderJpaRepository;
 
     public CompanyRepositoryAdapter(CompanyJpaRepository jpaRepository,
                                     CompanyEntityMapper mapper,
-                                    StoredFileJpaRepository storedFileJpaRepository) {
+                                    StoredFileJpaRepository storedFileJpaRepository,
+                                    IntegrationProviderJpaRepository integrationProviderJpaRepository) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
         this.storedFileJpaRepository = storedFileJpaRepository;
+        this.integrationProviderJpaRepository = integrationProviderJpaRepository;
     }
 
     @Override
@@ -105,11 +109,14 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
                         row.setFeature(feature);
                         return row;
                     }, now);
-            syncSwitchRows(List.of(IntegrationProvider.values()), company.disabledIntegrations(),
-                    entity.getIntegrationAccess(), CompanyIntegrationAccessEntity::getProvider, provider -> {
+            // The switchboard has a row for every catalog entry; a disabled key the catalog does not know is ignored.
+            List<IntegrationProvider> catalogProviders = integrationProviderJpaRepository.findAll().stream()
+                    .map(provider -> new IntegrationProvider(provider.getKey())).toList();
+            syncSwitchRows(catalogProviders, company.disabledIntegrations(),
+                    entity.getIntegrationAccess(), row -> new IntegrationProvider(row.getProvider()), provider -> {
                         CompanyIntegrationAccessEntity row = new CompanyIntegrationAccessEntity();
                         row.setCompany(entity);
-                        row.setProvider(provider);
+                        row.setProvider(provider.key());
                         return row;
                     }, now);
             jpaRepository.save(entity);
@@ -160,7 +167,7 @@ public class CompanyRepositoryAdapter implements CompanyRepository {
                                                                       Set<R> rows, Function<R, K> keyOf,
                                                                       Function<K, R> create, Instant now) {
         for (K key : keys) {
-            R row = rows.stream().filter(existing -> keyOf.apply(existing) == key).findFirst()
+            R row = rows.stream().filter(existing -> key.equals(keyOf.apply(existing))).findFirst()
                     .orElseGet(() -> {
                         R created = create.apply(key);
                         rows.add(created);

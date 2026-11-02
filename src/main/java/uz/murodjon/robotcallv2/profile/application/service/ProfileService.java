@@ -80,7 +80,8 @@ public class ProfileService implements ProfileUseCase {
     @Override
     public Profile uploadAvatar(long companyId, UploadedFile file) {
         User user = requireUser(companyId);
-        StoredFile stored = imageUploadUseCase.upload(file, user.companyId());
+        long effectiveCompanyId = user.companyId() != null ? user.companyId() : 0L;
+        StoredFile stored = imageUploadUseCase.upload(file, effectiveCompanyId);
         userUseCase.updateAvatarFileId(companyId, user.id(), stored.id());
         audit.record(companyId, "PROFILE_AVATAR_UPLOAD", "user", String.valueOf(user.id()), String.valueOf(stored.id()));
         return find(companyId);

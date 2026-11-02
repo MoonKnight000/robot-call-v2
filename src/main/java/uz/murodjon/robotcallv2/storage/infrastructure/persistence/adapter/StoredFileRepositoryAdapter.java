@@ -30,7 +30,9 @@ public class StoredFileRepositoryAdapter implements StoredFileRepository {
     public long create(long companyId, FileCategory category, String originalName, String path,
                        String bucket, String format, long sizeBytes) {
         StoredFileEntity entity = new StoredFileEntity();
-        entity.setCompany(companyJpaRepository.getReferenceById(companyId));
+        if (companyId > 0) {
+            entity.setCompany(companyJpaRepository.getReferenceById(companyId));
+        }
         entity.setCategory(category);
         entity.setOriginalName(originalName);
         entity.setPath(path);

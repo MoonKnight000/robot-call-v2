@@ -383,7 +383,7 @@ public class CampaignOutcomeService {
 
     /** Renders {@code template} with the target's facts and sends it; a gateway failure is logged, never thrown. */
     private void textTarget(Campaign campaign, CampaignTarget target, String template, String reason) {
-        if (!smsUseCase.isEnabled()) {
+        if (!smsUseCase.isEnabled(campaign.companyId())) {
             log.debug("SMS for target {} skipped: SMS is not enabled", target.id());
             return;
         }

@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Domain validator for file uploads. The type of an uploaded file is decided from its
@@ -33,6 +34,7 @@ public final class FileStorageValidator {
             Map.entry("image/png", ".png"),
             Map.entry("image/jpeg", ".jpg"),
             Map.entry("image/webp", ".webp"),
+            Map.entry("image/svg+xml", ".svg"),
             Map.entry("audio/wav", ".wav"),
             Map.entry("audio/mpeg", ".mp3"),
             Map.entry("audio/ogg", ".ogg"),
@@ -52,6 +54,12 @@ public final class FileStorageValidator {
     private static final byte[] OGG = {'O', 'g', 'g', 'S'};
     private static final byte[] PDF = {'%', 'P', 'D', 'F'};
     private static final byte[] ZIP = {'P', 'K', 3, 4};
+
+    /** What an SVG must not carry: anything that runs, embeds another document or pulls an external one. */
+    private static final Pattern UNSAFE_SVG = Pattern.compile(
+            "<script|<foreignobject|<iframe|<embed|<object|<!entity|<!doctype|javascript:|\\son[a-z]+\\s*=",
+            Pattern.CASE_INSENSITIVE);
+    private static final int MAX_SVG_PROLOG = 1024;
 
     private FileStorageValidator() {
     }
@@ -97,6 +105,9 @@ public final class FileStorageValidator {
         if (startsWith(data, ZIP) && (DOCX.equals(declared) || XLSX.equals(declared))) {
             return declared;
         }
+        if ("image/svg+xml".equals(declared) && isSafeSvg(data)) {
+            return declared;
+        }
         if (("text/csv".equals(declared) || "text/plain".equals(declared)) && isPlainText(data)) {
             return declared;
         }
@@ -136,5 +147,19 @@ public final class FileStorageValidator {
         }
         String head = new String(data, 0, Math.min(data.length, 256), StandardCharsets.UTF_8).stripLeading();
         return !head.startsWith("<");
+    }
+
+    /**
+     * An SVG document with nothing in it that runs: UTF-8 text with an {@code <svg} root near the start and none of
+     * {@link #UNSAFE_SVG}. It is only ever shown through {@code <img>}, where scripts do not run, but what is
+     * stored is also served back, so the bytes themselves are held to it.
+     */
+    private static boolean isSafeSvg(byte[] data) {
+        String text = new String(data, StandardCharsets.UTF_8);
+        if (text.indexOf('\0') >= 0) {
+            return false;
+        }
+        int root = text.toLowerCase().indexOf("<svg");
+        return root >= 0 && root <= MAX_SVG_PROLOG && !UNSAFE_SVG.matcher(text).find();
     }
 }

@@ -147,7 +147,7 @@ Javob — yangilangan `Company`.
 | `expiresAt` | ISO vaqt \| `null` | ❌ | obuna tugaydigan vaqt; `null` — muddat yo'q |
 | `maxConcurrentCalls` | `number` (1–10000) | `null` | ❌ | kompaniya tarifiga ko'ra bir vaqtda nechta dialer qo'ng'irog'i; `null` — platforma standarti (`voice-agent.dialer.max-concurrent-calls-per-company`). Keyingi dialer tick'idan (≈5 s) kuchga kiradi; platformaning umumiy chegarasi (RTP portlar) bundan ustun. Hozirgi holat — [`GET /api/concurrency`](concurrency.md) |
 | `disabledFeatures` | `Feature[]` | ✅ | o'chirilgan feature'lar (`VOICE_AGENT`, `CHAT_AGENT`, `ALERTING`, `INTEGRATIONS`, `QUALITY_ASSURANCE`); `[]` — hammasi yoqiq |
-| `disabledIntegrations` | `IntegrationProvider[]` | ✅ | o'chirilgan integratsiya provayderlari (`UYSOT`, `AMOCRM`, `KOMMO`, `BITRIX24`, `GOOGLE_DRIVE`, `NOTION`, `ASTERISK`); `[]` — hammasi yoqiq |
+| `disabledIntegrations` | `IntegrationProvider[]` | ✅ | o'chirilgan integratsiya provayderlari — katalog kalitlari (`UYSOT`, `AMOCRM`, `ESKIZ`, … [platform-integrations.md](platform-integrations.md)); katalogda yo'q kalit e'tiborga olinmaydi; `[]` — hammasi yoqiq |
 
 Javob — yangilangan `Company`. Audit: `COMPANY_PLATFORM_UPDATE`.
 

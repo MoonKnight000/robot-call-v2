@@ -24,6 +24,7 @@ import java.util.Map;
  * @param sipHeaders      CALL_TRANSFER: custom headers on the INVITE of the transferred leg, name → value,
  *                        {@code {{fact}}} templates in values filled in by the code; names start with
  *                        {@code X-}; null or empty = none
+ * @param subflowId       SUBFLOW: the {@code id} of a {@link SubflowDef} of the scenario
  */
 public record StageAction(
         String toolName,
@@ -35,11 +36,20 @@ public record StageAction(
         List<String> extractFields,
         String code,
         Long mcpConnectionId,
-        Map<String, String> sipHeaders
+        Map<String, String> sipHeaders,
+        String subflowId
 ) {
     public StageAction {
         if (transferMode == null) {
             transferMode = TransferMode.COLD;
         }
+    }
+
+    /** An action of any type but SUBFLOW. */
+    public StageAction(String toolName, String transferTo, TransferMode transferMode, String digits, Long targetAgentId,
+                       String smsText, List<String> extractFields, String code, Long mcpConnectionId,
+                       Map<String, String> sipHeaders) {
+        this(toolName, transferTo, transferMode, digits, targetAgentId, smsText, extractFields, code,
+                mcpConnectionId, sipHeaders, null);
     }
 }

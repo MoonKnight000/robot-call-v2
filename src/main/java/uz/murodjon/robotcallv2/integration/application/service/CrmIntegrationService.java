@@ -15,13 +15,15 @@ import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmAccountProbePort;
 import uz.murodjon.robotcallv2.integration.application.port.output.CrmIntegrationRepository;
+import uz.murodjon.robotcallv2.integration.application.port.output.IntegrationCatalogRepository;
 import uz.murodjon.robotcallv2.integration.application.port.output.OAuthStateStorePort;
 import uz.murodjon.robotcallv2.integration.application.port.output.UysotOAuthPort;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnectionCheck;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmIntegration;
+import uz.murodjon.robotcallv2.integration.domain.entity.IntegrationCategory;
+import uz.murodjon.robotcallv2.integration.domain.entity.IntegrationDefinition;
 import uz.murodjon.robotcallv2.integration.domain.entity.OAuthTokenReply;
-import uz.murodjon.robotcallv2.integration.domain.enums.CrmAuthMethod;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmIntegrationStatus;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmPermission;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
@@ -41,6 +43,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -65,12 +68,15 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
     private final UysotOAuthPort uysotOAuthPort;
     private final CrmAccountProbePort crmAccountProbePort;
     private final CompanyProperties companyProperties;
+    private final IntegrationCatalogRepository catalogRepository;
 
     @Autowired
     public CrmIntegrationService(CrmIntegrationRepository repository, SecretCipher cipher, UysotOAuthProperties uysotOAuthProperties,
                                  OAuthStateStorePort oauthStateStorePort, AuditUseCase audit, CompanyUseCase companyUseCase,
                                  UysotOAuthPort uysotOAuthPort, CrmAccountProbePort crmAccountProbePort,
-                                 ObjectMapper objectMapper, CompanyProperties companyProperties) {
+                                 ObjectMapper objectMapper, CompanyProperties companyProperties,
+                                 IntegrationCatalogRepository catalogRepository) {
+        this.catalogRepository = catalogRepository;
         this.objectMapper = objectMapper;
         this.crmAccountProbePort = crmAccountProbePort;
         this.repository = repository;
@@ -88,29 +94,31 @@ public class CrmIntegrationService implements CrmIntegrationUseCase {
                                  UysotOAuthPort uysotOAuthPort, CrmAccountProbePort crmAccountProbePort,
                                  ObjectMapper objectMapper) {
         this(repository, cipher, uysotOAuthProperties, oauthStateStorePort, audit, companyUseCase, uysotOAuthPort,
-                crmAccountProbePort, objectMapper, new CompanyProperties());
+                crmAccountProbePort, objectMapper, new CompanyProperties(), null);
     }
 
     @Override
     public List<IntegrationCatalogEntry> findCatalog(long companyId) {
+        if (catalogRepository == null) {
+            return List.of();
+        }
         Company company = companyUseCase.findById(companyId);
-        return List.of(
-                catalogEntry(IntegrationProvider.UYSOT, "Uysot CRM", CrmAuthMethod.OAUTH, company),
-                catalogEntry(IntegrationProvider.AMOCRM, "amoCRM", CrmAuthMethod.API_TOKEN, company),
-                catalogEntry(IntegrationProvider.KOMMO, "Kommo CRM (Global amoCRM)", CrmAuthMethod.API_TOKEN, company),
-                catalogEntry(IntegrationProvider.BITRIX24, "Bitrix24", CrmAuthMethod.API_TOKEN, company),
-                catalogEntry(IntegrationProvider.GOOGLE_DRIVE, "Google Drive", null, company),
-                catalogEntry(IntegrationProvider.NOTION, "Notion", null, company),
-                catalogEntry(IntegrationProvider.ASTERISK, "Asterisk", null, company));
+        Map<String, String> categoryNames = catalogRepository.findAllCategories().stream()
+                .collect(Collectors.toMap(IntegrationCategory::key, IntegrationCategory::name));
+        return catalogRepository.findAllIntegrations().stream()
+                .map(definition -> catalogEntry(definition, categoryNames.get(definition.category()), company))
+                .toList();
     }
 
-    private static IntegrationCatalogEntry catalogEntry(IntegrationProvider provider, String displayName,
-                                                        CrmAuthMethod authMethod, Company company) {
-        IntegrationCatalogStatus status = !provider.available() ? IntegrationCatalogStatus.COMING_SOON
+    private static IntegrationCatalogEntry catalogEntry(IntegrationDefinition definition, String categoryName,
+                                                        Company company) {
+        IntegrationProvider provider = definition.provider();
+        IntegrationCatalogStatus status = !definition.available() ? IntegrationCatalogStatus.COMING_SOON
                 : company != null && !company.isEnabled(provider) ? IntegrationCatalogStatus.DISABLED_BY_PLATFORM
                 : IntegrationCatalogStatus.AVAILABLE;
-        return new IntegrationCatalogEntry(provider, displayName, provider.category(), authMethod, status,
-                status == IntegrationCatalogStatus.AVAILABLE);
+        return new IntegrationCatalogEntry(provider, definition.name(), definition.category(), categoryName,
+                definition.primaryAuthMethod(), definition.authMethods(), status,
+                status == IntegrationCatalogStatus.AVAILABLE, definition.iconUrl());
     }
 
     @Override

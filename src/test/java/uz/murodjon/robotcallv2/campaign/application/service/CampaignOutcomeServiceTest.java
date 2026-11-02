@@ -52,7 +52,7 @@ class CampaignOutcomeServiceTest {
         campaigns = mock(CampaignRepository.class);
         targets = mock(CampaignTargetRepository.class);
         sms = mock(SmsUseCase.class);
-        when(sms.isEnabled()).thenReturn(true);
+        when(sms.isEnabled(anyLong())).thenReturn(true);
         service = new CampaignOutcomeService(campaigns, targets, mock(CompanyConfigUseCase.class),
                 mock(BusinessScheduleUseCase.class),
                 new RetryProperties(180, 15, 1200, false), mock(AuditUseCase.class),

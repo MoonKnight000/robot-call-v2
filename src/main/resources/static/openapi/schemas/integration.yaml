@@ -52,35 +52,83 @@ IntegrationCatalogEntry:
     displayName:
       type: string
     category:
-      $ref: '#/IntegrationCategory'
+      type: string
+      description: Key of the IntegrationCategory it is listed under.
+    categoryName:
+      type: string
     authMethod:
-      $ref: '#/CrmAuthMethod'
-      description: null while the provider is only COMING_SOON.
+      $ref: '#/IntegrationAuthMethod'
+      description: The preferred way to connect — the first of authMethods.
+    authMethods:
+      type: array
+      items:
+        $ref: '#/IntegrationAuthMethod'
     status:
       $ref: '#/IntegrationCatalogStatus'
     available:
       type: boolean
       description: status == AVAILABLE.
+    iconUrl:
+      type: string
+      nullable: true
+      description: Path the logo is fetched from with the usual auth header (GET /api/integration-icons/{provider}); null while it has none.
   required:
   - provider
   - status
   - available
 IntegrationProvider:
   type: string
-  enum:
-  - UYSOT
-  - AMOCRM
-  - KOMMO
-  - BITRIX24
-  - GOOGLE_DRIVE
-  - NOTION
-  - ASTERISK
-IntegrationCategory:
+  description: >-
+    Key of an entry of the integration catalog, UPPER_SNAKE_CASE, 2-32 characters (UYSOT, AMOCRM, KOMMO,
+    BITRIX24, GOOGLE_DRIVE, NOTION, ESKIZ, ASTERISK, and whatever the platform admin adds).
+IntegrationAuthMethod:
   type: string
   enum:
-  - CRM
-  - KNOWLEDGE_BASE
-  - TELEPHONY
+  - OAUTH
+  - API_TOKEN
+  - LOGIN_PASSWORD
+IntegrationDefinitionRow:
+  type: object
+  description: One catalog entry as the platform admin sees it.
+  properties:
+    provider:
+      $ref: '#/IntegrationProvider'
+    name:
+      type: string
+    category:
+      type: string
+    categoryName:
+      type: string
+    authMethods:
+      type: array
+      items:
+        $ref: '#/IntegrationAuthMethod'
+    available:
+      type: boolean
+      description: A connector for it exists in the code. Set by releases only; false lists it as COMING_SOON.
+    sortOrder:
+      type: integer
+    builtIn:
+      type: boolean
+      description: Shipped with the platform; cannot be deleted.
+    iconFileId:
+      type: integer
+      format: int64
+      nullable: true
+      description: The logo's stored file; send it back on PUT to keep the logo, null removes it.
+    iconUrl:
+      type: string
+      nullable: true
+IntegrationCategory:
+  type: object
+  description: A heading integrations are listed under.
+  properties:
+    key:
+      type: string
+    name:
+      type: string
+    sortOrder:
+      type: integer
 IntegrationCatalogStatus:
   type: string
   enum:

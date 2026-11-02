@@ -18,6 +18,8 @@ import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.LlmFallback;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.LlmFallbackMode;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
@@ -207,7 +209,11 @@ class LlmTurnClient {
         // failure is a model id this API key cannot reach — which 404s identically every
         // time, so retrying it against itself would only lose the caller the turn twice.
         boolean fastModelFailed = model != null;
-        if (!fastModelFailed && !isTransient(failure)) {
+        // The agent's sequential fallback is this retry: the main model failed, so the turn goes to the
+        // fallback instead of to the same model again, whatever the failure — a model the API cannot
+        // reach fails identically every time, which is what a fallback is for.
+        String fallbackModel = !fastModelFailed ? sequentialFallbackModel(s) : null;
+        if (!fastModelFailed && fallbackModel == null && !isTransient(failure)) {
             return TurnResult.NOTHING;
         }
         // spokenText() is null, not empty, when this turn has put nothing on the wire.
@@ -224,15 +230,18 @@ class LlmTurnClient {
         if (fastModelFailed) {
             log.warn("[{}] fast model '{}' failed ({}) — retrying on the configured model",
                     s.channelId(), model, failure.getMessage());
+        } else if (fallbackModel != null) {
+            log.warn("[{}] main model failed ({}) — retrying on the fallback model '{}'",
+                    s.channelId(), failure.getMessage(), fallbackModel);
         } else {
             log.info("[{}] retrying the turn after a transient LLM failure", s.channelId());
         }
         try {
             // No speculation this time: the guess was consumed by the attempt that failed.
-            // No model override either — see above.
+            // No model override either, other than the agent's fallback — see above.
             return dialogProperties.streaming()
-                    ? streamTurn(s, system, messages, tools, null, null)
-                    : blockingTurn(s, system, messages, tools, null);
+                    ? streamTurn(s, system, messages, tools, null, fallbackModel)
+                    : blockingTurn(s, system, messages, tools, fallbackModel);
         } catch (Exception e) {
             metrics.llmError();
             log.warn("[{}] the retry failed too: {}", s.channelId(), e.getMessage());
@@ -348,6 +357,21 @@ class LlmTurnClient {
         String agentModel = s.fastModel();
         return agentModel != null && !agentModel.isBlank() && !AiModel.isRealtimeModel(agentModel)
                 ? agentModel : dialogProperties.fastModel();
+    }
+
+    /**
+     * The agent's fallback LLM, or null — also on the company's own LLM, whose endpoint serves its own
+     * model ids and not the catalog's.
+     */
+    private static LlmFallback fallbackOf(DialogSession s) {
+        boolean ownLlm = s.aiModel() != null && s.aiModel().ownLlm() != null;
+        return ownLlm || s.agent() == null ? null : s.agent().llmFallback();
+    }
+
+    /** The model a failed turn is retried on, or null when the agent has no sequential fallback. */
+    private static String sequentialFallbackModel(DialogSession s) {
+        LlmFallback fallback = fallbackOf(s);
+        return fallback != null && fallback.mode() == LlmFallbackMode.SEQUENTIAL ? fallback.model() : null;
     }
 
     /** The assistant text carried by one response (or chunk), or {@code null}. */
@@ -480,7 +504,10 @@ class LlmTurnClient {
                 .options(turnTools.buildOptions(s, tools, model).mutate())
                 .stream()
                 .chatResponse();
-        String backup = resolveFastModel(s);
+        // The agent's concurrent fallback is the model raced; without one it is the call's fast model.
+        LlmFallback fallback = fallbackOf(s);
+        String backup = fallback != null && fallback.mode() == LlmFallbackMode.CONCURRENT
+                ? fallback.model() : resolveFastModel(s);
         if (llmTimeout.backupAfterMs() <= 0 || model != null || backup == null || backup.isBlank()) {
             return primary;
         }

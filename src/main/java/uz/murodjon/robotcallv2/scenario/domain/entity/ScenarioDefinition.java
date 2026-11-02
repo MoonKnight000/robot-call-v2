@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.scenario.domain.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import uz.murodjon.robotcallv2.scenario.domain.enums.TransitionMode;
 
@@ -42,12 +43,41 @@ public record ScenarioDefinition(
         /** The stage a call opens on; null = the first of {@code stages}. */
         String startStageId,
         /** Which stages the model may move a call to ({@link TransitionMode}); null = {@link TransitionMode#RIGID}. */
-        TransitionMode transitionMode
+        TransitionMode transitionMode,
+        /**
+         * Reusable stage groups that {@code SUBFLOW} stages embed ({@link SubflowDef}); never null, and left
+         * out of the JSON when empty, so a scenario without any reads and fingerprints as it always did.
+         */
+        @JsonInclude(JsonInclude.Include.NON_EMPTY) List<SubflowDef> subflows
 ) {
     public ScenarioDefinition {
         if (transitionMode == null) {
             transitionMode = TransitionMode.RIGID;
         }
+        subflows = subflows == null ? List.of() : List.copyOf(subflows);
+    }
+
+    /** A scenario without subflows. */
+    public ScenarioDefinition(List<StageDef> stages, List<FactField> factSchema, List<ToolDef> tools,
+                              List<OutcomeField> outcomeSchema, String rolePrompt, List<String> guardrails,
+                              String disclosureText, FactWebhook factWebhook, List<StyleExample> styleExamples,
+                              List<GlobalNode> globalNodes, String callPurpose, String startStageId,
+                              TransitionMode transitionMode) {
+        this(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails, disclosureText, factWebhook,
+                styleExamples, globalNodes, callPurpose, startStageId, transitionMode, null);
+    }
+
+    /** The subflow with this id (any case), or null. */
+    public SubflowDef findSubflow(String id) {
+        if (id == null) {
+            return null;
+        }
+        for (SubflowDef subflow : subflows) {
+            if (id.equalsIgnoreCase(subflow.id())) {
+                return subflow;
+            }
+        }
+        return null;
     }
 
     public static ScenarioDefinitionBuilder builder() {

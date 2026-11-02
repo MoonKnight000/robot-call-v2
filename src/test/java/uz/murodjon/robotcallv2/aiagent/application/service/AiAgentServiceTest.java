@@ -343,7 +343,7 @@ class AiAgentServiceTest {
                 " Sotuv agenti ", null, null, null, null, null, persona, null,
                 new AgentScriptDto(templateId, null, null, null, null, null),
                 null, null,
-                null, null, null, null,
+                null, null, null, null, null, null,
                 null, null,
                 new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null, null, null, null),
                 null,
@@ -365,7 +365,7 @@ class AiAgentServiceTest {
         return new UpdateAiAgentRequest(
                 name, null, null, null, null, null, null, null,
                 null, null, null,
-                null, null, null, null,
+                null, null, null, null, null, null,
                 null, null, null, null, null,
                 null,
                 null, null,

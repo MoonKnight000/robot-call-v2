@@ -30,7 +30,12 @@ public enum StageType {
     /** Says its line and hangs up. */
     ENDING,
     /** A comment on the canvas; never entered by a call. */
-    NOTE;
+    NOTE,
+    /**
+     * Embeds a subflow ({@code action.subflowId}): its stages run in place of this one, and the call
+     * leaves through this stage's own transitions. Flattened away before a call runs.
+     */
+    SUBFLOW;
 
     /**
      * Whether the stage does its one job and must then hand the call on: it cannot be where a
@@ -39,7 +44,7 @@ public enum StageType {
     public boolean passesCallOn() {
         return switch (this) {
             case FUNCTION, PRESS_DIGIT, LOGIC_SPLIT, SMS, EXTRACT_VARIABLE, CODE, MCP -> true;
-            case CONVERSATION, CALL_TRANSFER, AGENT_TRANSFER, ENDING, NOTE -> false;
+            case CONVERSATION, CALL_TRANSFER, AGENT_TRANSFER, ENDING, NOTE, SUBFLOW -> false;
         };
     }
 }

@@ -130,6 +130,8 @@ public class AiAgentEntityMapper {
                         dataPolicy.getRealtimeFactsDelivery()))
                 .llmModel(entity.getLlmModel())
                 .fastLlmModel(entity.getFastLlmModel())
+                .llmFallback(entity.getFallbackLlmModel() != null
+                        ? new LlmFallback(entity.getFallbackLlmModel(), entity.getFallbackLlmMode()) : null)
                 .temperature(entity.getTemperature())
                 .maxOutputTokens(entity.getMaxOutputTokens())
                 .useRag(entity.isUseRag())
@@ -179,6 +181,8 @@ public class AiAgentEntityMapper {
         entity.setDataPolicy(toDataPolicyEntity(agent.dataPolicy()));
         entity.setLlmModel(agent.llmModel());
         entity.setFastLlmModel(agent.fastLlmModel());
+        entity.setFallbackLlmModel(agent.llmFallback() != null ? agent.llmFallback().model() : null);
+        entity.setFallbackLlmMode(agent.llmFallback() != null ? agent.llmFallback().mode() : null);
         entity.setTemperature(agent.temperature());
         entity.setMaxOutputTokens(agent.maxOutputTokens());
         entity.setUseRag(agent.useRag());

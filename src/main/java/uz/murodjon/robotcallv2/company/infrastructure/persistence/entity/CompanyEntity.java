@@ -126,8 +126,8 @@ public class CompanyEntity {
     public Set<IntegrationProvider> getDisabledIntegrations() {
         return integrationAccess.stream()
                 .filter(row -> !row.isEnabled())
-                .map(CompanyIntegrationAccessEntity::getProvider)
-                .collect(Collectors.toCollection(() -> EnumSet.noneOf(IntegrationProvider.class)));
+                .map(row -> new IntegrationProvider(row.getProvider()))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
     public Set<CompanyFeatureEntity> getFeatures() {

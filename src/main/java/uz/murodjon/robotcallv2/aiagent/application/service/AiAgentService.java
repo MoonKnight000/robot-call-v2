@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentClearableField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.LlmFallbackMode;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateSinglePromptAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateConversationFlowAgentRequest;
@@ -34,6 +35,7 @@ import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.service.SubflowExpander;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.dialog.PipelineMode;
@@ -141,7 +143,7 @@ public class AiAgentService implements AiAgentUseCase {
         return new CreateAiAgentRequest(name, description, language, speechLanguages,
                 channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, engineProfileId,
                 new AgentScriptDto(null, null, mode.toScenarioMode(), flowDefinition, firstMessage, systemPrompt),
-                speechEngine, voice, llmModel, null, temperature, maxOutputTokens, ambience,
+                speechEngine, voice, llmModel, null, null, null, temperature, maxOutputTokens, ambience,
                 null, null, null, null, false, dataNeeded, dataEvaluation, null, null, null, null, true);
     }
 
@@ -197,6 +199,7 @@ public class AiAgentService implements AiAgentUseCase {
                 request.llmModel() != null ? request.llmModel() : profile.llmModel());
         String fastLlmModel = engineGuard.requireKnownFastModel(
                 request.fastLlmModel() != null ? request.fastLlmModel() : profile.fastLlmModel());
+        LlmFallback llmFallback = resolveLlmFallback(request.fallbackLlmModel(), request.fallbackLlmMode(), null);
         Map<String, String> checkedLanguageVoices =
                 engineGuard.requireKnownVoicePerLanguage(companyId, pipelineMode, voiceRequest.perLanguage());
 
@@ -250,6 +253,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .dataPolicy(AiAgentSettingsMapper.toAiAgentDataPolicy(request.dataPolicy(), NEW_DATA_POLICY))
                 .llmModel(llmModel)
                 .fastLlmModel(fastLlmModel)
+                .llmFallback(llmFallback)
                 .temperature(request.temperature() != null ? request.temperature() : profile.temperature())
                 .maxOutputTokens(request.maxOutputTokens() != null ? request.maxOutputTokens() : profile.maxOutputTokens())
                 .useRag(request.useRag() != null && request.useRag())
@@ -324,6 +328,7 @@ public class AiAgentService implements AiAgentUseCase {
         String fastLlmModel = (requestedFastLlmModel != null)
                 ? engineGuard.requireKnownFastModel(requestedFastLlmModel)
                 : existing.fastLlmModel();
+        LlmFallback llmFallback = resolveLlmFallback(request.fallbackLlmModel(), request.fallbackLlmMode(), existing.llmFallback());
         Double temperature = chooseValue(request.temperature(), profile, EngineProfile::temperature);
         Integer maxOutputTokens = chooseValue(request.maxOutputTokens(), profile, EngineProfile::maxOutputTokens);
 
@@ -403,6 +408,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .dataPolicy(AiAgentSettingsMapper.toAiAgentDataPolicy(request.dataPolicy(), existing.dataPolicy()))
                 .llmModel(llmModel)
                 .fastLlmModel(fastLlmModel)
+                .llmFallback(llmFallback)
                 .temperature(temperature != null ? temperature : existing.temperature())
                 .maxOutputTokens(maxOutputTokens != null ? maxOutputTokens : existing.maxOutputTokens())
                 .useRag(request.useRag() != null ? request.useRag() : existing.useRag())
@@ -564,6 +570,20 @@ public class AiAgentService implements AiAgentUseCase {
 
     @Override
     public Scenario resolveScenario(long companyId, AiAgent agent) {
+        Scenario stored = resolveStoredScenario(companyId, agent);
+        if (stored == null) {
+            return null;
+        }
+        // Subflows are inlined here, so everything that runs or fingerprints a call sees plain stages.
+        ScenarioDefinition flat = SubflowExpander.expand(stored.definition());
+        if (flat == stored.definition()) {
+            return stored;
+        }
+        return new Scenario(stored.id(), stored.scenarioKey(), stored.version(), stored.name(), stored.description(),
+                stored.builtin(), stored.active(), flat, stored.createdAt(), stored.createdBy());
+    }
+
+    private Scenario resolveStoredScenario(long companyId, AiAgent agent) {
         if (agent == null) {
             return null;
         }
@@ -703,6 +723,24 @@ public class AiAgentService implements AiAgentUseCase {
         return profile != null ? field.apply(profile) : null;
     }
 
+    /**
+     * The agent's fallback after an edit: the request's model (checked against the cascade catalog) and
+     * mode where it gives them, the current ones otherwise. A mode with no model to apply it to is refused
+     * rather than dropped.
+     */
+    private LlmFallback resolveLlmFallback(String requestedModel, LlmFallbackMode requestedMode, LlmFallback current) {
+        boolean hasModel = requestedModel != null && !requestedModel.isBlank();
+        if (!hasModel && requestedMode == null) {
+            return current;
+        }
+        String model = hasModel ? engineGuard.requireKnownFallbackModel(requestedModel)
+                : current != null ? current.model() : null;
+        if (model == null) {
+            throw new ValidationException(ErrorCode.AI_AGENT_FALLBACK_MODE_WITHOUT_MODEL);
+        }
+        return new LlmFallback(model, requestedMode != null ? requestedMode : current != null ? current.mode() : null);
+    }
+
     /** A trimmed value, or null — a blank engine name means "the configured default". */
     private static String trimmed(String value) {
         return value != null ? value.trim() : null;
@@ -723,6 +761,7 @@ public class AiAgentService implements AiAgentUseCase {
                 case MID_CALL_SMS_TEMPLATE -> behaviourRequest != null ? behaviourRequest.midCallSmsTemplate() : null;
                 case VOICEMAIL_MESSAGE -> behaviourRequest != null ? behaviourRequest.voicemailMessage() : null;
                 case FAST_LLM_MODEL -> request.fastLlmModel();
+                case FALLBACK_LLM_MODEL -> request.fallbackLlmModel() != null ? request.fallbackLlmModel() : request.fallbackLlmMode();
                 case GREETING_PAUSE -> request.greeting() != null ? request.greeting().pauseBeforeSpeakingMs() : null;
                 case SPEECH_LANGUAGES -> request.speechLanguages();
                 case RESPONSE_WAIT_MS -> behaviourRequest != null ? behaviourRequest.responseWaitMs() : null;
@@ -772,6 +811,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .initiationWebhook(fields.contains(AgentClearableField.INITIATION_WEBHOOK) ? null : agent.initiationWebhook())
                 .postCallWebhook(fields.contains(AgentClearableField.POST_CALL_WEBHOOK) ? null : agent.postCallWebhook())
                 .fastLlmModel(fields.contains(AgentClearableField.FAST_LLM_MODEL) ? null : agent.fastLlmModel())
+                .llmFallback(fields.contains(AgentClearableField.FALLBACK_LLM_MODEL) ? null : agent.llmFallback())
                 .ragMinScore(fields.contains(AgentClearableField.RAG_MIN_SCORE) ? null : agent.ragMinScore())
                 .callBehaviour(new AiAgentCallBehaviour(
                         behaviour.interruptionSensitivity(),

@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentClearableField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.LlmFallbackMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 
 import java.util.List;
@@ -52,6 +53,8 @@ public record UpdateAiAgentRequest(
         AgentVoiceDto voice,
         @Size(max = 120) String llmModel,
         @Size(max = 120) String fastLlmModel,
+        @Size(max = 120) String fallbackLlmModel,
+        LlmFallbackMode fallbackLlmMode,
         Double temperature,
         Integer maxOutputTokens,
         AgentAmbienceDto ambience,

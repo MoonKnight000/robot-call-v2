@@ -304,6 +304,7 @@ Saqlamaydi — muharrirdagi "Tekshirish" tugmasi uchun.
 | `factWebhook` | `FactWebhook` | Qo'ng'iroqdan oldin faktlarni yangilash — pastga qarang |
 | `startStageId` | string | Ixtiyoriy. Qo'ng'iroq qaysi bosqichdan boshlanadi; `null` — `stages` ning birinchisi. Faqat `CONVERSATION` turidagi va global bo'lmagan bosqich bo'la oladi |
 | `transitionMode` | `RIGID` / `FLEX` | Ixtiyoriy, standart `RIGID`. `RIGID` — faqat bosqichning o'z o'tishlari (chizilgan edge'lar); `FLEX` — model istalgan CONVERSATION bosqichiga o'ta oladi, chizilganlari birinchi. |
+| `subflows` | `SubflowDef[]` | Ixtiyoriy (bo'lmasa javobda ko'rinmaydi). Quyi oqimlar — bir necha bosqichdan iborat qayta ishlatiladigan guruh; `SUBFLOW` turidagi bosqich ularni oqimga joylaydi. Pastdagi "Quyi oqimlar" bo'limiga qarang |
 | — | — | Ovoz, persona va AI model sozlamalari ssenariyda **emas** — ular [AI agent](ai-agents.md)da. Bitta senariyni bir nechta agent turli ovoz va personada gapirishi mumkin |
 
 Ssenariy yozuvida (`GET /api/scenarios/{id}`, `CreateScenarioRequest`, `UpdateScenarioRequest`) bu obyekt
@@ -392,6 +393,7 @@ barcha maydonlar faqat cascade pipeline'da ishlaydi.
 | `PRESS_DIGIT` | DTMF tugmalarini bosadi (IVR menyu) | `action.digits` — `0-9`, `*`, `#`, `w` (yarim soniya pauza), ko'pi bilan 32 | Kamida bitta |
 | `LOGIC_SPLIT` | Faktlarga qarab LLM'siz tanlaydi | `branches`, oxirgisi `ALWAYS` ("else"); `transitionConditions` bo'lmaydi | Kamida bitta (branch'larning `goTo` lari) |
 | `AGENT_TRANSFER` | Suhbatni boshqa AI agentga beradi | `action.targetAgentId` | Ixtiyoriy — o'tkazish muvaffaqiyatsiz bo'lsa |
+| `SUBFLOW` | Oqimga quyi oqimni joylaydi (blok). Qo'ng'iroqda alohida bosqich emas: resolve vaqtida o'rniga quyi oqim bosqichlari qo'yiladi | `action.subflowId` — `subflows` dagi `id` | Quyi oqimdan **chiqqandan keyin** boriladigan bosqich(lar) |
 | `SMS` | Qo'ng'iroq davomida SMS yuboradi | `action.smsText` (`{{fact}}` bilan, ≤ 1600 belgi) | Kamida bitta |
 | `EXTRACT_VARIABLE` | Suhbatdan natija qiymatlarini ajratib oladi | `action.extractFields` — `outcomeSchema` dagi nomlar | Kamida bitta |
 | `CODE` | Qisqa skriptni faktlar ustida ishga tushiradi | `action.code` (≤ 20 000 belgi) | Kamida bitta |
@@ -461,6 +463,55 @@ Xatolar (`SCENARIO_DEFINITION_INVALID`, `errors` ichida): `<TYPE> stage X needs 
 ```
 
 ---
+
+## 🧱 Quyi oqimlar (`subflows`, `SUBFLOW`)
+
+Quyi oqim — bir necha suhbat bosqichidan iborat guruh. Asosiy oqimda **bitta blok** (`type: "SUBFLOW"`,
+`action.subflowId`) bo'lib turadi va bir oqimda bir necha marta ishlatilishi mumkin.
+
+```json
+{
+  "stages": [
+    { "id": "GREETING", "allowedTransitions": ["COLLECT"] },
+    { "id": "COLLECT", "type": "SUBFLOW", "action": { "subflowId": "ask_contact" }, "allowedTransitions": ["BYE"] },
+    { "id": "BYE", "type": "ENDING" }
+  ],
+  "subflows": [
+    { "id": "ask_contact", "title": "Aloqa ma'lumoti", "startStageId": "NAME",
+      "stages": [
+        { "id": "NAME", "purpose": "Ismni so'rang", "allowedTransitions": ["PHONE"] },
+        { "id": "PHONE", "purpose": "Telefon raqamni so'rang" }
+      ] }
+  ]
+}
+```
+
+`SubflowDef`: `id` (ssenariy ichida unikal, katta-kichik harf farqsiz), `title` (canvas nomi), `startStageId`
+(`null` — `stages` ning birinchisi), `stages` (`StageDef[]`).
+
+**Qo'ng'iroqda qanday ishlaydi.** Ssenariy resolve qilinganda (qo'ng'iroq, simulyatsiya, versiya
+fingerprint'i) har bir blok o'rniga quyi oqim bosqichlari qo'yiladi; id'lar `<blok id>__<ichki id>`
+(yuqoridagi misolda `COLLECT__NAME`, `COLLECT__PHONE`) bo'ladi. Shu sababli bitta quyi oqim ikki blokda
+ishlatilsa ham bosqichlari to'qnashmaydi. Blokka kiruvchi barcha o'tishlar quyi oqimning boshlang'ich
+bosqichiga boradi.
+
+**Chiqish qoidasi.** Quyi oqim ichida `allowedTransitions` bo'sh va turi `ENDING`/`NOTE` bo'lmagan bosqich —
+chiqish: qo'ng'iroq undan blokning o'z `allowedTransitions` i (va `transitionConditions` i) bo'yicha davom etadi.
+Ichki `ENDING` qo'ng'iroqni tugatadi.
+
+**Cheklovlar (v1).** Quyi oqim ichida `SUBFLOW` bo'lmaydi (ichma-ich yo'q); `globalCondition`li bosqich
+bo'lmaydi; o'z `factSchema`/`outcomeSchema`/`tools` yo'q — ota ssenariyniki ishlatiladi. `PUT
+/api/scenarios/{id}/canvas` `subflows` ga tegmaydi (u canvas'da chizilmaydi).
+
+Tekshiruv xabarlari (`POST /api/scenarios/validate`, saqlash): `a subflow has a blank id`,
+`duplicate subflow id: X`, `SUBFLOW stage X needs action.subflowId`,
+`SUBFLOW stage X embeds unknown subflow Y`, `subflow X must have at least one stage`,
+`duplicate stage id Y in subflow X`, `subflow X cannot embed another subflow (stage Y)`,
+`stage Y of subflow X cannot be global`, `startStageId Y of subflow X is not one of its stages`,
+`stage Y of subflow X transitions to unknown stage Z`,
+`subflow X needs a stage with no outgoing transitions: a call could never leave or end in it`,
+`stage Y of subflow X is not reachable from its start`. Shundan keyin yoyilgan oqim ustida oddiy qoidalar
+(o'tishlar, deadlock, tool/outcome) yuradi — ularning xabarlarida ichki bosqich `<blok>__<ichki>` id bilan keladi.
 
 ## 🔀 `transitionConditions` — Mijoz javobiga qarab tarmoqlanish
 

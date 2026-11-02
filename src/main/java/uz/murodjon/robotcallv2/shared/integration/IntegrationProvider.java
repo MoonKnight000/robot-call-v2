@@ -1,37 +1,57 @@
 package uz.murodjon.robotcallv2.shared.integration;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+
+import java.util.Locale;
+import java.util.regex.Pattern;
+
 /**
- * Every system the platform connects to or plans to, one catalog entry each. The platform
- * switches providers on and off per company, so the company and the integration feature both
- * need the same names — hence here and not in either.
+ * The key of an integration in the platform's catalog (the {@code integration_provider} table), such as
+ * {@code UYSOT} or {@code ESKIZ}. The platform admin adds and edits catalog entries, so a provider is
+ * not a fixed list: the company feature (which integrations are switched off for a company) and the
+ * integration feature both need the same key, hence here and not in either.
  *
- * <p>{@code available} is whether a connector exists yet; the rest are listed in the catalog as
- * "coming soon" so a company sees what is planned.
+ * <p>Only the providers a connector in the code names are constants. Whether a key exists in the
+ * catalog is the catalog's to say; this type only guarantees its shape.
  */
-public enum IntegrationProvider {
+public record IntegrationProvider(String key) {
 
-    UYSOT(IntegrationCategory.CRM, true),
-    AMOCRM(IntegrationCategory.CRM, true),
-    KOMMO(IntegrationCategory.CRM, true),
-    BITRIX24(IntegrationCategory.CRM, true),
-    GOOGLE_DRIVE(IntegrationCategory.KNOWLEDGE_BASE, false),
-    NOTION(IntegrationCategory.KNOWLEDGE_BASE, false),
-    ASTERISK(IntegrationCategory.TELEPHONY, false);
+    private static final Pattern KEY_PATTERN = Pattern.compile("^[A-Z][A-Z0-9_]{1,31}$");
 
-    private final IntegrationCategory category;
-    private final boolean available;
+    public static final IntegrationProvider UYSOT = new IntegrationProvider("UYSOT");
+    public static final IntegrationProvider ESKIZ = new IntegrationProvider("ESKIZ");
+    public static final IntegrationProvider AMOCRM = new IntegrationProvider("AMOCRM");
+    public static final IntegrationProvider KOMMO = new IntegrationProvider("KOMMO");
+    public static final IntegrationProvider BITRIX24 = new IntegrationProvider("BITRIX24");
 
-    IntegrationProvider(IntegrationCategory category, boolean available) {
-        this.category = category;
-        this.available = available;
+    public IntegrationProvider {
+        key = key == null ? null : key.strip().toUpperCase(Locale.ROOT);
+        if (key == null || !KEY_PATTERN.matcher(key).matches()) {
+            throw new ValidationException(ErrorCode.INTEGRATION_KEY_INVALID);
+        }
     }
 
-    public IntegrationCategory category() {
-        return category;
+    /** What JSON, a path variable and a query parameter carry: the key. */
+    @JsonCreator
+    public static IntegrationProvider valueOf(String key) {
+        return new IntegrationProvider(key);
     }
 
-    /** Whether a connector exists, whatever the platform has switched on for a company. */
-    public boolean available() {
-        return available;
+    @JsonValue
+    public String key() {
+        return key;
+    }
+
+    /** The key, for code that read it as an enum's {@code name()}. */
+    public String name() {
+        return key;
+    }
+
+    @Override
+    public String toString() {
+        return key;
     }
 }

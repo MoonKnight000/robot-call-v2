@@ -228,6 +228,8 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
   },
   "llmModel": "gemini-3.8-flash",
   "fastLlmModel": "gemini-3.5-flash-lite",
+  "fallbackLlmModel": "gpt-5.6-terra",
+  "fallbackLlmMode": "SEQUENTIAL",
   "temperature": 0.6,
   "maxOutputTokens": 300,
   "ambience": {
@@ -322,7 +324,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > | `zeroPiiRetention`, `storeCallAudio`, `conversationRetentionDays`, `realtimeFactsDelivery` | `dataPolicy.<o'sha nom>` |
 >
 > Yuqori darajada qolganlar: `name`, `description`, `language`, `persona`, `engineProfileId`,
-> `llmModel`, `fastLlmModel`, `temperature`, `maxOutputTokens`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
+> `llmModel`, `fastLlmModel`, `fallbackLlmModel`, `fallbackLlmMode`, `temperature`, `maxOutputTokens`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
 > `postCallWebhook`, `handbook`, `timezone`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
 > `id`, `companyId`, `disclosureEnabled`, `scenarioName`, `pronunciationRules`, `postCallActions`, `preCallFunctions`,
 > `createdAt`, `createdBy`, `createdByName`, `publishedVersion`, `hasDraftChanges`, `version`.
@@ -476,6 +478,16 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 >   umuman xohlamagan agent `fastLlmModel` ga `llmModel` bilan bir xil id yozadi.
 >   Raqam aytilgan javob ("yetti", "20") qisqa bo'lsa ham doim `llmModel` ga boradi — o'sha
 >   turn to'lov sanasini belgilaydi.
+> - `fallbackLlmModel` + `fallbackLlmMode` — zaxira model (Retell'ning "Fallback model" sozlamasi), faqat
+>   `CASCADE` pipeline'da ishlaydi. `fastLlmModel` kabi **doim `CASCADE` katalogidan** tanlanadi, noma'lum id →
+>   `400 AI_MODEL_UNKNOWN`. Ikki rejim:
+>   - `SEQUENTIAL` (standart): asosiy model so'rovi xato bilan tugasa, shu turn zaxira modelda qayta yuboriladi
+>     (har qanday xatoda, faqat vaqtinchalikda emas; turn hali hech narsa gapirmagan bo'lishi kerak);
+>   - `CONCURRENT`: asosiy modeldan `voice-agent.dialog.llm-timeout.backup-after-ms` (1500 ms) ichida birinchi
+>     token kelmasa, zaxira model parallel ishga tushadi; birinchi javob bergani gapiriladi, ikkinchisi bekor qilinadi.
+>   `fallbackLlmMode` ni `fallbackLlmModel`siz yuborish `400 AI_AGENT_FALLBACK_MODE_WITHOUT_MODEL`. Faqat modelni
+>   yuborilsa rejim saqlanganicha qoladi (yangi agentda `SEQUENTIAL`). Olib tashlash: `clearFields: ["FALLBACK_LLM_MODEL"]`
+>   (ikkalasi ham tozalanadi). Kompaniyaning o'z LLM endpointida (`ownLlm`) zaxira model e'tiborga olinmaydi.
 > - `ttsVoice` / `languageVoices` — tanlangan ovoz **o'z provayderi** bilan gapiradi
 >   (`tts_voice.provider`), chunki bir vendorning ovoz id'si boshqasida mavjud emas.
 > - `voiceSpeed` — agent ovozining tezligi (0.25–3.0, kompaniya ovoz sozlamasi bilan bir xil
@@ -634,6 +646,7 @@ faqat `PUT`):
 | `MID_CALL_SMS_TEMPLATE` | `callBehaviour.midCallSmsTemplate` |
 | `VOICEMAIL_MESSAGE` | `callBehaviour.voicemailMessage` |
 | `FAST_LLM_MODEL` | `fastLlmModel` |
+| `FALLBACK_LLM_MODEL` | `fallbackLlmModel` va `fallbackLlmMode` (zaxira modelsiz qoladi) |
 | `GREETING_PAUSE` | `greeting.pauseBeforeSpeakingMs` (platform defaultiga qaytadi) |
 | `SPEECH_LANGUAGES` | `speechLanguages` (faqat agentning asosiy tili qoladi — bitta til rejimi) |
 | `RESPONSE_WAIT_MS` | `callBehaviour.responseWaitMs` (o'rnatma standartiga qaytadi) |
@@ -665,7 +678,8 @@ birlashtiriladi; `clearFields` yuborilmasa — hech narsa o'zgarmaydi (eski klie
 | `AI_AGENT_DATA_FIELD_OPTIONS_INVALID` | `dataNeeded[].options` faqat `enum` uchun, ko'pi bilan 20 ta, har biri 1–100 belgi |
 | `AI_AGENT_DATA_FIELD_FORMAT_EXAMPLES_INVALID` | `dataNeeded[].formatExamples` 5 tadan ko'p yoki biri bo'sh / 200 belgidan uzun |
 | `AI_AGENT_DATA_FIELD_CONTACT_FIELD_INVALID` | `dataNeeded[].contactField` kontakt maxsus maydoni nomi emas (harf yoki `_` bilan boshlanadi, harf/raqam/`_`, 64 gacha) |
-| `AI_MODEL_UNKNOWN` | `llmModel`, `fastLlmModel` yoki `postCallAnalysis.model` katalogda yo'q (yoki shu rejimda tanlab bo'lmaydi) |
+| `AI_MODEL_UNKNOWN` | `llmModel`, `fastLlmModel`, `fallbackLlmModel` yoki `postCallAnalysis.model` katalogda yo'q (yoki shu rejimda tanlab bo'lmaydi) |
+| `AI_AGENT_FALLBACK_MODE_WITHOUT_MODEL` | `fallbackLlmMode` berilgan, lekin agentda ham, so'rovda ham `fallbackLlmModel` yo'q |
 | `AI_AGENT_TRANSFER_PHONE_INVALID` | `transferPhoneNumber` telefon raqami emas |
 | `AI_AGENT_RESPONSE_WAIT_OUT_OF_RANGE` | `callBehaviour.responseWaitMs` 100..3000 dan tashqarida |
 | `AI_AGENT_CALL_TUNING_OUT_OF_RANGE` | `reminderAfterSeconds` (1–300), `reminderMaxCount` (0–10), `dtmfTimeoutMs` (500–10000), `dtmfDigitLimit` (1–50) yoki `ringDurationSeconds` (5–300) chegaradan tashqarida; xabar maydon nomini aytadi |
@@ -735,6 +749,9 @@ Yuqoridagi maydonlarni yuborish orqali agentning ssenariy va xulq-atvorini yangi
 `stages[]` — ssenariydagi `StageDef` ning aynan o'zi: `branches` va mijoz javobiga qarab
 o'tish shartlari (`transitionConditions`) ham shu yerda yuboriladi —
 [scenarios.md](scenarios.md#-transitionconditions--mijoz-javobiga-qarab-tarmoqlanish).
+Agentning o'z `script.definition` idagi `subflows` bu forma orqali yuborilmaydi va `PUT` da o'zgarmay qoladi;
+ularni `scenarioDefinition` to'liq yuboriladigan yo'l tahrirlaydi
+([scenarios.md — Quyi oqimlar](scenarios.md#-quyi-oqimlar-subflows-subflow)).
 
 **Qoidalar:**
 

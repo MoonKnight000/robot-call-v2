@@ -362,6 +362,8 @@ final class StageEntry {
             case ENDING -> " (closing stage: say its line, then the call ends)";
             case CALL_TRANSFER -> " (closing stage: say its line, then the call is transferred)";
             case CONVERSATION, NOTE -> "";
+            // Flattened away when the scenario is resolved (SubflowExpander); no call reaches one.
+            case SUBFLOW -> "";
         };
     }
 

@@ -15,7 +15,7 @@ public class StoredFileEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "company_id", nullable = false)
+    @JoinColumn(name = "company_id")
     private CompanyEntity company;
 
     @Enumerated(EnumType.STRING)

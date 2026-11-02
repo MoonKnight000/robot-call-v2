@@ -120,11 +120,29 @@ public class FileStorageService implements FileStorageUseCase {
             throw new NotFoundException(ErrorCode.FILE_NOT_FOUND, id);
         }
         companyAccessGuard.requireOwnOrSuperadmin(callerCompanyId, file.companyId());
+        return open(file);
+    }
+
+    @Override
+    public DownloadableFile read(long id) {
+        StoredFile file = storedFileRepository.find(id);
+        if (file == null) {
+            throw new NotFoundException(ErrorCode.FILE_NOT_FOUND, id);
+        }
+        return open(file);
+    }
+
+    @Override
+    public StoredFile find(long id) {
+        return storedFileRepository.find(id);
+    }
+
+    private DownloadableFile open(StoredFile file) {
         try {
             InputStream content = objectStoragePort.download(file.bucket(), file.path());
             return new DownloadableFile(file, content);
         } catch (Exception e) {
-            throw new ExternalServiceException(ErrorCode.FILE_READ_FAILED, "object-storage", e, id);
+            throw new ExternalServiceException(ErrorCode.FILE_READ_FAILED, "object-storage", e, file.id());
         }
     }
 
@@ -162,7 +180,8 @@ public class FileStorageService implements FileStorageUseCase {
         if (extension.isEmpty()) {
             extension = safeExtensionOf(originalName);
         }
-        return "com-" + companyId + "/" + category.folder() + "/" + UUID.randomUUID() + extension;
+        String folder = companyId > 0 ? "com-" + companyId : "platform";
+        return folder + "/" + category.folder() + "/" + UUID.randomUUID() + extension;
     }
 
     private static String safeExtensionOf(String originalName) {

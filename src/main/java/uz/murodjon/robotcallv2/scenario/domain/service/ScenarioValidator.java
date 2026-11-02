@@ -60,12 +60,19 @@ public final class ScenarioValidator {
     private ScenarioValidator() {
     }
 
-    public static List<String> validate(ScenarioDefinition def) {
+    public static List<String> validate(ScenarioDefinition scenario) {
         List<String> errors = new ArrayList<>();
-        if (def == null) {
+        if (scenario == null) {
             errors.add("definition must not be null");
             return errors;
         }
+        checkSubflows(scenario, errors);
+        if (!errors.isEmpty()) {
+            return errors;
+        }
+        // The flow is judged the way a call runs it: with its subflows inlined, so every rule below
+        // (transitions, deadlocks, tools, outcomes) covers their stages too.
+        ScenarioDefinition def = SubflowExpander.expand(scenario);
         checkStages(def.stages(), errors);
         checkStart(def, errors);
         StageDef start = def.findStartStage();
@@ -84,6 +91,107 @@ public final class ScenarioValidator {
         checkDisclosure(def.disclosureText(), errors);
         checkFactWebhook(def.factWebhook(), def.factSchema(), errors);
         return errors;
+    }
+
+    /**
+     * Subflows are checked on their own first, because the flow cannot be inlined (and so judged) while
+     * a SUBFLOW stage names nothing, or a subflow is not a graph a call can enter and leave.
+     */
+    private static void checkSubflows(ScenarioDefinition def, List<String> errors) {
+        Set<String> subflowIds = new HashSet<>();
+        for (SubflowDef subflow : def.subflows()) {
+            if (subflow == null || isBlank(subflow.id())) {
+                errors.add("a subflow has a blank id");
+                continue;
+            }
+            if (!subflowIds.add(subflow.id().toLowerCase(Locale.ROOT))) {
+                errors.add("duplicate subflow id: " + subflow.id());
+            }
+            checkSubflow(subflow, errors);
+        }
+        if (def.stages() == null) {
+            return;
+        }
+        for (StageDef s : def.stages()) {
+            if (s.type() != StageType.SUBFLOW) {
+                continue;
+            }
+            if (s.action() == null || isBlank(s.action().subflowId())) {
+                errors.add("SUBFLOW stage " + s.id() + " needs action.subflowId");
+            } else if (def.findSubflow(s.action().subflowId()) == null) {
+                errors.add("SUBFLOW stage " + s.id() + " embeds unknown subflow " + s.action().subflowId());
+            }
+        }
+    }
+
+    /**
+     * A subflow is a small graph a call enters at its start and leaves from a stage with no way on, so
+     * it needs one, must not embed another subflow (v1), and cannot hold global stages: a global
+     * condition is the whole flow's, not a part's.
+     */
+    private static void checkSubflow(SubflowDef subflow, List<String> errors) {
+        String name = "subflow " + subflow.id();
+        if (subflow.stages().isEmpty()) {
+            errors.add(name + " must have at least one stage");
+            return;
+        }
+        int problemsBefore = errors.size();
+        Set<String> ids = new HashSet<>();
+        for (StageDef s : subflow.stages()) {
+            if (s.id() == null || s.id().isBlank()) {
+                errors.add(name + " has a stage with a blank id");
+            } else if (!ids.add(s.id())) {
+                errors.add("duplicate stage id " + s.id() + " in " + name);
+            }
+            if (s.type() == StageType.SUBFLOW) {
+                errors.add(name + " cannot embed another subflow (stage " + s.id() + ")");
+            }
+            if (s.globalCondition() != null) {
+                errors.add("stage " + s.id() + " of " + name + " cannot be global");
+            }
+        }
+        if (!isBlank(subflow.startStageId()) && !ids.contains(subflow.startStageId())) {
+            errors.add("startStageId " + subflow.startStageId() + " of " + name + " is not one of its stages");
+        }
+        for (StageDef s : subflow.stages()) {
+            if (s.allowedTransitions() == null) {
+                continue;
+            }
+            for (String target : s.allowedTransitions()) {
+                if (!ids.contains(target)) {
+                    errors.add("stage " + s.id() + " of " + name + " transitions to unknown stage " + target);
+                }
+            }
+        }
+        if (errors.size() > problemsBefore) {
+            return;
+        }
+        boolean hasWayOut = subflow.stages().stream().anyMatch(s -> s.type() != StageType.NOTE
+                && (s.allowedTransitions() == null || s.allowedTransitions().isEmpty()));
+        if (!hasWayOut) {
+            errors.add(name + " needs a stage with no outgoing transitions: a call could never leave or end in it");
+            return;
+        }
+        Map<String, StageDef> byId = new HashMap<>();
+        subflow.stages().forEach(s -> byId.put(s.id(), s));
+        Set<String> reached = new HashSet<>();
+        Deque<String> queue = new ArrayDeque<>();
+        queue.add(subflow.findStartStage().id());
+        while (!queue.isEmpty()) {
+            String id = queue.poll();
+            if (!reached.add(id)) {
+                continue;
+            }
+            List<String> next = byId.get(id).allowedTransitions();
+            if (next != null) {
+                queue.addAll(next);
+            }
+        }
+        for (StageDef s : subflow.stages()) {
+            if (s.type() != StageType.NOTE && !reached.contains(s.id())) {
+                errors.add("stage " + s.id() + " of " + name + " is not reachable from its start");
+            }
+        }
     }
 
     /**

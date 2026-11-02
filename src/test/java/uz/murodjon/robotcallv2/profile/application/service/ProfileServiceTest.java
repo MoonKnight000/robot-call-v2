@@ -10,6 +10,10 @@ import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCa
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.profile.application.dto.ChangePasswordRequest;
 import uz.murodjon.robotcallv2.profile.application.dto.UpdateProfileRequest;
+import uz.murodjon.robotcallv2.profile.domain.entity.Profile;
+import uz.murodjon.robotcallv2.shared.api.UploadedFile;
+import uz.murodjon.robotcallv2.storage.domain.entity.StoredFile;
+import uz.murodjon.robotcallv2.storage.domain.enums.FileCategory;
 import uz.murodjon.robotcallv2.report.application.port.input.DashboardReportUseCase;
 import uz.murodjon.robotcallv2.report.domain.entity.DashboardTotals;
 import uz.murodjon.robotcallv2.security.CurrentUser;
@@ -129,6 +133,29 @@ class ProfileServiceTest {
                 .thenReturn(new DashboardTotals(4, 2, 90.0, 0));
 
         assertThat(service.findTodayStats(COMPANY).totalCalls()).isEqualTo(4);
+    }
+
+    @Test
+    void uploadAvatarForPlatformAdminUserWithNullCompanyDoesNotThrowNpe() {
+        ImageUploadUseCase imageUploadUseCase = mock(ImageUploadUseCase.class);
+        AuditUseCase audit = mock(AuditUseCase.class);
+        ProfileService testService = new ProfileService(userUseCase, currentUser, passwordEncoder, imageUploadUseCase,
+                audit, dashboardReportUseCase, sessionUseCase, mock(TwoFactorUseCase.class),
+                companyConfigUseCase, Clock.fixed(NOW, ZoneOffset.UTC));
+
+        User platformAdminUser = new User(USER, null, "Platform Admin", "admin", "admin@example.com", "hash", null, "PLATFORM_ADMIN", "Platform Admin",
+                UserStatus.ACTIVE, null, null, null, null, null, null, null, null, null, null, null);
+        when(userUseCase.requireUser(0L, USER)).thenReturn(platformAdminUser);
+
+        StoredFile stored = new StoredFile(55L, 0L, FileCategory.IMAGE, "avatar.png", "platform/image/avatar.png", "files", "image/png", 100L, Instant.now());
+        UploadedFile file = mock(UploadedFile.class);
+        when(imageUploadUseCase.upload(file, 0L)).thenReturn(stored);
+
+        Profile profile = testService.uploadAvatar(0L, file);
+
+        assertThat(profile).isNotNull();
+        verify(imageUploadUseCase).upload(file, 0L);
+        verify(userUseCase).updateAvatarFileId(0L, USER, 55L);
     }
 
     private static User user(String passwordHash) {

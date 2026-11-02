@@ -318,7 +318,9 @@ public final class ScenarioCanvasConverter {
                 globalNodes.isEmpty() ? (fallback != null ? fallback.globalNodes() : null) : globalNodes,
                 callPurpose,
                 fallback != null ? fallback.startStageId() : null,
-                fallback != null ? fallback.transitionMode() : null
+                fallback != null ? fallback.transitionMode() : null,
+                // Subflows are not drawn on this canvas; they must survive its save untouched.
+                fallback != null ? fallback.subflows() : null
         );
     }
 

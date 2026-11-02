@@ -76,6 +76,7 @@ public class ScenarioDefinitionDeserializer extends JsonDeserializer<ScenarioDef
         List<String> guardrails = readStringList(node.get("guardrails"));
         List<StyleExample> styleExamples = readList(mapper, node.get("styleExamples"), StyleExample.class);
         List<GlobalNode> globalNodes = readList(mapper, node.get("globalNodes"), GlobalNode.class);
+        List<SubflowDef> subflows = readList(mapper, node.get("subflows"), SubflowDef.class);
 
         FactWebhook factWebhook = null;
         if (node.hasNonNull("factWebhook")) {
@@ -95,7 +96,8 @@ public class ScenarioDefinitionDeserializer extends JsonDeserializer<ScenarioDef
                 globalNodes,
                 callPurpose,
                 startStageId,
-                transitionMode
+                transitionMode,
+                subflows
         );
     }
 

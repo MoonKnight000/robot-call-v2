@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import uz.murodjon.robotcallv2.sms.application.port.output.EskizConnectionRepository;
 import uz.murodjon.robotcallv2.sms.domain.entity.SmsMessage;
 import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsEskizProperties;
 import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsProperties;
@@ -52,10 +53,10 @@ class EskizSmsClientAdapterTest {
         answer(200, "{\"message\":\"token_generated\",\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"id\":\"a\",\"status\":\"waiting\"}");
         answer(200, "{\"id\":\"b\",\"status\":\"waiting\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
 
-        assertThat(adapter.send(sms())).isTrue();
-        assertThat(adapter.send(sms())).isTrue();
+        assertThat(adapter.send(1L, sms())).isTrue();
+        assertThat(adapter.send(1L, sms())).isTrue();
 
         assertThat(requests).extracting(request -> request.uri().getPath())
                 .containsExactly(LOGIN_PATH, SEND_PATH, SEND_PATH);
@@ -68,9 +69,9 @@ class EskizSmsClientAdapterTest {
         answer(401, "{\"status\":\"token-invalid\"}");
         answer(200, "{\"data\":{\"token\":\"t2\"}}");
         answer(200, "{\"id\":\"a\",\"status\":\"success\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
 
-        assertThat(adapter.send(sms())).isTrue();
+        assertThat(adapter.send(1L, sms())).isTrue();
 
         assertThat(requests).extracting(request -> request.uri().getPath())
                 .containsExactly(LOGIN_PATH, SEND_PATH, LOGIN_PATH, SEND_PATH);
@@ -83,9 +84,9 @@ class EskizSmsClientAdapterTest {
         answer(401, "{\"status\":\"token-invalid\"}");
         answer(200, "{\"data\":{\"token\":\"t2\"}}");
         answer(401, "{\"status\":\"token-invalid\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
 
-        assertThat(adapter.send(sms())).isFalse();
+        assertThat(adapter.send(1L, sms())).isFalse();
 
         // One renewal per send, not a loop against a gateway that keeps saying no.
         assertThat(requests).hasSize(4);
@@ -95,18 +96,18 @@ class EskizSmsClientAdapterTest {
     void doesNotCountAnUnacceptedStatusAsSent() {
         answer(200, "{\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"status\":\"error\",\"message\":\"Invalid template\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
 
-        assertThat(adapter.send(sms())).isFalse();
+        assertThat(adapter.send(1L, sms())).isFalse();
     }
 
     @Test
     void sendsToTheDigitsOnlyNumberFromTheConfiguredSender() {
         answer(200, "{\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"status\":\"waiting\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
 
-        adapter.send(new SmsMessage("+998 90 123-45-67", "Salom"));
+        adapter.send(1L, new SmsMessage("+998 90 123-45-67", "Salom"));
 
         assertThat(requests.get(1).uri()).isEqualTo(URI.create("https://notify.eskiz.uz" + SEND_PATH));
         assertThat(requests.get(1).headers().firstValue("Content-Type"))
@@ -115,17 +116,17 @@ class EskizSmsClientAdapterTest {
 
     @Test
     void sendsNothingWithoutCredentials() {
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(new SmsProperties(true, null, null), httpClient, new ObjectMapper());
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(new SmsProperties(true, null, null), httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
 
-        assertThat(adapter.send(sms())).isFalse();
+        assertThat(adapter.send(1L, sms())).isFalse();
         assertThat(requests).isEmpty();
     }
 
     @Test
     void sendsNothingToANumberOutsideUzbekistan() {
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper());
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
 
-        assertThat(adapter.send(new SmsMessage("+79161234567", "Salom"))).isFalse();
+        assertThat(adapter.send(1L, new SmsMessage("+79161234567", "Salom"))).isFalse();
         assertThat(requests).isEmpty();
     }
 

@@ -64,6 +64,7 @@ public record AiAgent(
         AiAgentDataPolicy dataPolicy,
         String llmModel,
         String fastLlmModel,
+        LlmFallback llmFallback,
         Double temperature,
         Integer maxOutputTokens,
         boolean useRag,

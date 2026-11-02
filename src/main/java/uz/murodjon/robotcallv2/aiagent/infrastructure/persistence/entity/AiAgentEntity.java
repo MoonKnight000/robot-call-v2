@@ -7,6 +7,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentTemplate;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.LlmFallbackMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
@@ -124,6 +125,13 @@ public class AiAgentEntity {
 
     @Column(name = "fast_llm_model")
     private String fastLlmModel;
+
+    @Column(name = "fallback_llm_model")
+    private String fallbackLlmModel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "fallback_llm_mode")
+    private LlmFallbackMode fallbackLlmMode;
 
     private Double temperature = 0.3;
 
@@ -383,6 +391,22 @@ public class AiAgentEntity {
 
     public void setFastLlmModel(String fastLlmModel) {
         this.fastLlmModel = fastLlmModel;
+    }
+
+    public String getFallbackLlmModel() {
+        return fallbackLlmModel;
+    }
+
+    public void setFallbackLlmModel(String fallbackLlmModel) {
+        this.fallbackLlmModel = fallbackLlmModel;
+    }
+
+    public LlmFallbackMode getFallbackLlmMode() {
+        return fallbackLlmMode;
+    }
+
+    public void setFallbackLlmMode(LlmFallbackMode fallbackLlmMode) {
+        this.fallbackLlmMode = fallbackLlmMode;
     }
 
     public Double getTemperature() {

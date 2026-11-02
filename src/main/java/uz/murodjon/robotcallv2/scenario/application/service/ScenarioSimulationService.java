@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.scenario.application.port.input.ScenarioUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.PersonaTestResult;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.service.SubflowExpander;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.util.ArrayList;
@@ -66,6 +67,7 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
         if (definition == null) {
             throw new ValidationException(null, "Scenario definition must be provided");
         }
+        definition = SubflowExpander.expand(definition);
 
         String defaultInitialStage = definition.stages() != null && !definition.stages().isEmpty()
                 ? definition.findStartStage().id()
@@ -168,7 +170,7 @@ public class ScenarioSimulationService implements ScenarioSimulationUseCase {
     @Override
     public List<PersonaTestResult> runPersonaTests(long companyId, Long scenarioId) {
         Scenario scenario = scenarioService.requireScenario(companyId, scenarioId);
-        ScenarioDefinition def = scenario.definition();
+        ScenarioDefinition def = SubflowExpander.expand(scenario.definition());
 
         List<PersonaTestResult> results = new ArrayList<>();
 

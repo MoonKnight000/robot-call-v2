@@ -192,6 +192,11 @@ class AiAgentEngineGuard {
         return requireKnownModel(PipelineMode.CASCADE, null, fastLlmModel);
     }
 
+    /** The backup text model: a cascade LLM, checked like {@link #requireKnownFastModel}. */
+    String requireKnownFallbackModel(String fallbackLlmModel) {
+        return requireKnownModel(PipelineMode.CASCADE, null, fallbackLlmModel);
+    }
+
     /**
      * The post-call analysis with its model checked as the fast model is: the transcript is
      * read by a cascade text LLM whatever pipeline the call ran on. No model — the platform's

@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.company.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
-import uz.murodjon.robotcallv2.shared.integration.IntegrationProvider;
 
 import java.time.Instant;
 
@@ -21,9 +20,8 @@ public class CompanyIntegrationAccessEntity implements CompanySwitchRow {
     @JoinColumn(name = "company_id", nullable = false)
     private CompanyEntity company;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private IntegrationProvider provider;
+    private String provider;
 
     @Column(nullable = false)
     private boolean enabled;
@@ -43,11 +41,11 @@ public class CompanyIntegrationAccessEntity implements CompanySwitchRow {
         this.company = company;
     }
 
-    public IntegrationProvider getProvider() {
+    public String getProvider() {
         return provider;
     }
 
-    public void setProvider(IntegrationProvider provider) {
+    public void setProvider(String provider) {
         this.provider = provider;
     }
 

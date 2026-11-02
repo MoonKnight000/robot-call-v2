@@ -37,6 +37,7 @@ public class AiAgentBuilder {
     private AiAgentDataPolicy dataPolicy;
     private String llmModel;
     private String fastLlmModel;
+    private LlmFallback llmFallback;
     private Double temperature;
     private Integer maxOutputTokens;
     private boolean useRag;
@@ -86,6 +87,7 @@ public class AiAgentBuilder {
         this.dataPolicy = source.dataPolicy();
         this.llmModel = source.llmModel();
         this.fastLlmModel = source.fastLlmModel();
+        this.llmFallback = source.llmFallback();
         this.temperature = source.temperature();
         this.maxOutputTokens = source.maxOutputTokens();
         this.useRag = source.useRag();
@@ -208,6 +210,11 @@ public class AiAgentBuilder {
 
     public AiAgentBuilder fastLlmModel(String fastLlmModel) {
         this.fastLlmModel = fastLlmModel;
+        return this;
+    }
+
+    public AiAgentBuilder llmFallback(LlmFallback llmFallback) {
+        this.llmFallback = llmFallback;
         return this;
     }
 
@@ -357,6 +364,7 @@ public class AiAgentBuilder {
                 dataPolicy,
                 llmModel,
                 fastLlmModel,
+                llmFallback,
                 temperature,
                 maxOutputTokens,
                 useRag,

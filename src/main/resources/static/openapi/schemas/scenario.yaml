@@ -151,6 +151,11 @@ ScenarioDefinition:
       type: string
       enum: [RIGID, FLEX]
       description: RIGID (default) — only the stage's own transitions; FLEX — any conversation stage, the drawn edges first
+    subflows:
+      type: array
+      description: reusable stage groups; a SUBFLOW stage embeds one (`action.subflowId`). Omitted when there are none
+      items:
+        $ref: '#/SubflowDef'
 ScenarioFilter:
   type: object
   description: Pagination + filter + sort for POST /api/scenarios/list (§10.7).
@@ -329,7 +334,7 @@ StageDef:
         type: string
     type:
       type: string
-      enum: [CONVERSATION, FUNCTION, CALL_TRANSFER, PRESS_DIGIT, LOGIC_SPLIT, AGENT_TRANSFER, SMS, EXTRACT_VARIABLE, CODE, MCP, ENDING, NOTE]
+      enum: [CONVERSATION, FUNCTION, CALL_TRANSFER, PRESS_DIGIT, LOGIC_SPLIT, AGENT_TRANSFER, SMS, EXTRACT_VARIABLE, CODE, MCP, SUBFLOW, ENDING, NOTE]
       description: what the stage does; null = CONVERSATION
     position:
       $ref: '#/StagePosition'
@@ -367,6 +372,9 @@ StageAction:
       description: EXTRACT_VARIABLE — names from `outcomeSchema`
       items:
         type: string
+    subflowId:
+      type: string
+      description: SUBFLOW — the `id` of the subflow (in `subflows`) this block embeds
     code:
       type: string
       description: CODE — the script to run, up to 20000 characters
@@ -374,6 +382,24 @@ StageAction:
       type: integer
       format: int64
       description: MCP — the company MCP connection `toolName` belongs to
+SubflowDef:
+  type: object
+  description: A group of stages embedded in a flow by a SUBFLOW stage. The call leaves it from any stage with no outgoing transitions (and not an ENDING), onto the embedding stage's own transitions.
+  required: [id, stages]
+  properties:
+    id:
+      type: string
+      description: unique within the scenario, compared case-insensitively
+    title:
+      type: string
+      description: name shown on the canvas
+    startStageId:
+      type: string
+      description: the stage the subflow opens on; null = the first of `stages`
+    stages:
+      type: array
+      items:
+        $ref: '#/StageDef'
 StagePosition:
   type: object
   description: where a stage sits on the editor canvas; not read by a call

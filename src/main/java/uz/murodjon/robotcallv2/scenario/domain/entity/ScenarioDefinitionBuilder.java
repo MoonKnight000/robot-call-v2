@@ -25,6 +25,7 @@ public class ScenarioDefinitionBuilder {
     private String callPurpose;
     private String startStageId;
     private TransitionMode transitionMode;
+    private List<SubflowDef> subflows;
 
     ScenarioDefinitionBuilder() {
     }
@@ -43,6 +44,7 @@ public class ScenarioDefinitionBuilder {
         this.callPurpose = source.callPurpose();
         this.startStageId = source.startStageId();
         this.transitionMode = source.transitionMode();
+        this.subflows = source.subflows();
     }
 
     public ScenarioDefinitionBuilder stages(List<StageDef> stages) {
@@ -110,8 +112,14 @@ public class ScenarioDefinitionBuilder {
         return this;
     }
 
+    public ScenarioDefinitionBuilder subflows(List<SubflowDef> subflows) {
+        this.subflows = subflows;
+        return this;
+    }
+
     public ScenarioDefinition build() {
         return new ScenarioDefinition(stages, factSchema, tools, outcomeSchema, rolePrompt, guardrails,
-                disclosureText, factWebhook, styleExamples, globalNodes, callPurpose, startStageId, transitionMode);
+                disclosureText, factWebhook, styleExamples, globalNodes, callPurpose, startStageId, transitionMode,
+                subflows);
     }
 }

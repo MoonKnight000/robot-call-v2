@@ -174,6 +174,12 @@ public class CallFinalizer implements CallFinalizationUseCase {
             } catch (Exception e) {
                 log.warn("[{}] could not resolve companyId: {}", callAttemptId, e.getMessage());
             }
+            // An inbound call has no outbound tracking entry, so the caller passes no number: the
+            // attempt row still holds the caller's, and without it the extracted contact fields
+            // and the phone-bound post-call actions were silently skipped.
+            if (phone == null || phone.isBlank()) {
+                phone = callRecordService.findPhoneByAttemptId(callAttemptId);
+            }
 
             Long recordingFileId = null;
             boolean shouldStoreAudio = agent == null || agent.dataPolicy().keepsCallAudio();

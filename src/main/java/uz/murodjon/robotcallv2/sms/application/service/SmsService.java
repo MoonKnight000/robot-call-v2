@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
 import uz.murodjon.robotcallv2.sms.application.port.input.SmsUseCase;
+import uz.murodjon.robotcallv2.sms.application.port.output.EskizConnectionRepository;
 import uz.murodjon.robotcallv2.sms.application.port.output.SmsSenderPort;
 import uz.murodjon.robotcallv2.sms.domain.entity.SmsMessage;
 import uz.murodjon.robotcallv2.sms.domain.enums.SmsStatus;
@@ -24,21 +25,24 @@ public class SmsService implements SmsUseCase {
 
     private final boolean enabled;
     private final SmsSenderPort smsSender;
+    private final EskizConnectionRepository eskizConnectionRepository;
     private final AuditUseCase auditService;
 
     public SmsService(
             SmsProperties smsProperties,
             SmsSenderPort smsSender,
+            EskizConnectionRepository eskizConnectionRepository,
             AuditUseCase auditService
     ) {
         this.enabled = smsProperties.enabled();
         this.smsSender = smsSender;
+        this.eskizConnectionRepository = eskizConnectionRepository;
         this.auditService = auditService;
     }
 
     @Override
-    public boolean isEnabled() {
-        return enabled;
+    public boolean isEnabled(long companyId) {
+        return enabled || eskizConnectionRepository.findByCompanyId(companyId).isPresent();
     }
 
     /**
@@ -51,7 +55,7 @@ public class SmsService implements SmsUseCase {
         // Masked number and the length only: an SMS body is a payment link, a card number or
         // an address, and neither a log line nor the audit trail is the place to keep it.
         String masked = PhoneMasker.mask(request.phone());
-        if (!enabled) {
+        if (!isEnabled(companyId)) {
             // Not sent, so not "true": the mid-call tool tells the caller what this returns.
             log.info("[SMS DISABLED] Would send SMS to {} ({} chars)", masked, request.message().length());
             return false;
@@ -60,7 +64,7 @@ public class SmsService implements SmsUseCase {
         SmsMessage sms = new SmsMessage(request.phone(), request.message());
         try {
             log.info("Sending SMS to {} ({} chars)", masked, sms.getMessage().length());
-            if (smsSender.send(sms)) {
+            if (smsSender.send(companyId, sms)) {
                 sms.markSent();
             } else {
                 sms.markFailed();

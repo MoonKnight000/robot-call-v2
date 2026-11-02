@@ -324,17 +324,21 @@ platforma o'chirgan provayder yashirilmaydi, `DISABLED_BY_PLATFORM` deb belgilan
 
 | Maydon | Izoh |
 |---|---|
-| `provider` | `UYSOT`, `AMOCRM`, `KOMMO`, `BITRIX24`, `GOOGLE_DRIVE`, `NOTION`, `ASTERISK` |
-| `category` | `CRM`, `KNOWLEDGE_BASE`, `TELEPHONY` — katalogni guruhlash uchun |
-| `authMethod` | `OAUTH` yoki `API_TOKEN`; `null` — hali `COMING_SOON` |
+| `provider` | Katalog yozuvining kaliti (erkin matn, `UPPER_SNAKE_CASE`): sukut bo'yicha `UYSOT`, `AMOCRM`, `KOMMO`, `BITRIX24`, `GOOGLE_DRIVE`, `NOTION`, `ESKIZ`, `ASTERISK`; platforma admini qo'shganlari ham keladi ([platform-integrations.md](platform-integrations.md)) |
+| `displayName` | Yozuv nomi |
+| `category` | Kategoriya kaliti (sukut bo'yicha `CRM`, `FILE_MANAGER`, `KNOWLEDGE_BASE`, `SMS`, `TELEPHONY`; admin qo'shganlari ham bor) — katalogni guruhlash uchun |
+| `categoryName` | Kategoriya sarlavhasi (ko'rsatish uchun) |
+| `authMethod` | Ustuvor ulanish usuli — `authMethods` ning birinchisi |
+| `authMethods` | Barcha ulanish usullari: `OAUTH`, `API_TOKEN`, `LOGIN_PASSWORD` (Uysot — `OAUTH` yoki `API_TOKEN`; Eskiz — `LOGIN_PASSWORD`; Google Drive — `OAUTH`) |
 | `status` | `AVAILABLE` — ulash mumkin; `COMING_SOON` — rejada, konnektor yo'q; `DISABLED_BY_PLATFORM` — platforma bu kompaniya uchun o'chirgan |
 | `available` | `status == AVAILABLE` (eski maydon, moslik uchun) |
+| `iconUrl` | Platforma admini yuklagan logo uchun yo'l (`/api/integration-icons/{provider}?v=...`); `<img src>` ga to'g'ridan-to'g'ri qo'yib bo'lmaydi — oddiy API so'rovi kabi `Authorization` sarlavhasi bilan olinadi (blob). Yuklanmagan bo'lsa `null` ([platform-integrations.md](platform-integrations.md)) |
 
 ```json
 [
-  { "provider": "UYSOT", "displayName": "Uysot CRM", "category": "CRM", "authMethod": "OAUTH", "status": "AVAILABLE", "available": true },
-  { "provider": "BITRIX24", "displayName": "Bitrix24", "category": "CRM", "authMethod": "API_TOKEN", "status": "DISABLED_BY_PLATFORM", "available": false },
-  { "provider": "GOOGLE_DRIVE", "displayName": "Google Drive", "category": "KNOWLEDGE_BASE", "authMethod": null, "status": "COMING_SOON", "available": false }
+  { "provider": "UYSOT", "displayName": "Uysot CRM", "category": "CRM", "categoryName": "CRM tizimlari", "authMethod": "OAUTH", "authMethods": ["OAUTH"], "status": "AVAILABLE", "available": true, "iconUrl": "/api/integration-icons/UYSOT?v=12" },
+  { "provider": "BITRIX24", "displayName": "Bitrix24", "category": "CRM", "categoryName": "CRM tizimlari", "authMethod": "API_TOKEN", "authMethods": ["API_TOKEN"], "status": "DISABLED_BY_PLATFORM", "available": false, "iconUrl": null },
+  { "provider": "ESKIZ", "displayName": "Eskiz SMS", "category": "SMS", "categoryName": "SMS", "authMethod": "LOGIN_PASSWORD", "authMethods": ["LOGIN_PASSWORD"], "status": "AVAILABLE", "available": true, "iconUrl": null }
 ]
 ```
 
@@ -343,6 +347,23 @@ platforma o'chirgan provayder yashirilmaydi, `DISABLED_BY_PLATFORM` deb belgilan
 ham u CRM'ga yozmaydi va o'qimaydi (qo'ng'iroq CRM'siz davom etadi), ulanish ma'lumoti saqlanadi va provayder qayta
 yoqilsa ishga tushadi. Uysot o'chirilsa, Uysot webhook ham e'tiborsiz qoladi. Butun `INTEGRATIONS` feature'i o'chirilsa
 bu bo'lim umuman yopiladi.
+
+### Eskiz SMS — kompaniyaning o'z hisobi
+
+Har kompaniya SMS'ni o'zining Eskiz hisobidan yuboradi (ulanish usuli — `LOGIN_PASSWORD`). Login va parol shifrlanib
+saqlanadi, parol javobda hech qachon qaytmaydi. Kompaniya hisob ulamagan bo'lsa, SMS platformaning o'z Eskiz
+loginidan (`SMS_ESKIZ_*`) ketadi — u ham yo'q bo'lsa yuborilmaydi. Mijozga SMS yuboradigan hamma joy (agentning
+`SEND_SMS` funksiyasi, qo'ng'iroqdan keyingi harakat, kampaniya qoidasi) shu hisobni ishlatadi.
+
+| Endpoint | Huquq | Tavsif |
+|---|---|---|
+| `GET /api/settings/integrations/eskiz` | `INTEGRATION_READ` | `{ "connected": true, "email": "...", "sender": "4546", "connectedAt": "..." }`; ulanmagan bo'lsa `connected: false`, qolganlari `null` |
+| `PUT /api/settings/integrations/eskiz` | `INTEGRATION_EDIT` | Body `{ "email", "password", "sender" }` (`sender` bo'sh — platforma standarti, ko'pi bilan 32 belgi). Avval Eskiz'ga kirib tekshiradi, keyin saqlaydi |
+| `DELETE /api/settings/integrations/eskiz` | `INTEGRATION_EDIT` | Hisobni unutadi |
+
+Xatolar: `400 SMS_ESKIZ_CREDENTIALS_REQUIRED`, `SMS_ESKIZ_LOGIN_FAILED` (Eskiz loginni qabul qilmadi — saqlanmaydi),
+`SMS_ESKIZ_SENDER_INVALID`; `403 COMPANY_INTEGRATION_DISABLED` (platforma `ESKIZ` ni o'chirgan); `409 ENCRYPTION_KEY_NOT_SET`.
+Audit: `ESKIZ_CONNECT`, `ESKIZ_DISCONNECT`.
 
 Kompaniyaga bir vaqtda **bitta** CRM ulanadi: Uysot — OAuth orqali (`PUT /uysot` →
 `authorize-url` → `callback`), amoCRM / Kommo / Bitrix24 — manzil va token bilan

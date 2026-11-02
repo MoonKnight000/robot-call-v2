@@ -122,6 +122,7 @@ AgentClearableField:
   - MID_CALL_SMS_TEMPLATE
   - VOICEMAIL_MESSAGE
   - FAST_LLM_MODEL
+  - FALLBACK_LLM_MODEL
   - GREETING_PAUSE
   - SPEECH_LANGUAGES
   - RESPONSE_WAIT_MS
@@ -701,6 +702,10 @@ AiAgentRow:
       type: string
     fastLlmModel:
       type: string
+    fallbackLlmModel:
+      type: string
+    fallbackLlmMode:
+      $ref: '#/LlmFallbackMode'
     temperature:
       type: number
       format: double
@@ -906,6 +911,11 @@ CreateAiAgentRequest:
     fastLlmModel:
       type: string
       maxLength: 120
+    fallbackLlmModel:
+      type: string
+      maxLength: 120
+    fallbackLlmMode:
+      $ref: '#/LlmFallbackMode'
     temperature:
       type: number
       format: double
@@ -1245,6 +1255,11 @@ UpdateAiAgentRequest:
     fastLlmModel:
       type: string
       maxLength: 120
+    fallbackLlmModel:
+      type: string
+      maxLength: 120
+    fallbackLlmMode:
+      $ref: '#/LlmFallbackMode'
     temperature:
       type: number
       format: double
@@ -1323,6 +1338,12 @@ UpdateAiAgentRequest:
       uniqueItems: true
   required:
   - name
+LlmFallbackMode:
+  type: string
+  description: When the fallback model takes over from the main one — after its request failed (SEQUENTIAL) or when it sends no first token in time (CONCURRENT).
+  enum:
+  - SEQUENTIAL
+  - CONCURRENT
 VoicemailAction:
   type: string
   enum:

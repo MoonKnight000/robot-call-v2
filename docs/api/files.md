@@ -29,8 +29,12 @@ Interfeysdan har qanday fayllarni (rasmlar, audio namunalar, CSV/hujjatlar) yukl
 
 **Fayl turi baytlardan aniqlanadi**, brauzer yuborgan `Content-Type`ga ishonilmaydi (u
 faqat DOCX/XLSX va CSV/TXT ni ajratish uchun o'qiladi). Ruxsat etilgan turlar: `png`,
-`jpeg`, `webp`, `wav`, `mp3`, `ogg`, `pdf`, `docx`, `xlsx`, `csv`, `txt`. Boshqa har qanday
-fayl (SVG, HTML, exe, "png" deb nomlangan HTML va h.k.) — `400 FILE_TYPE_NOT_ALLOWED`.
+`jpeg`, `webp`, `svg`, `wav`, `mp3`, `ogg`, `pdf`, `docx`, `xlsx`, `csv`, `txt`. Boshqa har qanday
+fayl (HTML, exe, "png" deb nomlangan HTML va h.k.) — `400 FILE_TYPE_NOT_ALLOWED`.
+**SVG** faqat `Content-Type: image/svg+xml` bilan va faqat xavfsiz bo'lsa qabul qilinadi: ildizi `<svg`
+(boshidan 1 KB ichida) va ichida `<script`, `<foreignObject`, `<iframe`, `<embed`, `<object`, `<!ENTITY`,
+`<!DOCTYPE`, `javascript:` hamda `onclick=` kabi hodisa atributlari bo'lmasligi shart — aks holda
+`400 FILE_TYPE_NOT_ALLOWED`. SVG hech qachon `inline` qaytmaydi (`attachment`); frontend uni `<img>` orqali ko'rsatadi.
 Baytlar hech bir ruxsat etilgan turga mos kelmasa va brauzer `Content-Type` ham yubormagan
 bo'lsa — `400 FILE_TYPE_UNRECOGNIZED` (avval shu holatda `FILE_TYPE_NOT_ALLOWED` "unknown" bilan qaytardi).
 MinIO'dagi obyekt nomi kengaytmasi ham aniqlangan turdan olinadi, foydalanuvchi bergan
