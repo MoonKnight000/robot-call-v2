@@ -4,7 +4,6 @@ import uz.murodjon.robotcallv2.integration.domain.enums.CrmPermission;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmScopeLevel;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmToolGroup;
-import uz.murodjon.robotcallv2.integration.domain.enums.IntegrationToolKind;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 /** Builder for {@link IntegrationTool}; start from {@link IntegrationTool#toBuilder()} to change a few fields. */
@@ -13,7 +12,6 @@ public final class IntegrationToolBuilder {
     private long id;
     private CrmProvider provider;
     private String key;
-    private IntegrationToolKind kind = IntegrationToolKind.BUILT_IN;
     private CrmToolGroup group;
     private String label;
     private String description;
@@ -23,7 +21,6 @@ public final class IntegrationToolBuilder {
     private boolean platformEnabled = true;
     private int sortOrder;
     private Tool definition;
-    private String modelDescription;
 
     IntegrationToolBuilder() {
     }
@@ -32,7 +29,6 @@ public final class IntegrationToolBuilder {
         this.id = tool.id();
         this.provider = tool.provider();
         this.key = tool.key();
-        this.kind = tool.kind();
         this.group = tool.group();
         this.label = tool.label();
         this.description = tool.description();
@@ -42,7 +38,6 @@ public final class IntegrationToolBuilder {
         this.platformEnabled = tool.platformEnabled();
         this.sortOrder = tool.sortOrder();
         this.definition = tool.definition();
-        this.modelDescription = tool.modelDescription();
     }
 
     public IntegrationToolBuilder id(long id) {
@@ -57,11 +52,6 @@ public final class IntegrationToolBuilder {
 
     public IntegrationToolBuilder key(String key) {
         this.key = key;
-        return this;
-    }
-
-    public IntegrationToolBuilder kind(IntegrationToolKind kind) {
-        this.kind = kind;
         return this;
     }
 
@@ -110,13 +100,8 @@ public final class IntegrationToolBuilder {
         return this;
     }
 
-    public IntegrationToolBuilder modelDescription(String modelDescription) {
-        this.modelDescription = modelDescription;
-        return this;
-    }
-
     public IntegrationTool build() {
-        return new IntegrationTool(id, provider, key, kind, group, label, description, permission, scope,
-                defaultEnabled, platformEnabled, sortOrder, definition, modelDescription);
+        return new IntegrationTool(id, provider, key, group, label, description, permission, scope,
+                defaultEnabled, platformEnabled, sortOrder, definition);
     }
 }

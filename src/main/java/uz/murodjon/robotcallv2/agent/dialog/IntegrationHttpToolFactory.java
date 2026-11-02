@@ -4,10 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmSettingsUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmSettings;
 import uz.murodjon.robotcallv2.integration.application.port.input.IntegrationToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
+import uz.murodjon.robotcallv2.tool.domain.service.ToolOverrides;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,16 +46,6 @@ class IntegrationHttpToolFactory {
         this.crmSettingsUseCase = crmSettingsUseCase;
     }
 
-    /** The text the platform admin set for built-in Uysot tools, by tool name; empty if none or on a failure. */
-    Map<String, String> findBuiltInDescriptions() {
-        try {
-            return integrationToolUseCase.findBuiltInModelDescriptions();
-        } catch (RuntimeException e) {
-            log.warn("Built-in tool descriptions not loaded: {}", e.getMessage());
-            return Map.of();
-        }
-    }
-
     /** Empty when the company is not connected to Uysot or has no such tool on. Never throws: a call goes on without them. */
     List<ToolCallback> build(DialogOutcomeSink session, long companyId, Map<String, Object> callVariables) {
         try {
@@ -62,11 +54,22 @@ class IntegrationHttpToolFactory {
                 return List.of();
             }
             Map<String, Object> variables = withCrmVariables(callVariables, crmSettingsUseCase.findByCompanyId(companyId));
+            // The zone a time the model names is read in (a CRM task's deadline, "x-format": "epochSeconds").
+            if (session.agent() != null && session.agent().timezone() != null) {
+                variables.putIfAbsent("timezone", session.agent().timezone());
+            }
+            Map<String, AgentFunction> functions = AgentFunctionPlan.indexByModelName(session.agent(), null);
             List<ToolCallback> callbacks = new ArrayList<>();
             for (Tool tool : tools) {
-                if (HttpToolExecutor.isOfferedToModel(tool)
-                        && IntegrationToolFilter.isOffered(session, HttpToolExecutor.sanitizeToolName(tool.name()), tool.name())) {
-                    callbacks.add(httpToolExecutor.buildCallback(tool, session, variables));
+                String modelName = HttpToolExecutor.sanitizeToolName(tool.name());
+                if (!IntegrationToolFilter.isOffered(session, modelName, tool.name())) {
+                    continue;
+                }
+                // The agent's own inputs and answer fields, as its function form saved them.
+                AgentFunction function = functions.getOrDefault(tool.name(), functions.get(modelName));
+                Tool own = function == null ? tool : ToolOverrides.apply(tool, function.integration());
+                if (HttpToolExecutor.isOfferedToModel(own)) {
+                    callbacks.add(httpToolExecutor.buildCallback(own, session, variables));
                 }
             }
             return callbacks;

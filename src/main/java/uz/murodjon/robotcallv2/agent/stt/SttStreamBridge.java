@@ -6,7 +6,7 @@ import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
 import uz.murodjon.robotcallv2.agent.audio.StreamingUpsampler;
 import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
-import uz.murodjon.robotcallv2.agent.turn.AgentQuestion;
+import uz.murodjon.robotcallv2.agent.turn.AgentQuestionCues;
 import uz.murodjon.robotcallv2.agent.turn.TranscriptTurnCues;
 import uz.murodjon.robotcallv2.agent.turn.TurnCue;
 
@@ -582,10 +582,21 @@ public class SttStreamBridge implements AudioListener, Closeable {
         return true;
     }
 
-    /** Tell the call's speech gate what the agent just asked ({@link SpeechGate#setAgentQuestion}). */
-    public void setAgentQuestion(AgentQuestion agentQuestion) {
+    /** Tell the call's speech gate what the speculative reply made of an interim ({@link SpeechGate#setLlmTurnCue}). */
+    public void setLlmTurnCue(String transcript, TurnCue cue) {
         if (gate != null) {
-            gate.setAgentQuestion(agentQuestion);
+            gate.setLlmTurnCue(transcript, cue);
+        }
+    }
+
+    /**
+     * Tell the call's speech gate what the agent just said: the kind of answer it asked for
+     * ({@link SpeechGate#setAgentQuestion}) and the line itself ({@link SpeechGate#setAgentLine}).
+     */
+    public void setAgentLine(String agentLine) {
+        if (gate != null) {
+            gate.setAgentQuestion(AgentQuestionCues.classify(agentLine));
+            gate.setAgentLine(agentLine);
         }
     }
 

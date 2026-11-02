@@ -258,7 +258,8 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "transferQueueId": 4,
     "preConversationAudioFileId": null,
     "pressDigitEnabled": false,
-    "responseWaitMs": 600
+    "responseWaitMs": 600,
+    "llmTurnDetection": null
   },
   "limits": {
     "concurrentCallsLimit": 15,
@@ -392,6 +393,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > | Maydon | Tip | Ma'nosi |
 > |---|---|---|
 > | `callBehaviour.responseWaitMs` | integer, 100–3000 | Mijoz gapirib bo'lgach, agent navbatni olishdan oldin kutadigan sukut (ms). Kichik — tezroq javob, lekin mijoz o'ylab turganda gapini bo'lishi mumkin. `null` — o'rnatma standarti |
+> | `callBehaviour.llmTurnDetection` | boolean \| null | Mijoz gapini tugatganini LLM ham aniqlasin: oldindan yozilayotgan javob boshlansa — agent kamroq kutadi, LLM `waitForCaller` ni tanlasa — ko'proq kutadi. So'z qoidalari "gap tugamagan" desa, LLM uni qisqartira olmaydi. O'zbek tili uchun mo'ljallangan (u uchun turn modeli yo'q). `null` — o'rnatma standarti (`DIALOG_SPECULATIVE_TURN_CUE`, standart yoqilgan) |
 > | `callBehaviour.reminderAfterSeconds` | integer, 1–300 | Mijoz shuncha soniya jim tursa, agent "hali shu yerdamisiz?" deb so'raydi. `null` — o'rnatma standarti |
 > | `callBehaviour.reminderMaxCount` | integer, 0–10 | Qo'ng'iroq tugatilguncha nechta eslatma. `0` — birinchi jimlikdayoq tugatadi. `null` — o'rnatma standarti |
 > | `callBehaviour.dtmfTimeoutMs` | integer, 500–10000 | Tugmalar orasidagi pauza: shundan keyin terilgan raqamlar dialogga bitta gap bo'lib beriladi. `null` — 2000 |
@@ -412,6 +414,8 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > - `responseWaitMs` — VAD gating yoqilgan bo'lsa (`voice-agent.stt.vad-gating.enabled`, standart yoqilgan).
 >   Faqat uzun gapdan keyingi kutishni almashtiradi; qisqa javob va tugallangan gapdan keyin agent undan
 >   tezroq javob berishi mumkin, kechroq emas.
+> - `llmTurnDetection` — VAD gating va oldindan javob yozish (`DIALOG_PREEMPTIVE`, standart yoqilgan) ikkalasi ham
+>   yoqilgan bo'lsa. Ssenariy bloki uni almashtirmaydi.
 > - `transcriptionMode` — server `voice-agent.stt.transcription-modes.<provayder>.fast|accurate` da shu
 >   provayder uchun model nomini bergan bo'lsagina; berilmagan bo'lsa ta'siri yo'q. Aniq `sttModel` agent
 >   rejimidan ustun (blok rejimi esa undan ham ustun).
@@ -659,6 +663,7 @@ faqat `PUT`):
 | `DTMF_DIGIT_LIMIT` | `callBehaviour.dtmfDigitLimit` (cheklovsiz) |
 | `RING_DURATION_SECONDS` | `callBehaviour.ringDurationSeconds` (o'rnatma standartiga qaytadi) |
 | `RAG_MIN_SCORE` | `ragMinScore` (standart `0.62` ga qaytadi) |
+| `LLM_TURN_DETECTION` | `callBehaviour.llmTurnDetection` (o'rnatma standartiga qaytadi) |
 
 Bir xil so'rovda maydonga qiymat berib, uni `clearFields` ga ham qo'shish —
 `400 AI_AGENT_CLEAR_FIELD_CONFLICT` (hech narsa yozilmaydi). Ro'yxatda yo'q maydonlar avvalgidek
@@ -960,7 +965,7 @@ Agent qo'ng'iroqda qaysi tool'larni **ko'rishi** shu yerda aniq belgilanadi. **Y
 - **Operatorga ulash (`requestHumanTransfer`)** *(legacy; `functions` saqlangan bo'lsa `TRANSFER_CALL` funksiyasi hal qiladi)* — faqat qo'ng'iroq uchun **ulanadigan joy bor bo'lsagina** beriladi. Joy (OperatorTransferService tartibi bilan): joriy `CALL_TRANSFER` bosqichining raqami → `callBehaviour.transferQueueId` → `callBehaviour.transferPhoneNumber` → umumiy operator (`voice-agent.operator.enabled=true` va `endpoint` berilgan). Hech biri bo'lmasa tool modelga umuman ko'rsatilmaydi (ilgari qo'ng'iroq shunchaki uzilardi) va prompt ham "operatorga ulang" demaydi. REALTIME'da tool ulanishda bir marta e'lon qilinadi: ssenariyning birorta `CALL_TRANSFER` bosqichida raqam bo'lsa e'lon qilinadi, lekin raqamsiz bosqichda chaqirilsa xato qaytadi. Frontend: agent kartochkasida `transferQueueId`/`transferPhoneNumber` yo'q va platformada umumiy operator sozlanmagan bo'lsa "Operatorga ulash" nofaol/ogohlantirish bilan ko'rsatilishi kerak.
 - **Tugma bosish / IVR (`sendDtmfTones`)** *(legacy; `functions` saqlangan bo'lsa `PRESS_DIGIT` funksiyasi)* — `callBehaviour.pressDigitEnabled` (boolean, standart `false`). `true` bo'lsa tool ssenariyda `sendDtmfTones` ToolDef bo'lmasa ham beriladi va bosqichning `allowedTools` ro'yxati uni cheklamaydi. `false` bo'lsa — eskicha: faqat ssenariy `sendDtmfTones` ToolDef'ini e'lon qilgan bo'lsagina. **`dtmfInputEnabled` bilan adashtirmang** — u mijoz tugma bosib raqam kiritishi.
 - **Qo'ng'iroq ichidagi SMS (`sendMidCallSms`)** *(legacy; `functions` saqlangan bo'lsa `SEND_SMS` funksiyasi)* — `callBehaviour.midCallSmsEnabled` (+ `midCallSmsTemplate`), o'zgarmagan.
-- **Integratsiya tool'lari** *(legacy; `functions` saqlangan bo'lsa `INTEGRATION` funksiyalari ro'yxati ruxsat ro'yxati bo'ladi va `disabledIntegrationTools` e'tiborsiz)* — `disabledIntegrationTools` (`PUT /api/ai-agents/{id}`, `GET` javobida `AiAgentRow.disabledIntegrationTools`, standart `[]`). Kompaniya yoqqan Uysot tool'lari (built-in CRM tool'lar va integratsiyaning HTTP tool'lari, jumladan `createLead`, `moveLeadStage` kabi yozuvchilar) ilgari kompaniyaning **barcha** agentlariga berilardi; endi agent o'zi keraklisini o'chira oladi. Bo'sh ro'yxat — kompaniya sozlamasiga ergashadi. Element: built-in tool uchun katalog kaliti (`CREATE_LEAD`) yoki modelga ko'rinadigan nom (`createLead`); HTTP tool uchun uning nomi (`toolName`). Frontend ro'yxatni mavjud `GET /api/settings/integrations/tools` ([settings.md](settings.md), `INTEGRATION_READ`) dan oladi: har qator uchun `toolName ?? tool` ni yuboring; `enabled && granted` qatorlargina agentga yetadi. Agent faqat **kompaniya yoqqan** tool'ni o'chira oladi, yoqmagan tool'ni agent yoqa olmaydi. `PUT` da berilsa **butun ro'yxat almashadi**, `[]` tozalaydi, berilmasa o'zgarmaydi. Cheklov: ko'pi bilan 100 ta, element bo'sh bo'lmasligi va 100 belgidan oshmasligi kerak, aks holda `400 AI_AGENT_DISABLED_INTEGRATION_TOOL_INVALID`. Katalogda yo'q (o'zgargan/o'chirilgan) nom xato bermaydi — e'tiborsiz qoldiriladi. O'zgarish **yangi qo'ng'iroqlardan** boshlab amal qiladi.
+- **Integratsiya tool'lari** *(legacy; `functions` saqlangan bo'lsa `INTEGRATION` funksiyalari ro'yxati ruxsat ro'yxati bo'ladi va `disabledIntegrationTools` e'tiborsiz)* — `disabledIntegrationTools` (`PUT /api/ai-agents/{id}`, `GET` javobida `AiAgentRow.disabledIntegrationTools`, standart `[]`). Kompaniya yoqqan Uysot tool'lari (integratsiyaning HTTP tool'lari, jumladan `createLead`, `moveLeadStage` kabi yozuvchilar) ilgari kompaniyaning **barcha** agentlariga berilardi; endi agent o'zi keraklisini o'chira oladi. Bo'sh ro'yxat — kompaniya sozlamasiga ergashadi. Element: tool'ning modelga ko'rinadigan nomi (`toolName`, masalan `createLead`); katalog kaliti (`CREATE_LEAD`) endi mos kelmaydi — V28 saqlangan kalitlarni nomga almashtirgan. Frontend ro'yxatni mavjud `GET /api/settings/integrations/tools` ([settings.md](settings.md), `INTEGRATION_READ`) dan oladi: har qator uchun `toolName` ni yuboring; `enabled && granted` qatorlargina agentga yetadi. Agent faqat **kompaniya yoqqan** tool'ni o'chira oladi, yoqmagan tool'ni agent yoqa olmaydi. `PUT` da berilsa **butun ro'yxat almashadi**, `[]` tozalaydi, berilmasa o'zgarmaydi. Cheklov: ko'pi bilan 100 ta, element bo'sh bo'lmasligi va 100 belgidan oshmasligi kerak, aks holda `400 AI_AGENT_DISABLED_INTEGRATION_TOOL_INVALID`. Katalogda yo'q (o'zgargan/o'chirilgan) nom xato bermaydi — e'tiborsiz qoldiriladi. O'zgarish **yangi qo'ng'iroqlardan** boshlab amal qiladi.
 
 #### `functions` — agentning funksiyalar ro'yxati (Retell "Functions")
 
@@ -986,9 +991,13 @@ Quyidagi eski maydonlar (`callBehaviour.pressDigitEnabled`, `callBehaviour.midCa
   "agentTransfer": { "agentId": 42, "keepVoice": true, "keepLanguage": true },
   "pressDigit":    { "pauseDetectionDelayMs": 1000 },
   "sms":           { "contentMode": "STATIC", "content": "…{{customer_name}}…", "sendTo": "CALLER", "number": null, "speakAfter": true },
-  "extract":       { "variables": [ { "name": "budget", "type": "NUMBER", "description": "…", "choices": [] } ] },
+  "extract":       { "variables": [ { "name": "budget", "type": "NUMBER", "description": "…", "choices": [], "remember": false } ] },
   "toolId": 17,                    // CUSTOM
-  "integrationTool": "createLead"  // INTEGRATION
+  "integrationTool": "searchFlats",  // INTEGRATION
+  "integration": {                 // INTEGRATION, faqat HTTP katalog tool'i uchun; null = katalogdagidek
+    "inputs": [ { "name": "rooms", "source": "VALUE", "value": ["3"], "description": null } ],
+    "responseMapping": { "flats": "$.data[*]{number,rooms,price}" }
+  }
 }
 ```
 
@@ -999,9 +1008,9 @@ Quyidagi eski maydonlar (`callBehaviour.pressDigitEnabled`, `callBehaviour.midCa
 | `AGENT_TRANSFER` | `transferToAgent` | `agentTransfer.agentId` | Qo'ng'iroqni kompaniyaning boshqa (e'lon qilingan) agent ssenariysiga uzatadi (`AGENT_TRANSFER` bosqichi bilan bir xil mexanizm). Xato bo'lsa model "o'zingiz davom eting" javobini oladi |
 | `PRESS_DIGIT` | `sendDtmfTones` | `pressDigit.pauseDetectionDelayMs` (0..5000) | Ro'yxatda bor bo'lsa tool ssenariy `ToolDef` ini e'lon qilmasa ham beriladi |
 | `SEND_SMS` | `sendMidCallSms` | `sms.*` | Qo'ng'iroqda bir martagacha SMS (480 belgigacha) |
-| `EXTRACT_VARIABLE` | foydalanuvchi bergan `name` | `extract.variables[]` | Har funksiya — bitta tool; har o'zgaruvchi — parametr. Qiymatlar qo'ng'iroq natijasiga (`call_result.outcome`) yoziladi va keyingi tool'larda / SMS matnida `{{nom}}` bo'lib ishlaydi |
+| `EXTRACT_VARIABLE` | foydalanuvchi bergan `name` | `extract.variables[]` | Har funksiya — bitta tool; har o'zgaruvchi — parametr. Qiymatlar qo'ng'iroq natijasiga (`call_result.outcome`) yoziladi va keyingi tool'larda / SMS matnida `{{nom}}` bo'lib ishlaydi. `remember: true` o'zgaruvchi (standart `false`) qayd etilishi bilan mijoz xotirasiga ham (`client_memory.facts`, shu nom bilan) yoziladi — keyingi qo'ng'iroq/chat promptida ko'rinadi; raqam (`phone`) bo'lmasa yoki xotira yozilmasa, qo'ng'iroq davom etadi |
 | `CUSTOM` | tool nomi (sanitize qilingan) | `toolId` | Kompaniyaning REST tool'i. Faqat shu ro'yxatdagilar beriladi |
-| `INTEGRATION` | katalog nomi | `integrationTool` | Faqat shu ro'yxatdagi integratsiya tool'lari beriladi (`toolName ?? tool`, `GET /api/settings/integrations/tools`); kompaniya yoqmagan/grant yetmagan tool baribir berilmaydi |
+| `INTEGRATION` | katalog nomi | `integrationTool`, `integration` | Faqat shu ro'yxatdagi integratsiya tool'lari beriladi (`toolName ?? tool`, `GET /api/settings/integrations/tools`); kompaniya yoqmagan/grant yetmagan tool baribir berilmaydi |
 
 **Nom qoidasi.** Tizim turlari ro'yxatda ko'pi bilan bir marta; `name` o'zgarmas (yuqoridagi jadval), so'rovdagi `name`
 e'tiborsiz va javobda shu nom qaytadi. `EXTRACT_VARIABLE` — `name` foydalanuvchiniki, `^[a-zA-Z][a-zA-Z0-9_]{0,63}$`, tizim nomlari
@@ -1030,6 +1039,21 @@ ulgursin); tugma tovushlarining o'zi qat'iy vaqt bilan ketadi. `null` — qo'shi
 telefon yoki `{{o'zgaruvchi}}`; to'ldirilgach raqam bo'lmasa SMS yuborilmaydi). `speakAfter=false` — agent SMS yuborilganini aytmaydi.
 Qo'ng'iroqda baribir bitta SMS cheklovi amal qiladi. Legacy `midCallSmsTemplate` dagi `{{text}}` o'rni `STATIC` da ham ishlaydi.
 
+**`integration`** (2026-11-02 dan) — agentning integratsiya tool'ini **o'zi uchun** sozlashi (Retell'dagi integratsiya funksiyasi
+formasi). Katalog tool'iga ta'sir qiladi (`GET /api/settings/integrations/tools` qatoridagi `toolName` va `inputs`). Tavsifni o'zgartirish uchun funksiyaning odatdagi `description` maydoni ishlatiladi.
+- `inputs[]` — tool kirishlari, nomi bo'yicha (`name` = `CrmToolRow.inputs[].name`). `source`:
+  `AI` — model suhbatdan to'ldiradi (`description` berilsa modelga shu tushuntiriladi, aks holda katalogdagisi);
+  `VALUE` — har chaqiruvda bir xil qat'iy qiymat (`value` — har qanday JSON: son, matn, ro'yxat, obyekt; majburiy), model bu kirishni ko'rmaydi;
+  `VARIABLE` — qo'ng'iroq o'zgaruvchisi (`value` — o'zgaruvchi nomi, `^[a-zA-Z][a-zA-Z0-9_]{0,63}$`: `phone`, `phone_last9`, fakt,
+  boshqa tool'ning `responseMapping` maydoni), model bu kirishni ko'rmaydi. Ro'yxatda yo'q kirish katalogdagidek qoladi; tool'da yo'q
+  nom e'tiborsiz (katalog o'zgargan bo'lishi mumkin); maxfiy (`secret`) kirishni o'zgartirib bo'lmaydi — e'tiborsiz. Bir nom bir marta, ko'pi bilan 30 ta.
+- `responseMapping` — javobdan modelga boradigan maydonlar ("Select fields for agent context"); berilsa katalogdagisini **to'liq**
+  almashtiradi, `null`/`{}` — katalogdagisi. Shakl [tools.md](tools.md) §3 dagi `responseMapping` bilan bir xil (`$...`, `[*]`, `{…}`,
+  `||`); kalitlar qo'ng'iroq o'zgaruvchisi bo'lib ham yoziladi ("Save as variable"). Kalit — `^[a-zA-Z][a-zA-Z0-9_]{0,63}$`, ko'pi bilan 30 ta.
+- Sinash: `POST /api/settings/integrations/tools/{toolName}/test` ([settings.md](settings.md)) shu `inputs`/`responseMapping` ni
+  saqlamasdan qo'llab, kompaniya hisobiga haqiqiy so'rov yuboradi.
+- O'zgarish yangi qo'ng'iroqlardan amal qiladi; `functions` bilan birga versiyalanadi.
+
 **`speakDuringExecution` / `executionMessage`** — kaskad: `speakDuringExecution=true` bo'lsa shu tool chaqirilganda `executionMessage`
 (yoki bo'sh bo'lsa standart filler) aytiladi, `dialog.pre-tool-speech` o'chiq bo'lsa ham. `false` — funksiyaga xos filler qo'shilmaydi,
 lekin umumiy filler siyosati (`dialog.pre-tool-speech`, tool'ning o'z `speech.preToolSpeech`) avvalgidek ishlaydi. REALTIME'da filler
@@ -1049,7 +1073,7 @@ sinxronlanadi (ortiqchasi uziladi, yetishmagani biriktiriladi); rollback ham shu
 
 | Kod (`400`) | Sabab |
 |---|---|
-| `AI_AGENT_FUNCTION_INVALID` | Umumiy: xabar funksiya `id` si va sabab kodini aytadi. Sabab kodlari: `TOO_MANY_FUNCTIONS` (>50), `ID_INVALID`, `TYPE_REQUIRED`, `DESCRIPTION_TOO_LONG`, `EXECUTION_MESSAGE_TOO_LONG`, `TRANSFER_DESTINATION_INVALID`, `AGENT_ID_REQUIRED`, `AGENT_TRANSFER_TO_SELF`, `PAUSE_DELAY_OUT_OF_RANGE`, `SMS_CONTENT_REQUIRED`, `SMS_CONTENT_TOO_LONG`, `SMS_NUMBER_REQUIRED`, `SMS_NUMBER_INVALID`, `NAME_INVALID`, `VARIABLES_REQUIRED`, `TOO_MANY_VARIABLES` (>30), `VARIABLE_NAME_INVALID`, `VARIABLE_DESCRIPTION_TOO_LONG`, `VARIABLE_CHOICES_INVALID`, `TOOL_ID_REQUIRED`, `INTEGRATION_TOOL_REQUIRED` |
+| `AI_AGENT_FUNCTION_INVALID` | Umumiy: xabar funksiya `id` si va sabab kodini aytadi. Sabab kodlari: `TOO_MANY_FUNCTIONS` (>50), `ID_INVALID`, `TYPE_REQUIRED`, `DESCRIPTION_TOO_LONG`, `EXECUTION_MESSAGE_TOO_LONG`, `TRANSFER_DESTINATION_INVALID`, `AGENT_ID_REQUIRED`, `AGENT_TRANSFER_TO_SELF`, `PAUSE_DELAY_OUT_OF_RANGE`, `SMS_CONTENT_REQUIRED`, `SMS_CONTENT_TOO_LONG`, `SMS_NUMBER_REQUIRED`, `SMS_NUMBER_INVALID`, `NAME_INVALID`, `VARIABLES_REQUIRED`, `TOO_MANY_VARIABLES` (>30), `VARIABLE_NAME_INVALID`, `VARIABLE_DESCRIPTION_TOO_LONG`, `VARIABLE_CHOICES_INVALID`, `TOOL_ID_REQUIRED`, `INTEGRATION_TOOL_REQUIRED`, `INTEGRATION_INPUTS_TOO_MANY` (>30), `INTEGRATION_INPUT_INVALID`, `INTEGRATION_INPUT_VALUE_REQUIRED`, `INTEGRATION_OUTPUTS_TOO_MANY` (>30), `INTEGRATION_OUTPUT_INVALID` |
 | `AI_AGENT_FUNCTION_DUPLICATE` | `id` takrori, nom takrori, tizim turi ikki marta yoki funksiya ichida o'zgaruvchi nomi takrori |
 | `AI_AGENT_FUNCTION_TOOL_NOT_FOUND` | `toolId` yoki `agentTransfer.agentId` shu kompaniyada yo'q (404 emas, 400) |
 
@@ -1117,7 +1141,8 @@ bosqichning `knowledgeSourceIds` i matn rejimidagi kabi (bir parcha ko'pi bilan 
       "transferMessage": null,
       "transferQueueId": 4,
       "preConversationAudioFileId": null,
-      "responseWaitMs": null
+      "responseWaitMs": null,
+      "llmTurnDetection": null
     },
     "dataPolicy": {
       "zeroPiiRetention": false,

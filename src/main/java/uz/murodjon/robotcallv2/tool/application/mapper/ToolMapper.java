@@ -4,11 +4,13 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.tool.application.dto.CreateToolRequest;
 import uz.murodjon.robotcallv2.tool.application.dto.OpenApiOperationRow;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolHttpConfigDto;
+import uz.murodjon.robotcallv2.tool.application.dto.ToolResultDto;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolRow;
 import uz.murodjon.robotcallv2.tool.application.dto.ToolSpeechDto;
 import uz.murodjon.robotcallv2.tool.domain.entity.OpenApiOperation;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolHttpConfig;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolResult;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolSpeech;
 
 import java.time.Instant;
@@ -28,6 +30,7 @@ public class ToolMapper {
     private Tool build(Long companyId, Instant now, CreateToolRequest request) {
         ToolHttpConfigDto http = request.http();
         ToolSpeechDto speech = request.speech();
+        ToolResultDto result = request.result();
         return new Tool(
                 null,
                 companyId,
@@ -52,6 +55,12 @@ public class ToolMapper {
                         speech == null || speech.forcePreToolSpeech() == null || speech.forcePreToolSpeech(),
                         speech != null ? speech.preToolSpeech() : null),
                 request.responseMapping(),
+                result == null ? null : new ToolResult(
+                        result.maxItems() != null ? result.maxItems() : 0,
+                        result.emptyMessage(),
+                        result.errorMessage(),
+                        result.argumentVariables(),
+                        result.memoryFacts()),
                 request.maxCallsPerCall() != null ? request.maxCallsPerCall() : Tool.DEFAULT_MAX_CALLS_PER_CALL,
                 request.effect(),
                 request.requiresConfirmation(),
@@ -65,7 +74,7 @@ public class ToolMapper {
     public CreateToolRequest toCreateRequest(Tool tool) {
         return new CreateToolRequest(tool.name(), tool.description(), ToolHttpConfigDto.of(tool.http()),
                 tool.dynamicVariables(), ToolSpeechDto.of(tool.speech()), tool.responseMapping(),
-                tool.maxCallsPerCall(), tool.effect(), tool.requiresConfirmation(), tool.readbackTemplate());
+                ToolResultDto.of(tool.result()), tool.maxCallsPerCall(), tool.effect(), tool.requiresConfirmation(), tool.readbackTemplate());
     }
 
     public OpenApiOperationRow toOperationRow(OpenApiOperation operation) {
@@ -87,6 +96,7 @@ public class ToolMapper {
                 tool.dynamicVariables(),
                 ToolSpeechDto.of(tool.speech()),
                 tool.responseMapping(),
+                ToolResultDto.of(tool.result()),
                 tool.maxCallsPerCall(),
                 tool.effect(),
                 tool.requiresConfirmation(),

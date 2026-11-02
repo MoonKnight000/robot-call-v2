@@ -10,7 +10,7 @@ import org.springframework.boot.context.properties.bind.ConstructorBinding;
  * @param enabled            when false no VAD runs and the bot cannot be interrupted
  * @param modelPath          path to {@code silero_vad.onnx}. A local run (IDE/bootRun)
  *                           reads {@code models/silero_vad.onnx} from the project root —
- *                           the Silero v5.1.2 file the Dockerfile bakes into the image
+ *                           the Silero v6.2.2 file the Dockerfile bakes into the image
  *                           (the download line is in .gitignore); Docker sets
  *                           {@code VAD_MODEL_PATH} itself. Without a model there is no
  *                           barge-in, no STT gating and no endpointing on this side: the

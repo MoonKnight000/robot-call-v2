@@ -11,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolResult;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -39,6 +40,8 @@ final class ToolResponseFormatter {
 
     /** In a mapping path, "every element of this list" ({@link #select}). */
     private static final String WILDCARD = "[*]";
+    /** Opens a filtered wildcard, {@code [?paid!=true&status!=PAID]}: every element that passes ({@link #matches}). */
+    private static final String FILTER_START = "[?";
 
     ToolResponseFormatter(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -64,7 +67,21 @@ final class ToolResponseFormatter {
             data = applyMapping(data, tool.responseMapping());
         }
         data = sanitizeForPrompt(data);
-        if (status >= 200 && status < 300) {
+        ToolResult shape = tool.result();
+        boolean succeeded = status >= 200 && status < 300;
+        if (!succeeded && shape.errorMessage() != null) {
+            return errorNode(status, shape.errorMessage());
+        }
+        if (shape.maxItems() > 0) {
+            data = limitLists(data, shape.maxItems());
+        }
+        if (succeeded && shape.emptyMessage() != null && isEmpty(data)) {
+            ObjectNode emptyNode = objectMapper.createObjectNode();
+            emptyNode.put("status", status);
+            emptyNode.put("message", shape.emptyMessage());
+            return emptyNode.toString();
+        }
+        if (succeeded) {
             recordFindings(tool, session, data);
         }
 
@@ -117,19 +134,65 @@ final class ToolResponseFormatter {
      * a failure: the model's job is to carry on the conversation without the tool, not to
      * learn which addresses this server declines to call.
      */
-    String formatBlocked() {
-        ObjectNode node = objectMapper.createObjectNode();
-        node.put("status", 400);
-        node.put("error", "Tool execution failed");
-        return node.toString();
+    String formatBlocked(Tool tool) {
+        return errorNode(400, errorTextOf(tool));
     }
 
     /** What the model is told when the request did not go through; the reason stays on the server. */
-    String formatFailed() {
-        ObjectNode errorNode = objectMapper.createObjectNode();
-        errorNode.put("status", 500);
-        errorNode.put("error", "Tool execution failed");
-        return errorNode.toString();
+    String formatFailed(Tool tool) {
+        return errorNode(500, errorTextOf(tool));
+    }
+
+    /** The tool's own {@code errorMessage}, or the plain failure when it set none. */
+    private static String errorTextOf(Tool tool) {
+        String message = tool.result().errorMessage();
+        return message != null ? message : "Tool execution failed";
+    }
+
+    private String errorNode(int status, String error) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("status", status);
+        node.put("error", error);
+        return node.toString();
+    }
+
+    /** The same tree with every list cut to its first {@code maxItems} elements, nested lists too. */
+    private JsonNode limitLists(JsonNode node, int maxItems) {
+        if (node.isObject()) {
+            ObjectNode copy = objectMapper.createObjectNode();
+            node.fields().forEachRemaining(field -> copy.set(field.getKey(), limitLists(field.getValue(), maxItems)));
+            return copy;
+        }
+        if (node.isArray()) {
+            ArrayNode copy = objectMapper.createArrayNode();
+            for (int i = 0; i < node.size() && i < maxItems; i++) {
+                copy.add(limitLists(node.get(i), maxItems));
+            }
+            return copy;
+        }
+        return node;
+    }
+
+    /**
+     * Whether the answer holds nothing to tell: null, blank text, an empty list, or an object whose
+     * every field is itself empty ({@code {"data": []}}). A number or a boolean is something.
+     */
+    static boolean isEmpty(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return true;
+        }
+        if (node.isTextual()) {
+            return node.asText().isBlank();
+        }
+        if (node.isContainerNode()) {
+            for (JsonNode child : node) {
+                if (!isEmpty(child)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -184,7 +247,9 @@ final class ToolResponseFormatter {
      *   <li>fields in braces: {@code $.data[*]{number,rooms,house.name}} is the list of elements cut
      *       down to those fields, each under its last name segment ({@code name} for {@code house.name}).</li>
      * </ul>
-     * A path that is not in the answer, or a second {@code [*]}, selects nothing.
+     * In place of {@code [*]}, {@code [?field!=value&other=value]} takes only the elements that pass the
+     * filter ({@code $.data[?paid!=true]{date,amount}}). A path that is not in the answer, or a second
+     * {@code [*]} or filter, selects nothing.
      *
      * <p>Several paths may be given with {@code ||}: the first that selects something is used. It
      * is for an answer that wraps its list differently from one endpoint to another
@@ -201,17 +266,27 @@ final class ToolResponseFormatter {
     }
 
     private JsonNode selectOne(JsonNode root, String path) {
-        int wildcard = path.indexOf(WILDCARD);
+        int star = path.indexOf(WILDCARD);
+        int filtered = path.indexOf(FILTER_START);
+        int wildcard = star < 0 ? filtered : filtered < 0 ? star : Math.min(star, filtered);
         if (wildcard < 0) {
             return root.at(toPointer(path));
         }
         JsonNode list = root.at(toPointer(path.substring(0, wildcard)));
-        String rest = path.substring(wildcard + WILDCARD.length()).trim();
-        if (!list.isArray() || rest.contains(WILDCARD)) {
+        int end = path.indexOf(']', wildcard);
+        if (end < 0) {
+            return MissingNode.getInstance();
+        }
+        String condition = wildcard == filtered ? path.substring(wildcard + FILTER_START.length(), end) : null;
+        String rest = path.substring(end + 1).trim();
+        if (!list.isArray() || rest.contains(WILDCARD) || rest.contains(FILTER_START)) {
             return MissingNode.getInstance();
         }
         ArrayNode selected = objectMapper.createArrayNode();
         for (JsonNode element : list) {
+            if (condition != null && !matches(element, condition)) {
+                continue;
+            }
             if (rest.isEmpty()) {
                 selected.add(element);
             } else if (rest.startsWith("{") && rest.endsWith("}")) {
@@ -224,6 +299,29 @@ final class ToolResponseFormatter {
             }
         }
         return selected;
+    }
+
+    /**
+     * Whether a list element passes a {@code [?…]} filter: every {@code &}-joined term holds.
+     * {@code field=value} needs the field and that value; {@code field!=value} passes when the
+     * field is missing too — {@code paid!=true} keeps an element that does not say it is paid.
+     * Values are compared as text, ignoring case.
+     */
+    private boolean matches(JsonNode element, String condition) {
+        for (String term : condition.split("&")) {
+            boolean negated = term.contains("!=");
+            String[] parts = term.split(negated ? "!=" : "=", 2);
+            if (parts.length < 2) {
+                return false;
+            }
+            JsonNode actual = element.at(toPointer(parts[0].trim()));
+            boolean equal = !actual.isMissingNode() && !actual.isNull()
+                    && actual.asText().equalsIgnoreCase(parts[1].trim());
+            if (equal == negated) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** The element cut down to the comma-separated fields; one that is not in it is left out. */

@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * Turns a scenario-declared {@link ToolDef} into a callable {@link ToolCallback}
@@ -36,15 +37,24 @@ final class ScenarioToolCallbackFactory {
     }
 
     static ToolCallback build(ToolDef toolDef, DialogOutcomeSink session) {
+        return build(toolDef, session, recorded -> { });
+    }
+
+    /**
+     * @param onRecorded receives the values a call recorded, after it recorded them; not called when
+     *                   the call was refused
+     */
+    static ToolCallback build(ToolDef toolDef, DialogOutcomeSink session, Consumer<Map<String, Object>> onRecorded) {
         return FunctionToolCallback
-                .<Map<String, Object>, String>builder(toolDef.name(), args -> execute(toolDef, session, args))
+                .<Map<String, Object>, String>builder(toolDef.name(), args -> execute(toolDef, session, args, onRecorded))
                 .description(toolDef.description())
                 .inputSchema(schemaFor(toolDef))
                 .inputType(Map.class)
                 .build();
     }
 
-    private static String execute(ToolDef toolDef, DialogOutcomeSink session, Map<String, Object> args) {
+    private static String execute(ToolDef toolDef, DialogOutcomeSink session, Map<String, Object> args,
+                                  Consumer<Map<String, Object>> onRecorded) {
         List<ToolParamDef> params = toolDef.params();
         // Every argument is checked before any is recorded: a refused date must not leave
         // the amount that came with it behind as half an outcome.
@@ -73,6 +83,7 @@ final class ScenarioToolCallbackFactory {
         Object reply = args == null ? null : args.get(DialogTools.REPLY_PARAM);
         session.addToolReply(reply == null ? null : reply.toString());
         accepted.forEach(session::recordOutcome);
+        onRecorded.accept(accepted);
         Disposition disposition = findDisposition(toolDef);
         if (disposition != null) {
             session.setDisposition(disposition);

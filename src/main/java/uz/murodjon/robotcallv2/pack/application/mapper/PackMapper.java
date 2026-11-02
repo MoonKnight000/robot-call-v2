@@ -85,7 +85,7 @@ public class PackMapper {
                         tool.retryAttempts(), tool.auth(), null, null),
                 tool.dynamicVariables(),
                 new ToolSpeechDto(tool.disableInterruptions(), tool.forcePreToolSpeech(), tool.preToolSpeech()),
-                tool.responseMapping(), tool.maxCallsPerCall(), tool.effect(), tool.requiresConfirmation(),
+                tool.responseMapping(), null, tool.maxCallsPerCall(), tool.effect(), tool.requiresConfirmation(),
                 tool.readbackTemplate());
     }
 

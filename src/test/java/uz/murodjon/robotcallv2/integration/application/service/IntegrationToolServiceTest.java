@@ -2,7 +2,6 @@ package uz.murodjon.robotcallv2.integration.application.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.integration.application.dto.CreateIntegrationToolRequest;
@@ -18,9 +17,7 @@ import uz.murodjon.robotcallv2.integration.domain.entity.IntegrationTool;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmPermission;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmScopeLevel;
-import uz.murodjon.robotcallv2.integration.domain.enums.CrmTool;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmToolGroup;
-import uz.murodjon.robotcallv2.integration.domain.enums.IntegrationToolKind;
 import uz.murodjon.robotcallv2.integration.domain.enums.ToolPropagation;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
@@ -36,7 +33,6 @@ import uz.murodjon.robotcallv2.tool.domain.enums.ToolEffect;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -53,7 +49,7 @@ class IntegrationToolServiceTest {
     private CrmAccountProbePort probePort;
     private IntegrationToolService service;
 
-    private final IntegrationTool searchFlats = tool(1, "SEARCH_FLATS", CrmPermission.CONTRACT, CrmScopeLevel.READ, true);
+    private final IntegrationTool leadNote = tool(1, "ADD_LEAD_NOTE", CrmPermission.CONTRACT, CrmScopeLevel.READ, true);
     private final IntegrationTool createLead = tool(2, "CREATE_LEAD", CrmPermission.LEAD, CrmScopeLevel.SAVE, false);
 
     @BeforeEach
@@ -65,16 +61,17 @@ class IntegrationToolServiceTest {
         when(probePort.findUysotBaseUrl()).thenReturn("https://api.uysot.example/");
         service = new IntegrationToolService(repository, crmIntegrationUseCase, mock(CompanyUseCase.class),
                 mock(AuditUseCase.class), toolUseCase, probePort);
-        when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(searchFlats, createLead));
+        when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(leadNote, createLead));
         when(repository.findChoices(COMPANY_ID)).thenReturn(Map.of());
         when(crmIntegrationUseCase.findGrants(COMPANY_ID)).thenReturn(List.of());
+        when(toolUseCase.buildTemplate(any())).thenReturn(template("lookupDebt", "v1/open-api/x", null, null, ToolEffect.READ));
     }
 
     @Test
     void aCompanyThatNeverChoseFollowsTheToolDefaults() {
         List<CrmToolRow> rows = service.findTools(COMPANY_ID);
 
-        assertTrue(rows.get(0).enabled(), "SEARCH_FLATS defaults to on");
+        assertTrue(rows.get(0).enabled(), "ADD_LEAD_NOTE defaults to on");
         assertFalse(rows.get(1).enabled(), "CREATE_LEAD defaults to off");
         assertTrue(rows.stream().allMatch(CrmToolRow::inherited));
     }
@@ -93,15 +90,15 @@ class IntegrationToolServiceTest {
     @Test
     void platformDisabledToolIsNotShownToACompany() {
         when(repository.findByProvider(CrmProvider.UYSOT))
-                .thenReturn(List.of(searchFlats, createLead.toBuilder().platformEnabled(false).build()));
+                .thenReturn(List.of(leadNote, createLead.toBuilder().platformEnabled(false).build()));
 
         assertEquals(1, service.findTools(COMPANY_ID).size());
     }
 
     @Test
     void savingOnlyStoresWhereTheChoiceDiffersFromTheDefault() {
-        // SEARCH_FLATS stays on (= default, nothing stored); CREATE_LEAD is switched on (default off, stored).
-        service.updateTools(COMPANY_ID, new UpdateCrmToolsRequest(List.of("SEARCH_FLATS", "CREATE_LEAD")));
+        // ADD_LEAD_NOTE stays on (= default, nothing stored); CREATE_LEAD is switched on (default off, stored).
+        service.updateTools(COMPANY_ID, new UpdateCrmToolsRequest(List.of("ADD_LEAD_NOTE", "CREATE_LEAD")));
 
         verify(repository).saveChoice(COMPANY_ID, 2L, true);
         verify(repository, never()).saveChoice(eq(COMPANY_ID), eq(1L), anyBoolean());
@@ -111,7 +108,7 @@ class IntegrationToolServiceTest {
     void returningToTheDefaultForgetsTheChoice() {
         when(repository.findChoices(COMPANY_ID)).thenReturn(Map.of(2L, true));
 
-        service.updateTools(COMPANY_ID, new UpdateCrmToolsRequest(List.of("SEARCH_FLATS")));
+        service.updateTools(COMPANY_ID, new UpdateCrmToolsRequest(List.of("ADD_LEAD_NOTE")));
 
         verify(repository).deleteChoice(COMPANY_ID, 2L);
     }
@@ -126,21 +123,33 @@ class IntegrationToolServiceTest {
 
     @Test
     void aToolWhoseGrantTheCompanyDidNotGiveIsNotOffered() {
+        givenHttpCatalog();
         when(crmIntegrationUseCase.findGrants(COMPANY_ID))
                 .thenReturn(List.of(new CrmGrant(CrmPermission.LEAD, CrmScopeLevel.READ)));
         when(repository.findChoices(COMPANY_ID)).thenReturn(Map.of(2L, true));
 
-        Set<String> offered = service.findEnabledToolNames(COMPANY_ID);
+        List<String> offered = service.findEnabledHttpTools(COMPANY_ID).stream().map(Tool::name).toList();
 
-        assertFalse(offered.contains("searchFlats"), "CONTRACT:READ was not granted");
+        assertFalse(offered.contains("addLeadNote"), "CONTRACT:READ was not granted");
         assertFalse(offered.contains("createLead"), "LEAD:SAVE was not granted, although the company switched it on");
     }
 
     @Test
     void withoutRecordedGrantsEveryEnabledToolIsOffered() {
-        Set<String> offered = service.findEnabledToolNames(COMPANY_ID);
+        givenHttpCatalog();
 
-        assertEquals(Set.of("searchFlats"), offered);
+        List<String> offered = service.findEnabledHttpTools(COMPANY_ID).stream().map(Tool::name).toList();
+
+        assertEquals(List.of("addLeadNote"), offered);
+    }
+
+    /** The two fixtures with a request each, and a company connected to Uysot. */
+    private void givenHttpCatalog() {
+        when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(
+                leadNote.toBuilder().definition(template("addLeadNote", "v1/open-api/lead-note", null, null, ToolEffect.WRITE)).build(),
+                createLead.toBuilder().definition(template("createLead", "v1/open-api/lead", null, null, ToolEffect.WRITE)).build()));
+        when(crmIntegrationUseCase.findConnection(COMPANY_ID))
+                .thenReturn(Optional.of(new CrmConnection(CrmProvider.UYSOT, null, "tok")));
     }
 
     @Test
@@ -188,19 +197,19 @@ class IntegrationToolServiceTest {
 
     private static UpdateIntegrationToolRequest edit(boolean defaultEnabled, ToolPropagation applyTo) {
         return new UpdateIntegrationToolRequest("Lid yaratish", "Yangi lid ochadi.", CrmToolGroup.LEADS,
-                defaultEnabled, true, 80, null, null, null, null, applyTo);
+                defaultEnabled, true, 80, null, null, mock(CreateToolRequest.class), applyTo);
     }
 
-    private static UpdateIntegrationToolRequest withModelDescription(String text) {
-        return new UpdateIntegrationToolRequest("Label", "Description", CrmToolGroup.DEBTS, true, true, 60,
-                null, null, null, text, null);
+    private static UpdateIntegrationToolRequest withoutDefinition() {
+        return new UpdateIntegrationToolRequest("Label", "Description", CrmToolGroup.DEBTS, false, true, 60,
+                null, null, null, null);
     }
 
     private static Tool template(String name, String url, List<ToolKeyValuePair> headers, ToolAuth auth, ToolEffect effect) {
         return new Tool(null, null, name, "Looks something up.",
                 new ToolHttpConfig(url, effect == ToolEffect.READ ? "GET" : "POST", headers, null, null, null, null,
                         null, 0, auth, null, null),
-                null, null, null, 3, effect, null, null, null, null);
+                null, null, null, null, 3, effect, null, null, null, null);
     }
 
     private static CreateIntegrationToolRequest create(String key, boolean defaultEnabled, ToolPropagation applyTo) {
@@ -245,17 +254,10 @@ class IntegrationToolServiceTest {
     }
 
     @Test
-    void theModelNameMayNotShadowABuiltInTool() {
-        givenTemplate(template(CrmTool.values()[0].toolName(), "v1/open-api/x", null, null, ToolEffect.READ));
-        assertEquals(ErrorCode.INTEGRATION_TOOL_NAME_INVALID,
-                failure(() -> service.createCatalogTool(ADMIN_COMPANY_ID, create("LOOKUP_DEBT", false, null))).code());
-    }
-
-    @Test
     void aKeyAlreadyInTheCatalogIsRefused() {
         givenTemplate(template("lookupDebt", "v1/open-api/x", null, null, ToolEffect.READ));
         assertThrows(ConflictException.class,
-                () -> service.createCatalogTool(ADMIN_COMPANY_ID, create("SEARCH_FLATS", false, null)));
+                () -> service.createCatalogTool(ADMIN_COMPANY_ID, create("ADD_LEAD_NOTE", false, null)));
     }
 
     @Test
@@ -284,43 +286,29 @@ class IntegrationToolServiceTest {
     }
 
     @Test
-    void aBuiltInToolsModelTextIsEditableAndBlankGoesBackToCode() {
-        IntegrationTool builtIn = tool(3, "GET_DEBT_SUMMARY", CrmPermission.CONTRACT, CrmScopeLevel.READ, true);
-        when(repository.findById(3L)).thenReturn(Optional.of(builtIn));
-        when(repository.update(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        ArgumentCaptor<IntegrationTool> saved = ArgumentCaptor.forClass(IntegrationTool.class);
+    void anEditWithoutADefinitionIsRefused() {
+        when(repository.findById(2L)).thenReturn(Optional.of(createLead));
 
-        service.updateCatalogTool(ADMIN_COMPANY_ID, 3L, withModelDescription("  Read every debt.  "));
-        service.updateCatalogTool(ADMIN_COMPANY_ID, 3L, withModelDescription("   "));
-
-        verify(repository, times(2)).update(saved.capture());
-        assertEquals("Read every debt.", saved.getAllValues().get(0).modelDescription());
-        assertNull(saved.getAllValues().get(1).modelDescription());
+        assertEquals(ErrorCode.INTEGRATION_TOOL_DEFINITION_REQUIRED,
+                failure(() -> service.updateCatalogTool(ADMIN_COMPANY_ID, 2L, withoutDefinition())).code());
+        verify(repository, never()).update(any());
     }
 
     @Test
-    void theModelTextOfBuiltInToolsIsOfferedByTheNameTheModelKnows() {
-        IntegrationTool described = tool(3, "GET_DEBT_SUMMARY", CrmPermission.CONTRACT, CrmScopeLevel.READ, true)
-                .toBuilder().modelDescription("Read every debt.").build();
-        when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(searchFlats, described));
+    void anyCatalogToolCanBeDeleted() {
+        when(repository.findById(1L)).thenReturn(Optional.of(leadNote));
 
-        assertEquals(Map.of("getDebtSummary", "Read every debt."), service.findBuiltInModelDescriptions());
-    }
+        service.deleteCatalogTool(ADMIN_COMPANY_ID, 1L);
 
-    @Test
-    void aBuiltInToolCannotBeDeleted() {
-        assertEquals(ErrorCode.INTEGRATION_TOOL_BUILT_IN_LOCKED,
-                failure(() -> service.deleteCatalogTool(ADMIN_COMPANY_ID, 1L)).code());
-        verify(repository, never()).deleteById(anyLong());
+        verify(repository).deleteById(1L);
     }
 
     @Test
     void anEnabledHttpToolIsOfferedPointedAtTheCompanysOwnAccountWithItsToken() {
         IntegrationTool http = tool(9, "LOOKUP_DEBT", null, null, true).toBuilder()
-                .kind(IntegrationToolKind.HTTP)
                 .definition(template("lookupDebt", "v1/open-api/debt/filter", null, null, ToolEffect.READ))
                 .build();
-        when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(searchFlats, http));
+        when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(leadNote, http));
         when(crmIntegrationUseCase.findConnection(COMPANY_ID))
                 .thenReturn(Optional.of(new CrmConnection(CrmProvider.UYSOT, null, "tok")));
 
@@ -338,7 +326,6 @@ class IntegrationToolServiceTest {
     @Test
     void noHttpToolIsOfferedToACompanyThatIsNotConnected() {
         IntegrationTool http = tool(9, "LOOKUP_DEBT", null, null, true).toBuilder()
-                .kind(IntegrationToolKind.HTTP)
                 .definition(template("lookupDebt", "v1/open-api/debt/filter", null, null, ToolEffect.READ))
                 .build();
         when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(http));
@@ -350,7 +337,6 @@ class IntegrationToolServiceTest {
     @Test
     void noHttpToolIsOfferedWhenThePlatformHasNoUysotAddress() {
         IntegrationTool http = tool(9, "LOOKUP_DEBT", null, null, true).toBuilder()
-                .kind(IntegrationToolKind.HTTP)
                 .definition(template("lookupDebt", "v1/open-api/debt/filter", null, null, ToolEffect.READ))
                 .build();
         when(repository.findByProvider(CrmProvider.UYSOT)).thenReturn(List.of(http));

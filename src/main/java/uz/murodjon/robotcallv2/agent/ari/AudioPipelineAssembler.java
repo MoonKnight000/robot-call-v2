@@ -223,9 +223,10 @@ class AudioPipelineAssembler {
                     // The shadow score of the close being judged; the next one is only taken
                     // after the caller speaks again, by which time this close is judged.
                     AtomicReference<Float> shadowScore = new AtomicReference<>();
-                    speechGate.setCloseListener((text, waitMs, continued) -> {
+                    speechGate.setCloseListener((text, waitMs, continued, agentLine, llmCue) -> {
                         sttMetrics.gateCloseJudged(continued);
-                        turnDatasetRecorder.record(language, text, waitMs, continued, shadowScore.getAndSet(null));
+                        turnDatasetRecorder.record(language, agentLine, text, waitMs, continued,
+                                shadowScore.getAndSet(null), llmCue);
                     });
                     if (!installTurnDetector(listeners, speechGate, language)
                             && !installTextTurnDetector(speechGate, language)) {

@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolHttpConfig;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolResult;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolSpeech;
 import uz.murodjon.robotcallv2.tool.infrastructure.persistence.entity.ToolEntity;
 
@@ -61,6 +62,9 @@ public class ToolEntityMapper {
                 new ToolSpeech(entity.isDisableInterruptions(), entity.isForcePreToolSpeech(),
                         entity.getPreToolSpeech()),
                 read(entity.getResponseMapping(), MAPPING_TYPE, Map.of()),
+                new ToolResult(entity.getResultMaxItems(), entity.getResultEmptyMessage(),
+                        entity.getResultErrorMessage(), read(entity.getResultArgumentVariables(), MAPPING_TYPE, Map.of()),
+                        read(entity.getResultMemoryFacts(), MAPPING_TYPE, Map.of())),
                 entity.getMaxCallsPerCall(),
                 entity.getEffect(),
                 entity.isRequiresConfirmation(),
@@ -92,6 +96,12 @@ public class ToolEntityMapper {
         entity.setForcePreToolSpeech(domain.speech().forcePreToolSpeech());
         entity.setPreToolSpeech(domain.speech().preToolSpeech());
         entity.setResponseMapping(domain.responseMapping().isEmpty() ? null : write(domain.responseMapping()));
+        entity.setResultMaxItems(domain.result().maxItems());
+        entity.setResultEmptyMessage(domain.result().emptyMessage());
+        entity.setResultErrorMessage(domain.result().errorMessage());
+        entity.setResultArgumentVariables(domain.result().argumentVariables().isEmpty() ? null
+                : write(domain.result().argumentVariables()));
+        entity.setResultMemoryFacts(domain.result().memoryFacts().isEmpty() ? null : write(domain.result().memoryFacts()));
         entity.setRetryAttempts(http.retryAttempts());
         entity.setWaitForResult(http.waitForResult());
         entity.setStatusVariable(http.statusVariable());

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.secret.domain.service.SecretPlaceholders;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -31,7 +32,11 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -76,6 +81,9 @@ public class HttpToolExecutor {
     /** Stands in for a conversation when a tool is run from the panel's "Test" button. */
     private static final DialogOutcomeSink DRY_RUN = new DryRunSink();
 
+    /** The call variable holding the request's own time, in epoch seconds. */
+    static final String NOW_EPOCH_VARIABLE = "now_epoch";
+
     private static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     private static final String AUTHORIZATION_HEADER = "Authorization";
 
@@ -90,11 +98,14 @@ public class HttpToolExecutor {
     private final ToolRequestTemplates toolRequestTemplates;
     private final ToolResponseFormatter toolResponseFormatter;
     private final ToolConfirmation toolConfirmation;
+    private final ClientMemoryUseCase clientMemoryUseCase;
 
     public HttpToolExecutor(SecretUseCase secretUseCase, ToolExecutionUseCase toolExecutionUseCase,
                             ToolOAuthTokens oauthTokens, ToolSchemas toolSchemas,
                             ToolRequestTemplates toolRequestTemplates, ToolResponseFormatter toolResponseFormatter,
-                            ToolConfirmation toolConfirmation, ObjectMapper objectMapper) {
+                            ToolConfirmation toolConfirmation, ClientMemoryUseCase clientMemoryUseCase,
+                            ObjectMapper objectMapper) {
+        this.clientMemoryUseCase = clientMemoryUseCase;
         this.objectMapper = objectMapper;
         this.canonicalWriter = objectMapper.writer().with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
         this.toolSchemas = toolSchemas;
@@ -218,7 +229,11 @@ public class HttpToolExecutor {
      * reaches the template. The panel's test run has no call to read from.
      */
     private static Map<String, Object> withRecordedOutcome(DialogOutcomeSink session, Map<String, Object> callVariables) {
-        return session == DRY_RUN ? callVariables : ToolCallVariables.withOutcome(callVariables, session.outcome());
+        Map<String, Object> variables = new HashMap<>(session == DRY_RUN ? callVariables
+                : ToolCallVariables.withOutcome(callVariables, session.outcome()));
+        // The moment of the request, for an endpoint that wants one (a CRM task's start).
+        variables.putIfAbsent(NOW_EPOCH_VARIABLE, Instant.now().getEpochSecond());
+        return variables;
     }
 
     /**
@@ -250,7 +265,7 @@ public class HttpToolExecutor {
                 log.warn("[{}] Tool '{}' was not called: its address is not publicly callable",
                         session.channelId(), tool.name());
                 recordStatus(tool, session, false);
-                return toolResponseFormatter.formatBlocked();
+                return toolResponseFormatter.formatBlocked(tool);
             }
             String method = (tool.http().method() != null ? tool.http().method().toUpperCase() : "POST");
 
@@ -320,7 +335,11 @@ public class HttpToolExecutor {
                     "status", response.statusCode(),
                     "response", responseBody
             ));
-            return toolResponseFormatter.formatForModel(tool, session, response.statusCode(), responseBody);
+            String answer = toolResponseFormatter.formatForModel(tool, session, response.statusCode(), responseBody);
+            if (response.statusCode() >= 200 && response.statusCode() < 300 && session != DRY_RUN) {
+                saveResult(tool, session, callVariables, args);
+            }
+            return answer;
 
         } catch (Exception e) {
             if (e instanceof InterruptedException) {
@@ -342,8 +361,60 @@ public class HttpToolExecutor {
                 // failure whose reason they cannot see is no test at all.
                 throw new ExternalServiceException(ErrorCode.TOOL_EXECUTION_FAILED, "tool", e, tool.name(), reason);
             }
-            return toolResponseFormatter.formatFailed();
+            return toolResponseFormatter.formatFailed(tool);
         }
+    }
+
+    /**
+     * What a 2xx answer leaves beyond its mapped fields ({@link uz.murodjon.robotcallv2.tool.domain.entity.ToolResult}):
+     * the arguments the model searched with as call variables — what the lead note and the CRM
+     * read ({@code roomsNeeded}) — and mapped fields as client-memory facts, read by the next
+     * call's prompt ({@code offeredFlats}). The mapped fields were recorded on the call by the
+     * formatter just before, already cut to {@code maxItems}.
+     */
+    private void saveResult(Tool tool, DialogOutcomeSink session, Map<String, Object> callVariables,
+                            Map<String, Object> args) {
+        tool.result().argumentVariables().forEach((argument, variable) -> {
+            String value = argumentText(args.get(argument));
+            if (value != null) {
+                session.recordOutcome(variable, value);
+            }
+        });
+        if (tool.result().memoryFacts().isEmpty()) {
+            return;
+        }
+        Map<String, Object> facts = new LinkedHashMap<>();
+        tool.result().memoryFacts().forEach((field, fact) -> {
+            Object value = session.outcome().get(field);
+            if (value != null) {
+                facts.put(fact, value);
+            }
+        });
+        Object phone = callVariables.get("phone");
+        Long companyId = tool.companyId() != null ? tool.companyId()
+                : callVariables.get("company_id") instanceof Number number ? number.longValue() : null;
+        if (facts.isEmpty() || companyId == null || !(phone instanceof String number) || number.isBlank()) {
+            return;
+        }
+        try {
+            clientMemoryUseCase.rememberFacts(companyId, number, facts);
+        } catch (Exception e) {
+            // The model already has its answer; a memory that could not be written costs the next call only.
+            log.warn("[{}] Tool '{}' result was not remembered: {}", session.channelId(), tool.name(), e.getMessage());
+        }
+    }
+
+    /** An argument as a call variable's text: a list joined by ", ", a number without a trailing ".0"; null when empty. */
+    static String argumentText(Object value) {
+        if (value instanceof Collection<?> items) {
+            List<String> parts = items.stream().map(HttpToolExecutor::argumentText)
+                    .filter(part -> part != null).toList();
+            return parts.isEmpty() ? null : String.join(", ", parts);
+        }
+        if (value instanceof Number number) {
+            return new BigDecimal(number.toString()).stripTrailingZeros().toPlainString();
+        }
+        return value == null || value.toString().isBlank() ? null : value.toString().trim();
     }
 
     /** Sets the tool's status variable, when it has one, to how the request ended. */

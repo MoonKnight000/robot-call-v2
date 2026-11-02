@@ -12,8 +12,12 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsRecipient;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVariableType;
 import uz.murodjon.robotcallv2.shared.exception.AppException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolInputOverride;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolOverride;
+import uz.murodjon.robotcallv2.tool.domain.enums.ToolInputSource;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -75,7 +79,7 @@ class AgentFunctionValidatorTest {
     @Test
     void acceptsAnExtractionWithAnEnumVariable() {
         List<AgentFunction> functions = extraction("pickPlan",
-                new AgentFunctionVariable("plan", AgentVariableType.ENUM, "Chosen plan", List.of("basic", "pro")));
+                new AgentFunctionVariable("plan", AgentVariableType.ENUM, "Chosen plan", List.of("basic", "pro"), false));
 
         assertThatCode(() -> AgentFunctionValidator.validate(functions)).doesNotThrowAnyException();
     }
@@ -118,7 +122,52 @@ class AgentFunctionValidatorTest {
     }
 
     private static AgentFunctionVariable variable(String name, AgentVariableType type) {
-        return new AgentFunctionVariable(name, type, null, List.of());
+        return new AgentFunctionVariable(name, type, null, List.of(), false);
+    }
+
+    @Test
+    void keepsTheIntegrationOverrideOnlyOnAnIntegrationFunction() {
+        ToolOverride override = new ToolOverride(List.of(new ToolInputOverride("rooms", ToolInputSource.VALUE, "3", null)), null);
+        List<AgentFunction> normalized = AgentFunctionValidator.normalize(List.of(
+                AgentFunction.builder().id("a").type(AgentFunctionType.INTEGRATION).integrationTool("searchFlatsLive")
+                        .integration(override).build(),
+                AgentFunction.builder().id("b").type(AgentFunctionType.END_CALL).integration(override).build()));
+
+        assertThat(normalized.get(0).integration()).isEqualTo(override);
+        assertThat(normalized.get(1).integration()).isNull();
+        assertThatCode(() -> AgentFunctionValidator.validate(normalized)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void refusesAnIntegrationInputWithoutItsValue() {
+        assertRefused(integration(new ToolOverride(List.of(new ToolInputOverride("rooms", ToolInputSource.VALUE, null, null)), null)),
+                ErrorCode.AI_AGENT_FUNCTION_INVALID);
+        assertRefused(integration(new ToolOverride(List.of(new ToolInputOverride("phone", ToolInputSource.VARIABLE, "not a name", null)), null)),
+                ErrorCode.AI_AGENT_FUNCTION_INVALID);
+        assertRefused(integration(new ToolOverride(List.of(new ToolInputOverride("rooms", null, "3", null)), null)),
+                ErrorCode.AI_AGENT_FUNCTION_INVALID);
+    }
+
+    @Test
+    void refusesAnIntegrationInputNamedTwice() {
+        assertRefused(integration(new ToolOverride(List.of(
+                        new ToolInputOverride("rooms", ToolInputSource.AI, null, null),
+                        new ToolInputOverride("rooms", ToolInputSource.VALUE, "2", null)), null)),
+                ErrorCode.AI_AGENT_FUNCTION_INVALID);
+    }
+
+    @Test
+    void refusesAnAnswerFieldThatIsNotAPath() {
+        assertRefused(integration(new ToolOverride(null, Map.of("flats", "data[*]"))), ErrorCode.AI_AGENT_FUNCTION_INVALID);
+        assertRefused(integration(new ToolOverride(null, Map.of("flats", "$.data[*] || data"))), ErrorCode.AI_AGENT_FUNCTION_INVALID);
+        assertRefused(integration(new ToolOverride(null, Map.of("1flats", "$.data[*]"))), ErrorCode.AI_AGENT_FUNCTION_INVALID);
+        assertThatCode(() -> AgentFunctionValidator.validate(integration(new ToolOverride(null, Map.of("flats", "$.data[*] || $.data.content[*]")))))
+                .doesNotThrowAnyException();
+    }
+
+    private static List<AgentFunction> integration(ToolOverride override) {
+        return AgentFunctionValidator.normalize(List.of(AgentFunction.builder().id("a").type(AgentFunctionType.INTEGRATION)
+                .integrationTool("searchFlatsLive").integration(override).build()));
     }
 
     private static void assertRefused(List<AgentFunction> functions, ErrorCode code) {

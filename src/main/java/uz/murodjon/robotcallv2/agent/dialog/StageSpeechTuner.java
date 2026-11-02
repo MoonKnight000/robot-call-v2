@@ -37,7 +37,7 @@ final class StageSpeechTuner {
         RtpEndpoint endpoint = s.endpoint();
         SttStreamBridge bridge = endpoint != null ? endpoint.findListener(SttStreamBridge.class) : null;
         if (bridge != null) {
-            bridge.setAgentQuestion(AgentQuestionCues.classify(agentLine));
+            bridge.setAgentLine(agentLine);
         }
     }
 

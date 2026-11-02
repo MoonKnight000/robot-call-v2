@@ -39,8 +39,25 @@ public record AgentCallBehaviourDto(
         /** Seconds an outbound call rings before it counts as unanswered; 5-300 */
         Integer ringDurationSeconds,
         /** Whether the agent may press keypad digits on the line itself (IVR navigation); not the caller typing digits */
-        Boolean pressDigitEnabled
+        Boolean pressDigitEnabled,
+        /** Whether the early reply's model also judges when the caller has finished; null on read = deployment default */
+        Boolean llmTurnDetection
 ) {
+
+    /** The shape before {@code llmTurnDetection}: it stays as the agent has it. */
+    public AgentCallBehaviourDto(InterruptionSensitivity interruptionSensitivity, Boolean dtmfInputEnabled,
+                                 VoicemailAction voicemailAction, String voicemailMessage, Boolean midCallSmsEnabled,
+                                 String midCallSmsTemplate, String transferPhoneNumber, String transferMessage,
+                                 Long transferQueueId, Long preConversationAudioFileId,
+                                 Boolean autoEscalateOnFrustration, Integer frustrationThreshold,
+                                 Integer responseWaitMs, Integer reminderAfterSeconds, Integer reminderMaxCount,
+                                 Integer dtmfTimeoutMs, String dtmfTerminationKey, Integer dtmfDigitLimit,
+                                 Integer ringDurationSeconds, Boolean pressDigitEnabled) {
+        this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage, midCallSmsEnabled,
+                midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, preConversationAudioFileId,
+                autoEscalateOnFrustration, frustrationThreshold, responseWaitMs, reminderAfterSeconds, reminderMaxCount,
+                dtmfTimeoutMs, dtmfTerminationKey, dtmfDigitLimit, ringDurationSeconds, pressDigitEnabled, null);
+    }
 
     /** The shape before the reminder, DTMF and ring-duration fields: they stay as the agent has them. */
     public AgentCallBehaviourDto(InterruptionSensitivity interruptionSensitivity, Boolean dtmfInputEnabled,
@@ -51,7 +68,7 @@ public record AgentCallBehaviourDto(
                                  Integer responseWaitMs) {
         this(interruptionSensitivity, dtmfInputEnabled, voicemailAction, voicemailMessage, midCallSmsEnabled,
                 midCallSmsTemplate, transferPhoneNumber, transferMessage, transferQueueId, preConversationAudioFileId,
-                autoEscalateOnFrustration, frustrationThreshold, responseWaitMs, null, null, null, null, null, null, null);
+                autoEscalateOnFrustration, frustrationThreshold, responseWaitMs, null, null, null, null, null, null, null, null);
     }
 
     public static AgentCallBehaviourDto of(AiAgentCallBehaviour behaviour) {
@@ -61,6 +78,6 @@ public record AgentCallBehaviourDto(
                 behaviour.autoEscalateOnFrustration(), behaviour.frustrationThreshold(), behaviour.responseWaitMs(),
                 behaviour.reminderAfterSeconds(), behaviour.reminderMaxCount(), behaviour.dtmfTimeoutMs(),
                 behaviour.dtmfTerminationKey(), behaviour.dtmfDigitLimit(), behaviour.ringDurationSeconds(),
-                behaviour.pressDigitEnabled());
+                behaviour.pressDigitEnabled(), behaviour.llmTurnDetection());
     }
 }

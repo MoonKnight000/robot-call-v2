@@ -21,8 +21,6 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
-import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
-import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -57,13 +55,11 @@ public class TurnTools {
     private final McpToolCallbackFactory mcpToolCallbackFactory;
     private final CatalogSearchUseCase catalogSearch;
     private final StageScriptRunner stageScriptRunner;
-    private final CrmCatalogUseCase crmCatalog;
     private final ClientMemoryUseCase clientMemory;
-    private final CrmUseCase crmUseCase;
     private final IntegrationHttpToolFactory integrationHttpToolFactory;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null, null, null, null, null, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -74,9 +70,7 @@ public class TurnTools {
             McpToolCallbackFactory mcpToolCallbackFactory,
             CatalogSearchUseCase catalogSearch,
             StageScriptRunner stageScriptRunner,
-            CrmCatalogUseCase crmCatalog,
             ClientMemoryUseCase clientMemory,
-            CrmUseCase crmUseCase,
             IntegrationHttpToolFactory integrationHttpToolFactory
     ) {
         this.dialogProperties = dialogProperties;
@@ -85,9 +79,7 @@ public class TurnTools {
         this.mcpToolCallbackFactory = mcpToolCallbackFactory;
         this.catalogSearch = catalogSearch;
         this.stageScriptRunner = stageScriptRunner;
-        this.crmCatalog = crmCatalog;
         this.clientMemory = clientMemory;
-        this.crmUseCase = crmUseCase;
         this.integrationHttpToolFactory = integrationHttpToolFactory;
     }
 
@@ -176,13 +168,11 @@ public class TurnTools {
             callbacks.add(ScenarioToolCallbackFactory.build(extraction, s));
         }
         // The agent's EXTRACT_VARIABLE functions: one tool each, usable in any stage.
-        callbacks.addAll(AgentFunctionTools.buildExtractionTools(s.agent(), s));
+        callbacks.addAll(AgentFunctionTools.buildExtractionTools(s.agent(), s, s.companyId(), clientMemory));
         List<ToolCallback> mcp = mcpTools(s);
         callbacks.addAll(mcp);
         List<ToolCallback> catalog = catalogTools(s);
         callbacks.addAll(catalog);
-        List<ToolCallback> realEstate = realEstateTools(s);
-        callbacks.addAll(realEstate);
         List<ToolCallback> integration = integrationTools(s);
         callbacks.addAll(integration);
         if (!dialogProperties.stateScopedTools()) {
@@ -196,7 +186,6 @@ public class TurnTools {
         // a lookup the caller may need at any stage, and it changes nothing.
         mcp.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         catalog.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
-        realEstate.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         integration.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         return callbacks.stream()
                 .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
@@ -241,28 +230,6 @@ public class TurnTools {
         return List.of(MethodToolCallbackProvider.builder()
                 .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch, clientMemory))
                 .build().getToolCallbacks());
-    }
-
-    /**
-     * The developer's Uysot lookups ({@link RealEstateTools}), for a company connected to Uysot.
-     * Asked once per call and kept on the session, like the catalog: the answer is a lookup the
-     * caller may need at any stage, and it changes nothing in the CRM.
-     */
-    private List<ToolCallback> realEstateTools(DialogSession s) {
-        if (crmCatalog == null) {
-            return List.of();
-        }
-        Set<String> enabled = s.crmToolNames();
-        if (enabled == null) {
-            enabled = crmCatalog.findEnabledToolNames(s.companyId());
-            s.setCrmToolNames(enabled);
-        }
-        Map<String, String> descriptions = s.crmToolDescriptions();
-        if (descriptions == null) {
-            descriptions = integrationHttpToolFactory != null ? integrationHttpToolFactory.findBuiltInDescriptions() : Map.of();
-            s.setCrmToolDescriptions(descriptions);
-        }
-        return CrmToolCallbacks.build(s, s.companyId(), enabled, descriptions, crmCatalog, crmUseCase, clientMemory);
     }
 
     /**

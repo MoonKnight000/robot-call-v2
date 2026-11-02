@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.agent.audio;
 
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.turn.AgentQuestion;
+import uz.murodjon.robotcallv2.agent.turn.TurnCue;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -535,7 +536,7 @@ class SpeechGateTest {
     void aCloseTheCallerTalksThroughIsReportedAsContinuedWithItsWords() {
         SpeechGate gate = learningGate();
         java.util.List<String> verdicts = new java.util.ArrayList<>();
-        gate.setCloseListener((text, waitMs, continued) -> verdicts.add(text + "|" + continued));
+        gate.setCloseListener((text, waitMs, continued, agentLine, llmCue) -> verdicts.add(text + "|" + continued));
 
         feed(gate, true, 300);
         gate.onInterimTranscript("ertaga to'layman lekin");
@@ -549,7 +550,7 @@ class SpeechGateTest {
     void aCloseThatOutlastsTheGraceIsReportedAsEnded() {
         SpeechGate gate = learningGate();
         java.util.List<Boolean> verdicts = new java.util.ArrayList<>();
-        gate.setCloseListener((text, waitMs, continued) -> verdicts.add(continued));
+        gate.setCloseListener((text, waitMs, continued, agentLine, llmCue) -> verdicts.add(continued));
 
         cleanTurn(gate);
 
@@ -560,7 +561,7 @@ class SpeechGateTest {
     void aGateWithoutAGraceJudgesNothing() {
         SpeechGate gate = gate();
         java.util.List<Boolean> verdicts = new java.util.ArrayList<>();
-        gate.setCloseListener((text, waitMs, continued) -> verdicts.add(continued));
+        gate.setCloseListener((text, waitMs, continued, agentLine, llmCue) -> verdicts.add(continued));
 
         cleanTurn(gate);
         feed(gate, true, 300);
@@ -663,5 +664,92 @@ class SpeechGateTest {
         feed(gate, false, 350);
 
         assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void aSentenceTheModelStartedAnsweringClosesOnTheCompleteWait() {
+        // Neutral to the word rules, so without the model it waits the full 1000ms.
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("shartnoma raqami");
+        gate.setLlmTurnCue("shartnoma raqami", TurnCue.COMPLETE);
+        feed(gate, false, 700);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseWaitMs()).isBetween(600, 700);
+    }
+
+    @Test
+    void aSentenceTheModelChoseToWaitOnGetsTheExtension() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("shartnoma raqami");
+        gate.setLlmTurnCue("shartnoma raqami", TurnCue.INCOMPLETE);
+        feed(gate, false, 1200);
+        assertThat(gate.isOpen()).isTrue();             // 1000 + the 400ms default extension
+
+        feed(gate, false, 300);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void theModelCannotCallFinishedWhatTheWordsCallUnfinished() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("men pulni bankga");
+        gate.setLlmTurnCue("men pulni bankga", TurnCue.COMPLETE);
+        feed(gate, false, 1200);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void aVerdictOnWordsTheCallerHasSinceAddedToIsIgnored() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("shartnoma raqami");
+        gate.setLlmTurnCue("shartnoma raqami", TurnCue.COMPLETE);
+        gate.onInterimTranscript("shartnoma raqami uch");
+        feed(gate, false, 900);
+
+        assertThat(gate.isOpen()).isTrue();             // back on the full 1000ms
+    }
+
+    @Test
+    void aVerdictSurvivesARevisionThatOnlyChangesPunctuation() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.setLlmTurnCue("shartnoma raqami", TurnCue.COMPLETE);
+        gate.onInterimTranscript("Shartnoma raqami.");
+        feed(gate, false, 700);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void aJudgedCloseReportsTheAgentLineAndTheModelsVerdict() {
+        SpeechGate gate = learningGate();
+        java.util.List<String> verdicts = new java.util.ArrayList<>();
+        gate.setCloseListener((text, waitMs, continued, agentLine, llmCue) ->
+                verdicts.add(agentLine + "|" + text + "|" + llmCue));
+        gate.setAgentLine("Shartnoma raqamingizni ayting");
+
+        feed(gate, true, 300);
+        gate.onInterimTranscript("shartnoma raqami");
+        gate.setLlmTurnCue("shartnoma raqami", TurnCue.INCOMPLETE);
+        feed(gate, false, 3000);
+
+        assertThat(verdicts).containsExactly("Shartnoma raqamingizni ayting|shartnoma raqami|INCOMPLETE");
     }
 }

@@ -91,4 +91,78 @@ class HttpToolExecutorBodyTest {
         assertThat(body.has("phone")).isFalse();
         assertThat(body.has("token")).isFalse();
     }
+
+    /** A contract lookup: the number the client said, else the call's contract, else the phone. */
+    private static final Map<String, Object> CONTRACT_SCHEMA = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    "search", Map.of("type", "string", "x-fallback", List.of("contractNumber", "phone_last9"))));
+
+    @Test
+    void whatTheModelSaidWinsOverTheFallback() throws Exception {
+        JsonNode body = JSON.readTree(toolRequestTemplates.buildSchemaBody(CONTRACT_SCHEMA,
+                Map.of("contractNumber", "UY-1", "phone_last9", "901234567"), Map.of("search", "UY-7"), Map.of()));
+
+        assertThat(body.path("search").asText()).isEqualTo("UY-7");
+    }
+
+    @Test
+    void anEmptyFieldTakesTheFirstCallVariableThatHasAValue() throws Exception {
+        JsonNode fromContract = JSON.readTree(toolRequestTemplates.buildSchemaBody(CONTRACT_SCHEMA,
+                Map.of("contractNumber", "UY-1", "phone_last9", "901234567"), Map.of("search", " "), Map.of()));
+        JsonNode fromPhone = JSON.readTree(toolRequestTemplates.buildSchemaBody(CONTRACT_SCHEMA,
+                Map.of("contractNumber", "", "phone_last9", "901234567"), Map.of(), Map.of()));
+        JsonNode nothing = JSON.readTree(toolRequestTemplates.buildSchemaBody(CONTRACT_SCHEMA,
+                Map.of(), Map.of(), Map.of()));
+
+        assertThat(fromContract.path("search").asText()).isEqualTo("UY-1");
+        assertThat(fromPhone.path("search").asText()).isEqualTo("901234567");
+        assertThat(nothing.has("search")).isFalse();
+    }
+
+    @Test
+    void theFallbackIsNotShownToTheModel() {
+        JsonNode schema = toolSchemas.schemaForModel(JSON.valueToTree(CONTRACT_SCHEMA));
+
+        assertThat(schema.path("properties").has("search")).isTrue();
+        assertThat(schema.toString()).doesNotContain("x-fallback");
+    }
+
+    /** A CRM task: the model names the deadline as local time, the CRM takes epoch seconds. */
+    private static final Map<String, Object> TASK_SCHEMA = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    "deadline", Map.of("type", "string", "x-format", "epochSeconds")));
+
+    @Test
+    void aLocalTimeIsSentAsEpochSecondsInTheCallsTimezone() throws Exception {
+        JsonNode tashkent = JSON.readTree(toolRequestTemplates.buildSchemaBody(TASK_SCHEMA,
+                Map.of(), Map.of("deadline", "2026-11-03 15:00"), Map.of()));
+        JsonNode moscow = JSON.readTree(toolRequestTemplates.buildSchemaBody(TASK_SCHEMA,
+                Map.of("timezone", "Europe/Moscow"), Map.of("deadline", "2026-11-03T15:00"), Map.of()));
+
+        // 2026-11-03 10:00 UTC = 15:00 in Tashkent (+05), 13:00 UTC = 15:00 in Moscow (+03).
+        assertThat(tashkent.path("deadline").isNumber()).isTrue();
+        assertThat(tashkent.path("deadline").asLong()).isEqualTo(1793700000L);
+        assertThat(moscow.path("deadline").asLong()).isEqualTo(1793710800L);
+    }
+
+    @Test
+    void aTimeThatDoesNotParseIsLeftOutAndANumberPassesThrough() throws Exception {
+        JsonNode garbled = JSON.readTree(toolRequestTemplates.buildSchemaBody(TASK_SCHEMA,
+                Map.of(), Map.of("deadline", "ertaga tushdan keyin"), Map.of()));
+        JsonNode number = JSON.readTree(toolRequestTemplates.buildSchemaBody(TASK_SCHEMA,
+                Map.of(), Map.of("deadline", 1793440800L), Map.of()));
+
+        assertThat(garbled.has("deadline")).isFalse();
+        assertThat(number.path("deadline").asLong()).isEqualTo(1793440800L);
+    }
+
+    @Test
+    void theFormatIsNotShownToTheModel() {
+        JsonNode schema = toolSchemas.schemaForModel(JSON.valueToTree(TASK_SCHEMA));
+
+        assertThat(schema.path("properties").has("deadline")).isTrue();
+        assertThat(schema.toString()).doesNotContain("x-format");
+    }
 }

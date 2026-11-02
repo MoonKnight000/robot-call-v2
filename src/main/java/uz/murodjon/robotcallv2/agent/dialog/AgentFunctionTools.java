@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionSms;
@@ -9,13 +11,17 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsContentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsRecipient;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVariableType;
+import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolParamDef;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The tools an agent's saved function list adds to a call or words differently, shared by both pipelines:
@@ -23,26 +29,56 @@ import java.util.Map;
  */
 final class AgentFunctionTools {
 
+    private static final Logger log = LoggerFactory.getLogger(AgentFunctionTools.class);
+
     private AgentFunctionTools() {
     }
 
     /**
      * One tool per EXTRACT_VARIABLE function, named as the function is: a parameter per variable, each recorded on
      * the call as given — so a later tool can use it as {@code {{name}}} ({@link ToolCallVariables#withOutcome}).
+     * A variable marked {@code remember} is also written to the client's memory as soon as it is recorded.
+     *
+     * @param memory where remembered variables go; null keeps them on the call only
      */
-    static List<ToolCallback> buildExtractionTools(AiAgent agent, DialogOutcomeSink session) {
+    static List<ToolCallback> buildExtractionTools(AiAgent agent, DialogOutcomeSink session, long companyId,
+                                                   ClientMemoryUseCase memory) {
         List<ToolCallback> tools = new ArrayList<>();
         for (AgentFunction function : AgentFunctionPlan.findExtractFunctions(agent)) {
             List<ToolParamDef> params = new ArrayList<>();
+            Set<String> remembered = new HashSet<>();
             for (AgentFunctionVariable variable : function.extract().variables()) {
                 params.add(new ToolParamDef(variable.name(), jsonType(variable.type()), false, describe(variable)));
+                if (variable.remember()) {
+                    remembered.add(variable.name());
+                }
             }
             String description = function.description() != null ? function.description()
                     : "Records values the conversation has given: "
                     + String.join(", ", function.extract().variables().stream().map(AgentFunctionVariable::name).toList());
-            tools.add(ScenarioToolCallbackFactory.build(new ToolDef(function.name(), description, params), session));
+            tools.add(ScenarioToolCallbackFactory.build(new ToolDef(function.name(), description, params), session,
+                    recorded -> remember(session, companyId, memory, recorded, remembered)));
         }
         return tools;
+    }
+
+    /** Writes the recorded values of the {@code remembered} variables to the client's memory; never fails the call. */
+    private static void remember(DialogOutcomeSink session, long companyId, ClientMemoryUseCase memory,
+                                 Map<String, Object> recorded, Set<String> remembered) {
+        String phone = session.context() != null ? session.context().phone() : null;
+        if (memory == null || phone == null || remembered.isEmpty()) {
+            return;
+        }
+        Map<String, Object> facts = new LinkedHashMap<>(recorded);
+        facts.keySet().retainAll(remembered);
+        if (facts.isEmpty()) {
+            return;
+        }
+        try {
+            memory.rememberFacts(companyId, phone, facts);
+        } catch (Exception e) {
+            log.warn("[{}] could not remember {}: {}", session.channelId(), facts.keySet(), e.getMessage());
+        }
     }
 
     /**

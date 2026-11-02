@@ -5,7 +5,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionSms;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsRecipient;
-import uz.murodjon.robotcallv2.integration.domain.enums.CrmTool;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.util.HashSet;
@@ -110,8 +109,7 @@ final class AgentFunctionPlan {
     }
 
     /**
-     * The integration tools a configured agent allows, by every name a tool answers to (the entry itself, and
-     * the model's name of a built-in tool a catalog key stands for); null for an unconfigured agent, which
+     * The integration tools a configured agent allows, by the name the model calls each by; null for an unconfigured agent, which
      * follows {@code disabledIntegrationTools} instead.
      */
     static Set<String> findAllowedIntegrationNames(AiAgent agent) {
@@ -123,7 +121,6 @@ final class AgentFunctionPlan {
             if (function.type() == AgentFunctionType.INTEGRATION && function.integrationTool() != null) {
                 String entry = function.integrationTool().trim();
                 names.add(entry);
-                CrmTool.findByKey(entry).ifPresent(tool -> names.add(tool.toolName()));
             }
         }
         return names;
@@ -145,7 +142,6 @@ final class AgentFunctionPlan {
                     String entry = function.integrationTool();
                     if (entry != null) {
                         byName.put(entry, function);
-                        CrmTool.findByKey(entry).ifPresent(tool -> byName.put(tool.toolName(), function));
                     }
                 }
                 case CUSTOM -> {

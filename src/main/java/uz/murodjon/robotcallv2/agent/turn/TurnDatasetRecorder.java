@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Output is JSON Lines, one file per day in Tashkent time:
  * <pre>
- *   {"at":"2026-10-08","language":"uz-UZ","text":"ertaga to'layman lekin","waitMs":1200,"label":"continue"}
+ *   {"at":"2026-10-08","language":"uz-UZ","agent":"Qachon to'lay olasiz?","text":"ertaga to'layman lekin","waitMs":1200,"label":"continue"}
  * </pre>
  * No call id and no phone: the set is for training, not for tracing a caller. Text goes
  * through {@link PiiRedactor} first.
@@ -83,21 +83,31 @@ public class TurnDatasetRecorder {
      * One judged close. Blank text is skipped: a close with no interim in front of it has
      * nothing for a text model to read.
      *
+     * @param agentLine the agent's line the caller was answering — the same words close differently
+     *                  after "necha xonali?" and after "nima sababdan?"; blank when there was none
      * @param smartTurn what Smart Turn scored the close in shadow ({@code SmartTurnProperties#shadowLanguages}),
      *                  or null when it was not asked
+     * @param llmCue    what the speculative reply made of the utterance; UNKNOWN (left out) when it had not said
      */
-    public void record(String language, String transcript, int waitMs, boolean callerContinued, Float smartTurn) {
+    public void record(String language, String agentLine, String transcript, int waitMs, boolean callerContinued,
+                       Float smartTurn, TurnCue llmCue) {
         if (!running || transcript == null || transcript.isBlank()) {
             return;
         }
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("at", LocalDate.now(TASHKENT).toString());
         row.put("language", language);
+        if (agentLine != null && !agentLine.isBlank()) {
+            row.put("agent", PiiRedactor.redact(agentLine.strip()));
+        }
         row.put("text", PiiRedactor.redact(transcript.strip()));
         row.put("waitMs", waitMs);
         row.put("label", callerContinued ? "continue" : "end");
         if (smartTurn != null) {
             row.put("smartTurn", smartTurn);
+        }
+        if (llmCue != null && llmCue != TurnCue.UNKNOWN) {
+            row.put("llm", llmCue == TurnCue.COMPLETE ? "complete" : "incomplete");
         }
         queue.offer(row);
     }

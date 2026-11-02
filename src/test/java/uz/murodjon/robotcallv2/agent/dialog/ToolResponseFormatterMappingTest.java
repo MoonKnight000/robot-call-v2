@@ -97,4 +97,30 @@ class ToolResponseFormatterMappingTest {
     void aSecondWildcardSelectsNothing() throws Exception {
         assertThat(map("$.data.items[*].x[*]").isMissingNode()).isTrue();
     }
+
+    @Test
+    void aFilterKeepsOnlyTheElementsThatPassIt() throws Exception {
+        JsonNode payments = formatter.applyMapping(JSON.readTree("""
+                {"data": [
+                  {"date": "2025-09-01", "amount": 2000, "paid": true},
+                  {"date": "2025-10-01", "amount": 2000, "paid": false},
+                  {"date": "2025-11-01", "amount": 2000, "status": "PAID"},
+                  {"date": "2025-12-01", "amount": 2000}
+                ]}"""), Map.of("out", "$.data[?paid!=true&status!=paid]{date}")).path("out");
+
+        assertThat(payments).extracting(element -> element.path("date").asText())
+                .containsExactly("2025-10-01", "2025-12-01");
+    }
+
+    @Test
+    void anEqualsFilterNeedsTheField() throws Exception {
+        assertThat(map("$.data.items[?rooms=3].number").toString()).isEqualTo("[\"14\"]");
+        assertThat(map("$.data.items[?house.name=navruz]").size()).isEqualTo(2);
+        assertThat(map("$.data.items[?floor=3]").size()).isZero();
+    }
+
+    @Test
+    void aFilterAfterAWildcardSelectsNothing() throws Exception {
+        assertThat(map("$.data.items[*].x[?a=1]").isMissingNode()).isTrue();
+    }
 }

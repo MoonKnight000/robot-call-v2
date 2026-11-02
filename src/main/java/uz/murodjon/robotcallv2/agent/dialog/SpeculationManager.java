@@ -10,6 +10,9 @@ import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
+import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
+import uz.murodjon.robotcallv2.agent.stt.SttStreamBridge;
+import uz.murodjon.robotcallv2.agent.turn.TurnCue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -226,8 +229,12 @@ class SpeculationManager {
                     turnTools.build(s), llmTurnClient.selectModel(s, text, true), upstream);
             StringBuilder guessed = new StringBuilder();
             AtomicBoolean firstSentenceWarmed = new AtomicBoolean();
+            AtomicBoolean turnCueSent = new AtomicBoolean();
             Disposable warmUp = responses.subscribe(
-                    response -> warmFirstSentence(s, response, guessed, firstSentenceWarmed),
+                    response -> {
+                        sendTurnCue(s, text, response, turnCueSent);
+                        warmFirstSentence(s, response, guessed, firstSentenceWarmed);
+                    },
                     error -> log.debug("[{}] speculative reply failed: {}", s.channelId(), error.toString()));
             s.setSpeculation(new Speculation(text, responses, warmUp, upstream.get()));
             metrics.speculationStarted();
@@ -237,6 +244,51 @@ class SpeculationManager {
             log.debug("[{}] could not start a speculative reply: {}", s.channelId(), e.getMessage());
         } finally {
             MDC.remove("channelId");
+        }
+    }
+
+    /**
+     * Tell the speech gate what the model writing the guess made of the caller's words, from
+     * the first chunk that shows it — Pipecat's turn-completion marker, read off the reply
+     * the call is writing anyway rather than asked for separately. Text means it is
+     * answering: the caller has said enough. {@code waitForCaller} means it judged them
+     * mid-thought. Other tool calls say nothing either way and leave the verdict open.
+     *
+     * <p>A verdict on words the caller has since added to needs no cancelling here: the gate
+     * holds it only while its interim still says the same thing. Runs on the reactor's
+     * thread; the gate only stores the verdict, so nothing blocks.
+     */
+    private void sendTurnCue(DialogSession s, String text, ChatResponse response, AtomicBoolean sent) {
+        if (!isTurnCueEnabled(s) || sent.get()) {
+            return;
+        }
+        TurnCue cue = TurnCue.UNKNOWN;
+        if (turnTools.extractCalls(response).stream().anyMatch(call -> "waitForCaller".equals(call.name()))) {
+            cue = TurnCue.INCOMPLETE;
+        } else {
+            String chunk = LlmTurnClient.extractText(response);
+            if (chunk != null && !chunk.isBlank()) {
+                cue = TurnCue.COMPLETE;
+            }
+        }
+        if (cue != TurnCue.UNKNOWN && sent.compareAndSet(false, true)) {
+            metrics.speculationTurnCue(cue == TurnCue.COMPLETE);
+            log.debug("[{}] speculative reply reads the caller as {}", s.channelId(), cue);
+            sendTurnCue(s, text, cue);
+        }
+    }
+
+    /** The agent's own setting ({@code callBehaviour.llmTurnDetection}), else the deployment's. */
+    private boolean isTurnCueEnabled(DialogSession s) {
+        Boolean agentSetting = s.agent() != null ? s.agent().callBehaviour().llmTurnDetection() : null;
+        return agentSetting != null ? agentSetting : dialogProperties.speculativeTurnCue();
+    }
+
+    private static void sendTurnCue(DialogSession s, String text, TurnCue cue) {
+        RtpEndpoint endpoint = s.endpoint();
+        SttStreamBridge bridge = endpoint != null ? endpoint.findListener(SttStreamBridge.class) : null;
+        if (bridge != null) {
+            bridge.setLlmTurnCue(text, cue);
         }
     }
 

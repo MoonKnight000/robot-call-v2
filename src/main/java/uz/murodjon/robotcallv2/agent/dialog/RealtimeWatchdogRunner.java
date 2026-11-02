@@ -40,8 +40,10 @@ public class RealtimeWatchdogRunner {
     private static final Duration TICK = Duration.ofSeconds(1);
 
     /** Instructions to the engine — never heard by the caller; what they hear is the answer. */
-    static final String STILL_THERE = "[SYSTEM: the client has been silent for several seconds. Briefly "
-            + "ask whether they can hear you and briefly repeat your last question.]";
+    static final String STILL_THERE = "[SYSTEM: nobody has spoken for several seconds. If the client answered "
+            + "you last and you have not replied yet, the client is waiting for YOU: do not ask whether they can "
+            + "hear you — say this stage's next line now. Otherwise briefly ask whether they can hear you and "
+            + "briefly repeat your last question.]";
     static final String LAST_CALL = "[SYSTEM: the client is still silent. In one sentence ask whether they are "
             + "still on the line and say you will end the call if there is no answer. Do not call endCall.]";
     static final String GIVE_UP = "[SYSTEM: the client is not answering. Say a polite goodbye in one sentence "

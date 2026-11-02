@@ -11,8 +11,11 @@ import java.util.List;
  * @param type        what kind of value it is; null reads as {@link AgentVariableType#STRING}
  * @param description what to look for, as the model reads it
  * @param choices     the allowed values of an {@link AgentVariableType#ENUM}; empty otherwise
+ * @param remember    whether the value is also kept in the client's memory under {@code name}, so the
+ *                    next call or chat with the same number knows it (the flat the client liked)
  */
-public record AgentFunctionVariable(String name, AgentVariableType type, String description, List<String> choices) {
+public record AgentFunctionVariable(String name, AgentVariableType type, String description, List<String> choices,
+                                    boolean remember) {
 
     public AgentFunctionVariable {
         type = type == null ? AgentVariableType.STRING : type;

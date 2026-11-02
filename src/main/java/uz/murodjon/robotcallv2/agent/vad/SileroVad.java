@@ -28,8 +28,9 @@ import java.util.Map;
  *
  * <p>Non-fatal: if the model file is missing or fails to load, the app still runs and
  * barge-in is simply disabled. This targets the Silero v5 interface (inputs
- * {@code input}/{@code state}/{@code sr}, state shape {@code [2,1,128]}); adjust if
- * your model file uses the v4 {@code h}/{@code c} split.
+ * {@code input}/{@code state}/{@code sr}, state shape {@code [2,1,128]}), which v6 keeps
+ * unchanged — the model in use is v6.2 ({@code docs/models/silero-vad.md}); adjust if your model
+ * file uses the v4 {@code h}/{@code c} split.
  */
 @Component
 @ConditionalOnProperty(prefix = "voice-agent.vad", name = "enabled", havingValue = "true", matchIfMissing = true)

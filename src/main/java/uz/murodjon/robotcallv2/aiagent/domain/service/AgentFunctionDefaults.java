@@ -12,7 +12,6 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsContentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentTransferMode;
-import uz.murodjon.robotcallv2.integration.domain.enums.CrmTool;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,8 +72,7 @@ public final class AgentFunctionDefaults {
     private static boolean isSwitchedOff(AiAgent agent, AgentIntegrationTool tool) {
         for (String entry : agent.disabledIntegrationTools()) {
             String trimmed = entry.trim();
-            if (trimmed.equals(tool.key()) || trimmed.equals(tool.toolName())
-                    || CrmTool.findByKey(tool.key()).map(CrmTool::toolName).filter(trimmed::equals).isPresent()) {
+            if (trimmed.equals(tool.key()) || trimmed.equals(tool.toolName())) {
                 return true;
             }
         }

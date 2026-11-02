@@ -92,9 +92,11 @@ public class SystemPromptFactory {
 
     /** What the AI persona does with a question it cannot answer: hand it to a person only if one can be reached. */
     static String unknownAnswerAction(boolean transferOffered) {
-        return transferOffered
+        return (transferOffered
                 ? " Sizni mutaxassisimizga ulab beraman\" and call requestHumanTransfer.\n"
-                : "\" and offer what you can help with instead.\n";
+                : "\" and offer what you can help with instead.\n")
+                + "  Only for a question the CLIENT asked: a tool that returned no data is not one — then never "
+                + "say this sentence and do not transfer, carry on with the conversation.\n";
     }
 
     /**
@@ -237,7 +239,7 @@ public class SystemPromptFactory {
             Map.entry("contractNumber", "Contract number"),
             Map.entry("penaltyAmount", "Penalty (Peniya)"),
             Map.entry("contractCancelDays", "Days until the contract is cancelled (Shartnoma bekor bo'lishiga qolgan kun)"),
-            // Flats and products from earlier conversations (RealEstateTools, CatalogTools). A price
+            // Flats and products from earlier conversations (searchFlats, CatalogTools). A price
             // in them may be stale: the agent searches again before stating one.
             Map.entry("flatSearch", "Flats the client looked for"),
             Map.entry("offeredFlats", "Flats offered to the client (re-check the price with searchFlats before saying it)"),
@@ -871,6 +873,13 @@ public class SystemPromptFactory {
                     .append("\". Adapt to what the client said; do not start the whole sentence over. ")
                     .append("The client may not have heard your question in full — do not treat what they ")
                     .append("said as an answer to it.]");
+        }
+        if (s.isCallerWentQuiet()) {
+            // The previous turn chose waitForCaller and nothing followed: the caller is waiting
+            // for the bot now, and choosing to wait again would leave them in the same silence.
+            sb.append("\n[SYSTEM: You waited for the client to finish, but they have been silent since. ")
+                    .append("They said all they meant to — reply to what they said now. ")
+                    .append("Do not call waitForCaller again.]");
         }
         appendKnowledge(sb, s);
         String catalog = s.catalogResult();

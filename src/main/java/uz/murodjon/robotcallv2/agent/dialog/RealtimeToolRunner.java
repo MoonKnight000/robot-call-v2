@@ -6,12 +6,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.crm.application.port.input.CrmCatalogUseCase;
-import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.agent.metrics.RealtimeMetrics;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeProperties;
 import uz.murodjon.robotcallv2.agent.realtime.RealtimeSession;
+import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
@@ -48,16 +47,18 @@ class RealtimeToolRunner {
 
     /** Appended to a tool answer the engine gets after it already spoke this turn — see {@link #runTool}. */
     private static final String ALREADY_SPOKEN = " [SYSTEM: the client has already heard what you said this turn — "
-            + "do not say it again. If you have nothing new to say, stay silent and wait for the client's answer.]";
+            + "do not say it again. If it already ended with a question to the client, stay silent and wait for "
+            + "the answer; otherwise ask the current stage's question now, in one short sentence.]";
+
+    /** One second at the 8 kHz the line plays: less than that is a breath or a syllable, not a line ({@link #hasSpokenALine}). */
+    private static final long MIN_LINE_SAMPLES = 8000;
 
     private final KnowledgeRetrievalUseCase knowledgeRetrieval;
     private final CatalogSearchUseCase catalogSearch;
     private final RealtimeProperties realtimeProperties;
     private final RealtimeMetrics metrics;
     private final StageScriptRunner stageScriptRunner;
-    private final CrmCatalogUseCase crmCatalog;
     private final ClientMemoryUseCase clientMemory;
-    private final CrmUseCase crmUseCase;
     private final IntegrationHttpToolFactory integrationHttpToolFactory;
     private final ToolUseCase toolUseCase;
     private final HttpToolExecutor httpToolExecutor;
@@ -72,8 +73,7 @@ class RealtimeToolRunner {
 
     RealtimeToolRunner(KnowledgeRetrievalUseCase knowledgeRetrieval, CatalogSearchUseCase catalogSearch,
                        RealtimeProperties realtimeProperties, RealtimeMetrics metrics,
-                       StageScriptRunner stageScriptRunner, CrmCatalogUseCase crmCatalog,
-                       ClientMemoryUseCase clientMemory, CrmUseCase crmUseCase,
+                       StageScriptRunner stageScriptRunner, ClientMemoryUseCase clientMemory,
                        IntegrationHttpToolFactory integrationHttpToolFactory, ToolUseCase toolUseCase,
                        HttpToolExecutor httpToolExecutor, McpToolCallbackFactory mcpToolCallbackFactory) {
         this.knowledgeRetrieval = knowledgeRetrieval;
@@ -81,9 +81,7 @@ class RealtimeToolRunner {
         this.realtimeProperties = realtimeProperties;
         this.metrics = metrics;
         this.stageScriptRunner = stageScriptRunner;
-        this.crmCatalog = crmCatalog;
         this.clientMemory = clientMemory;
-        this.crmUseCase = crmUseCase;
         this.integrationHttpToolFactory = integrationHttpToolFactory;
         this.toolUseCase = toolUseCase;
         this.httpToolExecutor = httpToolExecutor;
@@ -120,13 +118,6 @@ class RealtimeToolRunner {
             callbacks.addAll(List.of(MethodToolCallbackProvider.builder()
                     .toolObjects(new CatalogTools(s, s.companyId(), agentId, catalogSearch, clientMemory))
                     .build().getToolCallbacks()));
-        }
-        // The developer's Uysot lookups, for a company connected to Uysot (RealEstateTools).
-        // Only the ones the company switched on and its CRM grants cover (CrmToolCallbacks).
-        if (crmCatalog != null) {
-            callbacks.addAll(CrmToolCallbacks.build(s, s.companyId(), crmCatalog.findEnabledToolNames(s.companyId()),
-                    integrationHttpToolFactory != null ? integrationHttpToolFactory.findBuiltInDescriptions() : Map.of(),
-                    crmCatalog, crmUseCase, clientMemory));
         }
         // The HTTP tools the platform admin defined for the company's CRM; declared once, with the token they carry.
         if (integrationHttpToolFactory != null) {
@@ -190,7 +181,7 @@ class RealtimeToolRunner {
             callbacks.add(ScenarioToolCallbackFactory.build(extraction, s));
         }
         // The agent's EXTRACT_VARIABLE functions, usable at every stage like its other function tools.
-        addDeclarable(callbacks, AgentFunctionTools.buildExtractionTools(s.agent(), s), s);
+        addDeclarable(callbacks, AgentFunctionTools.buildExtractionTools(s.agent(), s, s.companyId(), clientMemory), s);
         // The agent's own HTTP tools and its MCP servers' tools: usable at every stage, as on the
         // cascade pipeline (refuse() lets them through).
         List<Tool> agentTools = findAgentTools(s);
@@ -279,7 +270,7 @@ class RealtimeToolRunner {
         session.toolsInFlight().incrementAndGet();
         // Read here, on the engine's thread, in order with its audio: by the time the
         // tool runs a turnComplete may already have closed the reply.
-        boolean spokeThisTurn = session.replyOpen();
+        boolean spokeThisTurn = hasSpokenALine(session);
         long started = System.nanoTime();
         AtomicBoolean answered = new AtomicBoolean();
         Runnable release = () -> {
@@ -333,6 +324,20 @@ class RealtimeToolRunner {
             result = execute(s, name, argumentsJson);
         }
         return spokeThisTurn ? result + ALREADY_SPOKEN : result;
+    }
+
+    /**
+     * Whether the open reply has put a real line on the wire, not just a breath. On a recorded
+     * call the engine played half a second of "{pause}" before calling transitionTo; counted as
+     * spoken, the answer carried {@link #ALREADY_SPOKEN}, the engine went silent for nine seconds
+     * and the caller heard the bot cut itself off.
+     */
+    private static boolean hasSpokenALine(RealtimeDialogSession s) {
+        if (!s.replyOpen()) {
+            return false;
+        }
+        RtpEndpoint endpoint = s.endpoint();
+        return endpoint == null || endpoint.queuedSamples() - s.replyStartSample() >= MIN_LINE_SAMPLES;
     }
 
     private static void answerTool(RealtimeDialogSession s, String callId, String result) {

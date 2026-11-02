@@ -282,6 +282,10 @@ class TurnState {
         return unansweredClientText.getAndSet(null);
     }
 
+    boolean hasUnansweredClientText() {
+        return unansweredClientText.get() != null;
+    }
+
     /**
      * Whether the recognizer has heard the caller within the last {@code withinMs} — or the
      * caller is part-way through typing a number, which is input just as much and has no

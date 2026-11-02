@@ -69,6 +69,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       — the caller hears the rest of the sentence rather than a line
  *                       that stops mid-thought. A real interruption never reaches it: the
  *                       caller's transcript starts a new turn first. 0 disables the resume
+ * @param waitForCallerTimeoutMs how long the bot stays quiet after the model chose
+ *                       {@code waitForCaller} before it answers the half-sentence anyway. The
+ *                       model judged the caller mid-thought; when nothing follows, the caller
+ *                       is in fact waiting for the bot, and the no-input prompt
+ *                       ({@code noInputSeconds}) comes far too late for that. One follow-up
+ *                       per wait — if the model waits again, the no-input prompt takes over.
+ *                       0 leaves it to the no-input prompt
  * @param preemptive     start writing the reply from the recognizer's interim transcript,
  *                       while the endpointing silence is still being waited out (§1.3,
  *                       {@link Speculation}). The wait between "the caller stopped making
@@ -106,6 +113,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       voice.tts.chars.saved: if the miss rate makes this expensive the
  *                       fix is the hit rate ({@code preemptiveMinChars}, the recognizer's
  *                       interims), not turning it back off
+ * @param speculativeTurnCue let the guess's first chunk move the speech gate's wait: text
+ *                       means the model is answering (the caller has said enough), a
+ *                       {@code waitForCaller} call means it judged them mid-thought
+ *                       ({@code SpeechGate#setLlmTurnCue}). The end-of-turn judge for the
+ *                       languages no turn model covers, Uzbek first. A "finished" verdict
+ *                       never overrules word rules that call the sentence unfinished.
+ *                       Requires {@code preemptive}
  * @param preemptiveMinChars how much interim text is worth guessing from. The first
  *                       syllables of an utterance are revised constantly and are almost
  *                       never what the final says, so guessing there buys a cancelled
@@ -223,8 +237,10 @@ public record DialogProperties(
         int backchannelVolumePercent,
         int interjectAfterMs,
         int falseInterruptionTimeoutMs,
+        int waitForCallerTimeoutMs,
         boolean preemptive,
         boolean preemptiveTts,
+        boolean speculativeTurnCue,
         int preemptiveMinChars,
         int minInterruptionWords,
         boolean mandatoryDisclosure,

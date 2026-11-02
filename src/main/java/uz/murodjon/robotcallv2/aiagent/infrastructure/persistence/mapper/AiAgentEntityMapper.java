@@ -117,7 +117,8 @@ public class AiAgentEntityMapper {
                         callBehaviour.getDtmfTerminationKey(),
                         callBehaviour.getDtmfDigitLimit(),
                         callBehaviour.getRingDurationSeconds(),
-                        callBehaviour.isPressDigitEnabled()))
+                        callBehaviour.isPressDigitEnabled(),
+                        callBehaviour.getLlmTurnDetection()))
                 .limits(new AiAgentLimits(
                         limits.getMaxConversationDurationSeconds(),
                         limits.getSilenceEndCallTimeoutSeconds(),
@@ -275,7 +276,8 @@ public class AiAgentEntityMapper {
                 behaviour.dtmfTerminationKey(),
                 behaviour.dtmfDigitLimit(),
                 behaviour.ringDurationSeconds(),
-                behaviour.pressDigitEnabled());
+                behaviour.pressDigitEnabled(),
+                behaviour.llmTurnDetection());
     }
 
     private static AiAgentLimitsEntity toLimitsEntity(AiAgentLimits limits) {

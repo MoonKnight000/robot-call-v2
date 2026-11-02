@@ -154,6 +154,12 @@ public class TurnRunner {
         // turn and must survive the clear below.
         long turnStartedAt = System.nanoTime();
         if (!s.busy().compareAndSet(false, true)) {
+            if (clientText == null || clientText.isBlank()) {
+                // A quiet follow-up (answerAfterQuiet) that lost the race to a real turn:
+                // that turn answers the held words, and its note must not reach the next one.
+                s.setCallerWentQuiet(false);
+                return;
+            }
             log.debug("[{}] turn in progress, deferring: {}", s.channelId(), clientText);
             s.deferInput(clientText);
             return;
@@ -218,6 +224,9 @@ public class TurnRunner {
 
             if (fromClient) {
                 clientText = bargeInRecovery.stitchUnansweredUtterance(s, clientText);
+                if (clientText == null || clientText.isBlank()) {
+                    return; // a follow-up whose held words a real final took first
+                }
             }
             // A turn asked for by the flow itself (scheduleStageAction), not by anything said.
             boolean stageActionTurn = !fromClient && s.stageActionStep() > 0;
@@ -243,6 +252,8 @@ public class TurnRunner {
             List<Message> messages = new ArrayList<>(s.history());
             messages.add(new UserMessage(promptFactory.turnAnnex(s)));
             s.setInterrupted(false); // the annex has carried the barge-in note now
+            boolean quietFollowUp = s.isCallerWentQuiet();
+            s.setCallerWentQuiet(false); // and the "caller went quiet" note
 
             List<ToolCallback> tools = turnTools.build(s);
             s.clearToolReplies(); // the last turn's lines have been spoken or dropped
@@ -318,6 +329,9 @@ public class TurnRunner {
                 // the whole sentence then rather than its two halves as separate turns.
                 log.info("[{}] model is waiting for the caller to finish", s.channelId());
                 s.setUnansweredClientText(clientText);
+                if (!quietFollowUp) {
+                    scheduleAnswerAfterQuiet(s, s.turnCount());
+                }
             } else if (cutOff && fromClient) {
                 // Silenced before the first word: the caller heard nothing, so as far as they
                 // know their sentence is still being listened to — and the next final is
@@ -388,6 +402,38 @@ public class TurnRunner {
                 bargeInRecovery.scheduleResume(s, turn);
             }
         }
+    }
+
+    /**
+     * Arm the answer to a half-sentence the model chose to wait out ({@code waitForCaller}).
+     *
+     * <p>The model is right to wait on "Men... endi, haligi..." — but when nothing follows,
+     * the caller has said all they meant to and is now waiting for the bot. Without this
+     * the silence lasted until the no-input prompt, which asks "are you there?" of someone
+     * who has just spoken.
+     */
+    private void scheduleAnswerAfterQuiet(DialogSession s, int turn) {
+        int timeoutMs = dialogProperties.waitForCallerTimeoutMs();
+        if (timeoutMs <= 0) {
+            return;
+        }
+        executors.scheduleOnWorker(() -> answerAfterQuiet(s, turn, timeoutMs), timeoutMs);
+    }
+
+    /**
+     * Answer the held words, if the caller is still quiet and nothing else has claimed the
+     * call. Speech in the meantime leaves it to the final on its way, which is stitched onto
+     * the held words as usual.
+     */
+    private void answerAfterQuiet(DialogSession s, int turn, int timeoutMs) {
+        if (s.isEnded() || s.turnCount() != turn || s.busy().get() || s.endpoint().isPlaying()
+                || !s.hasUnansweredClientText() || s.heardCallerWithin(timeoutMs)) {
+            return;
+        }
+        log.info("[{}] caller quiet {} ms after waitForCaller — answering what they said", s.channelId(), timeoutMs);
+        metrics.waitForCallerTimeout();
+        s.setCallerWentQuiet(true);
+        advance(s, "", true);
     }
 
     /** See {@link SpeculationManager#speculate}. */

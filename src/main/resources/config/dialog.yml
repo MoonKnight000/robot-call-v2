@@ -97,6 +97,8 @@ voice-agent:
     backchannel-volume-percent: ${DIALOG_BACKCHANNEL_VOLUME_PERCENT:35}
     interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:25000}
     false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
+    # After waitForCaller: silence this long means the caller is waiting for the bot after all.
+    wait-for-caller-timeout-ms: ${DIALOG_WAIT_FOR_CALLER_TIMEOUT_MS:3000}
     # LlmTimeoutProperties — a stalled model stream becomes a transient failure (one
     # retry, then the fast model) instead of holding the caller for as long as the socket lives.
     llm-timeout:
@@ -118,6 +120,8 @@ voice-agent:
       hangup-tail-ms: ${DIALOG_HANGUP_TAIL_MS:500}
     preemptive: ${DIALOG_PREEMPTIVE:true}
     preemptive-tts: ${DIALOG_PREEMPTIVE_TTS:true}
+    # The guess's first chunk (text vs waitForCaller) moves the speech gate's wait — DialogProperties.
+    speculative-turn-cue: ${DIALOG_SPECULATIVE_TURN_CUE:true}
     preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:5}
     min-interruption-words: ${DIALOG_MIN_INTERRUPTION_WORDS:3}
     mandatory-disclosure: ${DIALOG_MANDATORY_DISCLOSURE:false}

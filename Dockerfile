@@ -9,11 +9,12 @@
 # being the one file someone forgets — a missing model does not fail anything loudly, it
 # just leaves the bot uninterruptible and answering-machine detection off.
 #
-# Pinned to a v5 tag on purpose: SileroVad targets the v5 interface (inputs
-# input/state/sr, state shape [2,1,128]). The v4 model splits that state into h/c and
-# would load but never run.
+# Pinned to a tag on purpose: SileroVad targets the v5 interface (inputs input/state/sr,
+# state shape [2,1,128], a 32/64-sample context), which v6 keeps unchanged. The v4 model
+# splits that state into h/c and would load but never run. Only silero_vad.onnx takes
+# 8 kHz: the *_16k_* and *_sequence (offline, whole-file) files in the same folder do not.
 FROM curlimages/curl:8.11.0 AS vad
-ARG SILERO_VAD_VERSION=v5.1.2
+ARG SILERO_VAD_VERSION=v6.2.2
 RUN curl -fsSL -o /tmp/silero_vad.onnx \
     "https://raw.githubusercontent.com/snakers4/silero-vad/${SILERO_VAD_VERSION}/src/silero_vad/data/silero_vad.onnx"
 

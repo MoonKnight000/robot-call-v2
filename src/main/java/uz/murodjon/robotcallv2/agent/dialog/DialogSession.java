@@ -198,12 +198,6 @@ public class DialogSession implements DialogOutcomeSink {
     private volatile Boolean catalogAvailable;
     /** The last catalog search's answer ({@link CatalogTools}), shown again in every turn's annex until the next one. */
     private volatile String catalogResult;
-    /** The Uysot tools this call may use ({@link CrmToolCallbacks}); empty = none; resolved on the first turn. */
-    private volatile Set<String> crmToolNames;
-
-    /** The platform admin's text for those tools, resolved with {@link #crmToolNames}. */
-    private volatile Map<String, String> crmToolDescriptions;
-
     /** The admin-defined integration tools, built on the first turn: they carry the CRM token, which a query per turn would fetch again. */
     private volatile List<ToolCallback> integrationTools;
 
@@ -212,6 +206,8 @@ public class DialogSession implements DialogOutcomeSink {
     private final AtomicLong bargeInPendingSince = new AtomicLong();
     /** Set by the waitForCaller tool for the turn in progress; cleared when the next turn starts. */
     private volatile boolean waitingForCaller;
+    /** Set for the turn that answers a waitForCaller nobody followed up on; cleared once its annex is built. */
+    private volatile boolean callerWentQuiet;
 
     // Recorded by tool calls. disposition is read at teardown (CampaignOutcomeService.applyOutcome,
     // CallFinalizer) on the ARI lane, while tools, turns and the watchdog write it on theirs.
@@ -368,22 +364,6 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setIntegrationTools(List<ToolCallback> integrationTools) {
         this.integrationTools = integrationTools;
-    }
-
-    public Map<String, String> crmToolDescriptions() {
-        return crmToolDescriptions;
-    }
-
-    public void setCrmToolDescriptions(Map<String, String> crmToolDescriptions) {
-        this.crmToolDescriptions = crmToolDescriptions;
-    }
-
-    public Set<String> crmToolNames() {
-        return crmToolNames;
-    }
-
-    public void setCrmToolNames(Set<String> crmToolNames) {
-        this.crmToolNames = crmToolNames;
     }
 
     @Override
@@ -913,6 +893,20 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void clearWaitForCaller() {
         waitingForCaller = false;
+    }
+
+    /** Whether this turn answers a half-sentence the caller left in silence after a waitForCaller. */
+    public boolean isCallerWentQuiet() {
+        return callerWentQuiet;
+    }
+
+    public void setCallerWentQuiet(boolean callerWentQuiet) {
+        this.callerWentQuiet = callerWentQuiet;
+    }
+
+    /** Whether a caller utterance is still held for the next turn to stitch onto. */
+    public boolean hasUnansweredClientText() {
+        return turnState.hasUnansweredClientText();
     }
 
     /**

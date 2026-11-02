@@ -15,7 +15,8 @@ package uz.murodjon.robotcallv2.aiagent.domain.enums;
  * - {@link #RESPONSE_WAIT_MS}, {@link #TRANSCRIPTION_MODE}: back to the deployment default.
  * - {@link #BOOSTED_KEYWORDS}: the recogniser's keyword list (same as sending an empty list).
  * - {@link #REMINDER_AFTER_SECONDS}, {@link #REMINDER_MAX_COUNT}, {@link #DTMF_TIMEOUT_MS}, {@link #DTMF_TERMINATION_KEY},
- *   {@link #DTMF_DIGIT_LIMIT}, {@link #RING_DURATION_SECONDS}, {@link #RAG_MIN_SCORE}: back to the deployment default.
+ *   {@link #DTMF_DIGIT_LIMIT}, {@link #RING_DURATION_SECONDS}, {@link #RAG_MIN_SCORE}, {@link #LLM_TURN_DETECTION}:
+ *   back to the deployment default.
  */
 public enum AgentClearableField {
     INITIATION_WEBHOOK,
@@ -36,5 +37,6 @@ public enum AgentClearableField {
     DTMF_TERMINATION_KEY,
     DTMF_DIGIT_LIMIT,
     RING_DURATION_SECONDS,
-    RAG_MIN_SCORE
+    RAG_MIN_SCORE,
+    LLM_TURN_DETECTION
 }

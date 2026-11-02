@@ -25,6 +25,7 @@ import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolFilter;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolHttpConfig;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolResult;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolSpeech;
 import uz.murodjon.robotcallv2.tool.domain.service.ToolValidator;
 
@@ -42,6 +43,7 @@ public class ToolService implements ToolUseCase {
     private static final ToolHttpConfigDto NO_HTTP =
             new ToolHttpConfigDto(null, null, null, null, null, null, null, null, null, null, null, null);
     private static final ToolSpeechDto NO_SPEECH = new ToolSpeechDto(null, null, null);
+    private static final ToolResultDto NO_RESULT = new ToolResultDto(null, null, null, null, null);
 
     private final ToolRepository toolRepository;
     private final AiAgentUseCase aiAgentUseCase;
@@ -92,11 +94,13 @@ public class ToolService implements ToolUseCase {
                 .orElseThrow(() -> new NotFoundException(ErrorCode.TOOL_NOT_FOUND, id));
         ToolHttpConfigDto http = request.http() != null ? request.http() : NO_HTTP;
         ToolSpeechDto speech = request.speech() != null ? request.speech() : NO_SPEECH;
+        ToolResultDto result = request.result() != null ? request.result() : NO_RESULT;
         requireCallableApiUrl(http.url());
         requireValidMapping(request.responseMapping());
 
         ToolHttpConfig existingHttp = existing.http();
         ToolSpeech existingSpeech = existing.speech();
+        ToolResult existingResult = existing.result();
         Tool updated = new Tool(
                 existing.id(),
                 existing.companyId(),
@@ -121,6 +125,12 @@ public class ToolService implements ToolUseCase {
                         speech.forcePreToolSpeech() != null ? speech.forcePreToolSpeech() : existingSpeech.forcePreToolSpeech(),
                         speech.preToolSpeech() != null ? speech.preToolSpeech() : existingSpeech.preToolSpeech()),
                 request.responseMapping() != null ? request.responseMapping() : existing.responseMapping(),
+                new ToolResult(
+                        result.maxItems() != null ? result.maxItems() : existingResult.maxItems(),
+                        result.emptyMessage() != null ? result.emptyMessage() : existingResult.emptyMessage(),
+                        result.errorMessage() != null ? result.errorMessage() : existingResult.errorMessage(),
+                        result.argumentVariables() != null ? result.argumentVariables() : existingResult.argumentVariables(),
+                        result.memoryFacts() != null ? result.memoryFacts() : existingResult.memoryFacts()),
                 request.maxCallsPerCall() != null ? request.maxCallsPerCall() : existing.maxCallsPerCall(),
                 request.effect() != null ? request.effect() : existing.effect(),
                 request.requiresConfirmation() != null ? request.requiresConfirmation() : existing.requiresConfirmation(),

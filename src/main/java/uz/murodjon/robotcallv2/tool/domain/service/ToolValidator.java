@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.tool.domain.entity.ToolAuth;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 public final class ToolValidator {
 
@@ -22,6 +23,7 @@ public final class ToolValidator {
     private static final List<String> SORTABLE_FIELD_NAMES = List.of("createdAt", "updatedAt", "name");
 
     private static final Set<String> BODY_SOURCES = Set.of("static", "variable", "secret");
+    private static final Pattern VARIABLE_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]{0,63}");
 
     private ToolValidator() {
     }
@@ -58,6 +60,18 @@ public final class ToolValidator {
                 throw new ValidationException(ErrorCode.TOOL_BODY_SOURCE_INVALID, path, source);
             }
             return;
+        }
+        Object fallback = schema.get(Tool.BODY_FALLBACK_KEY);
+        if (fallback != null) {
+            List<?> names = fallback instanceof List<?> list ? list : List.of(fallback);
+            if (names.isEmpty() || !names.stream().allMatch(name -> name instanceof String text
+                    && VARIABLE_NAME.matcher(text).matches())) {
+                throw new ValidationException(ErrorCode.TOOL_BODY_FALLBACK_INVALID, path);
+            }
+        }
+        Object format = schema.get(Tool.BODY_FORMAT_KEY);
+        if (format != null && !Tool.FORMAT_EPOCH_SECONDS.equals(format)) {
+            throw new ValidationException(ErrorCode.TOOL_BODY_FORMAT_INVALID, path, format);
         }
         if (schema.get("properties") instanceof Map<?, ?> properties) {
             properties.forEach((name, field) -> {

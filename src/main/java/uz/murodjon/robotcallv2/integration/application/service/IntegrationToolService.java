@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.integration.application.dto.CreateIntegrationTool
 import uz.murodjon.robotcallv2.integration.application.dto.CrmGrant;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmToolRow;
 import uz.murodjon.robotcallv2.integration.application.dto.IntegrationToolAdminRow;
+import uz.murodjon.robotcallv2.integration.application.dto.TestIntegrationToolRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.UpdateCrmToolsRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.UpdateIntegrationToolRequest;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
@@ -19,8 +20,6 @@ import uz.murodjon.robotcallv2.integration.domain.entity.IntegrationTool;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmPermission;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmScopeLevel;
-import uz.murodjon.robotcallv2.integration.domain.enums.CrmTool;
-import uz.murodjon.robotcallv2.integration.domain.enums.IntegrationToolKind;
 import uz.murodjon.robotcallv2.integration.domain.enums.ToolPropagation;
 import uz.murodjon.robotcallv2.integration.domain.service.IntegrationToolValidator;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
@@ -36,8 +35,8 @@ import uz.murodjon.robotcallv2.tool.application.port.input.ToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolHttpConfig;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolKeyValuePair;
+import uz.murodjon.robotcallv2.tool.domain.service.ToolOverrides;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -121,16 +120,8 @@ public class IntegrationToolService implements IntegrationToolUseCase {
     }
 
     @Override
-    public Set<String> findEnabledToolNames(long companyId) {
-        return findEnabledTools(companyId, IntegrationToolKind.BUILT_IN).stream()
-                .flatMap(tool -> CrmTool.findByKey(tool.key()).stream())
-                .map(CrmTool::toolName)
-                .collect(Collectors.toUnmodifiableSet());
-    }
-
-    @Override
     public List<Tool> findEnabledHttpTools(long companyId) {
-        List<IntegrationTool> enabled = findEnabledTools(companyId, IntegrationToolKind.HTTP);
+        List<IntegrationTool> enabled = findEnabledTools(companyId);
         if (enabled.isEmpty()) {
             return List.of();
         }
@@ -158,16 +149,20 @@ public class IntegrationToolService implements IntegrationToolUseCase {
         return toolUseCase.testResolvedTool(tool, new TestToolRequest(arguments, Map.of("company_id", companyId), null));
     }
 
+    /** No transaction on purpose: the request goes out over the network. */
     @Override
-    public Map<String, String> findBuiltInModelDescriptions() {
-        Map<String, String> descriptions = new HashMap<>();
-        for (IntegrationTool tool : findOfferedTools()) {
-            if (tool.kind() != IntegrationToolKind.BUILT_IN || tool.modelDescription() == null) {
-                continue;
-            }
-            CrmTool.findByKey(tool.key()).ifPresent(handler -> descriptions.put(handler.toolName(), tool.modelDescription()));
+    public ToolTestResponse testEnabledTool(long companyId, String toolName, TestIntegrationToolRequest request) {
+        Tool tool = findEnabledHttpTools(companyId).stream()
+                .filter(candidate -> candidate.name().equals(toolName))
+                .findFirst()
+                .orElseThrow(() -> new NotFoundException(ErrorCode.TARGET_SOURCE_TOOL_UNAVAILABLE, toolName));
+        if (tool.effect() != ToolEffect.READ) {
+            throw new ValidationException(ErrorCode.INTEGRATION_TOOL_TEST_NOT_READ_ONLY, toolName);
         }
-        return descriptions;
+        Map<String, Object> variables = new HashMap<>(request.variables() != null ? request.variables() : Map.of());
+        variables.put("company_id", companyId);
+        return toolUseCase.testResolvedTool(ToolOverrides.apply(tool, request.override()),
+                new TestToolRequest(request.args(), variables, null));
     }
 
     /** No transaction on purpose: the request goes out over the network. */
@@ -175,9 +170,6 @@ public class IntegrationToolService implements IntegrationToolUseCase {
     public ToolTestResponse testCatalogTool(long adminCompanyId, long id, TestToolRequest request) {
         IntegrationTool tool = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.INTEGRATION_TOOL_NOT_FOUND, id));
-        if (tool.definition() == null) {
-            throw new ValidationException(ErrorCode.INTEGRATION_TOOL_BUILT_IN_LOCKED);
-        }
         CrmConnection connection = findUysotConnection(adminCompanyId);
         if (connection == null) {
             throw new ConflictException(ErrorCode.INTEGRATION_TOOL_TEST_NOT_CONNECTED);
@@ -218,7 +210,8 @@ public class IntegrationToolService implements IntegrationToolUseCase {
                 new ToolHttpConfig(base + "/" + http.url(), http.method(), headers, http.body(), http.queryParams(),
                         http.pathParams(), http.bodySchema(), http.responseTimeoutSecs(), http.retryAttempts(), null,
                         http.waitForResult(), http.statusVariable()),
-                template.dynamicVariables(), template.speech(), template.responseMapping(), template.maxCallsPerCall(),
+                template.dynamicVariables(), template.speech(), template.responseMapping(), template.result(),
+                template.maxCallsPerCall(),
                 template.effect(), template.requiresConfirmation(), template.readbackTemplate(),
                 template.createdAt(), template.updatedAt());
     }
@@ -245,7 +238,6 @@ public class IntegrationToolService implements IntegrationToolUseCase {
         IntegrationTool saved = repository.create(IntegrationTool.builder()
                 .provider(request.provider())
                 .key(request.key())
-                .kind(IntegrationToolKind.HTTP)
                 .group(request.group())
                 .label(request.label().trim())
                 .description(request.description().trim())
@@ -285,20 +277,12 @@ public class IntegrationToolService implements IntegrationToolUseCase {
                 .platformEnabled(request.platformEnabled())
                 .sortOrder(request.sortOrder())
                 .build();
-        if (current.kind() == IntegrationToolKind.BUILT_IN) {
-            edited = edited.toBuilder()
-                    .modelDescription(request.modelDescription() == null || request.modelDescription().isBlank()
-                            ? null : request.modelDescription().trim())
-                    .build();
+        if (request.definition() == null) {
+            throw new ValidationException(ErrorCode.INTEGRATION_TOOL_DEFINITION_REQUIRED);
         }
-        if (current.kind() == IntegrationToolKind.HTTP) {
-            if (request.definition() == null) {
-                throw new ValidationException(ErrorCode.INTEGRATION_TOOL_DEFINITION_REQUIRED);
-            }
-            edited = edited.toBuilder()
-                    .definition(buildTemplate(request.definition(), repository.findByProvider(current.provider()), current))
-                    .build();
-        }
+        edited = edited.toBuilder()
+                .definition(buildTemplate(request.definition(), repository.findByProvider(current.provider()), current))
+                .build();
         // Pin first: it reads "no choice yet" and must see the tool as it was, before the default moves.
         int pinned = defaultChanged && request.applyTo() == ToolPropagation.NEW_ONLY
                 ? repository.pinCompaniesWithoutChoice(id, current.defaultEnabled())
@@ -317,9 +301,6 @@ public class IntegrationToolService implements IntegrationToolUseCase {
     public void deleteCatalogTool(long adminCompanyId, long id) {
         IntegrationTool tool = repository.findById(id)
                 .orElseThrow(() -> new NotFoundException(ErrorCode.INTEGRATION_TOOL_NOT_FOUND, id));
-        if (tool.kind() != IntegrationToolKind.HTTP) {
-            throw new ValidationException(ErrorCode.INTEGRATION_TOOL_BUILT_IN_LOCKED);
-        }
         repository.deleteById(id);
         audit.record(adminCompanyId, "INTEGRATION_TOOL_DELETE", "integration_tool", String.valueOf(id), tool.key());
     }
@@ -329,12 +310,11 @@ public class IntegrationToolService implements IntegrationToolUseCase {
         return repository.findByProvider(PROVIDER).stream().filter(IntegrationTool::platformEnabled).toList();
     }
 
-    /** The tools of one kind the company's agent may be offered: on, offered by the platform, covered by its grants. */
-    private List<IntegrationTool> findEnabledTools(long companyId, IntegrationToolKind kind) {
+    /** The tools the company's agent may be offered: on, offered by the platform, covered by its grants. */
+    private List<IntegrationTool> findEnabledTools(long companyId) {
         Map<Long, Boolean> choices = repository.findChoices(companyId);
         List<CrmGrant> grants = crmIntegrationUseCase.findGrants(companyId);
         return findOfferedTools().stream()
-                .filter(tool -> tool.kind() == kind)
                 .filter(tool -> tool.isEnabledFor(choices.get(tool.id())) && isGranted(tool, grants))
                 .toList();
     }
@@ -351,7 +331,7 @@ public class IntegrationToolService implements IntegrationToolUseCase {
     private Tool buildTemplate(CreateToolRequest request, List<IntegrationTool> catalog, IntegrationTool editing) {
         Tool template = toolUseCase.buildTemplate(request);
         IntegrationToolValidator.validateRequest(template);
-        Set<String> taken = Arrays.stream(CrmTool.values()).map(CrmTool::toolName).collect(Collectors.toCollection(HashSet::new));
+        Set<String> taken = new HashSet<>();
         catalog.stream()
                 .filter(tool -> tool.definition() != null && (editing == null || tool.id() != editing.id()))
                 .forEach(tool -> taken.add(tool.definition().name()));

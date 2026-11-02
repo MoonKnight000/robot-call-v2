@@ -71,7 +71,8 @@ public final class AiAgentSettingsMapper {
                 dto.dtmfTerminationKey() != null ? dto.dtmfTerminationKey() : base.dtmfTerminationKey(),
                 dto.dtmfDigitLimit() != null ? dto.dtmfDigitLimit() : base.dtmfDigitLimit(),
                 dto.ringDurationSeconds() != null ? dto.ringDurationSeconds() : base.ringDurationSeconds(),
-                dto.pressDigitEnabled() != null ? dto.pressDigitEnabled() : base.pressDigitEnabled());
+                dto.pressDigitEnabled() != null ? dto.pressDigitEnabled() : base.pressDigitEnabled(),
+                dto.llmTurnDetection() != null ? dto.llmTurnDetection() : base.llmTurnDetection());
     }
 
     public static AiAgentLimits toAiAgentLimits(AgentLimitsDto dto, AiAgentLimits base) {

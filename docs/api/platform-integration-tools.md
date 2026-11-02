@@ -29,7 +29,6 @@ Provayder katalogi (`provider` sukut bo'yicha `UYSOT`), platforma o'chirgan vosi
       "id": 8,
       "provider": "UYSOT",
       "tool": "CREATE_LEAD",
-      "kind": "BUILT_IN",
       "group": "LEADS",
       "label": "Lid yaratish",
       "description": "CRM'da yo'q mijoz uchun yangi lid ochadi.",
@@ -39,20 +38,17 @@ Provayder katalogi (`provider` sukut bo'yicha `UYSOT`), platforma o'chirgan vosi
       "defaultEnabled": true,
       "platformEnabled": true,
       "sortOrder": 80,
-      "definition": null,
-      "modelDescription": "Opens a NEW lead in the CRM for this caller. Call it only when ..."
+      "definition": { "name": "createLead", "description": "Opens a NEW lead in the CRM for this caller. ...", "http": { "...": "..." }, "effect": "WRITE" }
     }
   ]
 }
 ```
 
-- `kind: "BUILT_IN"` — vosita kodda yozilgan; `tool` (kalit), `permission`, `scope` o'zgartirilmaydi,
-  `definition` — `null`. `modelDescription` — **modelga** ko'rinadigan matn (inglizcha; qachon chaqirish va
-  nimani aytish qoidalari). `null` — koddagi matn ishlatiladi. Migratsiya (V15) hozirgi koddagi matnni
-  boshlang'ich qiymat qilib yozgan. Parametrlarning tavsifi (`@ToolParam`) kodda qoladi.
-- `kind: "HTTP"` — admin o'zi yaratgan so'rov; `definition` — kompaniya vositasi (`/api/tools`) shaklidagi
-  tavsif (`name`, `description`, `http`, `effect` …). Modelga `definition.description` ko'rinadi,
-  kompaniyaga — `label`/`description`.
+- Har bir vosita — HTTP so'rov (migratsiya `V28` dan buyon kodda yozilgan "ichki" vosita yo'q; `kind` va
+  `modelDescription` maydonlari olib tashlandi). `definition` — kompaniya vositasi (`/api/tools`) shaklidagi
+  tavsif (`name`, `description`, `http`, `effect` …), hech qachon `null` emas. Modelga `definition.description` ko'rinadi,
+  kompaniyaga — `label`/`description`. `definition.result` (`maxItems`, `emptyMessage`, `errorMessage`)
+  ham shu yerda — ro'yxatni qisqartirish va bo'sh/xato javobda modelga nima deyilishi ([tools.md](tools.md) §3).
 
 ## `PUT /api/platform/integration-tools/{id}`
 
@@ -70,13 +66,9 @@ Provayder katalogi (`provider` sukut bo'yicha `UYSOT`), platforma o'chirgan vosi
 
 `group`: `FLATS` · `DEBTS` · `LEADS` · `BOOKINGS`. Javob — yangilangan qator (`GET` dagidek).
 
-**Ichki vosita** uchun qo'shimcha: `modelDescription` — modelga ko'rinadigan yangi matn; bo'sh yoki
-`null` yuborilsa koddagi matnga qaytadi. HTTP vositada bu maydon e'tiborga olinmaydi (uniki `definition.description`).
-Matn **yangi qo'ng'iroqlardan** boshlab amal qiladi.
-
-**HTTP vosita** uchun qo'shimcha: `permission` + `scope` (ikkalasi birga yoki ikkalasi ham yo'q),
-`definition` — **majburiy**, eskisini to'liq almashtiradi. Ichki (`BUILT_IN`) vositada bu uchtasi
-e'tiborga olinmaydi.
+Qo'shimcha: `permission` + `scope` (ikkalasi birga yoki ikkalasi ham yo'q), `definition` — **majburiy**,
+eskisini to'liq almashtiradi (yo'q bo'lsa — 400 `INTEGRATION_TOOL_DEFINITION_REQUIRED`). Modelga ko'rinadigan
+matn — `definition.description`; **yangi qo'ng'iroqlardan** boshlab amal qiladi.
 
 ### `applyTo` — sukut o'zgarganda kimga tegadi
 
@@ -93,6 +85,7 @@ bir zumda ta'sir qiladi (`applyTo` unga tegishli emas).
 | HTTP | `messageCode` | Sabab |
 |---|---|---|
 | 400 | `INTEGRATION_TOOL_PROPAGATION_REQUIRED` | sukut o'zgardi, lekin `applyTo` yo'q |
+| 400 | `INTEGRATION_TOOL_DEFINITION_REQUIRED` | `definition` berilmagan |
 | 404 | `INTEGRATION_TOOL_NOT_FOUND` | `id` katalogda yo'q |
 | 400 | `VALIDATION_FAILED` | `label` / `description` bo'sh, `group` noma'lum |
 
@@ -173,8 +166,8 @@ Audit: `INTEGRATION_TOOL_CREATE`.
 
 ## `DELETE /api/platform/integration-tools/{id}`
 
-HTTP vositani va barcha kompaniyalarning u haqidagi tanlovini o'chiradi. Ichki vosita — 400
-`INTEGRATION_TOOL_BUILT_IN_LOCKED` (uni `platformEnabled: false` bilan yashiring). Yo'q `id` — 404.
+Vositani va barcha kompaniyalarning u haqidagi tanlovini o'chiradi (vaqtincha yashirish uchun —
+`platformEnabled: false`). Yo'q `id` — 404.
 Audit: `INTEGRATION_TOOL_DELETE`.
 
 ## `POST /api/platform/integration-tools/{id}/test`
@@ -188,32 +181,94 @@ o'zgarishsiz) va `mapped` (yuborilgan `responseMapping` natijasi) bor — maydon
 | HTTP | `messageCode` | Sabab |
 |---|---|---|
 | 404 | `INTEGRATION_TOOL_NOT_FOUND` | `id` yo'q |
-| 400 | `INTEGRATION_TOOL_BUILT_IN_LOCKED` | ichki vositada sinash yo'q |
 | 409 | `INTEGRATION_TOOL_TEST_NOT_CONNECTED` | admin kompaniyasi Uysot'ga ulanmagan |
 
 Audit: `INTEGRATION_TOOL_TEST`.
 
 ## Uysot'ning tayyor HTTP vositalari (migratsiya `V19`)
 
-Oltita o'qish vositasi katalogda **tayyor HTTP ta'rifi** bilan keladi, hammasi `defaultEnabled=false`:
+V19 oltita o'qish vositasining HTTP egizagini (`*_LIVE`) ichki jufti yonida qo'shgan edi. V23–V26 dan keyin
+ularning hammasi o'chirildi: ichki juftlarning o'zi o'sha model nomi bilan HTTP vositaga aylandi (pastda).
 
-| `key` | Model nomi | So'rov |
-|---|---|---|
-| `SEARCH_FLATS_LIVE` | `searchFlatsLive` | `POST v1/open-api/flat/filter` |
-| `LIST_COMPLEXES_LIVE` | `listComplexesLive` | `GET v1/open-api/house/all` |
-| `GET_BOOKING_STATUS_LIVE` | `getBookingLive` | `POST v1/open-api/booking/filter` (`search` = `phone_last9`) |
-| `GET_CONTRACT_BALANCE_LIVE` | `getContractLive` | `POST v1/open-api/contract/filter` (`search` — shartnoma raqami) |
-| `GET_DEBT_SUMMARY_LIVE` | `getDebtsLive` | `POST v1/open-api/contract/filter` (`search` = `phone_last9`) |
-| `GET_PAYMENT_SCHEDULE_LIVE` | `getPaymentsLive` | `GET v1/open-api/contract/{contractId}/monthly-payment` |
-
-- Ichki (`BUILT_IN`) vositalar **o'chirilmadi**: ichki `searchFlats` mijozning `roomsNeeded`/`budgetRange` ini
-  qo'ng'iroq natijasiga yozadi va taklif qilingan xonadonlarni mijoz xotirasiga saqlaydi — HTTP vosita buni
-  qilolmaydi. Shuning uchun HTTP versiyalar **yonida** turadi, nomlari boshqacha (ikki funksiya bir nom bilan
-  berilmaydi).
 - Uysot javobining o'rami (`data` / `data.data` / `data.content`) hujjatlashtirilmagan, shu sabab har bir
   `responseMapping` uchala shaklni `||` bilan sinaydi. Admin "Sinash" da **Xom javob**ni ko'rib, kerak bo'lsa
   xaritani aniqlashtiradi.
-- Almashtirish tartibi: sinab ko'rish → ichki vositani o'chirish → HTTP juftini yoqish.
-- Ichki holda qoldi: `CREATE_LEAD`, `ADD_LEAD_NOTE`, `CREATE_FOLLOW_UP_TASK`, `MOVE_LEAD_STAGE`,
-  `GET_CLIENT_PROFILE` (yozishdan oldin qidiruv kerak) va Uysot'ga tegmaydigan `REMEMBER_FLAT_INTEREST`,
-  `REQUEST_MANAGER_CALLBACK`.
+- Ichki (kod) holda qoldi: `CREATE_LEAD`, `ADD_LEAD_NOTE`, `CREATE_FOLLOW_UP_TASK`, `MOVE_LEAD_STAGE` — yozuvchi
+  vositalar, keyingi bosqichda HTTP'ga o'tadi. Uysot'ga tegmaydigan `REMEMBER_FLAT_INTEREST` va
+  `REQUEST_MANAGER_CALLBACK` katalogdan olib tashlandi (migratsiya `V25`): ular endi agentning `EXTRACT_VARIABLE`
+  funksiyalari ([ai-agents.md](ai-agents.md), `remember: true` — mijoz xotirasiga ham yoziladi).
+
+## `SEARCH_FLATS` va `LIST_COMPLEXES` — endi HTTP (migratsiya `V23`)
+
+Ikkalasi `kind=HTTP` ga o'tdi, **model nomi o'zgarmadi** (`searchFlats`, `listResidentialComplexes`) — agent
+funksiyalari va ssenariy bosqichlari (`LOAD_COMPLEXES`) o'sha nom bilan ishlayveradi. Kod versiyasi va
+`SEARCH_FLATS_LIVE` / `LIST_COMPLEXES_LIVE` egizaklari o'chirildi (kompaniyaning ular bo'yicha tanlovi ham).
+
+| `key` | Model nomi | So'rov | `result` |
+|---|---|---|---|
+| `SEARCH_FLATS` | `searchFlats` | `POST v1/open-api/flat/filter` (`size=3`, eng arzoni birinchi) | `maxItems=3`, `emptyMessage`, `errorMessage`, `argumentVariables: {rooms: roomsNeeded, priceTo: budgetRange}`, `memoryFacts: {flats: offeredFlats}` |
+| `LIST_COMPLEXES` | `listResidentialComplexes` | `GET v1/open-api/house/all` | `errorMessage` |
+
+- Kod qilgan qo'shimcha ishlar endi vositaning o'z sozlamasi ([tools.md](tools.md) `result.argumentVariables`,
+  `result.memoryFacts`): xona soni va byudjet lid izohiga, taklif qilingan xonadonlar mijoz xotirasiga tushadi.
+- Farq: majmua endi nom bilan emas, `houseIds` bilan tanlanadi — model avval `listResidentialComplexes` dan id
+  oladi. `listResidentialComplexes` sotuvda bo'lmagan majmuani ham qaytaradi (`isSale=false`); ta'rif modelga
+  faqat `isSale=true` larini taklif qilishni aytadi. `flatSearch` xotira fakti endi yozilmaydi.
+
+## `GET_CONTRACT_BALANCE` va `GET_PAYMENT_SCHEDULE` — endi HTTP (migratsiya `V24`)
+
+Ikkalasi `kind=HTTP` ga o'tdi, model nomi o'zgarmadi (`getContractBalance`, `getPaymentSchedule`). Kod versiyasi
+va `GET_CONTRACT_BALANCE_LIVE` / `GET_PAYMENT_SCHEDULE_LIVE` egizaklari o'chirildi.
+
+| `key` | Model nomi | So'rov | Kod qilgan ish endi qayerda |
+|---|---|---|---|
+| `GET_CONTRACT_BALANCE` | `getContractBalance` | `POST v1/open-api/contract/filter` (`size=5`) | `search`: `"x-fallback": ["contractNumber", "phone_last9"]`; `responseMapping` → `contractNumber`, `responsibleEmployeeId`, `responsibleEmployeeName` (birinchi shartnomadan) qo'ng'iroq natijasiga |
+| `GET_PAYMENT_SCHEDULE` | `getPaymentSchedule` | `GET v1/open-api/contract/{contractId}/monthly-payment` | `payments`: `$.data[?paid!=true&paidStatus!=PAID&status!=PAID]{…}`, `maxItems=3` |
+
+Farqlar:
+- `getContractBalance` endi keyingi to'lovni aytmaydi — model `getPaymentSchedule` ni chaqiradi.
+- `getPaymentSchedule` shartnoma raqamini emas, `contractId` ni oladi (`getContractBalance` javobidagi `id`).
+- Telefon bo'yicha bir nechta shartnoma chiqsa, kod eng ko'p kechikkanini tanlardi; endi model 5 tagacha
+  shartnomani ko'radi va tavsifga ko'ra eng ko'p kechikkani haqida gapiradi. `responsibleEmployeeId` esa javobdagi
+  **birinchi** shartnomadan olinadi.
+- "Muddati o'tgan" belgisini kod qo'ymaydi — model sanani promptdagi bugungi sana bilan solishtiradi.
+
+## `GET_CLIENT_PROFILE`, `GET_DEBT_SUMMARY`, `GET_BOOKING_STATUS` — endi HTTP (migratsiya `V26`)
+
+Model nomlari o'zgarmadi. `GET_BOOKING_STATUS_LIVE` / `GET_DEBT_SUMMARY_LIVE` o'chirildi. Uchalasi ham mijozni
+qo'ng'iroq o'zgaruvchisi `phone_last9` bo'yicha qidiradi.
+
+| `key` | Model nomi | So'rov | Qo'ng'iroq natijasiga |
+|---|---|---|---|
+| `GET_CLIENT_PROFILE` | `getClientProfile` | `POST v1/open-api/lead/filter` (`phone`, `size=1`) | `lead`, `crmLeadId` |
+| `GET_DEBT_SUMMARY` | `getDebtSummary` | `POST v1/open-api/contract/filter` (`ACTIVE`/`STARTED`, `size=20`, modelga 3 tasi) | `contracts`, `responsibleEmployeeId`, `responsibleEmployeeName` |
+| `GET_BOOKING_STATUS` | `getBookingStatus` | `POST v1/open-api/booking/filter` (`size=5`) | `bookings` |
+
+Farqlar:
+- `getClientProfile` endi faqat lidni qaytaradi (ism, id, holat). Shartnomalar — `getDebtSummary` da.
+- `getDebtSummary` endi har shartnomaning muddati o'tgan to'lovlarini o'zi so'ramaydi — model kerak bo'lsa
+  `getPaymentSchedule` ni shartnoma `id` si bilan chaqiradi. Tartiblash ham kodda emas: tavsif modelga eng ko'p
+  kechikkanidan boshlashni aytadi.
+
+## Lid yozuvchi vositalar — endi HTTP (migratsiya `V27`)
+
+`CREATE_LEAD`, `ADD_LEAD_NOTE`, `CREATE_FOLLOW_UP_TASK`, `MOVE_LEAD_STAGE` endi `kind: "HTTP"`, model nomlari
+o'zgarmadi. Hammasi `effect: "WRITE"`, `requiresConfirmation: false`. Ro'yxatda `BUILT_IN` vosita qolmadi.
+Yangi qator: `LIST_LEAD_STAGES` (`listLeadStages`, `LEAD`/`READ`, sukut bo'yicha yoqilgan).
+
+| `key` | Model nomi | So'rov | Qo'ng'iroqdan oladi |
+|---|---|---|---|
+| `CREATE_LEAD` | `createLead` | `POST v1/open-api/lead` (`name`, `pipeStatusId`, `responsibleById`, `contacts`) | `crm_new_lead_status_id`, `crm_ai_employee_id`, `phone` |
+| `ADD_LEAD_NOTE` | `addLeadNote` | `POST v1/open-api/lead-note/{id}/list` | `crmLeadId` |
+| `CREATE_FOLLOW_UP_TASK` | `createFollowUpTask` | `POST v1/open-api/lead-task/{id}/save` | `crmLeadId`, `crm_task_type_id`, `crm_ai_employee_id`, `now_epoch`, `timezone` |
+| `MOVE_LEAD_STAGE` | `moveLeadStage` | `POST v1/open-api/lead` (`id`, `pipeStatusId`) | `crmLeadId` |
+| `LIST_LEAD_STAGES` | `listLeadStages` | `GET v1/open-api/pipe/all` | — |
+
+Farqlar:
+- Lid kodda qidirilmaydi: `crmLeadId` ni `getClientProfile` yozadi, shuning uchun u avval chaqiriladi.
+- `createFollowUpTask` muddatni `yyyy-MM-dd HH:mm` mahalliy vaqtda oladi (`x-format: epochSeconds`); muddat
+  `followUpTaskTime` o'zgaruvchisiga yoziladi.
+- `moveLeadStage` endi bosqich **nomi** emas, `pipeStatusId` oladi — model uni `listLeadStages` dan topadi.
+  `moveLeadStage` funksiyasi bor agentlarga migratsiya `listLeadStages` funksiyasini ham qo'shadi; o'rnatilgan
+  ssenariylarning `MOVE_STAGE`/`REJECT_STAGE` bosqichlari `allowedTools: ["listLeadStages"]` oladi.
+- `createLead` qo'ng'iroqda bir martadan ko'p chaqirilmaydi (`maxCallsPerCall: 1`).

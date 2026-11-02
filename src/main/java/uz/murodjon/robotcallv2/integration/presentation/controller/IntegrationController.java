@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
 
 import java.util.List;
 
@@ -61,6 +62,19 @@ public interface IntegrationController {
     @PreAuthorize("hasAuthority('INTEGRATION_READ')")
     @GetMapping("/tools")
     ResponseEntity<ResponseData<List<CrmToolRow>>> tools(@CurrentCompanyId long companyId);
+
+    /**
+     * "Run a test" of an agent's INTEGRATION function: runs the company's HTTP tool {@code toolName} once
+     * against its own account, with the form's inputs and answer fields applied. Only a read-only tool runs
+     * ({@code 400 INTEGRATION_TOOL_TEST_NOT_READ_ONLY}); one the company has not switched on is
+     * {@code 404 TARGET_SOURCE_TOOL_UNAVAILABLE}.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/tools/{toolName}/test")
+    ResponseEntity<ResponseData<ToolTestResponse>> testTool(
+            @CurrentCompanyId long companyId,
+            @PathVariable String toolName,
+            @RequestBody TestIntegrationToolRequest request);
 
     /** Saves the tools the agent is offered; every tool not in {@code enabledTools} is switched off. */
     @PreAuthorize("hasAuthority('INTEGRATION_EDIT')")

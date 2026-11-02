@@ -171,6 +171,12 @@ public class LiveKitTelephonyService {
         body.put("participantName", PhoneMasker.mask(calleeNumber));
         body.put("waitUntilAnswered", true);
         body.put("ringingTimeout", properties.answerTimeoutSec() + "s");
+        // An inline trunk has no numbers of its own, so LiveKit refuses it without a From number
+        // ("no numbers on outbound trunk"). Without a caller ID the trunk's login stands in for
+        // it, as Asterisk's from_user does for the same managed trunk (PjsipConfigWriter).
+        if ((callerId == null || callerId.isBlank()) && trunk != null) {
+            callerId = trunk.username();
+        }
         if (callerId != null && !callerId.isBlank()) {
             body.put("sipNumber", callerId);
         }

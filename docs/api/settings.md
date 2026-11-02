@@ -577,16 +577,28 @@ sukut o'zgarsa u ham o'zgaradi; kompaniya o'zi tanlagan holat esa hech qachon bo
   "accept": true,
   "data": [
     {
-      "tool": "SEARCH_FLATS",
-      "group": "FLATS",
-      "label": "Xonadon qidirish va narxlar",
-      "description": "Xona soni, byudjet, qavat va majmua bo'yicha sotuvdagi xonadonlar hamda ularning narxi.",
+      "tool": "GET_CONTRACT_BALANCE",
+      "group": "DEBTS",
+      "label": "Shartnoma qoldig'i",
+      "description": "Shartnoma summasi, to'langani, qoldiq va kechikish.",
       "permission": "CONTRACT",
       "scope": "READ",
       "writes": false,
       "enabled": true,
       "inherited": true,
-      "granted": true
+      "granted": true,
+      "toolName": "getContractBalance",
+      "inputs": [],
+      "responseMapping": { "contracts": "$.data.data[*]{...}" }
+    },
+    {
+      "tool": "SEARCH_FLATS",
+      "toolName": "searchFlats",
+      "inputs": [
+        { "name": "rooms", "type": "array", "source": "AI", "value": null, "description": "number of rooms the client wants…" },
+        { "name": "statuses", "type": "array", "source": "VALUE", "value": ["SALE"], "description": null }
+      ],
+      "responseMapping": { "flats": "$.data[*]{id,houseName,number,rooms,area,floor,price}" }
     }
   ]
 }
@@ -600,27 +612,57 @@ sukut o'zgarsa u ham o'zgaradi; kompaniya o'zi tanlagan holat esa hech qachon bo
 | `writes` | vosita CRM'da nimadir o'zgartiradi (lid, izoh, vazifa, bosqich) |
 | `enabled` | kalit shuni ko'rsatadi: kompaniyaning o'z tanlovi, tanlamagan bo'lsa platforma sukuti |
 | `inherited` | kompaniya hali tanlamagan — `enabled` sukut holati va u o'zgarsa birga o'zgaradi |
-| `toolName` | HTTP vositaning modelga ko'rinadigan nomi — pre-call funksiya (`toolName`) va kampaniya `TOOL` manbai shunga ishora qiladi; ichki vositada `null` |
+| `toolName` | Vositaning modelga ko'rinadigan nomi — pre-call funksiya (`toolName`) va kampaniya `TOOL` manbai shunga ishora qiladi; hech qachon `null` emas (V28 dan buyon kodda yozilgan vosita yo'q) |
+| `inputs` | *(2026-11-02 dan)* HTTP vositaning kirishlari va sukut manbai: `source` — `AI` (model to'ldiradi, `description` — modelga tushuntirish), `VALUE` (qat'iy `value`), `VARIABLE` (`value` — qo'ng'iroq o'zgaruvchisi nomi). Maxfiy kirish ro'yxatda yo'q. Agentning `INTEGRATION` funksiyasi `integration.inputs` da shu nomlar bo'yicha boshqa manba bera oladi ([ai-agents.md](ai-agents.md)). Ichki vositada `[]` |
+| `responseMapping` | *(2026-11-02 dan)* HTTP vositaning sukut javob maydonlari (modelga faqat shular boradi); ichki vositada yoki butun javob boradigan vositada `{}` |
 | `granted` | kompaniyaning Uysot ruxsatlari vositani qoplaydi. `false` bo'lsa agentga vosita **berilmaydi** (`enabled` ga qaramay) — «Ulash» tabida ruxsat berib, qayta ulash kerak |
 
 | `tool` | Guruh | Ruxsat | Nima qiladi |
 |---|---|---|---|
-| `SEARCH_FLATS` | FLATS | CONTRACT:READ | Sotuvdagi xonadonlar va narxlari |
-| `LIST_COMPLEXES` | FLATS | CONTRACT:READ | Majmualar: manzil, qavat, bloklar, topshirish muddati |
-| `REMEMBER_FLAT_INTEREST` | FLATS | — | Yoqqan xonadonni mijoz xotirasiga yozadi |
-| `GET_CONTRACT_BALANCE` | DEBTS | CONTRACT:READ | Shartnoma summasi, to'langani, qoldiq, kechikish |
-| `GET_PAYMENT_SCHEDULE` | DEBTS | CONTRACT:READ | To'lanmagan oylik to'lovlar |
-| `GET_DEBT_SUMMARY` | DEBTS | CONTRACT:READ | Barcha faol shartnomalar bo'yicha qarz va kechikkan to'lovlar |
-| `GET_CLIENT_PROFILE` | LEADS | LEAD:READ | Raqam bo'yicha mijoz: ismi, lidi, faol shartnomalari |
+| `SEARCH_FLATS` | FLATS | CONTRACT:READ | Sotuvdagi xonadonlar va narxlari (HTTP vosita, `searchFlats`) |
+| `LIST_COMPLEXES` | FLATS | CONTRACT:READ | Majmualar: id, manzil, qavat, topshirish muddati, sotuvdami (HTTP vosita, `listResidentialComplexes`) |
+| `GET_CONTRACT_BALANCE` | DEBTS | CONTRACT:READ | Shartnoma summasi, to'langani, qoldiq, kechikish (HTTP vosita, `getContractBalance`) |
+| `GET_PAYMENT_SCHEDULE` | DEBTS | CONTRACT:READ | To'lanmagan oylik to'lovlar, shartnoma `id` si bo'yicha (HTTP vosita, `getPaymentSchedule`) |
+| `GET_DEBT_SUMMARY` | DEBTS | CONTRACT:READ | Barcha faol shartnomalar: qoldiq va kechikish (HTTP vosita, `getDebtSummary`) |
+| `GET_CLIENT_PROFILE` | LEADS | LEAD:READ | Raqam bo'yicha mijoz: ismi va lidi (HTTP vosita, `getClientProfile`) |
 | `CREATE_LEAD` | LEADS | LEAD:SAVE | CRM'da yo'q mijoz uchun yangi lid |
 | `ADD_LEAD_NOTE` | LEADS | LEAD_NOTE:SAVE | Lidga izoh |
 | `CREATE_FOLLOW_UP_TASK` | LEADS | LEAD_TASK:SAVE | Menejerga aniq vaqtga vazifa |
 | `MOVE_LEAD_STAGE` | LEADS | LEAD:SAVE | Lidni voronkaning boshqa bosqichiga o'tkazadi |
-| `REQUEST_MANAGER_CALLBACK` | LEADS | — | Menejer qo'ng'iroq qilishini so'rash (qo'ng'iroq natijasiga yoziladi) |
-| `GET_BOOKING_STATUS` | BOOKINGS | BOOKING:READ | Mijozning bronlari ⚠️ Uysot `booking/filter` so'rov sxemasi hujjatda yo'q — real hisobda tekshirilmagan |
+| `GET_BOOKING_STATUS` | BOOKINGS | BOOKING:READ | Mijozning bronlari (HTTP vosita, `getBookingStatus`) ⚠️ Uysot `booking/filter` so'rov sxemasi hujjatda yo'q — real hisobda tekshirilmagan |
 
 > Agentga vositalar faqat kompaniya **Uysot'ga ulangan** bo'lsa beriladi. amoCRM / Kommo /
 > Bitrix24 ulangan kompaniyada ro'yxat ko'rinadi, lekin agentga hech narsa berilmaydi.
+
+### `POST /api/settings/integrations/tools/{toolName}/test` — Agent funksiyasini sinash
+`AI_AGENT_EDIT`. *(2026-11-02 dan)* Agent tahririda integratsiya funksiyasining **"Testni ishga tushirish"** tugmasi.
+Kompaniya yoqqan HTTP vositasini (`toolName` — `GET` dagi `toolName`) kompaniyaning **o'z Uysot hisobiga** bir marta
+yuboradi, forma sozlamalarini (saqlanmagan bo'lsa ham) qo'llab. Faqat o'qiydigan vosita ishlaydi.
+
+```json
+{
+  "args": { "priceTo": 900000000 },
+  "variables": { "phone": "+998901234567", "phone_last9": "901234567" },
+  "override": {
+    "inputs": [ { "name": "rooms", "source": "VALUE", "value": ["3"] } ],
+    "responseMapping": { "flats": "$.data[*]{number,rooms,price}" }
+  }
+}
+```
+
+| Maydon | Ma'nosi |
+|---|---|
+| `args` | model `AI` kirishlarga yuboradigan qiymatlar |
+| `variables` | vosita o'qiydigan qo'ng'iroq o'zgaruvchilari (`VARIABLE` kirishlar uchun); `company_id` server o'zi qo'shadi. Haqiqiy qo'ng'iroqdagi `phone_last9`, `crm_*` kabi CRM o'zgaruvchilari bu yerda avtomatik **qo'shilmaydi** — kerak bo'lsa shu yerda bering |
+| `override` | agent funksiyasining `integration` maydoni bilan bir xil shakl ([ai-agents.md](ai-agents.md)); `null` — katalogdagidek |
+
+Javob — `ToolTestResponse` ([tools.md](tools.md) §4.1): `result` (modelga aynan nima borardi — `override.responseMapping` va
+vositaning `result` sozlamalari bilan), `raw` (Uysot javobi o'zgarishsiz — maydon tanlash uchun), `mapped` (`null`).
+
+| Kod | Qachon |
+|---|---|
+| `404 TARGET_SOURCE_TOOL_UNAVAILABLE` | kompaniyada bunday HTTP vosita yoqilmagan yoki kompaniya Uysot'ga ulanmagan |
+| `400 INTEGRATION_TOOL_TEST_NOT_READ_ONLY` | vosita CRM'da o'zgarish qiladi — agentdan sinab bo'lmaydi |
 
 ### `PUT /api/settings/integrations/tools` — Vositalarni tanlash
 `INTEGRATION_EDIT`. Tanlangan vositalar yoqiq qoladi, ro'yxatda **yo'q** har biri o'chadi;

@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolOverride;
 
 /**
  * One function (tool) the agent may use on a call, as in Retell's Functions list. The type decides
@@ -20,6 +21,8 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
  * @param extract              EXTRACT_VARIABLE settings
  * @param toolId               CUSTOM: the company's tool
  * @param integrationTool      INTEGRATION: the catalog tool (its {@code toolName}, else its key)
+ * @param integration          INTEGRATION: the agent's own inputs and answer fields for an HTTP catalog tool;
+ *                             null keeps the catalog's. A built-in tool has none to change
  */
 public record AgentFunction(
         String id,
@@ -34,7 +37,8 @@ public record AgentFunction(
         AgentFunctionSms sms,
         AgentFunctionExtract extract,
         Long toolId,
-        String integrationTool
+        String integrationTool,
+        ToolOverride integration
 ) {
 
     public AgentFunction {

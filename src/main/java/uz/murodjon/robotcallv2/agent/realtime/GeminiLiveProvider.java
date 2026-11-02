@@ -513,11 +513,8 @@ public class GeminiLiveProvider implements RealtimeProvider {
                 }
             }
             String said = content.path("outputTranscription").path("text").asText("");
-            if (!said.isEmpty()) {
-                String cleanSaid = said.replaceAll("<[^>]+>", "").trim();
-                if (!cleanSaid.isEmpty()) {
-                    spoken.append(cleanSaid).append(' ');
-                }
+            if (!said.isBlank()) {
+                spoken.append(said.trim()).append(' ');
             }
 
             if (content.path("interrupted").asBoolean(false)) {
@@ -583,8 +580,13 @@ public class GeminiLiveProvider implements RealtimeProvider {
                 }
             }
             if (spoken.length() > 0) {
-                listener.onOutputTranscript(spoken.toString());
+                // Markers like "<no speech>" and "{pause}" arrive split across fragments, so they
+                // are stripped from the whole turn; a turn of nothing else said nothing.
+                String said = spoken.toString().replaceAll("<[^>]*>|\\{[a-z_ ]*}", " ").replaceAll("\\s+", " ").trim();
                 spoken.setLength(0);
+                if (!said.isEmpty()) {
+                    listener.onOutputTranscript(said);
+                }
             }
             turnOpen = false;
             JsonNode usage = pendingUsage;

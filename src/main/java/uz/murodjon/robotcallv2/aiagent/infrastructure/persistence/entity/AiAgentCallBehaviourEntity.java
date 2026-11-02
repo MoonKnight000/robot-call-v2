@@ -73,6 +73,9 @@ public class AiAgentCallBehaviourEntity {
     @Column(name = "press_digit_enabled", nullable = false)
     private boolean pressDigitEnabled;
 
+    @Column(name = "llm_turn_detection")
+    private Boolean llmTurnDetection;
+
     protected AiAgentCallBehaviourEntity() {
     }
 
@@ -87,7 +90,7 @@ public class AiAgentCallBehaviourEntity {
                                       Integer reminderMaxCount, Integer dtmfTimeoutMs,
                                       String dtmfTerminationKey, Integer dtmfDigitLimit,
                                       Integer ringDurationSeconds,
-                                      boolean pressDigitEnabled) {
+                                      boolean pressDigitEnabled, Boolean llmTurnDetection) {
         this.interruptionSensitivity = interruptionSensitivity != null
                 ? interruptionSensitivity : InterruptionSensitivity.MEDIUM;
         this.dtmfInputEnabled = dtmfInputEnabled;
@@ -109,6 +112,7 @@ public class AiAgentCallBehaviourEntity {
         this.dtmfDigitLimit = dtmfDigitLimit;
         this.ringDurationSeconds = ringDurationSeconds;
         this.pressDigitEnabled = pressDigitEnabled;
+        this.llmTurnDetection = llmTurnDetection;
     }
 
     public InterruptionSensitivity getInterruptionSensitivity() {
@@ -189,5 +193,9 @@ public class AiAgentCallBehaviourEntity {
 
     public boolean isPressDigitEnabled() {
         return pressDigitEnabled;
+    }
+
+    public Boolean getLlmTurnDetection() {
+        return llmTurnDetection;
     }
 }

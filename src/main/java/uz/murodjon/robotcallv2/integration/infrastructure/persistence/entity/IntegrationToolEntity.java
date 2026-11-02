@@ -7,7 +7,6 @@ import uz.murodjon.robotcallv2.integration.domain.enums.CrmPermission;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmScopeLevel;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmToolGroup;
-import uz.murodjon.robotcallv2.integration.domain.enums.IntegrationToolKind;
 
 import java.time.Instant;
 
@@ -26,10 +25,6 @@ public class IntegrationToolEntity {
 
     @Column(name = "tool_key", nullable = false)
     private String toolKey;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private IntegrationToolKind kind;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "tool_group", nullable = false)
@@ -61,10 +56,6 @@ public class IntegrationToolEntity {
     @Column(columnDefinition = "jsonb")
     private String definition;
 
-    /** What the model reads about a built-in tool; null = the text in code. */
-    @Column(name = "model_description")
-    private String modelDescription;
-
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -93,14 +84,6 @@ public class IntegrationToolEntity {
 
     public void setToolKey(String toolKey) {
         this.toolKey = toolKey;
-    }
-
-    public IntegrationToolKind getKind() {
-        return kind;
-    }
-
-    public void setKind(IntegrationToolKind kind) {
-        this.kind = kind;
     }
 
     public CrmToolGroup getToolGroup() {
@@ -165,14 +148,6 @@ public class IntegrationToolEntity {
 
     public void setSortOrder(int sortOrder) {
         this.sortOrder = sortOrder;
-    }
-
-    public String getModelDescription() {
-        return modelDescription;
-    }
-
-    public void setModelDescription(String modelDescription) {
-        this.modelDescription = modelDescription;
     }
 
     public String getDefinition() {

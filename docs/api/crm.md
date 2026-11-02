@@ -175,17 +175,16 @@ Kompaniya Uysot'ga ulangan bo'lsa, uning **har bir** agentiga (ovozli cascade, r
 quyidagi tool'lar avtomatik beriladi — ssenariyda e'lon qilish shart emas, istalgan bosqichda
 ishlaydi (katalog qidiruvi kabi: faqat o'qiydi, CRM'da hech narsa o'zgartirmaydi).
 
-| Tool | Qachon | Nima qaytaradi |
-|---|---|---|
-| `searchFlats(rooms, maxPrice, minPrice, complexName, floorFrom, floorTo)` | "3 xonali bormi?", "60 mingga nima bor?" | Sotuvdagi 3 ta eng arzon xonadon: majmua, blok, xona, m², qavat, narx |
-| `rememberFlatInterest(flat, note?)` | "Shu menga yoqdi", "ko'rgani boraman" | Tanlangan xonadon mijoz xotirasiga yoziladi (`interestedFlat`) |
-| `listResidentialComplexes()` | "Qaysi loyihalaringiz bor?", "qachon topshiriladi?" | Sotuvdagi majmualar: manzil, qavatlar, bloklar, topshirish sanasi |
-| `getContractBalance(contractNumber?)` | "Qancha qoldi?", "Qarzim qancha?" | Shartnoma summasi, to'langan, qoldiq, kechikish kunlari, navbatdagi to'lov |
-| `getPaymentSchedule(contractNumber?)` | "To'lov jadvalim qanday?" | To'lanmagan navbatdagi 3 ta to'lov (sana, summa, muddati o'tganmi) |
-| `requestManagerCallback(reason, preferredTime?)` | "Menejer bilan gaplashmoqchiman", chegirma/shartlar | Outcome'ga `managerCallbackRequested` yozadi → qo'ng'iroqdan keyin CRM task |
+`searchFlats`, `listResidentialComplexes`, `getContractBalance`, `getPaymentSchedule`, `getDebtSummary`,
+`getClientProfile`, `getBookingStatus` — kod emas, integratsiya katalogidagi HTTP vositalar
+([platform-integration-tools.md](platform-integration-tools.md), migratsiya `V23`–`V26`).
+`getContractBalance` da shartnoma: model aytgan raqam → qo'ng'iroq faktidagi `contractNumber` → mijoz
+telefoni (`x-fallback`); bir nechta chiqsa, model eng ko'p kechikkani haqida gapiradi.
 
-**Shartnoma qanday topiladi:** tool'ga berilgan raqam → qo'ng'iroq faktidagi `contractNumber` →
-mijoz telefoni bo'yicha faol shartnomalar (bir nechta bo'lsa — eng ko'p kechikkani).
+`rememberFlatInterest` va `requestManagerCallback` — kod emas, agentning o'z `EXTRACT_VARIABLE` funksiyalari (migratsiya
+`V25`, [ai-agents.md](ai-agents.md)): birinchisi `interestedFlat` ni qo'ng'iroq natijasiga va mijoz xotirasiga
+(`remember: true`), ikkinchisi `managerCallbackRequested` / `managerCallbackReason` / `managerCallbackTime` ni
+qo'ng'iroq natijasiga yozadi. Studio'da boshqa funksiyalar kabi tahrirlanadi.
 
 **Guardrail:** tool javobidagi har bir raqam `FactGuard` ga "aytish mumkin" deb beriladi; agent narx,
 qoldiq yoki sana to'qiy olmaydi. Uysot javob bermasa tool "ma'lumot hozir mavjud emas" deydi va agent

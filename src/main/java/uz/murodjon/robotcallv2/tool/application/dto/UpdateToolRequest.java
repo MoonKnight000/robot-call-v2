@@ -23,6 +23,7 @@ public record UpdateToolRequest(
         List<ToolKeyValuePair> dynamicVariables,
         ToolSpeechDto speech,
         Map<String, String> responseMapping,
+        @Valid ToolResultDto result,
         @Min(0) Integer maxCallsPerCall,
         ToolEffect effect,
         Boolean requiresConfirmation,

@@ -9,8 +9,11 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsRecipient;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVariableType;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolInputOverride;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolOverride;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +41,9 @@ public final class AgentFunctionValidator {
     static final int MAX_CHOICE_CHARS = 100;
     static final int MAX_PAUSE_DETECTION_DELAY_MS = 5000;
     private static final int MAX_INTEGRATION_TOOL_CHARS = 100;
+    static final int MAX_INTEGRATION_INPUTS = 30;
+    static final int MAX_INTEGRATION_OUTPUTS = 30;
+    private static final int MAX_INPUT_NAME_CHARS = 64;
 
     private static final Pattern FUNCTION_ID = Pattern.compile("[A-Za-z0-9_-]{1,40}");
     private static final Pattern VARIABLE_NAME = Pattern.compile("[a-zA-Z][a-zA-Z0-9_]{0,63}");
@@ -87,6 +93,7 @@ public final class AgentFunctionValidator {
                     .extract(type == AgentFunctionType.EXTRACT_VARIABLE ? function.extract() : null)
                     .toolId(type == AgentFunctionType.CUSTOM ? function.toolId() : null)
                     .integrationTool(type == AgentFunctionType.INTEGRATION ? function.integrationTool() : null)
+                    .integration(type == AgentFunctionType.INTEGRATION ? function.integration() : null)
                     .build());
         }
         return result;
@@ -170,6 +177,7 @@ public final class AgentFunctionValidator {
                 if (tool == null || tool.length() > MAX_INTEGRATION_TOOL_CHARS) {
                     throw invalid(id, "INTEGRATION_TOOL_REQUIRED");
                 }
+                validateIntegration(id, function.integration());
             }
             case END_CALL -> {
             }
@@ -229,6 +237,49 @@ public final class AgentFunctionValidator {
             if (choicesBroken) {
                 throw invalid(id, "VARIABLE_CHOICES_INVALID");
             }
+        }
+    }
+
+    /**
+     * The agent's own inputs and answer fields for an integration tool. Whether an input is one the tool has is
+     * not checked here: the catalog may change after the list is saved, and an input it no longer has is ignored.
+     */
+    private static void validateIntegration(String id, ToolOverride integration) {
+        if (integration == null) {
+            return;
+        }
+        if (integration.inputs().size() > MAX_INTEGRATION_INPUTS) {
+            throw invalid(id, "INTEGRATION_INPUTS_TOO_MANY");
+        }
+        Set<String> inputNames = new HashSet<>();
+        for (ToolInputOverride input : integration.inputs()) {
+            if (input.name() == null || input.name().isEmpty() || input.name().length() > MAX_INPUT_NAME_CHARS
+                    || !inputNames.add(input.name()) || input.source() == null) {
+                throw invalid(id, "INTEGRATION_INPUT_INVALID");
+            }
+            if (input.description() != null && input.description().length() > MAX_VARIABLE_DESCRIPTION_CHARS) {
+                throw invalid(id, "INTEGRATION_INPUT_INVALID");
+            }
+            boolean valueMissing = switch (input.source()) {
+                case AI -> false;
+                case VALUE -> input.value() == null;
+                case VARIABLE -> !(input.value() instanceof String variable) || !VARIABLE_NAME.matcher(variable).matches();
+            };
+            if (valueMissing) {
+                throw invalid(id, "INTEGRATION_INPUT_VALUE_REQUIRED");
+            }
+        }
+        if (integration.responseMapping() != null) {
+            if (integration.responseMapping().size() > MAX_INTEGRATION_OUTPUTS) {
+                throw invalid(id, "INTEGRATION_OUTPUTS_TOO_MANY");
+            }
+            integration.responseMapping().forEach((name, path) -> {
+                boolean pathBroken = path == null || Arrays.stream(path.split("\\|\\|"))
+                        .anyMatch(alternative -> !alternative.trim().startsWith("$"));
+                if (name == null || !VARIABLE_NAME.matcher(name).matches() || pathBroken) {
+                    throw invalid(id, "INTEGRATION_OUTPUT_INVALID");
+                }
+            });
         }
     }
 

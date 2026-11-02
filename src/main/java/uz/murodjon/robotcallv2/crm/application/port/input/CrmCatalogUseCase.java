@@ -4,8 +4,6 @@ import uz.murodjon.robotcallv2.crm.domain.entity.*;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
-import java.util.Set;
 
 /**
  * The company's Uysot data beyond the lead — complexes, flats on sale, contracts and their
@@ -46,10 +44,4 @@ public interface CrmCatalogUseCase {
 
     /** The bookings of the client this phone belongs to, newest first. */
     List<CrmBooking> findBookingsByPhone(long companyId, String phone);
-
-    /**
-     * The model-facing names of the tools the agent may be offered: none when the company is
-     * not connected to Uysot, otherwise those it chose that its CRM grants cover.
-     */
-    Set<String> findEnabledToolNames(long companyId);
 }

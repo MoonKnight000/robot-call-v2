@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.integration.application.port.input;
 import uz.murodjon.robotcallv2.integration.application.dto.CreateIntegrationToolRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.CrmToolRow;
 import uz.murodjon.robotcallv2.integration.application.dto.IntegrationToolAdminRow;
+import uz.murodjon.robotcallv2.integration.application.dto.TestIntegrationToolRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.UpdateCrmToolsRequest;
 import uz.murodjon.robotcallv2.integration.application.dto.UpdateIntegrationToolRequest;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
@@ -12,7 +13,6 @@ import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The tools an integration offers the voice agent: the catalog the platform admin keeps, and
@@ -25,12 +25,6 @@ public interface IntegrationToolUseCase {
 
     /** Saves which tools the agent is offered (the rest are switched off) and returns the result. */
     List<CrmToolRow> updateTools(long companyId, UpdateCrmToolsRequest request);
-
-    /**
-     * The model-facing names of the tools the agent may be offered for this company: on, offered by
-     * the platform, and covered by its CRM grants. Not a statement that the company is connected.
-     */
-    Set<String> findEnabledToolNames(long companyId);
 
     /**
      * The HTTP tools the agent may be offered for this company: on, offered by the platform and
@@ -51,10 +45,14 @@ public interface IntegrationToolUseCase {
     ToolTestResponse runEnabledReadTool(long companyId, String toolName, Map<String, Object> arguments);
 
     /**
-     * The model-facing text the platform admin set for built-in tools, by the name the model knows each by
-     * ({@code CrmTool#toolName}). A tool left on the text in code is absent. The same for every company.
+     * Runs one of {@link #findEnabledHttpTools} once against the company's account with an agent function's
+     * inputs and answer fields applied — the "Run a test" of the function form. Only a read-only tool runs:
+     * a test must not change the CRM. No transaction: the request goes out over the network.
+     *
+     * @throws uz.murodjon.robotcallv2.shared.exception.NotFoundException when the company has no such tool on
+     * @throws uz.murodjon.robotcallv2.shared.exception.ValidationException when the tool is not read-only
      */
-    Map<String, String> findBuiltInModelDescriptions();
+    ToolTestResponse testEnabledTool(long companyId, String toolName, TestIntegrationToolRequest request);
 
     /**
      * Platform admin: runs an HTTP tool of the catalog once against the admin's own company

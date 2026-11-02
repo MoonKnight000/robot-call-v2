@@ -81,6 +81,30 @@ class ToolValidatorTest {
                 .isEqualTo(ErrorCode.TOOL_BODY_SOURCE_INVALID);
     }
 
+    @Test
+    void aFallbackNamesCallVariablesOnly() {
+        Map<String, Object> named = Map.of("type", "object", "properties", Map.of(
+                "search", Map.of("type", "string", "x-fallback", List.of("contractNumber", "phone_last9"))));
+        Map<String, Object> broken = Map.of("type", "object", "properties", Map.of(
+                "search", Map.of("type", "string", "x-fallback", List.of("contract number"))));
+
+        ToolValidator.validateBody(List.of(), named);
+        assertThat(codeOf(() -> ToolValidator.validateBody(List.of(), broken)))
+                .isEqualTo(ErrorCode.TOOL_BODY_FALLBACK_INVALID);
+    }
+
+    @Test
+    void aFormatIsEpochSecondsOnly() {
+        Map<String, Object> epoch = Map.of("type", "object", "properties", Map.of(
+                "deadline", Map.of("type", "string", "x-format", "epochSeconds")));
+        Map<String, Object> unknown = Map.of("type", "object", "properties", Map.of(
+                "deadline", Map.of("type", "string", "x-format", "iso")));
+
+        ToolValidator.validateBody(List.of(), epoch);
+        assertThat(codeOf(() -> ToolValidator.validateBody(List.of(), unknown)))
+                .isEqualTo(ErrorCode.TOOL_BODY_FORMAT_INVALID);
+    }
+
     /** The model fills every array item; a configured value would have no item to go in. */
     @Test
     void aConfiguredFieldCannotSitInsideArrayItems() {

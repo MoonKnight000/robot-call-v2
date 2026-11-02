@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.integration.application.dto.*;
 import uz.murodjon.robotcallv2.integration.application.port.input.CrmIntegrationUseCase;
 import uz.murodjon.robotcallv2.integration.application.port.input.IntegrationToolUseCase;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
+import uz.murodjon.robotcallv2.tool.application.dto.ToolTestResponse;
 
 import java.util.List;
 
@@ -57,6 +58,12 @@ public class IntegrationControllerImpl implements IntegrationController {
     @Override
     public ResponseEntity<ResponseData<List<CrmToolRow>>> tools(long companyId) {
         return ResponseEntity.ok(ResponseData.ok(integrationToolUseCase.findTools(companyId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<ToolTestResponse>> testTool(long companyId, String toolName,
+                                                                   TestIntegrationToolRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(integrationToolUseCase.testEnabledTool(companyId, toolName, request)));
     }
 
     @Override

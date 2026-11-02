@@ -6,7 +6,6 @@ import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.application.port.output.UysotCatalogPort;
 import uz.murodjon.robotcallv2.crm.domain.entity.*;
 import uz.murodjon.robotcallv2.crm.infrastructure.config.UysotCatalogProperties;
-import uz.murodjon.robotcallv2.integration.application.port.input.IntegrationToolUseCase;
 import uz.murodjon.robotcallv2.integration.domain.entity.CrmConnection;
 import uz.murodjon.robotcallv2.integration.domain.enums.CrmProvider;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
@@ -20,7 +19,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
@@ -44,18 +42,15 @@ public class CrmCatalogService implements CrmCatalogUseCase {
     private final UysotCatalogProperties catalogProperties;
     private final Clock clock;
     private final CrmUseCase crmUseCase;
-    private final IntegrationToolUseCase integrationToolUseCase;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
 
     public CrmCatalogService(CrmConnectionResolver connectionResolver, UysotCatalogPort catalogPort,
-                             UysotCatalogProperties catalogProperties, Clock clock, CrmUseCase crmUseCase,
-                             IntegrationToolUseCase integrationToolUseCase) {
+                             UysotCatalogProperties catalogProperties, Clock clock, CrmUseCase crmUseCase) {
         this.connectionResolver = connectionResolver;
         this.catalogPort = catalogPort;
         this.catalogProperties = catalogProperties;
         this.clock = clock;
         this.crmUseCase = crmUseCase;
-        this.integrationToolUseCase = integrationToolUseCase;
     }
 
     @Override
@@ -134,11 +129,6 @@ public class CrmCatalogService implements CrmCatalogUseCase {
             return List.of();
         }
         return catalogPort.findBookingsByPhone(requireUysot(companyId), phone);
-    }
-
-    @Override
-    public Set<String> findEnabledToolNames(long companyId) {
-        return isUysotConnected(companyId) ? integrationToolUseCase.findEnabledToolNames(companyId) : Set.of();
     }
 
     private CrmConnection requireUysot(long companyId) {

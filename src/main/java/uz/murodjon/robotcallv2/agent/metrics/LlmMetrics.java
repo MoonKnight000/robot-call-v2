@@ -18,6 +18,9 @@ public class LlmMetrics {
     private final Counter speculationsStarted;
     private final Counter speculationsHit;
     private final Counter speculationsMissed;
+    private final Counter turnCuesComplete;
+    private final Counter turnCuesIncomplete;
+    private final Counter waitForCallerTimeouts;
     private final Counter llmPromptTokens;
     private final Counter llmCompletionTokens;
     private final Counter llmCachedTokens;
@@ -41,6 +44,23 @@ public class LlmMetrics {
                 .register(registry);
         this.speculationsMissed = Counter.builder("voice.llm.speculation.miss")
                 .description("speculative replies thrown away because the caller said something else")
+                .register(registry);
+        // The speculative reply's first chunk read as an end-of-turn verdict (SpeechGate#setLlmTurnCue).
+        // Read against voice.dialog.turn.stitched: "complete" verdicts that still end in a stitched
+        // turn are callers the shorter wait cut off.
+        this.turnCuesComplete = Counter.builder("voice.llm.speculation.turn.cue")
+                .description("end-of-turn verdicts taken from the speculative reply")
+                .tag("verdict", "complete")
+                .register(registry);
+        this.turnCuesIncomplete = Counter.builder("voice.llm.speculation.turn.cue")
+                .description("end-of-turn verdicts taken from the speculative reply")
+                .tag("verdict", "incomplete")
+                .register(registry);
+        // waitForCaller followed by silence: the model judged the caller mid-thought, they were
+        // not, and the bot answered after DIALOG_WAIT_FOR_CALLER_TIMEOUT_MS. A high rate means
+        // the model waits too readily — each one cost the caller that much silence.
+        this.waitForCallerTimeouts = Counter.builder("voice.llm.wait.for.caller.timeout")
+                .description("waitForCaller turns the caller never followed up, answered after the timeout")
                 .register(registry);
         // Token accounting for the LLM (§2.6). cached = the share of the prompt the
         // provider served from its context cache, i.e. the payoff of keeping the
@@ -109,6 +129,16 @@ public class LlmMetrics {
     /** The caller said something else, so the speculative reply was thrown away. */
     public void speculationMiss() {
         speculationsMissed.increment();
+    }
+
+    /** The speculative reply's first chunk said whether the caller had finished. */
+    public void speculationTurnCue(boolean complete) {
+        (complete ? turnCuesComplete : turnCuesIncomplete).increment();
+    }
+
+    /** A waitForCaller the caller never followed up was answered after the timeout. */
+    public void waitForCallerTimeout() {
+        waitForCallerTimeouts.increment();
     }
 
     /**

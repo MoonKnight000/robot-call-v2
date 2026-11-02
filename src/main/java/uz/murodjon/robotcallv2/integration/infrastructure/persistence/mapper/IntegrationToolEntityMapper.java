@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.integration.domain.entity.IntegrationTool;
-import uz.murodjon.robotcallv2.integration.domain.enums.IntegrationToolKind;
 import uz.murodjon.robotcallv2.integration.infrastructure.persistence.entity.IntegrationToolEntity;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
@@ -24,7 +23,6 @@ public class IntegrationToolEntityMapper {
                 entity.getId(),
                 entity.getProvider(),
                 entity.getToolKey(),
-                entity.getKind(),
                 entity.getToolGroup(),
                 entity.getLabel(),
                 entity.getDescription(),
@@ -33,14 +31,11 @@ public class IntegrationToolEntityMapper {
                 entity.isDefaultEnabled(),
                 entity.isPlatformEnabled(),
                 entity.getSortOrder(),
-                readDefinition(entity.getDefinition()),
-                entity.getModelDescription());
+                readDefinition(entity.getDefinition()));
     }
 
     /**
-     * Copies what the platform admin may edit. The key, kind and provider never change; the
-     * grant and the definition belong to an HTTP tool only — a built-in tool's are code, and
-     * what the model reads about it is {@code modelDescription}.
+     * Copies what the platform admin may edit. The key and provider never change.
      */
     public void applyEdits(IntegrationToolEntity entity, IntegrationTool tool) {
         entity.setLabel(tool.label());
@@ -49,23 +44,15 @@ public class IntegrationToolEntityMapper {
         entity.setDefaultEnabled(tool.defaultEnabled());
         entity.setPlatformEnabled(tool.platformEnabled());
         entity.setSortOrder(tool.sortOrder());
-        if (entity.getKind() == IntegrationToolKind.HTTP) {
-            entity.setPermission(tool.permission());
-            entity.setScope(tool.scope());
-            entity.setDefinition(writeDefinition(tool.definition()));
-        } else {
-            entity.setModelDescription(tool.modelDescription());
-        }
+        entity.setPermission(tool.permission());
+        entity.setScope(tool.scope());
+        entity.setDefinition(writeDefinition(tool.definition()));
     }
 
     public IntegrationToolEntity toNewEntity(IntegrationTool tool) {
         IntegrationToolEntity entity = new IntegrationToolEntity();
         entity.setProvider(tool.provider());
         entity.setToolKey(tool.key());
-        entity.setKind(tool.kind());
-        entity.setPermission(tool.permission());
-        entity.setScope(tool.scope());
-        entity.setDefinition(writeDefinition(tool.definition()));
         Instant now = Instant.now();
         entity.setCreatedAt(now);
         applyEdits(entity, tool);

@@ -17,6 +17,7 @@ public record ToolRow(
         List<ToolKeyValuePair> dynamicVariables,
         ToolSpeechDto speech,
         Map<String, String> responseMapping,
+        ToolResultDto result,
         int maxCallsPerCall,
         ToolEffect effect,
         boolean requiresConfirmation,

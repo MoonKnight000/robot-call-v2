@@ -92,6 +92,13 @@ Tizimda AI Agentlar uchun mustaqil **Tools** mexanizmi joriy qilindi. Agent qo'n
     "preToolSpeech": "Bir daqiqa kutasizmi, buyurtmangiz holatini bazadan tekshirib ko'raman."
   },
   "responseMapping": { "order_status": "$.data.status", "eta": "$.data.eta" },
+  "result": {
+    "maxItems": 3,
+    "emptyMessage": "Bunday buyurtma topilmadi — raqamni qayta so'rang.",
+    "errorMessage": "Tizim hozir javob bermayapti — mutaxassis qayta qo'ng'iroq qilishini ayting.",
+    "argumentVariables": { "order_id": "orderId" },
+    "memoryFacts": { "order_status": "lastOrderStatus" }
+  },
   "maxCallsPerCall": 3
 }
 ```
@@ -101,7 +108,8 @@ Tizimda AI Agentlar uchun mustaqil **Tools** mexanizmi joriy qilindi. Agent qo'n
 > (`ToolRow`) da bir xil. Eski → yangi: `apiUrl` → `http.url`, `apiMethod` → `http.method`,
 > `apiHeaders` → `http.headers`, `apiBody` → `http.body`, `apiQueryParams` → `http.queryParams`,
 > `apiPathParams` → `http.pathParams`, `bodySchema`, `responseTimeoutSecs`, `retryAttempts`, `auth` →
-> `http.*`; `disableInterruptions`, `forcePreToolSpeech`, `preToolSpeech` → `speech.*`. Yuqori
+> `http.*`; `disableInterruptions`, `forcePreToolSpeech`, `preToolSpeech` → `speech.*`. Javob modelga
+> qanday borishi `result` ichida (2026-11-02 dan, yangi guruh, ixtiyoriy). Yuqori
 > darajada qoladi: `name`, `description`, `dynamicVariables`, `responseMapping`, `maxCallsPerCall`,
 > `effect`, `requiresConfirmation`, `readbackTemplate`. `POST` da `http` majburiy (berilmasa —
 > `400 VALIDATION_FAILED`, `http.url` bo'sh bo'lsa — `400 TOOL_URL_REQUIRED`). `PUT` da guruhni yoki
@@ -126,7 +134,12 @@ Tizimda AI Agentlar uchun mustaqil **Tools** mexanizmi joriy qilindi. Agent qo'n
 | `speech.disableInterruptions` | bool| Standart: false| Tool javobi kutilayotganda mijoz gapini to'xtatmaslik (barge-in block) |
 | `speech.forcePreToolSpeech` | bool | Standart: `true` | API chaqirishdan oldin `preToolSpeech` aytilishini majburiy qilish |
 | `speech.preToolSpeech` | string| Ixtiyoriy | Chaqiruv boshlanishida robot o'qiydigan jumla ("Bir daqiqa...") |
-| `responseMapping` | object | Ixtiyoriy | Nom → JSONPath (`$.data.status`, `$.items[0].eta`). Berilsa modelga **faqat shu maydonlar** boradi (`{"order_status": "shipped"}`), butun javob emas. Javobda yo'q yo'l tushib qoladi. Ro'yxat uchun `[*]`: `$.data[*]` — ro'yxatning o'zi; `$.data[*].price` — har elementning `price`i (ro'yxat); `$.data[*]{number,rooms,house.name}` — har element faqat shu maydonlargacha qisqartirilgan (kalit — oxirgi bo'lak: `house.name` → `name`); elementda bo'lmagan maydon tushib qoladi. Ro'yxat bo'lmagan joyda yoki ikkinchi `[*]` da hech narsa tanlanmaydi. Bir nechta yo'l `||` bilan berilsa (`$.data[*] || $.data.content[*]`), tanlov bo'sh bo'lmagan birinchi topilgan yo'ldan olinadi (bo'sh ro'yxat ham "topildi" hisoblanadi) — javob ro'yxati turli endpointlarda turlicha o'ralgan bo'lsa. `$` bilan boshlanmagan yo'l — `400 TOOL_RESPONSE_MAPPING_INVALID`. Bo'sh — butun javob (4000 belgigacha). 2xx javobda mapping maydonlari qo'ng'iroq natijasiga ham shu nomlar bilan yoziladi — ssenariyning `goal` maydoni shu nomda bo'lsa, qo'ng'iroq `GOAL_REACHED` bilan tugaydi ([scenarios.md](scenarios.md)). 2xx javobda modelga borgan raqamlar (narx, jami, buyurtma raqami) agent ovoz chiqarib aytishi mumkin bo'lgan raqamlarga qo'shiladi — fact guard ularni to'qilgan deb bloklamaydi **"Save as variable":** mapping maydonlari shu qo'ng'iroqdagi **keyingi tool'larning** shablonlarida (`url`, `headers`, `body`, `Dynamic Variable`/`variable` manbali parametrlar) `{{maydon_nomi}}` o'zgaruvchisi bo'lib ishlaydi: masalan `search` tool'i `responseMapping: {"client_id": "$.data.id"}` bilan chaqirilgach, `createLead` tool'i `{{client_id}}` ni o'qiydi. O'zgaruvchi tool **chaqirilgan paytda** o'qiladi, shuning uchun u hosil bo'lgandan keyingi har qanday chaqiruvda (kaskad ham, REALTIME ham, fonda ishlaydigan `waitForResult: false` ham) ko'rinadi. Nomi qo'ng'iroq faktlari (`phone`, kontakt ma'lumoti, `channel_id`, …) bilan bir xil bo'lsa **fakt ustun** turadi. Xom `tool_<nom>` javoblari o'zgaruvchi bo'lmaydi |
+| `responseMapping` | object | Ixtiyoriy | Nom → JSONPath (`$.data.status`, `$.items[0].eta`). Berilsa modelga **faqat shu maydonlar** boradi (`{"order_status": "shipped"}`), butun javob emas. Javobda yo'q yo'l tushib qoladi. Ro'yxat uchun `[*]`: `$.data[*]` — ro'yxatning o'zi; `$.data[*].price` — har elementning `price`i (ro'yxat); `$.data[*]{number,rooms,house.name}` — har element faqat shu maydonlargacha qisqartirilgan (kalit — oxirgi bo'lak: `house.name` → `name`); elementda bo'lmagan maydon tushib qoladi. `[*]` o'rniga filtr: `$.data[?paid!=true&status!=PAID]{date,amount}` — faqat shartdan o'tgan elementlar; shartlar `&` bilan, `maydon=qiymat` (maydon bo'lishi va teng bo'lishi kerak) yoki `maydon!=qiymat` (maydon yo'q bo'lsa ham o'tadi); matn sifatida, katta-kichik harfsiz solishtiriladi; `maydon` ichma-ich bo'lishi mumkin (`house.name`). Ro'yxat bo'lmagan joyda yoki ikkinchi `[*]`/filtrda hech narsa tanlanmaydi. Bir nechta yo'l `||` bilan berilsa (`$.data[*] || $.data.content[*]`), tanlov bo'sh bo'lmagan birinchi topilgan yo'ldan olinadi (bo'sh ro'yxat ham "topildi" hisoblanadi) — javob ro'yxati turli endpointlarda turlicha o'ralgan bo'lsa. `$` bilan boshlanmagan yo'l — `400 TOOL_RESPONSE_MAPPING_INVALID`. Bo'sh — butun javob (4000 belgigacha). 2xx javobda mapping maydonlari qo'ng'iroq natijasiga ham shu nomlar bilan yoziladi — ssenariyning `goal` maydoni shu nomda bo'lsa, qo'ng'iroq `GOAL_REACHED` bilan tugaydi ([scenarios.md](scenarios.md)). 2xx javobda modelga borgan raqamlar (narx, jami, buyurtma raqami) agent ovoz chiqarib aytishi mumkin bo'lgan raqamlarga qo'shiladi — fact guard ularni to'qilgan deb bloklamaydi **"Save as variable":** mapping maydonlari shu qo'ng'iroqdagi **keyingi tool'larning** shablonlarida (`url`, `headers`, `body`, `Dynamic Variable`/`variable` manbali parametrlar) `{{maydon_nomi}}` o'zgaruvchisi bo'lib ishlaydi: masalan `search` tool'i `responseMapping: {"client_id": "$.data.id"}` bilan chaqirilgach, `createLead` tool'i `{{client_id}}` ni o'qiydi. O'zgaruvchi tool **chaqirilgan paytda** o'qiladi, shuning uchun u hosil bo'lgandan keyingi har qanday chaqiruvda (kaskad ham, REALTIME ham, fonda ishlaydigan `waitForResult: false` ham) ko'rinadi. Nomi qo'ng'iroq faktlari (`phone`, kontakt ma'lumoti, `channel_id`, …) bilan bir xil bo'lsa **fakt ustun** turadi. Xom `tool_<nom>` javoblari o'zgaruvchi bo'lmaydi |
+| `result.maxItems` | int | Standart: 0 | Javobdagi **har bir ro'yxat** (ichma-ich ro'yxatlar ham) modelga shuncha elementgacha qisqartirilib boradi; `responseMapping` dan keyin qo'llanadi. Faqat modelga borgan elementlar qo'ng'iroq natijasiga yoziladi va fact guard'ga raqam bo'ladi. `0` — hammasi. Manfiy — `400 VALIDATION_FAILED` |
+| `result.emptyMessage` | string | Ixtiyoriy (≤500) | 2xx javob **bo'sh** bo'lsa (null, bo'sh matn, bo'sh ro'yxat yoki barcha maydonlari bo'sh obyekt — `{"data": []}`; `0` va `false` bo'sh emas) modelga javob o'rniga `{"status": 200, "message": "<emptyMessage>"}` boradi — model nima qilishi kerakligini shu matn aytadi. Bunday javobdan qo'ng'iroq natijasiga hech narsa yozilmaydi. Berilmasa bo'sh javob o'zicha boradi |
+| `result.errorMessage` | string | Ixtiyoriy (≤500) | Javob 2xx bo'lmasa, so'rov yuborilmay qolsa (tarmoq xatosi, timeout) yoki manzil bloklansa, modelga `{"status": <kod>, "error": "<errorMessage>"}` boradi — javob tanasi emas. Berilmasa: 2xx bo'lmagan javob tanasi bilan, yuborilmagan so'rov `"Tool execution failed"` bilan boradi (avvalgidek) |
+| `result.argumentVariables` | object | Ixtiyoriy (≤20) | `argument → o'zgaruvchi`. 2xx javobdan keyin model to'ldirgan argument qiymati qo'ng'iroq natijasiga shu nom bilan yoziladi (lid izohi, CRM, keyingi tool'lar `{{orderId}}` ko'radi). Ro'yxat `", "` bilan qo'shiladi, son oxiridagi `.0` siz. Argument berilmagan bo'lsa yozilmaydi. Kalit va qiymat — `[A-Za-z_][A-Za-z0-9_]{0,63}`, aks holda `400 VALIDATION_FAILED`. Yangilashda `null` — eskisi qoladi, `{}` — tozalanadi |
+| `result.memoryFacts` | object | Ixtiyoriy (≤20) | `responseMapping maydoni → xotira fakti`. 2xx javobdan keyin xaritalangan maydon (`maxItems` bilan qisqartirilgani) mijoz xotirasiga (`client_memory.facts`) shu nom bilan yoziladi — keyingi qo'ng'iroq promptida ko'rinadi. Raqam qo'ng'iroq o'zgaruvchisi `phone` dan olinadi; u yo'q bo'lsa yozilmaydi. Nom qoidasi va yangilash — yuqoridagidek |
 | `http.retryAttempts` | int | Standart: 0 | 5xx, `408`, `429` yoki tarmoq xatosidan keyin qayta urinishlar soni (0–5). Kutish eksponensial va tasodifiy tebranish bilan: ~300 ms, ~600 ms, ~1.2 s, … (har biri o'z chegarasining yarmi va to'liq qiymati orasida). Boshqa 4xx qayta yuborilmaydi. Standart 0: yarim bajarilgan `POST` so'ralmasdan ikki marta ketmasin |
 | `http.waitForResult` | bool | Standart: `true` | `true` — model javobni kutadi. `false` — so'rov fonda ishlaydi, modelga darhol `{"status": 202, ...}` ("fonda boshlandi, natija hali yo'q") deyiladi va gap davom etadi; kutish yo'q, shuning uchun `speech.preToolSpeech` aytilmaydi. So'rov oxirigacha ishlaydi: tugagach `responseMapping` maydonlari va `http.statusVariable` qo'ng'iroq natijasiga yoziladi. Panelning "Test" tugmasi (§4.1) har doim kutadi |
 | `http.statusVariable` | string | Ixtiyoriy (harf/raqam/`_`, ≤64) | So'rov tugagach qo'ng'iroq natijasiga shu nom bilan `success` (2xx) yoki `failure` (boshqa status, tarmoq xatosi, manzil bloklangan) yoziladi — ssenariyda `branches` shu maydon bo'yicha yo'naltira oladi. `PUT` da `""` — olib tashlaydi |
@@ -202,6 +215,20 @@ Maydon qiymati qayerdan kelishini `x-source` belgilaydi. `x-source` bo'lmasa, ma
 | `variable` | Qo'ng'iroq o'zgaruvchisi (`phone`, CRM fakti, …) | O'zgaruvchi nomi; bo'sh bo'lsa — maydon nomi |
 | `secret` | Kompaniyaning [secrets](secrets.md) omboridan | Kalit; bo'sh bo'lsa — maydon nomi |
 
+Model to'ldiradigan maydonga **`x-fallback`** qo'shish mumkin: qo'ng'iroq o'zgaruvchisi nomi yoki nomlar ro'yxati
+(`"x-fallback": ["contractNumber", "phone_last9"]`). Model maydonni bermasa yoki bo'sh bersa, ro'yxatdagi qiymati
+bor birinchi o'zgaruvchi yuboriladi; hech biri bo'lmasa maydon tushib qoladi. `x-fallback` modelga ko'rsatilmaydi.
+Nom `[A-Za-z_][A-Za-z0-9_]{0,63}` bo'lmasa — `400 TOOL_BODY_FALLBACK_INVALID`.
+
+Model to'ldiradigan maydonga **`"x-format": "epochSeconds"`** qo'shilsa, model vaqtni mahalliy ko'rinishda
+beradi (`"2026-11-03 15:00"` yoki `2026-11-03T15:00`), so'rovga esa Unix soniyalari (son) ketadi. Vaqt qo'ng'iroq
+o'zgaruvchisi `timezone` dagi zonada o'qiladi (integratsiya vositalarida — agentning `timezone` i), u bo'lmasa
+`Asia/Tashkent`. Model son yuborsa, o'zgarishsiz ketadi; o'qib bo'lmaydigan matn bo'lsa maydon tushib qoladi.
+`x-format` modelga ko'rsatilmaydi. Boshqa qiymat — `400 TOOL_BODY_FORMAT_INVALID`.
+
+Har bir so'rovda qo'shimcha qo'ng'iroq o'zgaruvchisi bor: **`now_epoch`** — so'rov vaqtidagi Unix soniyalari
+(`"x-source": "variable", "x-value": "now_epoch"`).
+
 - Modelga faqat u to'ldiradigan maydonlar ko'rsatiladi: `x-source` maydonlari sxemadan va `required`
   ro'yxatidan olib tashlanadi. Model shu maydonga biror qiymat yuborsa ham, e'tiborga olinmaydi, shuning
   uchun secret faqat sxemadan keladi, hech qachon argumentdan kelmaydi.
@@ -219,6 +246,8 @@ Maydon qiymati qayerdan kelishini `x-source` belgilaydi. `x-source` bo'lmasa, ma
 | `400 TOOL_BODY_AMBIGUOUS` | `http.body` ham, `bodySchema` ham berilgan |
 | `400 TOOL_BODY_SCHEMA_ROOT_INVALID` | Ildiz `{"type": "object", "properties": {...}}` emas |
 | `400 TOOL_BODY_SOURCE_INVALID` | `x-source` — `static`/`variable`/`secret` dan boshqa narsa |
+| `400 TOOL_BODY_FALLBACK_INVALID` | `x-fallback` — o'zgaruvchi nomi yoki nomlar ro'yxati emas |
+| `400 TOOL_BODY_FORMAT_INVALID` | `x-format` — `epochSeconds` dan boshqa narsa |
 | `400 TOOL_BODY_SOURCE_IN_ARRAY` | `x-source` ro'yxat elementlari (`items`) ichida — ularni har doim model to'ldiradi |
 
 ### 3.2. Yozuvchi tool'lar — `effect`, tasdiq, `Idempotency-Key`

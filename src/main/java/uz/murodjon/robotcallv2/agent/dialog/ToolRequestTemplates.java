@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.LongNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 import org.springframework.stereotype.Component;
@@ -11,6 +12,10 @@ import uz.murodjon.robotcallv2.tool.domain.entity.ToolParamConfig;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.DateTimeException;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +37,9 @@ final class ToolRequestTemplates {
      * it. See {@link #findRawBodyTemplate}.
      */
     private static final String RAW_BODY_PARAM = "__raw__";
+
+    /** The zone a local time is read in when the call names none: the platform's home market. */
+    private static final ZoneId DEFAULT_ZONE = ZoneId.of("Asia/Tashkent");
 
     ToolRequestTemplates(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -229,7 +237,10 @@ final class ToolRequestTemplates {
         }
         JsonNode properties = schema.get("properties");
         if (properties == null || !properties.isObject()) {
-            return given; // an array, a scalar or a free-form object: as the model sent it
+            // An array, a scalar or a free-form object: as the model sent it, or the call's own
+            // value when it sent nothing (a contract number the client did not say, but the call knows).
+            JsonNode value = isBlank(given) ? findFallback(schema, callVariables) : given;
+            return value != null && schema.has(Tool.BODY_FORMAT_KEY) ? format(schema, value, callVariables) : value;
         }
         ObjectNode filled = objectMapper.createObjectNode();
         properties.fields().forEachRemaining(field -> {
@@ -252,6 +263,54 @@ final class ToolRequestTemplates {
             case "secret" -> secrets.containsKey(key) ? TextNode.valueOf(secrets.get(key)) : null;
             default -> null;
         };
+    }
+
+    /**
+     * The value as the field's {@value Tool#BODY_FORMAT_KEY} asks: for {@value Tool#FORMAT_EPOCH_SECONDS}, a local
+     * {@code yyyy-MM-dd HH:mm} (or {@code yyyy-MM-ddTHH:mm}) in the call's {@code timezone} — Tashkent when it has
+     * none — as epoch seconds. A value that does not read as one is left out, so the endpoint refuses the request
+     * rather than taking a wrong time.
+     */
+    private static JsonNode format(JsonNode schema, JsonNode value, Map<String, Object> callVariables) {
+        if (!Tool.FORMAT_EPOCH_SECONDS.equals(schema.get(Tool.BODY_FORMAT_KEY).asText()) || value.isNumber()) {
+            return value;
+        }
+        try {
+            LocalDateTime local = LocalDateTime.parse(value.asText().trim().replace(' ', 'T'));
+            return LongNode.valueOf(local.atZone(findZone(callVariables)).toEpochSecond());
+        } catch (DateTimeParseException e) {
+            return null;
+        }
+    }
+
+    private static ZoneId findZone(Map<String, Object> callVariables) {
+        Object zone = callVariables == null ? null : callVariables.get("timezone");
+        try {
+            return zone != null && !zone.toString().isBlank() ? ZoneId.of(zone.toString().trim()) : DEFAULT_ZONE;
+        } catch (DateTimeException e) {
+            return DEFAULT_ZONE;
+        }
+    }
+
+    private static boolean isBlank(JsonNode value) {
+        return value == null || value.isNull() || value.isTextual() && value.asText().isBlank()
+                || value.isContainerNode() && value.isEmpty();
+    }
+
+    /** The first call variable named by the field's {@value Tool#BODY_FALLBACK_KEY} that has a value; null when none. */
+    private JsonNode findFallback(JsonNode schema, Map<String, Object> callVariables) {
+        JsonNode names = schema.get(Tool.BODY_FALLBACK_KEY);
+        if (names == null || callVariables == null) {
+            return null;
+        }
+        Iterable<JsonNode> list = names.isArray() ? names : List.of(names);
+        for (JsonNode name : list) {
+            Object value = callVariables.get(name.asText());
+            if (value != null && !value.toString().isBlank()) {
+                return toJsonNode(value);
+            }
+        }
+        return null;
     }
 
     /** A call variable as JSON: numbers and booleans bare, anything else — a date, a name — as text. */

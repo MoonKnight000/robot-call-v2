@@ -72,6 +72,23 @@ public class ToolEntity {
     @Column(name = "response_mapping", columnDefinition = "jsonb")
     private String responseMapping;
 
+    @Column(name = "result_max_items", nullable = false)
+    private int resultMaxItems;
+
+    @Column(name = "result_empty_message", length = 500)
+    private String resultEmptyMessage;
+
+    @Column(name = "result_error_message", length = 500)
+    private String resultErrorMessage;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "result_argument_variables", columnDefinition = "jsonb")
+    private String resultArgumentVariables;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "result_memory_facts", columnDefinition = "jsonb")
+    private String resultMemoryFacts;
+
     @Column(name = "retry_attempts", nullable = false)
     private int retryAttempts;
 
@@ -238,6 +255,46 @@ public class ToolEntity {
 
     public void setResponseMapping(String responseMapping) {
         this.responseMapping = responseMapping;
+    }
+
+    public int getResultMaxItems() {
+        return resultMaxItems;
+    }
+
+    public void setResultMaxItems(int resultMaxItems) {
+        this.resultMaxItems = resultMaxItems;
+    }
+
+    public String getResultEmptyMessage() {
+        return resultEmptyMessage;
+    }
+
+    public void setResultEmptyMessage(String resultEmptyMessage) {
+        this.resultEmptyMessage = resultEmptyMessage;
+    }
+
+    public String getResultErrorMessage() {
+        return resultErrorMessage;
+    }
+
+    public void setResultErrorMessage(String resultErrorMessage) {
+        this.resultErrorMessage = resultErrorMessage;
+    }
+
+    public String getResultArgumentVariables() {
+        return resultArgumentVariables;
+    }
+
+    public void setResultArgumentVariables(String resultArgumentVariables) {
+        this.resultArgumentVariables = resultArgumentVariables;
+    }
+
+    public String getResultMemoryFacts() {
+        return resultMemoryFacts;
+    }
+
+    public void setResultMemoryFacts(String resultMemoryFacts) {
+        this.resultMemoryFacts = resultMemoryFacts;
     }
 
     public int getRetryAttempts() {

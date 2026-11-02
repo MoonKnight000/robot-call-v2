@@ -881,7 +881,7 @@ ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
 -- complex (TJM). The agents copy both answers into the contact's custom fields after the call
 -- (ai_agent.data_needed[].contactField); the lead itself is updated during the call with the
 -- CRM tools (getClientProfile, listResidentialComplexes, addLeadNote, moveLeadStage, createLead).
--- Those come from the company's Uysot connection (CrmToolCallbacks) and are offered at every
+-- Those come from the company's Uysot connection (IntegrationHttpToolFactory) and are offered at every
 -- stage, so the stages only say WHEN to use them. The scenario's own tools are the outcome.
 INSERT INTO scenario(scenario_key, version, name, description, is_builtin, is_active, definition, created_by)
 VALUES (
@@ -905,12 +905,12 @@ $def$
      "transitionConditions": {"ADD_NOTE": "Lid CRM'da topildi", "CREATE_LEAD": "Lid CRM'da topilmadi"}},
     {"id": "CREATE_LEAD", "title": "Lid yaratish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan createLead ni chaqir (interest: xonadon turi va TJM). Keyin ADD_NOTE ga o't.", "action": {"toolName": "createLead"}, "allowedTransitions": ["ADD_NOTE"], "allowedTools": []},
     {"id": "ADD_NOTE", "title": "Lidga izoh", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan addLeadNote bilan 1-2 gapli izoh yoz: 'AI qo'ng'iroq: [xonadon turi], TJM — [majmua]. [mijoz qo'shimcha aytgan narsa, bo'lsa]'. Keyin MOVE_STAGE ga o't.", "action": {"toolName": "addLeadNote"}, "allowedTransitions": ["MOVE_STAGE"], "allowedTools": []},
-    {"id": "MOVE_STAGE", "title": "Lidni bosqichga o'tkazish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan moveLeadStage bilan lidni voronkadagi kvalifikatsiya bosqichiga o't (voronkadagi nomi bilan, masalan 'Kvalifikatsiya'). Keyin CLOSING ga o't.", "action": {"toolName": "moveLeadStage"}, "allowedTransitions": ["CLOSING"], "allowedTools": []},
+    {"id": "MOVE_STAGE", "title": "Lidni bosqichga o'tkazish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan listLeadStages bilan voronka bosqichlarini ol, keyin moveLeadStage bilan lidni kvalifikatsiya bosqichiga o't (nomi masalan 'Kvalifikatsiya' bo'lgan bosqichning id si bilan). Keyin CLOSING ga o't.", "action": {"toolName": "moveLeadStage"}, "allowedTransitions": ["CLOSING"], "allowedTools": ["listLeadStages"]},
     {"id": "NOT_INTERESTED", "title": "Qiziqmadi", "purpose": "Bosim qilma. Sababini bitta savol bilan so'ra: 'Boshqa joydan oldingizmi yoki hozircha rejada yo'qmi?'. Javobni tingla va RECORD_REJECT ga o't. Mijoz sababni aytmasa ham o't.", "allowedTransitions": ["RECORD_REJECT", "END_CALL"], "allowedTools": [],
      "transitionConditions": {"RECORD_REJECT": "Mijoz rad sababini aytdi yoki aytishni istamadi"}},
     {"id": "RECORD_REJECT", "title": "Rad sababini yozish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan recordNotInterested ni chaqir: reason (BOUGHT_ELSEWHERE, NO_BUDGET, NOT_NOW, NEVER_APPLIED yoki OTHER) va mijozning o'z so'zlari (detail). Keyin REJECT_NOTE ga o't.", "action": {"toolName": "recordNotInterested"}, "allowedTransitions": ["REJECT_NOTE"], "allowedTools": []},
     {"id": "REJECT_NOTE", "title": "Rad izohi", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan addLeadNote bilan rad sababini lidga yoz. Keyin REJECT_STAGE ga o't.", "action": {"toolName": "addLeadNote"}, "allowedTransitions": ["REJECT_STAGE"], "allowedTools": []},
-    {"id": "REJECT_STAGE", "title": "Lidni rad bosqichiga o'tkazish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan moveLeadStage bilan lidni rad bosqichiga o't (voronkadagi nomi bilan, masalan 'Rad etdi'). Keyin CLOSING ga o't.", "action": {"toolName": "moveLeadStage"}, "allowedTransitions": ["CLOSING"], "allowedTools": []},
+    {"id": "REJECT_STAGE", "title": "Lidni rad bosqichiga o'tkazish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan listLeadStages bilan voronka bosqichlarini ol, keyin moveLeadStage bilan lidni rad bosqichiga o't (nomi masalan 'Rad etdi' bo'lgan bosqichning id si bilan). Keyin CLOSING ga o't.", "action": {"toolName": "moveLeadStage"}, "allowedTransitions": ["CLOSING"], "allowedTools": ["listLeadStages"]},
     {"id": "CALLBACK", "title": "Qayta qo'ng'iroq", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan scheduleCallback ni chaqir: callbackTime (mijoz aytgan vaqt) va callbackReason. Keyin CLOSING ga o't.", "action": {"toolName": "scheduleCallback"}, "allowedTransitions": ["CLOSING"], "allowedTools": []},
     {"id": "CLOSING", "title": "Xayrlashish", "purpose": "Qisqa xayrlash: 'Rahmat, aka! Menejerimiz siz aytgan variantlar bilan tez orada bog'lanadi. Kuningiz xayrli bo'lsin!'.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
     {"id": "ESCALATE_TO_HUMAN", "title": "Operatorga ulash", "purpose": "Mijoz menejer bilan gaplashmoqchi bo'lsa: savolini bir gapda aniqlab ol va operatorga ulashni bildir. Keyin ESCALATE_NOTE ga o't.", "allowedTransitions": ["ESCALATE_NOTE", "END_CALL"], "allowedTools": []},
@@ -1097,7 +1097,7 @@ ON CONFLICT (scenario_key) WHERE is_active DO UPDATE
 -- The Uysot tools (getClientProfile, addLeadNote, moveLeadStage, createFollowUpTask,
 -- createLead, listResidentialComplexes, the debt lookups...) are not attached per agent:
 -- every agent of a company connected to Uysot is offered the tools the company has switched
--- on (CrmToolCallbacks), which is why the integration is seeded CONNECTED further down.
+-- on (IntegrationHttpToolFactory), which is why the integration is seeded CONNECTED further down.
 --
 -- Looked up by name (there is no unique constraint on it), so a rerun adds nothing and
 -- overwrites nothing an operator has since edited.
@@ -1256,10 +1256,11 @@ UPDATE ai_agent SET functions = '[
     {"id": "fn_int_getClientProfile", "type": "INTEGRATION", "name": "getClientProfile", "speakDuringExecution": false, "integrationTool": "getClientProfile"},
     {"id": "fn_int_listResidentialComplexes", "type": "INTEGRATION", "name": "listResidentialComplexes", "speakDuringExecution": false, "integrationTool": "listResidentialComplexes"},
     {"id": "fn_int_searchFlats", "type": "INTEGRATION", "name": "searchFlats", "speakDuringExecution": false, "integrationTool": "searchFlats"},
-    {"id": "fn_int_rememberFlatInterest", "type": "INTEGRATION", "name": "rememberFlatInterest", "speakDuringExecution": false, "integrationTool": "rememberFlatInterest"},
+    {"id": "fn_extract_rememberFlatInterest", "type": "EXTRACT_VARIABLE", "name": "rememberFlatInterest", "description": "Remembers the flat the client liked or chose, so the next call or chat continues from it. Call it when the client says a specific flat suits them, asks to hold it, or wants to see it.", "speakDuringExecution": false, "extract": {"variables": [{"name": "interestedFlat", "type": "STRING", "description": "the flat as it was offered (complex, block, number, rooms, area, price) and what the client said about it", "choices": [], "remember": true}]}},
     {"id": "fn_int_createLead", "type": "INTEGRATION", "name": "createLead", "speakDuringExecution": false, "integrationTool": "createLead"},
     {"id": "fn_int_addLeadNote", "type": "INTEGRATION", "name": "addLeadNote", "speakDuringExecution": false, "integrationTool": "addLeadNote"},
     {"id": "fn_int_moveLeadStage", "type": "INTEGRATION", "name": "moveLeadStage", "speakDuringExecution": false, "integrationTool": "moveLeadStage"},
+    {"id": "fn_int_listLeadStages", "type": "INTEGRATION", "name": "listLeadStages", "speakDuringExecution": false, "integrationTool": "listLeadStages"},
     {"id": "fn_int_createFollowUpTask", "type": "INTEGRATION", "name": "createFollowUpTask", "speakDuringExecution": false, "integrationTool": "createFollowUpTask"}
   ]'::jsonb
  WHERE company_id = 1 AND name IN ('Lid kvalifikatsiya (cascade)', 'Lid kvalifikatsiya (realtime)') AND functions IS NULL;
@@ -1273,7 +1274,7 @@ UPDATE ai_agent SET functions = '[
     {"id": "fn_int_getPaymentSchedule", "type": "INTEGRATION", "name": "getPaymentSchedule", "speakDuringExecution": false, "integrationTool": "getPaymentSchedule"},
     {"id": "fn_int_addLeadNote", "type": "INTEGRATION", "name": "addLeadNote", "speakDuringExecution": false, "integrationTool": "addLeadNote"},
     {"id": "fn_int_createFollowUpTask", "type": "INTEGRATION", "name": "createFollowUpTask", "speakDuringExecution": false, "integrationTool": "createFollowUpTask"},
-    {"id": "fn_int_requestManagerCallback", "type": "INTEGRATION", "name": "requestManagerCallback", "speakDuringExecution": false, "integrationTool": "requestManagerCallback"}
+    {"id": "fn_extract_requestManagerCallback", "type": "EXTRACT_VARIABLE", "name": "requestManagerCallback", "description": "Asks the client''s own sales or contract manager to call them back. Call it when the client wants a person to call, has a question you cannot answer, or wants to discuss terms or a discount. Then tell the client their manager will call them back.", "speakDuringExecution": false, "extract": {"variables": [{"name": "managerCallbackRequested", "type": "BOOLEAN", "description": "always true: the client asked for a manager to call back", "choices": [], "remember": false}, {"name": "managerCallbackReason", "type": "STRING", "description": "what the client wants to discuss", "choices": [], "remember": false}, {"name": "managerCallbackTime", "type": "STRING", "description": "when the client prefers to be called, if they said", "choices": [], "remember": false}]}}
   ]'::jsonb
  WHERE company_id = 1 AND name IN ('Qarzdorlik (cascade)', 'Qarzdorlik (realtime)') AND functions IS NULL;
 
@@ -1390,16 +1391,8 @@ VALUES (1, 'UYSOT', 'Uysot Voice Agent',
         'CONNECTED', '2026-10-31 03:58:38.334397+00')
 ON CONFLICT (company_id) DO NOTHING;
 
--- Which catalog tools the bootstrap company offers its agents. The built-in Uysot tools are
--- on by default (integration_tool.default_enabled) and need no row; the HTTP *_LIVE twins are
--- off by default and switched on here, as this company had them.
-INSERT INTO company_integration_tool (company_id, tool_id, enabled)
-SELECT 1, t.id, true
-FROM integration_tool t
-WHERE t.provider = 'UYSOT'
-  AND t.tool_key IN ('SEARCH_FLATS_LIVE', 'LIST_COMPLEXES_LIVE', 'GET_BOOKING_STATUS_LIVE',
-                     'GET_CONTRACT_BALANCE_LIVE', 'GET_DEBT_SUMMARY_LIVE', 'GET_PAYMENT_SCHEDULE_LIVE')
-ON CONFLICT DO NOTHING;
+-- Which catalog tools the bootstrap company offers its agents: the Uysot tools are on by default
+-- (integration_tool.default_enabled), so it needs no row of its own.
 
 -- ---------------------------------------------------------------------------
 -- Campaigns. Four, one per agent:

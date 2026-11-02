@@ -31,7 +31,7 @@ qo'shmasdan, faqat `facts`):
 |---|---|---|
 | `flatSearch` | `searchFlats` | Mijoz nima qidirgani: "3 xonali, 60000 gacha, Yunusobod Residence" |
 | `offeredFlats` | `searchFlats` | Taklif qilingan xonadonlar (majmua, blok, №, xona, narx) |
-| `interestedFlat` | `rememberFlatInterest` | Mijoz yoqtirgan / tanlagan xonadon va izohi |
+| `interestedFlat` | agentning `rememberFlatInterest` funksiyasi (`EXTRACT_VARIABLE`, `remember: true`) | Mijoz yoqtirgan / tanlagan xonadon va izohi |
 | `productInterest`, `productSkus` | `searchCatalog` | Mahsulot katalogida nima so'ragani va ko'rsatilgan SKU'lar |
 
 Keyingi qo'ng'iroq yoki chatda agent buni ko'radi ("o'tgan safar 3 xonali A blok №45 yoqqan edi");

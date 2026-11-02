@@ -773,6 +773,7 @@ public class AiAgentService implements AiAgentUseCase {
                 case DTMF_TERMINATION_KEY -> behaviourRequest != null ? behaviourRequest.dtmfTerminationKey() : null;
                 case DTMF_DIGIT_LIMIT -> behaviourRequest != null ? behaviourRequest.dtmfDigitLimit() : null;
                 case RING_DURATION_SECONDS -> behaviourRequest != null ? behaviourRequest.ringDurationSeconds() : null;
+                case LLM_TURN_DETECTION -> behaviourRequest != null ? behaviourRequest.llmTurnDetection() : null;
                 case RAG_MIN_SCORE -> request.ragMinScore();
             };
             if (given != null) {
@@ -834,7 +835,8 @@ public class AiAgentService implements AiAgentUseCase {
                         fields.contains(AgentClearableField.DTMF_TERMINATION_KEY) ? null : behaviour.dtmfTerminationKey(),
                         fields.contains(AgentClearableField.DTMF_DIGIT_LIMIT) ? null : behaviour.dtmfDigitLimit(),
                         fields.contains(AgentClearableField.RING_DURATION_SECONDS) ? null : behaviour.ringDurationSeconds(),
-                        behaviour.pressDigitEnabled()))
+                        behaviour.pressDigitEnabled(),
+                        fields.contains(AgentClearableField.LLM_TURN_DETECTION) ? null : behaviour.llmTurnDetection()))
                 .build();
     }
 

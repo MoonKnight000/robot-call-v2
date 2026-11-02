@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
+import uz.murodjon.robotcallv2.tool.domain.entity.ToolOverride;
 
 /**
  * Collects an {@link AgentFunction}'s fields; obtained from {@link AgentFunction#builder()} or, to change a
@@ -21,6 +22,7 @@ public class AgentFunctionBuilder {
     private AgentFunctionExtract extract;
     private Long toolId;
     private String integrationTool;
+    private ToolOverride integration;
 
     AgentFunctionBuilder() {
     }
@@ -39,6 +41,7 @@ public class AgentFunctionBuilder {
         this.extract = source.extract();
         this.toolId = source.toolId();
         this.integrationTool = source.integrationTool();
+        this.integration = source.integration();
     }
 
     public AgentFunctionBuilder id(String id) {
@@ -106,8 +109,13 @@ public class AgentFunctionBuilder {
         return this;
     }
 
+    public AgentFunctionBuilder integration(ToolOverride integration) {
+        this.integration = integration;
+        return this;
+    }
+
     public AgentFunction build() {
         return new AgentFunction(id, type, name, description, speakDuringExecution, executionMessage, transfer,
-                agentTransfer, pressDigit, sms, extract, toolId, integrationTool);
+                agentTransfer, pressDigit, sms, extract, toolId, integrationTool, integration);
     }
 }

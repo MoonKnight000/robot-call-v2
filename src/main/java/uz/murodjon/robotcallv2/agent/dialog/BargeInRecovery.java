@@ -79,7 +79,8 @@ class BargeInRecovery {
             return clientText;
         }
         dropUnansweredMessage(s, unanswered);
-        String stitched = unanswered + " " + clientText;
+        // Blank when nothing followed the held words (TurnRunner#answerAfterQuiet).
+        String stitched = clientText == null || clientText.isBlank() ? unanswered : unanswered + " " + clientText;
         s.setInterrupted(false);
         metrics.turnStitched();
         // The caller's words are personal data — DEBUG, like the other transcript lines.
