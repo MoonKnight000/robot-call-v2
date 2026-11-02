@@ -82,8 +82,11 @@ public class TurnDatasetRecorder {
     /**
      * One judged close. Blank text is skipped: a close with no interim in front of it has
      * nothing for a text model to read.
+     *
+     * @param smartTurn what Smart Turn scored the close in shadow ({@code SmartTurnProperties#shadowLanguages}),
+     *                  or null when it was not asked
      */
-    public void record(String language, String transcript, int waitMs, boolean callerContinued) {
+    public void record(String language, String transcript, int waitMs, boolean callerContinued, Float smartTurn) {
         if (!running || transcript == null || transcript.isBlank()) {
             return;
         }
@@ -93,6 +96,9 @@ public class TurnDatasetRecorder {
         row.put("text", PiiRedactor.redact(transcript.strip()));
         row.put("waitMs", waitMs);
         row.put("label", callerContinued ? "continue" : "end");
+        if (smartTurn != null) {
+            row.put("smartTurn", smartTurn);
+        }
         queue.offer(row);
     }
 

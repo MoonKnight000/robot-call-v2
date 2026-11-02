@@ -227,7 +227,9 @@ public class LiveKitCallService {
                 }
                 SessionPlan plan;
                 try {
-                    plan = outbound != null ? createOutboundPlan(outbound) : createManualPlan(roomName);
+                    // A phone test with a profile (PendingCallRegistry#registerTestProfile) was dialled as a manual call.
+                    OutboundCall profile = outbound != null ? outbound : pendingCallRegistry.findOutboundProfile(roomName);
+                    plan = profile != null ? createOutboundPlan(profile) : createManualPlan(roomName);
                 } catch (Exception e) {
                     log.error("[{}] answered LiveKit call could not be prepared: {}", roomName, e.getMessage(), e);
                     unansweredCallSettler.settleFailedOutbound(roomName, outboundCallTrackingUseCase.remove(roomName));

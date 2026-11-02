@@ -196,6 +196,35 @@ class StageEntryTest {
         });
     }
 
+    @Test
+    void aJobWithOneWayOnToAnotherJobMovesOnWithoutTheModel() {
+        ScenarioDefinition scenario = flow(
+                action("RECORD", StageType.FUNCTION, "PROFILE", null),
+                action("PROFILE", StageType.FUNCTION, "END", null),
+                new StageDef("END", "Yakunla", List.of(), List.of()));
+
+        assertThat(StageEntry.findSoleNextStage(scenario, scenario.findStage("RECORD"), "Yozib olindi."))
+                .isEqualTo("PROFILE");
+        // The next stage talks: the model writes its line on the way, as before.
+        assertThat(StageEntry.findSoleNextStage(scenario, scenario.findStage("PROFILE"), "Yozib olindi.")).isNull();
+    }
+
+    @Test
+    void aJobThatFailedOrHasAChoiceToMakeIsLeftToTheModel() {
+        ScenarioDefinition scenario = flow(
+                action("RECORD", StageType.FUNCTION, "PROFILE", null),
+                StageDef.builder().id("PROFILE").type(StageType.FUNCTION)
+                        .allowedTransitions(List.of("NOTE", "CREATE")).build(),
+                action("NOTE", StageType.FUNCTION, "END", null),
+                action("CREATE", StageType.FUNCTION, "NOTE", null),
+                new StageDef("END", "Yakunla", List.of(), List.of()));
+        StageDef record = scenario.findStage("RECORD");
+
+        assertThat(StageEntry.findSoleNextStage(scenario, record, "ERROR: crm failed")).isNull();
+        assertThat(StageEntry.findSoleNextStage(scenario, record, null)).isNull();
+        assertThat(StageEntry.findSoleNextStage(scenario, scenario.findStage("PROFILE"), "found")).isNull();
+    }
+
     private DialogSession session(ScenarioDefinition scenario) {
         DialogSession session = DialogSession.builder("chan-1", "uz-UZ")
                 .context(new CallContext(Map.of("clientName", "Aziz", "debtAmount", new BigDecimal("1500000")), "goal"))

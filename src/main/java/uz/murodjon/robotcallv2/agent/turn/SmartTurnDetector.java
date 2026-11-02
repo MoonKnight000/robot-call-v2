@@ -191,6 +191,16 @@ public class SmartTurnDetector {
     }
 
     /**
+     * The raw probability, for a language the model is only being evaluated in
+     * ({@link SmartTurnProperties#shadowLanguages()}): written down, never acted on.
+     *
+     * @return the probability that the utterance is finished, or {@code -1} when it could not be scored
+     */
+    public float scoreCompletion(short[] pcm, int length) {
+        return completion(pcm, length);
+    }
+
+    /**
      * The model's probability that the utterance ending at the end of {@code pcm} is
      * finished, or {@code -1} when it could not be scored at all.
      *

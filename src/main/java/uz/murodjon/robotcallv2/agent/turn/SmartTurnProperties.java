@@ -38,6 +38,10 @@ import java.util.List;
  *                    exactly as a missing VAD model does — non-fatal, and logged
  * @param languages   BCP-47 languages the model is trusted for. A call in anything else
  *                    is left to the timer
+ * @param shadowLanguages languages the model is only scored in: at each close its verdict is
+ *                    written to the turn dataset next to what the caller then did, and the
+ *                    wait is left to the timer. How a language earns a place in
+ *                    {@code languages} — uz-UZ is here until the dataset says it holds
  * @param threshold   completion probability at or above which the utterance is taken as
  *                    finished. Lower waits more often
  * @param maxExtendMs how much extra silence an utterance scored unfinished earns. Bounded
@@ -67,6 +71,7 @@ public record SmartTurnProperties(
         boolean enabled,
         String modelPath,
         List<String> languages,
+        List<String> shadowLanguages,
         float threshold,
         int maxExtendMs,
         int earlyWaitMs,
@@ -83,5 +88,13 @@ public record SmartTurnProperties(
             return false;
         }
         return languages.stream().anyMatch(language::equalsIgnoreCase);
+    }
+
+    /** Whether a call in {@code language} is scored for the dataset only ({@link #shadowLanguages()}). */
+    public boolean shadows(String language) {
+        if (language == null || shadowLanguages == null) {
+            return false;
+        }
+        return shadowLanguages.stream().anyMatch(language::equalsIgnoreCase);
     }
 }

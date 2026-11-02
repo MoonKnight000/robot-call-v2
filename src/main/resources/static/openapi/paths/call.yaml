@@ -32,6 +32,27 @@
       schema:
         type: integer
         format: int64
+    - name: agentVersion
+      in: query
+      required: false
+      description: Agentning shu nashr qilingan versiyasi gapiradi (agentId kerak, draft bilan birga berilmaydi)
+      schema:
+        type: integer
+        format: int32
+    - name: draft
+      in: query
+      required: false
+      description: true — agentning saqlangan qoralamasi gapiradi, web test kabi (agentId kerak)
+      schema:
+        type: boolean
+        default: false
+    - name: contactId
+      in: query
+      required: false
+      description: Qo'ng'iroq shu kontakt nomidan — uning maydonlari, xotirasi; ajratilgan maydonlar kontaktga yoziladi (agentId kerak)
+      schema:
+        type: integer
+        format: int64
     responses:
       '200':
         description: OK

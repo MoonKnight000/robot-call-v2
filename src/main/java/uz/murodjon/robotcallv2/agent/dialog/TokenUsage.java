@@ -33,6 +33,7 @@ public class TokenUsage {
     private long prompt;
     private long completion;
     private long cached;
+    private long thinking;
     private long lastPrompt = -1;
     private long lastCompletion = -1;
 
@@ -57,6 +58,7 @@ public class TokenUsage {
         prompt += promptTokens;
         completion += completionTokens;
         cached += cachedTokens(usage);
+        thinking += thinkingTokens(usage);
     }
 
     /** Everything this turn was billed for — what the per-call budget counts (§C14). */
@@ -85,8 +87,10 @@ public class TokenUsage {
         }
         metrics.recordLlmUsage(prompt, completion, cached);
         s.addTokenBreakdown(prompt, completion, cached);
-        log.debug("[{}] tokens: prompt={} (cached {}), completion={}",
-                s.channelId(), prompt, cached, completion);
+        // Info, not debug: next to "turn latency" it says what a slow first token was spent on —
+        // thinking before the first word, or a prompt the cache did not cover.
+        log.info("[{}] tokens: prompt={} (cached {}), completion={} (thinking {})",
+                s.channelId(), prompt, cached, completion, thinking);
     }
 
     /** The share of the prompt Gemini billed at the cached rate. */

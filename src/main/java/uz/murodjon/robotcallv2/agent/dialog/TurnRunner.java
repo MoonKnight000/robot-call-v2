@@ -158,6 +158,7 @@ public class TurnRunner {
             s.deferInput(clientText);
             return;
         }
+        String stageActionNote = null; // what a flow stage's job answered, for scheduleStageAction
         try {
             MDC.put("channelId", s.channelId());
             if (fromClient) {
@@ -291,6 +292,9 @@ public class TurnRunner {
             // note record what the caller HEARD, which is no longer what the model wrote.
             // Told it delivered the whole reply, the model treats the sentences the caller
             // never heard as said, and the sum and the due date never come up again.
+            if (stageActionTurn) {
+                stageActionNote = result.toolNote();
+            }
             boolean cutOff = s.isCancelled();
             String reply = cutOff ? s.spokenText() : result.reply();
             if (SystemPromptFactory.isSystemNote(reply) || SpeechSanitizer.isUnspeakable(reply)) {
@@ -376,7 +380,7 @@ public class TurnRunner {
             String deferred = s.takeDeferredInput();
             if (deferred != null && !deferred.isBlank() && !s.isEnded()) {
                 executors.submit(() -> advance(s, deferred, true));
-            } else if (!interrupted && !s.isEnded() && scheduleStageAction(s)) {
+            } else if (!interrupted && !s.isEnded() && scheduleStageAction(s, stageActionNote)) {
                 log.debug("[{}] stage {} job asked for in a turn of its own", s.channelId(), s.state());
             } else if (interrupted && !s.isEnded()) {
                 // Silenced, but nothing came back to show for it. Give the words a moment
@@ -403,14 +407,24 @@ public class TurnRunner {
      * runs tools itself and never hands their results back within a turn, so without this
      * the call would sit in the stage until the caller said something.
      *
+     * <p>A stage with one way on to another stage's job is moved on here instead of in a
+     * second turn ({@link StageEntry#findSoleNextStage}), and that stage's job is asked for.
+     *
+     * @param toolNote what the turn just finished — if it was a stage's job — had its tools answer
      * @return whether a turn was scheduled
      */
-    private boolean scheduleStageAction(DialogSession s) {
+    private boolean scheduleStageAction(DialogSession s, String toolNote) {
         StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
         if (!StageEntry.needsModelAction(stage) || s.stageActionStep() >= StageEntry.countModelSteps(stage)) {
             return false;
         }
         int step = s.stageActionStep() + 1;
+        String next = step == 2 ? StageEntry.findSoleNextStage(s.scenario(), stage, toolNote) : null;
+        if (next != null) {
+            s.setState(next);
+            log.info("[{}] dialog state -> {} (the only way on from {} — no model turn)", s.channelId(), next, stage.id());
+            return scheduleStageAction(s, null);
+        }
         s.setStageActionStep(step);
         String note = "[SYSTEM: " + StageEntry.describeTask(s.scenario(), stage, step, StageEntry.variables(s)) + "]";
         executors.submit(() -> advance(s, note, false));

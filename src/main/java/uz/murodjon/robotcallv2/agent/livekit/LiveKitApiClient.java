@@ -88,7 +88,9 @@ class LiveKitApiClient {
         try {
             return httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         } catch (IOException e) {
-            throw new ExternalServiceException(ErrorCode.LIVEKIT_REQUEST_FAILED, SERVICE, e, operation, e.getMessage());
+            // A refused connection (LiveKit not running) carries no message, only its type.
+            throw new ExternalServiceException(ErrorCode.LIVEKIT_REQUEST_FAILED, SERVICE, e, operation,
+                    e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ExternalServiceException(ErrorCode.LIVEKIT_REQUEST_FAILED, SERVICE, e, operation, "interrupted");

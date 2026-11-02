@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.agent.audio;
 
+import uz.murodjon.robotcallv2.agent.turn.AgentQuestion;
 import uz.murodjon.robotcallv2.agent.turn.TranscriptTurnCues;
 import uz.murodjon.robotcallv2.agent.turn.TurnCue;
 
@@ -37,6 +38,9 @@ public class SpeechGate {
 
     /** A COMPLETE hypothesis of at most this many words is a quick answer ("ha", "yo'q, ertaga"). */
     private static final int QUICK_ANSWER_WORDS = 2;
+
+    /** An answer to a closed question of at most this many words is over ("ha, vaqtim bor"). */
+    private static final int CLOSED_ANSWER_WORDS = 4;
 
     private final int sampleRate;
     private final int hangoverSamples;
@@ -107,6 +111,10 @@ public class SpeechGate {
     private int completeHangoverSamples;
     /** The latest interim as said, for a detector that judges the words themselves. */
     private volatile String lastInterim = "";
+    /** Words in {@link #lastInterim}; 0 until the recognizer has said anything. */
+    private volatile int interimWords;
+    /** What the agent's last line asked — written by the dialog, read on the audio thread. */
+    private volatile AgentQuestion agentQuestion = AgentQuestion.NONE;
 
     /** Told how each close turned out; null when nobody is listening. */
     private GateCloseListener closeListener;
@@ -164,10 +172,21 @@ public class SpeechGate {
             return;
         }
         lastInterim = transcript;
+        interimWords = TranscriptTurnCues.wordCount(transcript);
         TurnCue cue = TranscriptTurnCues.judge(transcript);
         continuationClause = cue == TurnCue.INCOMPLETE;
         completeCue = cue == TurnCue.COMPLETE;
-        confirmedQuickAnswer = completeCue && TranscriptTurnCues.wordCount(transcript) <= QUICK_ANSWER_WORDS;
+        confirmedQuickAnswer = completeCue && interimWords <= QUICK_ANSWER_WORDS;
+    }
+
+    /**
+     * What the agent just asked, which moves the wait the way the caller's own words do: a
+     * few words that answer a closed question close on the short wait, and an open question
+     * takes the short wait away from a brief start ("Endi…") that is only the caller drawing
+     * breath. Safe to call from any thread.
+     */
+    public void setAgentQuestion(AgentQuestion agentQuestion) {
+        this.agentQuestion = agentQuestion == null ? AgentQuestion.NONE : agentQuestion;
     }
 
     /** The recognizer's latest hypothesis for the utterance in progress; empty before the first. */
@@ -251,6 +270,7 @@ public class SpeechGate {
         completeCue = false;
         closedTranscript = lastInterim;
         lastInterim = "";
+        interimWords = 0;
         // Start judging this close: whether the caller carries on is what says the
         // wait that produced it was too short.
         sinceCloseSamples = reopenGraceSamples > 0 ? 0 : -1;
@@ -376,10 +396,19 @@ public class SpeechGate {
         if (confirmedQuickAnswer && shortHangoverSamples > 0) {
             return shortWait;
         }
+        AgentQuestion question = agentQuestion;
+        int words = interimWords;
+        // "ha, vaqtim bor" after "vaqtingiz bormi?" is the whole answer however slowly it
+        // was said; the recognizer has to have heard it, and it must not lead on.
+        if (question == AgentQuestion.CLOSED && shortHangoverSamples > 0 && !continuationClause
+                && words > 0 && words <= CLOSED_ANSWER_WORDS) {
+            return shortWait;
+        }
         // A short run that reads as unfinished ("men…") is the start of an answer, not one:
-        // the short wait answered half a sentence instead of the caller.
+        // the short wait answered half a sentence instead of the caller. After an open
+        // question any short run is that start.
         boolean shortAnswer = shortHangoverSamples > 0 && speechSamples <= shortUtteranceSamples
-                && !continuationClause;
+                && !continuationClause && question != AgentQuestion.OPEN;
         if (shortAnswer) {
             return shortWait;
         }

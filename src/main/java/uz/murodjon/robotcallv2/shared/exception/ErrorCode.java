@@ -170,7 +170,7 @@ public enum ErrorCode {
     SCENARIO_DEFINITION_INVALID("Invalid scenario definition: %s problem(s), listed in errors"),
     SCENARIO_HAS_NO_STAGES("Scenario %s has no stages to continue the call with"),
     WEB_TEST_SOURCE_INVALID("give at most one of campaignId, aiAgentId, scenarioId or definition; targetId needs campaignId, agentVersion needs campaignId or aiAgentId"),
-    CALL_SOURCE_INVALID("give at most one of scenarioId or agentId — an agent already runs its own scenario"),
+    CALL_SOURCE_INVALID("give at most one of scenarioId or agentId — an agent already runs its own scenario; agentVersion, draft and contactId need agentId, and draft excludes agentVersion"),
     CAMPAIGN_DIAL_WINDOW_INVALID("dialWindowStart must be before dialWindowEnd"),
     CAMPAIGN_DIAL_TIMEZONE_INVALID("fixedTimezone '%s' is not a time zone id, for example Asia/Tashkent"),
     CAMPAIGN_DIAL_RANGES_INVALID("hours for %s must be at most %s ranges that do not overlap, each starting before it ends"),

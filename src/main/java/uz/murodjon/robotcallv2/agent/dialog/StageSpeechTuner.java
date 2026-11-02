@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 import uz.murodjon.robotcallv2.agent.stt.SttProperties;
 import uz.murodjon.robotcallv2.agent.stt.SttStreamBridge;
+import uz.murodjon.robotcallv2.agent.turn.AgentQuestionCues;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
 
@@ -26,6 +27,18 @@ final class StageSpeechTuner {
     private static final Logger log = LoggerFactory.getLogger(StageSpeechTuner.class);
 
     private StageSpeechTuner() {
+    }
+
+    /**
+     * Point the speech gate at what the agent's latest line asked, so the caller's answer is
+     * waited out for the kind of answer it is ({@link AgentQuestionCues}).
+     */
+    static void applyAgentLine(DialogSession s, String agentLine) {
+        RtpEndpoint endpoint = s.endpoint();
+        SttStreamBridge bridge = endpoint != null ? endpoint.findListener(SttStreamBridge.class) : null;
+        if (bridge != null) {
+            bridge.setAgentQuestion(AgentQuestionCues.classify(agentLine));
+        }
     }
 
     static void apply(DialogSession s, SttProperties sttProperties) {

@@ -713,6 +713,7 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setLastAgentText(String lastAgentText) {
         this.lastAgentText = lastAgentText;
+        StageSpeechTuner.applyAgentLine(this, lastAgentText); // what the caller answers next
     }
 
     public Disposition disposition() {

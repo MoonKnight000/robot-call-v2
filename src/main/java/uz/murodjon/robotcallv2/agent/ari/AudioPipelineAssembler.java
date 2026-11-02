@@ -34,6 +34,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.DoubleSupplier;
 import java.util.function.IntConsumer;
 
@@ -219,12 +220,16 @@ class AudioPipelineAssembler {
                     // The agent's own wait from the first utterance; a stage may change it later
                     // (StageSpeechTuner).
                     speechGate.setResponseWaitMs(agent != null ? agent.callBehaviour().responseWaitMs() : null);
+                    // The shadow score of the close being judged; the next one is only taken
+                    // after the caller speaks again, by which time this close is judged.
+                    AtomicReference<Float> shadowScore = new AtomicReference<>();
                     speechGate.setCloseListener((text, waitMs, continued) -> {
                         sttMetrics.gateCloseJudged(continued);
-                        turnDatasetRecorder.record(language, text, waitMs, continued);
+                        turnDatasetRecorder.record(language, text, waitMs, continued, shadowScore.getAndSet(null));
                     });
-                    if (!installTurnDetector(listeners, speechGate, language)) {
-                        installTextTurnDetector(speechGate, language);
+                    if (!installTurnDetector(listeners, speechGate, language)
+                            && !installTextTurnDetector(speechGate, language)) {
+                        installShadowTurnDetector(listeners, speechGate, language, shadowScore);
                     }
                 }
                 // Who knows the caller stopped talking. With a gate installed it is the
@@ -402,20 +407,22 @@ class AudioPipelineAssembler {
     /**
      * The same two hooks as Smart Turn, judged from the words instead of the audio
      * ({@link TextTurnDetector}): the recognizer's latest interim is what gets scored.
+     *
+     * @return whether it was installed
      */
-    private void installTextTurnDetector(SpeechGate gate, String language) {
+    private boolean installTextTurnDetector(SpeechGate gate, String language) {
         if (!textTurnProperties.enabled()) {
-            return;
+            return false;
         }
         TextTurnDetector detector = textTurnDetectorProvider.getIfAvailable();
         if (detector == null || !detector.available()) {
-            return;
+            return false;
         }
         String callLanguage = (language == null || language.isBlank())
                 ? sttProperties.defaultLanguage() : language;
         if (!textTurnProperties.supports(callLanguage)) {
             log.debug("Text turn skipped for {} — not a language the model is trusted for", callLanguage);
-            return;
+            return false;
         }
         gate.setTurnDetector(() -> {
             boolean complete = detector.isComplete(gate.lastInterimTranscript());
@@ -431,6 +438,33 @@ class AudioPipelineAssembler {
                 return confident;
             }, textTurnProperties.earlyWaitMs());
         }
+        return true;
+    }
+
+    /**
+     * Smart Turn for a language it is only being evaluated in
+     * ({@link SmartTurnProperties#shadowLanguages()}): asked at the moment the timer would
+     * close, its score is handed to the turn dataset next to what the caller then did, and
+     * the answer given to the gate is always "finished" — the wait stays exactly the timer's.
+     */
+    private void installShadowTurnDetector(List<AudioListener> listeners, SpeechGate gate, String language,
+                                           AtomicReference<Float> score) {
+        if (!smartTurnProperties.enabled()) {
+            return;
+        }
+        SmartTurnDetector detector = turnDetectorProvider.getIfAvailable();
+        String callLanguage = (language == null || language.isBlank())
+                ? sttProperties.defaultLanguage() : language;
+        if (detector == null || !detector.available() || !smartTurnProperties.shadows(callLanguage)) {
+            return;
+        }
+        UtteranceBuffer buffer = new UtteranceBuffer(detector.samples());
+        listeners.add(buffer);
+        gate.setTurnDetector(() -> {
+            float probability = detector.scoreCompletion(buffer.recent(), buffer.length());
+            score.set(probability < 0 ? null : probability);
+            return true;
+        }, 0);
     }
 
     private AnsweringMachineDetector buildAmd(String channelId, boolean realtime) {

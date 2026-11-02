@@ -7,7 +7,11 @@ import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 
 import uz.murodjon.robotcallv2.agent.ami.AmiClient;
+import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
+import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.company.domain.event.CompanyTelephonyEngineChangedEvent;
 import uz.murodjon.robotcallv2.shared.cluster.ClusterSignal;
+import uz.murodjon.robotcallv2.shared.dialog.TelephonyEngine;
 import uz.murodjon.robotcallv2.shared.util.SecretCipher;
 import uz.murodjon.robotcallv2.siptrunk.application.port.output.SipTrunkRepository;
 import uz.murodjon.robotcallv2.siptrunk.domain.entity.SipTrunk;
@@ -44,10 +48,12 @@ public class PjsipConfigWriter {
     private final PjsipConfigProperties pjsipConfigProperties;
     private final AmiClient ami;
     private final ClusterSignal clusterSignal;
+    private final CompanyConfigUseCase companyConfigUseCase;
 
     public PjsipConfigWriter(SipTrunkRepository repository, SecretCipher cipher, PjsipConfigProperties pjsipConfigProperties,
-                              AmiClient ami, ClusterSignal clusterSignal) {
+                              AmiClient ami, ClusterSignal clusterSignal, CompanyConfigUseCase companyConfigUseCase) {
         this.repository = repository;
+        this.companyConfigUseCase = companyConfigUseCase;
         this.cipher = cipher;
         this.pjsipConfigProperties = pjsipConfigProperties;
         this.ami = ami;
@@ -59,6 +65,11 @@ public class PjsipConfigWriter {
     public void regenerateAndReload() {
         regenerateHere();
         clusterSignal.send(TRUNKS_CHANGED);
+    }
+
+    @EventListener
+    public void onTelephonyEngineChanged(CompanyTelephonyEngineChangedEvent event) {
+        regenerateAndReload();
     }
 
     /**
@@ -79,7 +90,11 @@ public class PjsipConfigWriter {
             log.warn("voice-agent.siptrunk.config-dir is not set — cannot write generated PJSIP config");
             return;
         }
-        List<SipTrunk> trunks = repository.findAllManagedEnabled();
+        // A LiveKit company's trunk is dialled by LiveKit with its credentials inline. Registering it
+        // here as well would sign the same provider account in a second time.
+        List<SipTrunk> trunks = repository.findAllManagedEnabled().stream()
+                .filter(trunk -> !isOnLiveKit(trunk.companyId()))
+                .toList();
         Path file = Path.of(pjsipConfigProperties.configDir(), pjsipConfigProperties.configFileName());
         try {
             Files.writeString(file, render(trunks), StandardCharsets.UTF_8);
@@ -90,6 +105,11 @@ public class PjsipConfigWriter {
         boolean reloaded = ami.reloadPjsip();
         log.info("Regenerated {} ({} managed trunk(s)) — Asterisk reload {}",
                 file, trunks.size(), reloaded ? "ok" : "skipped/failed, will retry on next change");
+    }
+
+    private boolean isOnLiveKit(long companyId) {
+        CompanyConfig config = companyConfigUseCase.find(companyId);
+        return config != null && config.telephonyEngine() == TelephonyEngine.LIVEKIT;
     }
 
     private String render(List<SipTrunk> trunks) {

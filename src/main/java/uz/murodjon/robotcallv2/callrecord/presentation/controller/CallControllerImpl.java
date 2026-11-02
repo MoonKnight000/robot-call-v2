@@ -26,8 +26,10 @@ public class CallControllerImpl implements CallController {
 
     @Override
     public ResponseEntity<ResponseData<CallOriginateResponse>> call(long companyId, String number, Long scenarioId,
-                                                                    Long agentId, Long sipTrunkId) {
-        return ResponseEntity.ok(ResponseData.ok(useCase.originate(companyId, number, scenarioId, agentId, sipTrunkId)));
+                                                                    Long agentId, Long sipTrunkId, Integer agentVersion,
+                                                                    boolean draft, Long contactId) {
+        return ResponseEntity.ok(ResponseData.ok(useCase.originate(companyId, number, scenarioId, agentId, sipTrunkId,
+                agentVersion, draft, contactId)));
     }
 
     @Override

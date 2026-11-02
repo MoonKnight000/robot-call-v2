@@ -75,9 +75,16 @@ public class CallService implements CallControlUseCase {
     }
 
     @Override
-    public CallOriginateResponse originate(long companyId, String number, Long scenarioId, Long agentId, Long sipTrunkId) {
-        if (scenarioId != null && agentId != null) {
+    public CallOriginateResponse originate(long companyId, String number, Long scenarioId, Long agentId, Long sipTrunkId,
+                                           Integer agentVersion, boolean draft, Long contactId) {
+        boolean agentTest = draft || agentVersion != null || contactId != null;
+        if ((scenarioId != null && agentId != null) || (agentTest && agentId == null)
+                || (draft && agentVersion != null)) {
             throw new ValidationException(ErrorCode.CALL_SOURCE_INVALID);
+        }
+        if (agentTest) {
+            return ariService.originateAgentTestCall(companyId, number, agentId, agentVersion, draft, contactId,
+                    sipTrunkId);
         }
         return ariService.originateManualCall(companyId, number, scenarioId, agentId, sipTrunkId);
     }

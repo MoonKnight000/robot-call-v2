@@ -91,6 +91,11 @@ class PendingCallRegistry {
         rememberManualCall(channelId, companyId, phone);
     }
 
+    /** A phone test call that carries a whole profile (a chosen agent version, a contact), as a claimed web test does. */
+    void registerTestProfile(String channelId, OutboundCall outbound) {
+        webTestCalls.put(channelId, outbound);
+    }
+
     void registerManualAgent(String channelId, AiAgent agent, long companyId, String phone) {
         pendingManualAgents.put(channelId, agent);
         rememberManualCall(channelId, companyId, phone);

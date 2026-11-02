@@ -58,10 +58,18 @@ Saqlangan stsenariy yoki AI agent asosida kiritilgan raqamga qo'ng'iroq boshlayd
 | `scenarioId` | `number` | ❌ | Sinovdan o'tkaziladigan stsenariy ID raqami. Berilmasa (va `agentId` ham berilmasa) — standart test stsenariysi ishlatiladi |
 | `agentId` | `number` | ❌ | Sinovdan o'tkaziladigan AI agent ID raqami — kampaniyasiz. Agentning **nashr qilingan** versiyasi (hech nashr qilinmagan bo'lsa — qoralamasi) ishlaydi: o'z ssenariysi, tili, ovozi, prompti, tool'lari, pipeline rejimi (cascade/realtime) va yozib olish siyosati bilan. O'chirilgan (`enabled=false`) agent ham sinash uchun qo'ng'iroq qiladi. Faktlar — standart test faktlari (`voice-agent.dialog.test-context`), kampaniya nishoni yo'q. `scenarioId` bilan birga berilmaydi |
 | `sipTrunkId` | `number` | ❌ | **Chiquvchi SIP trunk ID raqami**. Aniq bir trunkdan qo'ng'iroq qilish uchun ko'rsatiladi. Agar berilmasa — kompaniyaning standart (default) yoqilgan trunki ishlatiladi |
+| `draft` | `boolean` | ❌ | `true` — nashr qilingan emas, agentning **saqlangan qoralamasi** gapiradi (`POST /api/calls/web-test` dagi `agentVersion: null` kabi). Default `false`. `agentId` kerak |
+| `agentVersion` | `number` | ❌ | Agentning shu **nashr qilingan versiyasi** gapiradi. `agentId` kerak, `draft=true` bilan birga berilmaydi |
+| `contactId` | `number` | ❌ | Qo'ng'iroq shu kontakt nomidan (web test'dagi `contactId` kabi): faktlar — kontaktning maydonlari va ismi, xotirasi — kontakt telefoniniki, ajratilgan maydonlar kontaktga yoziladi. Raqam baribir `number` ga teriladi. Faqat `contactId` (draft/versiyasiz) — nashr qilingan versiya. `agentId` kerak |
 
 **Misol So'rov:**
 `POST /api/calls?number=+998901234567&scenarioId=4&sipTrunkId=2`
 `POST /api/calls?number=+998901234567&agentId=2`
+`POST /api/calls?number=+998901234567&agentId=2&draft=true&contactId=15` — qoralamani telefonda, kontakt nomidan sinash
+
+> **Jonli kuzatish (web test bilan bir xil):** qo'ng'iroq `GET /api/calls/live` va SSE oqimida
+> `status` dagi kanal id bilan ko'rinadi (transkript, bosqich), uni brauzerda eshitish —
+> `GET /api/calls/{channelId}/listen` (pastda), tugatish — `POST /api/calls/{channelId}/hangup`.
 
 **Response** (`CallOriginateResponse`):
 ```json
@@ -85,7 +93,9 @@ Saqlangan stsenariy yoki AI agent asosida kiritilgan raqamga qo'ng'iroq boshlayd
 > qiymatni bering. Bu `POST /api/calls` va `POST /api/calls/test` uchun bir xil.
 
 **Faqat `POST /api/calls` xatolari:** `400 CALL_SOURCE_INVALID` (`scenarioId` va `agentId` ikkalasi
-berilgan), `404 AI_AGENT_NOT_FOUND` (agent yo'q yoki boshqa kompaniyaniki), `404 SCENARIO_NOT_FOUND`.
+berilgan; `draft`/`agentVersion`/`contactId` `agentId` siz; `draft=true` va `agentVersion` birga),
+`404 AI_AGENT_NOT_FOUND` (agent yo'q yoki boshqa kompaniyaniki), `404 SCENARIO_NOT_FOUND`,
+`404` (berilgan `agentVersion` yoki `contactId` topilmadi — web test'dagi bilan bir xil kodlar).
 Ikkala tekshiruv ham raqam terilishidan **oldin** bo'ladi.
 
 **Xatolar** (`POST /api/calls` va `POST /api/calls/test` uchun bir xil): `400 PHONE_INVALID`,

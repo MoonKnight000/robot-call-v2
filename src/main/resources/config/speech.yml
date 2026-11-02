@@ -110,7 +110,10 @@ voice-agent:
     endpointing:
       enabled: ${STT_ENDPOINTING:true}
       short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1500}
-      short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:700}
+      # 500: every short answer the turn dataset caught closing at 500 ms was a real end
+      # (8 of 8), and this wait is paid on the most common turn there is. Back to 700 if
+      # stitched turns (voice.dialog.turn.stitched) climb on short answers.
+      short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:500}
       complete-silence-ms: ${STT_ENDPOINTING_COMPLETE_SILENCE_MS:1000}
       max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:25000}
       final-grace-ms: ${STT_ENDPOINTING_FINAL_GRACE_MS:250}
@@ -166,6 +169,8 @@ voice-agent:
     enabled: ${TURN_DETECTOR:true}
     model-path: ${TURN_MODEL_PATH:models/smart_turn_v3.onnx}
     languages: ${TURN_LANGUAGES:ru-RU}
+    # Scored at each close and written to the turn dataset only — never moves the wait.
+    shadow-languages: ${TURN_SHADOW_LANGUAGES:uz-UZ}
     threshold: ${TURN_THRESHOLD:0.5}
     max-extend-ms: ${TURN_MAX_EXTEND_MS:500}
     early-wait-ms: ${TURN_EARLY_WAIT_MS:0}

@@ -195,6 +195,29 @@ final class StageEntry {
     }
 
     /**
+     * Where a stage's finished job moves the call without a model turn: its one drawn way on,
+     * when the job succeeded and the next stage is a job for the model too, so there is no line
+     * to write on the way. Step 2 of such a stage was a whole LLM round trip spent choosing
+     * between one option. Null whenever the choice needs reading — branches, more than one way
+     * on, a FLEX flow, an outcome the stage still requires, or a tool that failed or waits for
+     * the caller's yes.
+     *
+     * @param toolNote what step 1's tools answered, or null when none ran
+     */
+    static String findSoleNextStage(ScenarioDefinition scenario, StageDef stage, String toolNote) {
+        if (scenario == null || stage == null || toolNote == null || toolNote.contains("ERROR")
+                || toolNote.contains(ToolConfirmation.CONFIRMATION_REQUIRED)
+                || scenario.transitionMode() == TransitionMode.FLEX
+                || stage.branches() != null && !stage.branches().isEmpty()
+                || stage.requiredOutcomes() != null && !stage.requiredOutcomes().isEmpty()
+                || stage.allowedTransitions() == null || stage.allowedTransitions().size() != 1) {
+            return null;
+        }
+        String next = stage.allowedTransitions().getFirst();
+        return needsModelAction(scenario.findStage(next)) ? next : null;
+    }
+
+    /**
      * What the model is told to do in {@code stage}: {@code step} 1 is the stage's job,
      * step 2 moving on once it is done.
      */

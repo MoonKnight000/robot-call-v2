@@ -25,6 +25,11 @@ public interface CallController {
     /**
      * A manual call on a saved scenario, or on an AI agent ({@code agentId}: its published
      * version with its own scenario, voice and prompt). At most one of the two.
+     *
+     * <p>An agent call can be tested the way a browser test is: {@code draft} or {@code agentVersion}
+     * picks which version talks instead of the published one, and {@code contactId} makes it that
+     * contact's call (its facts, memory, and the extracted fields saved to it). All three need
+     * {@code agentId}; {@code draft} and {@code agentVersion} exclude each other.
      */
     @PreAuthorize("hasAuthority('CALL_EDIT')")
     @PostMapping
@@ -33,7 +38,10 @@ public interface CallController {
             @RequestParam String number,
             @RequestParam(required = false) Long scenarioId,
             @RequestParam(required = false) Long agentId,
-            @RequestParam(required = false) Long sipTrunkId);
+            @RequestParam(required = false) Long sipTrunkId,
+            @RequestParam(required = false) Integer agentVersion,
+            @RequestParam(defaultValue = "false") boolean draft,
+            @RequestParam(required = false) Long contactId);
 
     @PreAuthorize("hasAuthority('CALL_EDIT')")
     @PostMapping("/test")

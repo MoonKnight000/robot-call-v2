@@ -151,6 +151,13 @@ public class AriService implements SmartLifecycle {
         return outboundDialService.originateManualCall(companyId, number, scenarioId, agentId, sipTrunkId);
     }
 
+    public CallOriginateResponse originateAgentTestCall(long companyId, String number, long agentId,
+                                                        Integer agentVersion, boolean draft, Long contactId,
+                                                        Long sipTrunkId) {
+        return webTestCallService.originateAgentTestCall(companyId, number, agentId, agentVersion, draft, contactId,
+                sipTrunkId);
+    }
+
     public CallOriginateResponse originateTestCall(long companyId, String number, ScenarioDefinition definition) {
         return outboundDialService.originateTestCall(companyId, number, definition);
     }

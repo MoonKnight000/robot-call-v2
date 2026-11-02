@@ -22,6 +22,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.LlmFallback;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.LlmFallbackMode;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.PreToolPhrases;
 
@@ -432,6 +433,8 @@ class LlmTurnClient {
                                   List<ToolCallback> tools, Flux<ChatResponse> speculated, String model) {
         TokenUsage turnUsage = new TokenUsage();
         List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
+        // Read before the tools run: a transitionTo among them resets the step.
+        boolean stageActionTurn = s.stageActionStep() > 0;
         // What the request carries, so a slow or uncached turn can be traced to its size.
         log.info("[{}] llm request: system={} chars, messages={}, tools={} ({} chars)", s.channelId(),
                 system.length(), messages.size(), tools.size(), tools.stream()
@@ -469,6 +472,9 @@ class LlmTurnClient {
             SpeechOutcome outcome = speech.speak(s, carried);
             return new TurnResult(carried, outcome == SpeechOutcome.SPOKEN,
                     outcome == SpeechOutcome.BLOCKED, toolNote);
+        }
+        if (!toolCalls.isEmpty() && isSilentStageStep(s, stageActionTurn)) {
+            return new TurnResult("", false, false, toolNote);
         }
         // Nothing spoken and nothing carried — ask once more for the line alone. A whole
         // extra round trip inside the turnaround budget (§1.3), so it is the last resort,
@@ -738,6 +744,7 @@ class LlmTurnClient {
     /** One turn in a single blocking call — the pre-streaming path, kept as a fallback. */
     private TurnResult blockingTurn(DialogSession s, String system, List<Message> messages,
                                     List<ToolCallback> tools, String model) {
+        boolean stageActionTurn = s.stageActionStep() > 0; // see streamTurn
         ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
                 .system(system)
                 .messages(messages)
@@ -766,6 +773,9 @@ class LlmTurnClient {
         }
         if ((reply == null || reply.isBlank()) && s.isWaitingForCaller()) {
             return new TurnResult("", false, false, null); // the model chose to keep listening
+        }
+        if ((reply == null || reply.isBlank()) && !calls.isEmpty() && isSilentStageStep(s, stageActionTurn)) {
+            return new TurnResult("", false, false, toolNote);
         }
         if (reply == null || reply.isBlank()) {
             metrics.spokenLineRetry();
@@ -858,6 +868,19 @@ class LlmTurnClient {
     }
 
     /**
+     * Whether a tool call with no text is the flow working as drawn: the turn was a stage's own
+     * job ("call it without the client hearing") and the stage the call is in now still has a
+     * job for the model, so the next turn is already on its way (TurnRunner#scheduleStageAction)
+     * and speaks if anything needs saying. Asking again for a line here only made the model
+     * invent one — on a recorded call a goodbye, which closed the call before the CRM stages ran.
+     */
+    private static boolean isSilentStageStep(DialogSession s, boolean stageActionTurn) {
+        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        return stageActionTurn && !s.isEnded() && StageEntry.needsModelAction(stage)
+                && s.stageActionStep() < StageEntry.countModelSteps(stage);
+    }
+
+    /**
      * A scenario's own tool only records an outcome and answers with a confirmation —
      * nothing to answer with, so it is not worth a whole extra round trip.
      */
@@ -934,7 +957,10 @@ class LlmTurnClient {
                         .findFirst()
                         .orElse(null);
             }
-            if (phrase == null || phrase.isBlank()) {
+            if ((phrase == null || phrase.isBlank()) && !isScenarioTool(s, call.name()) && s.stageActionStep() <= 0) {
+                // A scenario tool only records a value and returns at once — "let me check" before
+                // it announces a wait that never comes. A flow stage's job is silent by design and
+                // the thinking sound covers it. Either speaks only when its own phrase is set.
                 phrase = PreToolPhrases.forTool(call.name(), s.language());
             }
             if (phrase != null && !phrase.isBlank()) {

@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.company.application.service;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.application.dto.TelephonyEngineResponse;
@@ -8,6 +9,7 @@ import uz.murodjon.robotcallv2.company.application.dto.UpdateTelephonyEngineRequ
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.application.port.output.CompanyConfigRepository;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
+import uz.murodjon.robotcallv2.company.domain.event.CompanyTelephonyEngineChangedEvent;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.security.CompanyAccessGuard;
 import uz.murodjon.robotcallv2.security.CurrentUser;
@@ -22,13 +24,15 @@ public class CompanyConfigService implements CompanyConfigUseCase {
     private final CompanyAccessGuard companyAccessGuard;
     private final AuditUseCase audit;
     private final CurrentUser currentUser;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CompanyConfigService(CompanyConfigRepository companyConfigRepository, CompanyAccessGuard companyAccessGuard,
-                                AuditUseCase audit, CurrentUser currentUser) {
+                                AuditUseCase audit, CurrentUser currentUser, ApplicationEventPublisher eventPublisher) {
         this.companyConfigRepository = companyConfigRepository;
         this.companyAccessGuard = companyAccessGuard;
         this.audit = audit;
         this.currentUser = currentUser;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -107,6 +111,7 @@ public class CompanyConfigService implements CompanyConfigUseCase {
                 existing.scorecardReviewThreshold(), request.telephonyEngine()));
         audit.record(companyId, "COMPANY_TELEPHONY_ENGINE_UPDATE", "company_config", String.valueOf(companyId),
                 existing.telephonyEngine() + " -> " + request.telephonyEngine());
+        eventPublisher.publishEvent(new CompanyTelephonyEngineChangedEvent(companyId));
         return findTelephonyEngine(companyId);
     }
 }

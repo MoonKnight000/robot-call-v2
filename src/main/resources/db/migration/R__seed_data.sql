@@ -2891,6 +2891,126 @@ END
 $seed$;
 
 -- ---------------------------------------------------------------------------
+-- Company 1's twin on the LiveKit engine, so the same agents can be heard on both stacks side
+-- by side: 'Uysot (LiveKit)' gets copies of company 1's settings, tools, secrets, knowledge
+-- base, agents (with their voices, ambience, handbook and pronunciation rules) and contacts
+-- (with tags). Login: livekit.admin / Test12345!.
+--
+-- Rows are copied whole (every column, through jsonb), so a column added later is copied too.
+-- Left out: users, campaigns, call flows, queues and call history — the agents' transfer queue
+-- and pre-conversation audio point at company 1's rows, so they are cleared.
+--
+-- Its trunk is the same Skyline account as company 1's, but managed (host, login, password),
+-- because LiveKit can only dial a trunk it has the credentials of. The password below is the
+-- published TrunkTest2026Pass, not Skyline's: the real one is kept out of the repository
+-- (asterisk/etc/asterisk/pjsip_auth.conf is git-ignored) and is set once in the trunk's
+-- settings. Asterisk does not register this trunk (PjsipConfigWriter skips LiveKit
+-- companies), so the account is never signed in twice.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION pg_temp.seed_clone(p_table TEXT, p_row JSONB, p_set JSONB) RETURNS BIGINT
+LANGUAGE plpgsql AS $clone$
+DECLARE
+    v_cols   TEXT;
+    v_has_id BOOLEAN;
+    v_id     BIGINT;
+BEGIN
+    SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position) FILTER (WHERE column_name <> 'id'),
+           bool_or(column_name = 'id')
+    INTO v_cols, v_has_id
+    FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = p_table AND is_generated = 'NEVER';
+    -- id is left to its sequence; everything else comes from the row, overridden by p_set.
+    IF v_has_id THEN
+        EXECUTE format('INSERT INTO %I (%s) SELECT %s FROM jsonb_populate_record(NULL::%I, $1) RETURNING id',
+                       p_table, v_cols, v_cols, p_table)
+            INTO v_id USING p_row || p_set;
+    ELSE
+        EXECUTE format('INSERT INTO %I (%s) SELECT %s FROM jsonb_populate_record(NULL::%I, $1)',
+                       p_table, v_cols, v_cols, p_table)
+            USING p_row || p_set;
+    END IF;
+    RETURN v_id;
+END
+$clone$;
+
+DO $seed$
+DECLARE
+    v_hash  CONSTANT TEXT := '$2a$12$OXJCG27t4EEQWD9lMVvccOXLLZDeh9IYyfsVxg.UTs5nq4N.ii0NO'; -- Test12345!
+    v_src   CONSTANT BIGINT := 1;
+    v_twin  BIGINT;
+    v_admin BIGINT;
+    v_trunk BIGINT;
+    v_table TEXT;
+    v_row   JSONB;
+    v_child JSONB;
+    v_new   BIGINT;
+BEGIN
+    IF EXISTS (SELECT 1 FROM company WHERE name = 'Uysot (LiveKit)') THEN
+        RETURN;
+    END IF;
+
+    SELECT pg_temp.seed_clone('company', to_jsonb(c),
+                              jsonb_build_object('name', 'Uysot (LiveKit)', 'logo_file_id', NULL, 'created_at', now()))
+    INTO v_twin
+    FROM company c WHERE c.id = v_src;
+
+    -- Settings and company-wide resources, as company 1 has them.
+    FOREACH v_table IN ARRAY ARRAY['company_config', 'company_billing', 'company_feature', 'company_integration_tool',
+                                   'secret', 'tool'] LOOP
+        FOR v_row IN EXECUTE format('SELECT to_jsonb(t) FROM %I t WHERE company_id = $1', v_table) USING v_src LOOP
+            PERFORM pg_temp.seed_clone(v_table, v_row, jsonb_build_object('company_id', v_twin));
+        END LOOP;
+    END LOOP;
+    UPDATE company_config SET telephony_engine = 'LIVEKIT' WHERE company_id = v_twin;
+
+    INSERT INTO app_role (company_id, code, name, is_system)
+    SELECT v_twin, r.code, r.name, true
+    FROM (VALUES ('DEVELOPER', 'Developer'), ('ADMIN', 'Administrator'), ('OPERATOR', 'Operator'),
+                 ('VIEWER', 'Viewer'), ('SUPERVISOR', 'Supervisor')) AS r(code, name);
+    INSERT INTO app_user (company_id, name, email, username, password_hash, role_id, status, position)
+    VALUES (v_twin, 'LiveKit administrator', 'livekit.admin@test.uz', 'livekit.admin', v_hash,
+            (SELECT id FROM app_role WHERE company_id = v_twin AND code = 'ADMIN'), 'ACTIVE', 'Administrator')
+    RETURNING id INTO v_admin;
+
+    FOR v_row IN SELECT to_jsonb(k) FROM knowledge_base_item k WHERE company_id = v_src ORDER BY id LOOP
+        v_new := pg_temp.seed_clone('knowledge_base_item', v_row, jsonb_build_object('company_id', v_twin));
+        FOR v_child IN SELECT to_jsonb(t) FROM knowledge_item_translation t WHERE item_id = (v_row ->> 'id')::BIGINT LOOP
+            PERFORM pg_temp.seed_clone('knowledge_item_translation', v_child, jsonb_build_object('item_id', v_new));
+        END LOOP;
+    END LOOP;
+
+    FOR v_row IN SELECT to_jsonb(a) FROM ai_agent a WHERE company_id = v_src ORDER BY id LOOP
+        v_new := pg_temp.seed_clone('ai_agent', v_row, jsonb_build_object(
+                'company_id', v_twin, 'created_by', v_admin,
+                'transfer_queue_id', NULL, 'pre_conversation_audio_file_id', NULL));
+        FOREACH v_table IN ARRAY ARRAY['ai_agent_voice', 'ai_agent_ambience', 'ai_agent_handbook_rule',
+                                       'ai_agent_pronunciation_rule'] LOOP
+            FOR v_child IN EXECUTE format('SELECT to_jsonb(t) FROM %I t WHERE ai_agent_id = $1', v_table)
+                    USING (v_row ->> 'id')::BIGINT LOOP
+                PERFORM pg_temp.seed_clone(v_table, v_child, jsonb_build_object('ai_agent_id', v_new));
+            END LOOP;
+        END LOOP;
+    END LOOP;
+
+    FOR v_row IN SELECT to_jsonb(c) FROM contact c WHERE company_id = v_src ORDER BY id LOOP
+        v_new := pg_temp.seed_clone('contact', v_row, jsonb_build_object('company_id', v_twin));
+        INSERT INTO contact_tag (contact_id, tag)
+        SELECT v_new, tag FROM contact_tag WHERE contact_id = (v_row ->> 'id')::BIGINT;
+    END LOOP;
+
+    INSERT INTO sip_trunk (company_id, name, pjsip_endpoint, caller_id, host, port, sip_username, sip_password_enc,
+                           transport, codecs, is_default, enabled, max_cps, max_channels)
+    VALUES (v_twin, 'Skyline (LiveKit)', 'pending', '781137492', 'pbx.skyline.uz', 5060, '781137492',
+            'oMuGpJPSvT2kqnAftUfKCBu8s4QizkmUhcL2XUmamOww/NswzufWLl8pKUx0', 'UDP', 'ulaw,alaw', true, true, 5, 30)
+    RETURNING id INTO v_trunk;
+    -- SipTrunkService's name for a managed trunk's endpoint.
+    UPDATE sip_trunk SET pjsip_endpoint = 'trunk_' || v_twin || '_' || v_trunk WHERE id = v_trunk;
+END
+$seed$;
+
+DROP FUNCTION pg_temp.seed_clone(TEXT, JSONB, JSONB);
+
+-- ---------------------------------------------------------------------------
 -- Every campaign needs a campaign_dialer_config and a campaign_schedule row. CampaignEntity
 -- reads them as secondary tables (outer join) into primitive fields (daily_call_cap,
 -- auto_reset_targets, ...), so a campaign without a row fails to load with "Null value was

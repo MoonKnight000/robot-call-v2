@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.audio;
 
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.agent.turn.AgentQuestion;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -614,5 +615,53 @@ class SpeechGateTest {
         gate.setResponseWaitMs(null);
 
         assertThat(gate.hangoverMs()).isEqualTo(800);
+    }
+
+    // The agent's question: what was asked moves the wait the way the caller's words do.
+
+    @Test
+    void aFewWordsAnsweringAClosedQuestionTakeTheShortWait() {
+        SpeechGate gate = adaptiveGate();               // short answers close at 300ms
+        gate.setAgentQuestion(AgentQuestion.CLOSED);
+
+        feed(gate, true, 1500);                         // longer than the 600ms short-utterance bar
+        gate.onInterimTranscript("ha vaqtim bor a");
+        feed(gate, false, 350);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void theSameWordsWithNoQuestionWaitTheFullHangover() {
+        SpeechGate gate = adaptiveGate();
+
+        feed(gate, true, 1500);
+        gate.onInterimTranscript("ha vaqtim bor a");
+        feed(gate, false, 350);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void anAnswerToAClosedQuestionThatLeadsOnStillWaits() {
+        SpeechGate gate = adaptiveGate();
+        gate.setAgentQuestion(AgentQuestion.CLOSED);
+
+        feed(gate, true, 1500);
+        gate.onInterimTranscript("ha lekin");
+        feed(gate, false, 350);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void aBriefStartAfterAnOpenQuestionIsNotTakenForTheAnswer() {
+        SpeechGate gate = adaptiveGate();
+        gate.setAgentQuestion(AgentQuestion.OPEN);
+
+        feed(gate, true, 300);                          // short enough for the short wait otherwise
+        feed(gate, false, 350);
+
+        assertThat(gate.isOpen()).isTrue();
     }
 }
