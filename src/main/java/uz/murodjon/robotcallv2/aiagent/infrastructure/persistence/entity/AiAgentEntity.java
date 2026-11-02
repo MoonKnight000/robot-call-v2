@@ -558,7 +558,17 @@ public class AiAgentEntity {
     }
 
     public void setPronunciationRules(List<PronunciationRuleEmbeddable> pronunciationRules) {
-        this.pronunciationRules = pronunciationRules != null ? pronunciationRules : new ArrayList<>();
+        if (pronunciationRules == this.pronunciationRules) {
+            return;
+        }
+        if (this.pronunciationRules == null) {
+            this.pronunciationRules = new ArrayList<>();
+        } else {
+            this.pronunciationRules.clear();
+        }
+        if (pronunciationRules != null) {
+            this.pronunciationRules.addAll(pronunciationRules);
+        }
     }
 
     public String getPostCallActions() {
@@ -582,7 +592,17 @@ public class AiAgentEntity {
     }
 
     public void setHandbook(Set<HandbookRule> handbook) {
-        this.handbook = handbook != null ? handbook : EnumSet.noneOf(HandbookRule.class);
+        if (handbook == this.handbook) {
+            return;
+        }
+        if (this.handbook == null) {
+            this.handbook = EnumSet.noneOf(HandbookRule.class);
+        } else {
+            this.handbook.clear();
+        }
+        if (handbook != null) {
+            this.handbook.addAll(handbook);
+        }
     }
 
     public String getTimezone() {

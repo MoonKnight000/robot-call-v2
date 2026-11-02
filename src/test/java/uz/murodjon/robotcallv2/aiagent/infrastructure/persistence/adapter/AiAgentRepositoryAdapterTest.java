@@ -162,4 +162,20 @@ class AiAgentRepositoryAdapterTest {
         assertThat(agent.pronunciationRules().get(0).replacement()).isEqualTo("so'm");
         assertThat(agent.ambience().background()).isEqualTo(AmbientSound.OFFICE);
     }
+
+    @Test
+    void entityCollectionSettersKeepCollectionsMutableWhenGivenUnmodifiableCollections() {
+        AiAgentEntity entity = new AiAgentEntity();
+
+        entity.setHandbook(Set.of(HandbookRule.HIGH_EMPATHY, HandbookRule.CONFIRM_DETAILS));
+        assertThat(entity.getHandbook()).containsExactlyInAnyOrder(HandbookRule.HIGH_EMPATHY, HandbookRule.CONFIRM_DETAILS);
+        // Hibernate's merge calls .clear() on managed/target collections — this must not throw
+        entity.getHandbook().clear();
+        assertThat(entity.getHandbook()).isEmpty();
+
+        entity.setPronunciationRules(List.of(new PronunciationRuleEmbeddable("UZS", "so'm", false, "uz-UZ")));
+        assertThat(entity.getPronunciationRules()).hasSize(1);
+        entity.getPronunciationRules().clear();
+        assertThat(entity.getPronunciationRules()).isEmpty();
+    }
 }
