@@ -52,11 +52,13 @@ public class SpeechOutput {
     private final DialogExecutors executors;
     private final VoiceEmotionResolver emotionResolver;
     private final DialogPolicy dialogPolicy;
+    private final DialogTranscript transcript;
 
     public SpeechOutput(DialogProperties dialogProperties, TtsProperties ttsProperties, TtsRouter ttsRouter,
                         DialogMetrics metrics, DialogExecutors executors, VoiceEmotionResolver emotionResolver,
-                        DialogPolicy dialogPolicy) {
+                        DialogPolicy dialogPolicy, DialogTranscript transcript) {
         this.dialogPolicy = dialogPolicy;
+        this.transcript = transcript;
         this.dialogProperties = dialogProperties;
         this.ttsProperties = ttsProperties;
         this.ttsRouter = ttsRouter;
@@ -183,6 +185,16 @@ public class SpeechOutput {
     /** {@link #speak} for the fixed lines, where only "did the caller hear it" matters. */
     public boolean speakChunk(DialogSession s, String text) {
         return speak(s, text) == SpeechOutcome.SPOKEN;
+    }
+
+    /**
+     * A waiting line said on its own, before a tool runs — written to the transcript as well,
+     * since no reply carries it there and the caller did hear it.
+     */
+    public void speakWaitingLine(DialogSession s, String text) {
+        if (speakChunk(s, text)) {
+            transcript.recordAgentLine(s, text);
+        }
     }
 
     /**
@@ -442,6 +454,7 @@ public class SpeechOutput {
                 return;
             }
             s.endpoint().enqueuePcm(pcm);
+            transcript.recordAgentLine(s, line);
             metrics.fillerPlayed();
             log.debug("[{}] filler played after {} ms of silence: {}",
                     s.channelId(), dialogProperties.fillerDelayMs(), line);

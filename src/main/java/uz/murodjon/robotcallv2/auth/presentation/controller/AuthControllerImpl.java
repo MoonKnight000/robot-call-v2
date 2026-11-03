@@ -57,8 +57,8 @@ public class AuthControllerImpl implements AuthController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<Void>> logout() {
-        authUseCase.logout();
+    public ResponseEntity<ResponseData<Void>> logout(RefreshTokenRequest request, String refreshTokenCookie) {
+        authUseCase.logout(request, refreshTokenCookie);
         return refreshCookie.respondCleared();
     }
 

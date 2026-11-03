@@ -218,6 +218,9 @@ Maydon qiymati qayerdan kelishini `x-source` belgilaydi. `x-source` bo'lmasa, ma
 Model to'ldiradigan maydonga **`x-fallback`** qo'shish mumkin: qo'ng'iroq o'zgaruvchisi nomi yoki nomlar ro'yxati
 (`"x-fallback": ["contractNumber", "phone_last9"]`). Model maydonni bermasa yoki bo'sh bersa, ro'yxatdagi qiymati
 bor birinchi o'zgaruvchi yuboriladi; hech biri bo'lmasa maydon tushib qoladi. `x-fallback` modelga ko'rsatilmaydi.
+`x-source: "variable"` maydonda ham ishlaydi: `x-value` dagi o'zgaruvchi bo'sh bo'lsa, `x-fallback` ro'yxatidagi
+qiymati bor birinchisi yuboriladi (`"x-value": "crmResponsibleId", "x-fallback": ["responsibleId", "crm_ai_employee_id"]`).
+`static` va `secret` maydonda `x-fallback` — `400 TOOL_BODY_FALLBACK_INVALID`.
 Nom `[A-Za-z_][A-Za-z0-9_]{0,63}` bo'lmasa — `400 TOOL_BODY_FALLBACK_INVALID`.
 
 Model to'ldiradigan maydonga **`"x-format": "epochSeconds"`** qo'shilsa, model vaqtni mahalliy ko'rinishda

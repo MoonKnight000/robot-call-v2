@@ -47,6 +47,11 @@ public class SttStreamBridge implements AudioListener, Closeable {
      * start being dropped.
      */
     private static final long READY_GRACE_MS = 2000;
+    /**
+     * How long before a provider's stream cap the stream starts being replaced at the next
+     * pause. Wide enough that a caller who talks through most of it still leaves a gap.
+     */
+    private static final long STREAM_LIMIT_MARGIN_MS = 30_000;
 
     private final String channelId;
     private final int sourceSampleRate;
@@ -264,6 +269,8 @@ public class SttStreamBridge implements AudioListener, Closeable {
                 streaming = false;
                 endUtterance();
                 log.debug("[{}] STT stream gated (silence)", channelId);
+            } else if (isNearStreamLimit()) {
+                rotateStream();
             }
             return;
         }
@@ -630,6 +637,50 @@ public class SttStreamBridge implements AudioListener, Closeable {
             hints = nextHints;
             retunePending = true;
             return true;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /**
+     * Whether the stream in hand is within {@link #STREAM_LIMIT_MARGIN_MS} of the provider's
+     * own cap ({@link SttProvider#maxStreamSeconds}) and nothing is still owed on it.
+     */
+    private boolean isNearStreamLimit() {
+        int maxSeconds = provider.maxStreamSeconds();
+        if (maxSeconds <= 0 || closed) {
+            return false;
+        }
+        synchronized (finalLock) {
+            if (finalPending) {
+                return false; // the last utterance's final is still on its way on this stream
+            }
+        }
+        return System.currentTimeMillis() - streamOpenedAt >= maxSeconds * 1000L - STREAM_LIMIT_MARGIN_MS;
+    }
+
+    /**
+     * Replace a stream about to hit the provider's cap, while the caller is silent. Left to
+     * the cap, it ends wherever it happens to be — mid-sentence, the words then recovered
+     * only by the replay after a reopen. Audio thread only.
+     */
+    private void rotateStream() {
+        lock.lock();
+        try {
+            // Closed on purpose, not failing: not charged to the provider.
+            chargedThisStream = true;
+            try {
+                session.close();
+            } catch (Exception e) {
+                log.debug("[{}] closing the STT session before rotation failed: {}", channelId, e.getMessage());
+            }
+            openStream(System.currentTimeMillis());
+            log.info("[{}] STT stream rotated on {} ahead of its {} s limit", channelId, provider.name(),
+                    provider.maxStreamSeconds());
+        } catch (Exception e) {
+            // The session in hand is closed: the next frame reopens it the usual way.
+            metrics.sttError();
+            log.warn("[{}] STT stream rotation failed on {}: {}", channelId, provider.name(), e.getMessage());
         } finally {
             lock.unlock();
         }

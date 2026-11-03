@@ -236,11 +236,11 @@ voice-agent:
       folder-id: ${TTS_YANDEX_FOLDER_ID:}
       voice: ${TTS_YANDEX_VOICE:alena}
       voices:
-        uz- UZ: ${TTS_YANDEX_VOICE_UZ:zarina}
+        uz-UZ: ${TTS_YANDEX_VOICE_UZ:zamira}
         ru-RU: ${TTS_YANDEX_VOICE_RU:alena}
       voice-roles:
         nigora: []
-        zarina: []
+        zamira: []
         alena: [neutral, good]
         omazh: [neutral, evil]
       host: ${TTS_YANDEX_HOST:tts.api.cloud.yandex.net}
@@ -254,7 +254,8 @@ voice-agent:
       url: ${TTS_AISHA_URL:wss://back.aisha.group/api/v1/tts/realtime}
       speaker: ${TTS_AISHA_SPEAKER:neutral}
       speakers: {}
-      moods: []
+      # The realtime speaker_ids Aisha documents; any other mood is spoken as `speaker`.
+      moods: [neutral, cheerful, happy, sad]
       request-timeout-ms: ${TTS_AISHA_TIMEOUT_MS:10000}
     cartesia:
       api-key: ${TTS_CARTESIA_API_KEY:}

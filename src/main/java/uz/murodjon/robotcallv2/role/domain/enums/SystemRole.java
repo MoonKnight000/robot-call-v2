@@ -78,7 +78,8 @@ public enum SystemRole {
                     Permission.MISSED_CALL_READ, Permission.MISSED_CALL_EDIT,
                     Permission.USER_READ,
                     Permission.VOICE_READ,
-                    Permission.QUALITY_REVIEW_READ, Permission.QUALITY_REVIEW_EDIT);
+                    Permission.QUALITY_REVIEW_READ, Permission.QUALITY_REVIEW_EDIT,
+                    Permission.CALL_DEBUG_READ);
             case VIEWER -> EnumSet.of(
                     Permission.DASHBOARD_READ,
                     Permission.CAMPAIGN_READ,

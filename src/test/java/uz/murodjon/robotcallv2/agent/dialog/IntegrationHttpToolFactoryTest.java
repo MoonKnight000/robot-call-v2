@@ -44,6 +44,15 @@ class IntegrationHttpToolFactoryTest {
     }
 
     @Test
+    void theLeadTheCrmQueuedTheCallForIsTheLeadTheToolsWriteTo() {
+        assertThat(IntegrationHttpToolFactory.withCrmVariables(Map.of("leadId", 812L), NONE))
+                .containsEntry("crmLeadId", 812L);
+        assertThat(IntegrationHttpToolFactory.withCrmVariables(Map.of("leadId", 812L, "crmLeadId", 5L), NONE))
+                .containsEntry("crmLeadId", 5L);
+        assertThat(IntegrationHttpToolFactory.withCrmVariables(Map.of(), NONE)).doesNotContainKey("crmLeadId");
+    }
+
+    @Test
     void theCallsOwnVariablesAreNotChanged() {
         Map<String, Object> own = Map.of("phone", "+998901234567");
 

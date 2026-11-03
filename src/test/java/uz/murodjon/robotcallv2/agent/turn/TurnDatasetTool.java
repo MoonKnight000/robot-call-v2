@@ -56,8 +56,13 @@ import java.util.stream.Stream;
  *   java -cp ... uz.murodjon.robotcallv2.agent.turn.TurnDatasetTool &lt;wav-file-or-dir&gt; \
  *        --vad-model=models/silero_vad.onnx --out=corpus/turn \
  *        [--mix=spatial|stereo] [--window-ms=8000] [--tail-ms=700] \
- *        [--max-pause-ms=4000] [--min-speech-ms=300] [--bot-rms=300]
+ *        [--max-pause-ms=4000] [--min-speech-ms=300] [--bot-rms=300] \
+ *        [--caller=left|right] [--other=energy|vad]
  * </pre>
+ *
+ * <p>A recorded call between two people (an operator's PBX recording) is
+ * {@code --mix=stereo --other=vad}, run once with {@code --caller=left} and once with
+ * {@code --caller=right} into two {@code --out} directories.
  */
 public final class TurnDatasetTool {
 
@@ -162,11 +167,16 @@ public final class TurnDatasetTool {
         if (wav.sampleRate() != CALL_RATE) {
             throw new IOException(wav.sampleRate() + " Hz, expected " + CALL_RATE);
         }
-        short[] caller = callerChannel(wav, settings.mix);
-        short[] bot = botChannel(wav, settings.mix);
+        WavChannels sides = "right".equals(settings.caller) ? swapped(wav) : wav;
+        short[] caller = callerChannel(sides, settings.mix);
+        short[] bot = botChannel(sides, settings.mix);
 
         List<Run> callerRuns = speechRuns(caller, file.getFileName().toString(), settings);
-        List<Run> botRuns = bot == null ? List.of() : energyRuns(bot, settings.botRms);
+        // A person on the other side (an operator's recorded call) breathes, types and has a
+        // room behind them; an energy threshold calls that talking, the VAD does not.
+        List<Run> botRuns = bot == null ? List.of()
+                : "vad".equals(settings.other) ? speechRuns(bot, file.getFileName() + "-other", settings)
+                : energyRuns(bot, settings.botRms);
         long recordingMs = (long) caller.length * 1000 / CALL_RATE;
 
         int emitted = 0;
@@ -367,6 +377,18 @@ public final class TurnDatasetTool {
     }
 
     /**
+     * The same recording with its two channels exchanged, so the right-hand speaker is
+     * labelled as the caller. A call between two people has a turn-taker on each side, and
+     * both are Uzbek speakers worth learning from: running once per side doubles the set.
+     */
+    private static WavChannels swapped(WavChannels wav) {
+        if (wav.count() < 2) {
+            return wav;
+        }
+        return new WavChannels(wav.sampleRate(), new short[][]{wav.channels()[1], wav.channels()[0]});
+    }
+
+    /**
      * Solve {@code wanted = (a - BLEED*b) / (1 - BLEED^2)}, the inverse of the cross-feed
      * the recorder applied.
      */
@@ -463,6 +485,10 @@ public final class TurnDatasetTool {
         private String vadModel = System.getenv("VAD_MODEL_PATH");
         private String out;
         private String mix = "spatial";
+        /** Which channel is the speaker being labelled: {@code left} (our recorder's caller) or {@code right}. */
+        private String caller = "left";
+        /** How the other channel's speech is found: {@code energy} for a bot, {@code vad} for a person. */
+        private String other = "energy";
 
         private int windowSamples = 256;
         private float vadThreshold = 0.5f;
@@ -498,6 +524,8 @@ public final class TurnDatasetTool {
                     case "vad-model" -> settings.vadModel = value;
                     case "out" -> settings.out = value;
                     case "mix" -> settings.mix = value;
+                    case "caller" -> settings.caller = value;
+                    case "other" -> settings.other = value;
                     case "window-samples" -> settings.windowSamples = Integer.parseInt(value);
                     case "vad-threshold" -> settings.vadThreshold = Float.parseFloat(value);
                     case "vad-min-speech-ms" -> settings.vadMinSpeechMs = Integer.parseInt(value);

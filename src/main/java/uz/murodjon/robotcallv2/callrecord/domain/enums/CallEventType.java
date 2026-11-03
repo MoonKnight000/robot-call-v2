@@ -44,5 +44,31 @@ public enum CallEventType {
      * in ms from the call's start: utteranceEndMs, eouWaitMs, sttFinalMs, llmRequestMs,
      * llmFirstTokenMs, ttsRequestMs, firstAudioMs; and speculated.
      */
-    TURN
+    TURN,
+    /**
+     * The agent ran a function; payload: toolName, stage, arguments (what it was sent), result (what
+     * came back to the model, cut to 4000 characters), success, durationMs, offsetMs (from the call's start).
+     */
+    TOOL_CALLED,
+    /**
+     * The AI agent's call entered a scenario block; payload: stage, title, type, from, via (START, BRANCH,
+     * CONDITION, GLOBAL, EDGE), branch and facts (the Logic Split branch that matched and the values it
+     * compared), condition (the edge's or the global block's condition), offsetMs.
+     */
+    STAGE_ENTERED,
+    /** The AI agent's call recorded a value; payload: key, value, stage, offsetMs. */
+    FACT_RECORDED,
+    /**
+     * The HTTP request a function sent; payload: toolName, method, url and requestBody (secrets masked),
+     * headers (names only), status (or error when no answer came), responseBody, durationMs.
+     */
+    TOOL_HTTP,
+    /** One model request's tokens; payload: stage, promptTokens, cachedTokens, completionTokens, thinkingTokens, offsetMs. */
+    LLM_USAGE;
+
+    /** Part of the call's block-by-block trace, shown under CALL_DEBUG_READ only — not on the plain timeline. */
+    public boolean isCallTrace() {
+        return this == TOOL_CALLED || this == STAGE_ENTERED || this == FACT_RECORDED || this == TOOL_HTTP
+                || this == LLM_USAGE;
+    }
 }

@@ -240,7 +240,7 @@ qo'ng'iroq o'zgaruvchisi `phone_last9` bo'yicha qidiradi.
 
 | `key` | Model nomi | So'rov | Qo'ng'iroq natijasiga |
 |---|---|---|---|
-| `GET_CLIENT_PROFILE` | `getClientProfile` | `POST v1/open-api/lead/filter` (`phone`, `size=1`) | `lead`, `crmLeadId` |
+| `GET_CLIENT_PROFILE` | `getClientProfile` | `POST v1/open-api/lead/filter` (`phone`, `size=1`) | `lead`, `crmLeadId`, `crmResponsibleId` (lid mas'uli, `V30`) |
 | `GET_DEBT_SUMMARY` | `getDebtSummary` | `POST v1/open-api/contract/filter` (`ACTIVE`/`STARTED`, `size=20`, modelga 3 tasi) | `contracts`, `responsibleEmployeeId`, `responsibleEmployeeName` |
 | `GET_BOOKING_STATUS` | `getBookingStatus` | `POST v1/open-api/booking/filter` (`size=5`) | `bookings` |
 
@@ -260,7 +260,7 @@ Yangi qator: `LIST_LEAD_STAGES` (`listLeadStages`, `LEAD`/`READ`, sukut bo'yicha
 |---|---|---|---|
 | `CREATE_LEAD` | `createLead` | `POST v1/open-api/lead` (`name`, `pipeStatusId`, `responsibleById`, `contacts`) | `crm_new_lead_status_id`, `crm_ai_employee_id`, `phone` |
 | `ADD_LEAD_NOTE` | `addLeadNote` | `POST v1/open-api/lead-note/{id}/list` | `crmLeadId` |
-| `CREATE_FOLLOW_UP_TASK` | `createFollowUpTask` | `POST v1/open-api/lead-task/{id}/save` | `crmLeadId`, `crm_task_type_id`, `crm_ai_employee_id`, `now_epoch`, `timezone` |
+| `CREATE_FOLLOW_UP_TASK` | `createFollowUpTask` | `POST v1/open-api/lead-task/{id}/save` | `crmLeadId`, `crm_task_type_id`, `now_epoch`, `timezone`; `assignedById` — `crmResponsibleId`, bo'lmasa webhook'dagi `responsibleId`, bo'lmasa `crm_ai_employee_id` (`V30`) |
 | `MOVE_LEAD_STAGE` | `moveLeadStage` | `POST v1/open-api/lead` (`id`, `pipeStatusId`) | `crmLeadId` |
 | `LIST_LEAD_STAGES` | `listLeadStages` | `GET v1/open-api/pipe/all` | — |
 

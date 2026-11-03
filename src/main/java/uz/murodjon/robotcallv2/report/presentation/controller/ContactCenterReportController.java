@@ -52,4 +52,14 @@ public interface ContactCenterReportController {
     ResponseEntity<ResponseData<List<CallEvent>>> callEvents(
             @CurrentCompanyId long companyId,
             @PathVariable long callId);
+
+    /**
+     * An AI agent call's block-by-block trace: blocks entered and why, values recorded, functions run
+     * with what they were sent and returned (docs/api/reports.md). Not part of {@code /events}.
+     */
+    @PreAuthorize("hasAuthority('CALL_DEBUG_READ')")
+    @GetMapping("/calls/{callId}/trace")
+    ResponseEntity<ResponseData<List<CallEvent>>> callTrace(
+            @CurrentCompanyId long companyId,
+            @PathVariable long callId);
 }

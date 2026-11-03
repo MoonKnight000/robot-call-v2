@@ -98,6 +98,8 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private volatile String lastAgentText = "";
     private volatile String state;
     private volatile BiConsumer<AgentWebhookEvent, Map<String, Object>> webhookEventPublisher;
+    /** The block-by-block trace of the call (call debug view); null on a simulated or test dialog. */
+    private volatile CallTraceLog callTraceLog;
     private final AtomicBoolean voicemailEventPublished = new AtomicBoolean();
     private volatile CustomerSentiment lastCustomerSentiment = CustomerSentiment.NEUTRAL;
     /** Puts keypad tones on this call (IVR navigation); null when the call has no channel. */
@@ -202,6 +204,10 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
             publishWebhookEvent(AgentWebhookEvent.STAGE_TRANSITION,
                     Map.of("fromStage", previousState, "toStage", state == null ? "" : state));
         }
+        CallTraceLog trace = callTraceLog;
+        if (trace != null && state != null && !Objects.equals(previousState, state)) {
+            trace.recordStageEntered(this, companyId(), callAttemptId(), startedAt(), previousState, state);
+        }
     }
 
     /**
@@ -220,6 +226,10 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     @Override
     public void recordOutcome(String key, Object value) {
         outcomeLedger.recordOutcome(key, value);
+        CallTraceLog trace = callTraceLog;
+        if (trace != null && key != null && value != null) {
+            trace.recordFact(this, companyId(), callAttemptId(), agent(), startedAt(), key, value);
+        }
         if (key != null && value != null) {
             Map<String, Object> data = new HashMap<>();
             data.put("key", key);
@@ -797,6 +807,10 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     public void setWebhookEventPublisher(BiConsumer<AgentWebhookEvent, Map<String, Object>> publisher) {
         this.webhookEventPublisher = publisher;
+    }
+
+    public void setCallTraceLog(CallTraceLog callTraceLog) {
+        this.callTraceLog = callTraceLog;
     }
 
     @Override

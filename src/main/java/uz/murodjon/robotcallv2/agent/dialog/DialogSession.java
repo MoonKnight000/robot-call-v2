@@ -145,6 +145,8 @@ public class DialogSession implements DialogOutcomeSink {
     /** Current stage id — a scenario StageDef.id(), not an enum (ROADMAP A.3). */
     private volatile String state;
     private volatile BiConsumer<AgentWebhookEvent, Map<String, Object>> webhookEventPublisher;
+    /** The block-by-block trace of the call (call debug view); null on a simulated or test dialog. */
+    private volatile CallTraceLog callTraceLog;
     /** Told whenever the stage is set ({@link #setStageListener}); null when nobody listens. */
     private volatile Consumer<DialogSession> stageListener;
     private final AtomicBoolean voicemailEventPublished = new AtomicBoolean();
@@ -628,6 +630,10 @@ public class DialogSession implements DialogOutcomeSink {
             publishWebhookEvent(AgentWebhookEvent.STAGE_TRANSITION,
                     Map.of("fromStage", previousState, "toStage", state == null ? "" : state));
         }
+        CallTraceLog trace = callTraceLog;
+        if (trace != null && state != null && !java.util.Objects.equals(previousState, state)) {
+            trace.recordStageEntered(this, companyId(), callAttemptId(), startedAt(), previousState, state);
+        }
         Consumer<DialogSession> listener = stageListener;
         if (listener != null) {
             listener.accept(this);
@@ -724,6 +730,10 @@ public class DialogSession implements DialogOutcomeSink {
     @Override
     public void recordOutcome(String key, Object value) {
         outcomeLedger.recordOutcome(key, value);
+        CallTraceLog trace = callTraceLog;
+        if (trace != null && key != null && value != null) {
+            trace.recordFact(this, companyId(), callAttemptId(), agent(), startedAt(), key, value);
+        }
         if (key != null && value != null) {
             Map<String, Object> data = new HashMap<>();
             data.put("key", key);
@@ -1243,6 +1253,10 @@ public class DialogSession implements DialogOutcomeSink {
 
     public void setWebhookEventPublisher(BiConsumer<AgentWebhookEvent, Map<String, Object>> publisher) {
         this.webhookEventPublisher = publisher;
+    }
+
+    public void setCallTraceLog(CallTraceLog callTraceLog) {
+        this.callTraceLog = callTraceLog;
     }
 
     @Override

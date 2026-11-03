@@ -134,7 +134,10 @@ class SpeculationManager {
             // merely adds the last few words is a min-chars/timing question, one that
             // rewrites the whole sentence means this recognizer's interims are not worth
             // guessing on at all.
-            log.info("[{}] speculation: miss after {} interim(s)", s.channelId(), s.interimsThisTurn());
+            // Word counts, not words: the caller's text stays at DEBUG, but whether the final
+            // only ran on past the guess or said something else is the tuning question.
+            log.info("[{}] speculation: miss after {} interim(s) — guess {} word(s), final {} word(s)",
+                    s.channelId(), s.interimsThisTurn(), wordCount(parked.inputText()), wordCount(clientText));
             log.debug("[{}] speculation guessed on '{}', final said '{}'", s.channelId(), parked.inputText(), clientText);
             return null;
         } finally {
@@ -146,11 +149,14 @@ class SpeculationManager {
      * Whether this call is in a state where guessing at the reply is both possible and
      * worth the tokens.
      *
-     * <p>The interesting condition is {@code isInterrupted}: the turn annex tells the
-     * model where a barge-in cut it off, so a reply written before that note exists
-     * answers a different prompt than the turn would send. Everything else is either a
-     * turn already in progress, a call with no opening line yet, or a budget with too
-     * little left to spend on a guess.
+     * <p>A barge-in does not block it. The turn annex tells the model where the caller cut
+     * it off, and a guess started after the barge-in builds that same annex; one started
+     * before it is discarded by the barge-in itself ({@code ClientInputGate#confirmBargeIn}).
+     * Blocking it here cost every answer to an interruption its head start — the turns a
+     * caller least wants to wait on.
+     *
+     * <p>"Has spoken" is the history, not the turn count: a {@code firstMessage} greeting
+     * is spoken without a turn, and the count left every reply to it unguessed.
      */
     private String speculationBlocker(DialogSession s, String text) {
         if (s.isEnded()) {
@@ -159,10 +165,7 @@ class SpeculationManager {
         if (s.busy().get()) {
             return "a turn is already running";
         }
-        if (s.isInterrupted()) {
-            return "the caller interrupted the bot";
-        }
-        if (s.turnCount() == 0) {
+        if (s.history().isEmpty()) {
             return "the bot has not spoken yet";
         }
         if (text.length() < dialogProperties.preemptiveMinChars() && !isKnownShortUtterance(text)) {
@@ -178,6 +181,11 @@ class SpeculationManager {
             "ha", "yoq", "yo'q", "aha", "shunday", "mayli", "xop", "xo'p", "to'g'ri", "togri", "albatta",
             "да", "нет", "ага", "так", "ясно", "ладно", "верно", "конечно"
     );
+
+    private static int wordCount(String text) {
+        String norm = text == null ? "" : TranscriptText.normalize(text);
+        return norm.isBlank() ? 0 : norm.split("\\s+").length;
+    }
 
     static boolean isKnownShortUtterance(String text) {
         if (text == null) {

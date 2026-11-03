@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.CreateConversationFlowAge
 import uz.murodjon.robotcallv2.aiagent.application.dto.UpdateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentConversion;
 import uz.murodjon.robotcallv2.scenario.domain.entity.Scenario;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
@@ -40,6 +41,9 @@ public interface AiAgentUseCase {
 
     /** A new draft with the same configuration and tool links, named "… (nusxa)". */
     AiAgentRow cloneAgent(long companyId, long id);
+
+    /** A new draft like {@link #cloneAgent}, made into a single-prompt or a chat agent; the source stays as it is. */
+    AiAgentRow convertAgent(long companyId, long id, AiAgentConversion target);
 
     /** The agent as its editors see it — the draft row. Reached from every screen and every ownership check. */
     AiAgent requireAgent(long companyId, long id);

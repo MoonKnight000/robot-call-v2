@@ -199,6 +199,17 @@ public interface AiAgentController {
             @CurrentCompanyId long companyId,
             @PathVariable long id);
 
+    /**
+     * Retell's "Convert to Single Prompt" / "Convert to Chat Agent": a new copy of the agent,
+     * named "… (bitta prompt)" or "… (chat)"; the source agent is not changed.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/{id:\\d+}/convert")
+    ResponseEntity<ResponseData<AiAgentRow>> convert(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody ConvertAiAgentRequest request);
+
     @PreAuthorize("hasAuthority('AI_AGENT_READ')")
     @GetMapping("/{id:\\d+}/scenario")
     ResponseEntity<ResponseData<AgentScenarioDto>> getScenario(

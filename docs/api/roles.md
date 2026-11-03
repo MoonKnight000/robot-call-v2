@@ -36,7 +36,7 @@ rolini yaratadi (`409 ROLE_LIMIT_EXCEEDED`).
 | `DEVELOPER` | Kompaniyadagi **barcha** permissionlar, doimiy — kelajakda qo'shiladigan yangi permissionlar ham. Faqat platforma xodimi bera oladi |
 | `ADMIN` | `ENGINE_EDIT` dan tashqari hammasi (speech engine sozlamasi noto'g'ri bo'lsa butun kompaniya qo'ng'irog'i buziladi — u DEVELOPER da qoladi) |
 | `OPERATOR` | Kundalik ish: kampaniya, qo'ng'iroq, jonli monitoring, operator paneli, kontakt, DNC, javobsiz qo'ng'iroqlar (READ+EDIT); dashboard, stsenariy, agent, bilim bazasi, hisobot, kiruvchi marshrutlar, operatorlar navbati, ovoz — faqat READ |
-| `SUPERVISOR` | Operatorlar zalini boshqaradi: `OPERATOR` ning hammasi + `CALL_MONITOR` (boshqaning jonli qo'ng'irog'ini tinglash/whisper/barge), `CALL_QUEUE_EDIT` (navbatlar va a'zolar), `CALL_FLOW_READ`, `USER_READ`, `QUALITY_REVIEW_READ` / `QUALITY_REVIEW_EDIT` (qo'ng'iroq review inbox'i). `USER_EDIT` yo'q — SIP akkaunt bera olmaydi |
+| `SUPERVISOR` | Operatorlar zalini boshqaradi: `OPERATOR` ning hammasi + `CALL_MONITOR` (boshqaning jonli qo'ng'irog'ini tinglash/whisper/barge), `CALL_QUEUE_EDIT` (navbatlar va a'zolar), `CALL_FLOW_READ`, `USER_READ`, `QUALITY_REVIEW_READ` / `QUALITY_REVIEW_EDIT` (qo'ng'iroq review inbox'i). `CALL_DEBUG_READ` (AI qo'ng'iroqning bloklar izi — funksiyalarga yuborilgan va qaytgan ma'lumot, [reports.md](reports.md)). `USER_EDIT` yo'q — SIP akkaunt bera olmaydi |
 | `VIEWER` | Faqat operatsion READ: dashboard, kampaniya, qo'ng'iroq, jonli, kontakt, stsenariy, agent, bilim bazasi, hisobot, DNC, kiruvchi marshrutlar, operatorlar navbati |
 | `SUPERADMIN` | Barcha kompaniya permissionlari + `PLATFORM_ADMIN` (kompaniya yaratish, ro'yxat, statusini o'zgartirish). Faqat platforma kompaniyasida mavjud |
 
@@ -194,7 +194,7 @@ so'rovda `401` olib, qayta login qiladilar.
 |---|---|---|
 | `DASHBOARD` | `DASHBOARD_READ` | — |
 | `CAMPAIGN` | `CAMPAIGN_READ` | `CAMPAIGN_EDIT` |
-| `CALL` | `CALL_READ` | `CALL_EDIT` |
+| `CALL` | `CALL_READ`, `CALL_DEBUG_READ` | `CALL_EDIT` |
 | `LIVE` | `LIVE_READ` | `LIVE_EDIT`, `CALL_MONITOR` |
 | `OPERATOR` | `OPERATOR_READ` | `OPERATOR_EDIT` |
 | `CONTACT` | `CONTACT_READ` | `CONTACT_EDIT` |

@@ -11,10 +11,13 @@ import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 /**
  * Token accounting for one LLM turn (PROJECT.md §2.6).
  *
- * <p>Providers report usage once per HTTP call — on the final streamed chunk — and a
- * turn that calls a tool makes two calls, so the snapshots are summed. Consecutive
- * identical snapshots are ignored: a provider that repeats cumulative usage on every
- * chunk would otherwise be counted once per chunk.
+ * <p>A turn that calls a tool makes two HTTP calls, so the calls are summed. Within one
+ * streamed call a provider may report usage on every chunk, and cumulatively: Gemini sends
+ * the same {@code promptTokenCount} on each chunk and a {@code candidatesTokenCount} that
+ * grows to the final figure. A snapshot with the previous one's prompt and no less
+ * completion is therefore the same call moving on, and only its growth is counted — summing
+ * each chunk counted the prompt once per chunk and the completion as a running total of
+ * running totals, and that is what the call was billed.
  *
  * <p>Gemini reports thinking separately from the answer: {@code candidatesTokenCount}
  * (what Spring AI surfaces as completion tokens) excludes {@code thoughtsTokenCount},
@@ -36,6 +39,8 @@ public class TokenUsage {
     private long thinking;
     private long lastPrompt = -1;
     private long lastCompletion = -1;
+    private long lastCached;
+    private long lastThinking;
 
     public void add(ChatResponse response) {
         if (response == null || response.getMetadata() == null) {
@@ -50,15 +55,24 @@ public class TokenUsage {
         if (promptTokens == 0 && completionTokens == 0) {
             return; // an ordinary content chunk carries no usage
         }
-        if (promptTokens == lastPrompt && completionTokens == lastCompletion) {
-            return;
+        long cachedTokens = cachedTokens(usage);
+        long thinkingTokens = thinkingTokens(usage);
+        boolean sameCall = promptTokens == lastPrompt && completionTokens >= lastCompletion;
+        if (sameCall) {
+            // The same call, further on: only what it added since the last chunk.
+            completion += completionTokens - lastCompletion;
+            cached += Math.max(0, cachedTokens - lastCached);
+            thinking += Math.max(0, thinkingTokens - lastThinking);
+        } else {
+            prompt += promptTokens;
+            completion += completionTokens;
+            cached += cachedTokens;
+            thinking += thinkingTokens;
         }
         lastPrompt = promptTokens;
         lastCompletion = completionTokens;
-        prompt += promptTokens;
-        completion += completionTokens;
-        cached += cachedTokens(usage);
-        thinking += thinkingTokens(usage);
+        lastCached = sameCall ? Math.max(lastCached, cachedTokens) : cachedTokens;
+        lastThinking = sameCall ? Math.max(lastThinking, thinkingTokens) : thinkingTokens;
     }
 
     /** Everything this turn was billed for — what the per-call budget counts (§C14). */
@@ -79,6 +93,11 @@ public class TokenUsage {
     /** Of {@link #promptTokens()}, how many the provider served at the cached rate. */
     public long cachedTokens() {
         return cached;
+    }
+
+    /** Of {@link #completionTokens()}, how many were the model's thinking. */
+    public long thinkingTokens() {
+        return thinking;
     }
 
     void publish(DialogSession s, LlmMetrics metrics) {

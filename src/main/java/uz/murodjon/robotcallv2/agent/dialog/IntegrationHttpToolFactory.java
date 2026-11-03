@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmSettingsUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmSettings;
+import uz.murodjon.robotcallv2.crm.infrastructure.config.CrmProperties;
 import uz.murodjon.robotcallv2.integration.application.port.input.IntegrationToolUseCase;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 import uz.murodjon.robotcallv2.tool.domain.service.ToolOverrides;
@@ -38,12 +39,14 @@ class IntegrationHttpToolFactory {
     private final HttpToolExecutor httpToolExecutor;
     private final IntegrationToolUseCase integrationToolUseCase;
     private final CrmSettingsUseCase crmSettingsUseCase;
+    private final CrmProperties crmProperties;
 
     IntegrationHttpToolFactory(HttpToolExecutor httpToolExecutor, IntegrationToolUseCase integrationToolUseCase,
-                               CrmSettingsUseCase crmSettingsUseCase) {
+                               CrmSettingsUseCase crmSettingsUseCase, CrmProperties crmProperties) {
         this.httpToolExecutor = httpToolExecutor;
         this.integrationToolUseCase = integrationToolUseCase;
         this.crmSettingsUseCase = crmSettingsUseCase;
+        this.crmProperties = crmProperties;
     }
 
     /** Empty when the company is not connected to Uysot or has no such tool on. Never throws: a call goes on without them. */
@@ -54,6 +57,12 @@ class IntegrationHttpToolFactory {
                 return List.of();
             }
             Map<String, Object> variables = withCrmVariables(callVariables, crmSettingsUseCase.findByCompanyId(companyId));
+            // The employee the installation records AI calls under, as the coded CRM task does
+            // (UysotConnectorAdapter#createTask): with no assignee Uysot refuses the task with 400.
+            Integer employeeId = crmProperties.callHistoryEmployeeId();
+            if (employeeId != null && employeeId > 0) {
+                variables.putIfAbsent("crm_ai_employee_id", employeeId);
+            }
             // The zone a time the model names is read in (a CRM task's deadline, "x-format": "epochSeconds").
             if (session.agent() != null && session.agent().timezone() != null) {
                 variables.putIfAbsent("timezone", session.agent().timezone());
@@ -84,6 +93,8 @@ class IntegrationHttpToolFactory {
      * <ul>
      *   <li>{@code phone_last9} — the last nine digits of {@code phone}, which is how Uysot's
      *       {@code search} matches a client;</li>
+     *   <li>{@code crmLeadId} — the {@code leadId} fact of a call the CRM itself queued
+     *       (LEAD_CREATED), so the lead tools work without looking the lead up first;</li>
      *   <li>{@code crm_ai_employee_id}, {@code crm_new_lead_status_id},
      *       {@code crm_meeting_booked_status_id}, {@code crm_promise_to_pay_status_id},
      *       {@code crm_not_interested_status_id}, {@code crm_callback_status_id},
@@ -100,6 +111,10 @@ class IntegrationHttpToolFactory {
                 variables.putIfAbsent("phone_last9",
                         digits.length() > PHONE_SUFFIX_DIGITS ? digits.substring(digits.length() - PHONE_SUFFIX_DIGITS) : digits);
             }
+        }
+        Object leadId = variables.get("leadId");
+        if (leadId != null) {
+            variables.putIfAbsent("crmLeadId", leadId);
         }
         putIfKnown(variables, "crm_ai_employee_id", settings.aiEmployeeId());
         putIfKnown(variables, "crm_new_lead_status_id", settings.newLeadStatusId());

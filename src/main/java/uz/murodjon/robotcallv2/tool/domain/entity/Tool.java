@@ -45,8 +45,9 @@ public record Tool(
     /** bodySchema keyword holding the value, the variable name or the secret key; unset, the field's own name. */
     public static final String BODY_VALUE_KEY = "x-value";
     /**
-     * bodySchema keyword of a field the model fills: the call variables, in order, whose first
-     * non-blank value is sent when the model leaves the field empty. A name or a list of names.
+     * bodySchema keyword of a field the model fills, or of an {@code x-source: variable} field: the call
+     * variables, in order, whose first non-blank value is sent when the field is otherwise empty. A name
+     * or a list of names.
      */
     public static final String BODY_FALLBACK_KEY = "x-fallback";
     /**

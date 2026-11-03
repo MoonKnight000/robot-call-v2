@@ -188,7 +188,10 @@ public class AishaTtsProvider implements TtsProvider {
             return "neutral";
         }
         String lower = speaker.trim().toLowerCase(Locale.ROOT);
-        if (lower.contains("cheerful") || lower.contains("happy") || lower.contains("good") || lower.contains("friendly")) {
+        if (lower.contains("happy")) {
+            return "happy"; // a speaker_id of its own, not another name for cheerful
+        }
+        if (lower.contains("cheerful") || lower.contains("good") || lower.contains("friendly")) {
             return "cheerful";
         }
         if (lower.contains("sad")) {

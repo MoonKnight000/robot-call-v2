@@ -77,4 +77,13 @@ public interface SttProvider extends NamedProvider {
      * reading another provider's setting silently sends audio at the wrong rate.
      */
     int sampleRate();
+
+    /**
+     * The longest a single stream may live before the provider ends it, in seconds; 0 = no
+     * limit. A call that runs past it gets a new stream in a pause rather than losing one
+     * mid-sentence ({@link SttStreamBridge}).
+     */
+    default int maxStreamSeconds() {
+        return 0;
+    }
 }

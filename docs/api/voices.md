@@ -174,7 +174,7 @@ agentlarni boshqa ovozga o'tkazing** — aks holda ularning qo'ng'iroqlari TTS f
 
 ## 🎭 Dinamik Hissiyotlar va Moslashuvchan Ovoz (Voice Emotion Resolution)
 
-> ⚠️ O'zbek Yandex ovozlarida (`nigora`, `zarina`) rol yo'q (`voice-agent.tts.yandex.voice-roles`) — ularda
+> ⚠️ O'zbek Yandex ovozlarida (`nigora`, `zamira`) rol yo'q (`voice-agent.tts.yandex.voice-roles`) — ularda
 > quyidagi rol tanlovi ovozni o'zgartirmaydi, faqat tezlik ishlaydi. O'zbek qo'ng'irog'ida jonlilikni agentning
 > `speakingWarmth` sozlamasi (gap matni) beradi — [ai-agents.md](ai-agents.md).
 

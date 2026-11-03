@@ -482,6 +482,8 @@ public enum ErrorCode {
     AGENT_EVAL_ALREADY_RUNNING("An evaluation of agent %s is already running"),
     AI_AGENT_EVAL_REQUIRED("AI agent %s must pass a %s evaluation of its current draft before it is published"),
     AI_AGENT_GUARDRAIL_EMPTY("A guardrail rule cannot be empty"),
+    AI_AGENT_ALREADY_SINGLE_PROMPT("AI agent %s has no conversation flow — it already runs on one prompt"),
+    AI_AGENT_ALREADY_CHAT("AI agent %s is already a chat agent"),
     AI_AGENT_SCENARIO_SHARED("Agent %s speaks shared scenario %s — change the scenario itself, not the agent"),
     AGENT_INSIGHT_NOT_FOUND("Insight %s not found"),
     AGENT_INSIGHT_ALREADY_DECIDED("Insight %s is already %s"),

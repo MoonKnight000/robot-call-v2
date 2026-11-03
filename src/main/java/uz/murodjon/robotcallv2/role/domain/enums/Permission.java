@@ -22,6 +22,11 @@ public enum Permission {
 
     CALL_READ("cal.r", PermissionGroup.CALL),
     CALL_EDIT("cal.w", PermissionGroup.CALL),
+    /**
+     * An AI agent call's block-by-block trace: the blocks it went through and why, the values it
+     * recorded, and what every function was sent and returned — CRM data among it, hence its own right.
+     */
+    CALL_DEBUG_READ("cal.d", PermissionGroup.CALL),
 
     LIVE_READ("liv.r", PermissionGroup.LIVE),
     LIVE_EDIT("liv.w", PermissionGroup.LIVE),

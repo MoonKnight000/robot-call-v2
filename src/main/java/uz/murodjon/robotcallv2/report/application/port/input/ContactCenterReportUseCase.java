@@ -19,4 +19,7 @@ public interface ContactCenterReportUseCase {
 
     /** One call's timeline: flow nodes, keys, queueing, operators rung, transfers, survey. */
     List<CallEvent> findCallEvents(long companyId, long callId);
+
+    /** An AI agent call's block-by-block trace: blocks entered, values recorded, functions run. */
+    List<CallEvent> findCallTrace(long companyId, long callId);
 }

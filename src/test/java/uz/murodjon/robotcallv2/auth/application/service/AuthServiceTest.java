@@ -23,6 +23,8 @@ import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 
 import java.time.Clock;
+import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
+
 import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
@@ -241,12 +243,27 @@ class AuthServiceTest {
         verifyNoInteractions(streamTicketService);
     }
 
+    /** A client that does not say which device it is signs every device out. */
     @Test
-    void logoutRevokesAllUserSessions() {
+    void logoutWithoutARefreshTokenRevokesAllUserSessions() {
         when(currentUser.id()).thenReturn(Optional.of(42L));
 
-        authService.logout();
+        authService.logout(null, null);
 
         verify(sessions).revokeAllForUser(42L);
+    }
+
+    /** Signing out in one tab or browser leaves the others signed in. */
+    @Test
+    void logoutWithItsRefreshTokenEndsOnlyThatSession() {
+        when(currentUser.id()).thenReturn(Optional.of(42L));
+        UserSession session = new UserSession(7L, 1L, 42L, Tokens.hash("rt-1"), null, null,
+                Instant.now(), Instant.now(), Instant.now().plusSeconds(3600), null);
+        when(sessions.findActiveByHash(Tokens.hash("rt-1"))).thenReturn(Optional.of(session));
+
+        authService.logout(new RefreshTokenRequest("rt-1"), null);
+
+        verify(sessions).revoke(7L, 42L);
+        verify(sessions, never()).revokeAllForUser(anyLong());
     }
 }

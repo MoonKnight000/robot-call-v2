@@ -248,9 +248,26 @@ public class AuthService implements AuthUseCase {
                 .orElseGet(() -> new ForbiddenException(ErrorCode.REFRESH_TOKEN_INVALID));
     }
 
+    /**
+     * One device signing out must not sign out the others: a second tab or browser would find its
+     * refresh token dead and fail with REFRESH_TOKEN_INVALID. Its access token stays good until it
+     * expires — revocation of those is per user — and the client drops it.
+     */
     @Override
-    public void logout() {
-        currentUser.id().ifPresent(sessionService::revokeAllForUser);
+    public void logout(RefreshTokenRequest request, String cookieRefreshToken) {
+        Long userId = currentUser.id().orElse(null);
+        if (userId == null) {
+            return;
+        }
+        String token = request != null && request.refreshToken() != null && !request.refreshToken().isBlank()
+                ? request.refreshToken() : cookieRefreshToken;
+        UserSession session = token == null || token.isBlank() ? null
+                : sessionService.findActiveByHash(Tokens.hash(token)).filter(s -> s.userId() == userId).orElse(null);
+        if (session != null) {
+            sessionService.revoke(session.id(), userId);
+        } else {
+            sessionService.revokeAllForUser(userId);
+        }
     }
 
     @Override

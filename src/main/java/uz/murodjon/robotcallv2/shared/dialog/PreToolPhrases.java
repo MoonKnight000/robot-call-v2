@@ -41,23 +41,23 @@ public final class PreToolPhrases {
     );
 
     /**
-     * Returns an appropriate pre-tool phrase for the tool and language,
-     * or a generic polite filler if no tool-specific phrase is mapped.
+     * The pre-tool phrase mapped for the tool in this language, or {@code null} when it has none.
+     *
+     * <p>No generic fallback: CRM lookups answer in a few hundred milliseconds, and "let me check"
+     * before every one of them was heard several times a call. A wait that really runs long is
+     * covered by the thinking filler (SpeechOutput#scheduleFiller).
      */
     public static String forTool(String toolName, String language) {
         if (toolName == null || toolName.isBlank()) {
-            return generic(language);
+            return null;
         }
         if (russian(language)) {
-            String phrase = RU_TOOL_PHRASES.get(toolName);
-            return phrase != null ? phrase : "Секунду, выполняю операцию...";
+            return RU_TOOL_PHRASES.get(toolName);
         }
         if (english(language)) {
-            String phrase = EN_TOOL_PHRASES.get(toolName);
-            return phrase != null ? phrase : "One moment, processing your request...";
+            return EN_TOOL_PHRASES.get(toolName);
         }
-        String phrase = UZ_TOOL_PHRASES.get(toolName);
-        return phrase != null ? phrase : "Hozir bir soniya tekshirib ko'raman...";
+        return UZ_TOOL_PHRASES.get(toolName);
     }
 
     /**
@@ -80,13 +80,10 @@ public final class PreToolPhrases {
         list.add(generic(language));
         if (russian(language)) {
             list.addAll(RU_TOOL_PHRASES.values());
-            list.add("Секунду, выполняю операцию...");
         } else if (english(language)) {
             list.addAll(EN_TOOL_PHRASES.values());
-            list.add("One moment, processing your request...");
         } else {
             list.addAll(UZ_TOOL_PHRASES.values());
-            list.add("Hozir bir soniya tekshirib ko'raman...");
         }
         return List.copyOf(list);
     }

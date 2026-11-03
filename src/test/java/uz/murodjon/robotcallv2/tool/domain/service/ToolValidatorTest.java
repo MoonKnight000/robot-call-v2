@@ -94,6 +94,20 @@ class ToolValidatorTest {
     }
 
     @Test
+    void onlyAVariableFieldOfTheSourcedOnesMayFallBack() {
+        Map<String, Object> variable = Map.of("type", "object", "properties", Map.of(
+                "assignedById", Map.of("type", "integer", "x-source", "variable", "x-value", "crmResponsibleId",
+                        "x-fallback", List.of("crm_ai_employee_id"))));
+        Map<String, Object> fixed = Map.of("type", "object", "properties", Map.of(
+                "page", Map.of("type", "integer", "x-source", "static", "x-value", 1,
+                        "x-fallback", List.of("crm_ai_employee_id"))));
+
+        ToolValidator.validateBody(List.of(), variable);
+        assertThat(codeOf(() -> ToolValidator.validateBody(List.of(), fixed)))
+                .isEqualTo(ErrorCode.TOOL_BODY_FALLBACK_INVALID);
+    }
+
+    @Test
     void aFormatIsEpochSecondsOnly() {
         Map<String, Object> epoch = Map.of("type", "object", "properties", Map.of(
                 "deadline", Map.of("type", "string", "x-format", "epochSeconds")));

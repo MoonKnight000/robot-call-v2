@@ -133,6 +133,30 @@ public class SttMetrics {
         sttFinalsPromoted.increment();
     }
 
+    /**
+     * Time from our end-of-utterance signal to the provider's final — the part of every
+     * turnaround that belongs to the recognizer and the network, not to our endpointing.
+     * Tagged by provider so a region or model switch can be read against the old one.
+     */
+    public void sttFinalLatency(String provider, long ms) {
+        DistributionSummary.builder("voice.stt.final.latency")
+                .description("delay between the end-of-utterance signal and the provider's final")
+                .baseUnit("milliseconds")
+                .tag("provider", provider)
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(ms);
+    }
+
+    /** The provider reported a non-fatal problem on a live stream (e.g. audio not arriving in real time). */
+    public void sttProviderWarning(String provider) {
+        Counter.builder("voice.stt.provider.warnings")
+                .description("warning status messages sent by the STT provider on live streams")
+                .tag("provider", provider)
+                .register(registry)
+                .increment();
+    }
+
     /** The wait a long utterance earned before it was closed — fixed, or learned. */
     public void sttEndpointingHangover(int ms) {
         endpointingHangover.record(ms);

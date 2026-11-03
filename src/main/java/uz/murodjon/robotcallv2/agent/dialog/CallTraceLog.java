@@ -1,0 +1,195 @@
+package uz.murodjon.robotcallv2.agent.dialog;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallEventType;
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageBranch;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+import uz.murodjon.robotcallv2.scenario.domain.enums.BranchOperator;
+import uz.murodjon.robotcallv2.scenario.domain.service.StageBranchEvaluator;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * The call's block-by-block trace on its timeline — what the call debug view reads
+ * ({@code GET /api/reports/calls/{id}/trace}): every block the call entered and why
+ * ({@link CallEventType#STAGE_ENTERED}), every value the call recorded
+ * ({@link CallEventType#FACT_RECORDED}), and every function the model ran with what it was sent
+ * and what came back ({@link CallEventType#TOOL_CALLED}). Text is redacted like the transcript.
+ * Times are {@code offsetMs} from the dialog's start — the transcript lines' clock.
+ */
+@Component
+public class CallTraceLog {
+
+    /** A search result can run to pages; the trace shows the head of it. */
+    private static final int MAX_RESULT_CHARS = 4000;
+
+    private final CallEventUseCase callEventUseCase;
+    private final ObjectMapper objectMapper;
+
+    public CallTraceLog(CallEventUseCase callEventUseCase, ObjectMapper objectMapper) {
+        this.callEventUseCase = callEventUseCase;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * @param result what the tool returned to the model; null when it threw
+     */
+    public void recordToolCall(long companyId, long callAttemptId, AiAgent agent, Instant startedAt, String stage,
+                               String toolName, String argumentsJson, String result, long durationMs) {
+        String arguments = PiiRedactor.redact(argumentsJson, agent);
+        String safeResult = result == null ? null : cut(PiiRedactor.redact(result, agent));
+        callEventUseCase.record(companyId, callAttemptId, CallEventType.TOOL_CALLED,
+                "toolName", toolName,
+                "stage", stage,
+                "arguments", parsed(arguments),
+                "result", safeResult,
+                "success", result != null && !result.startsWith("ERROR:"),
+                "durationMs", durationMs,
+                "offsetMs", offsetMs(startedAt));
+    }
+
+    /**
+     * The call moved from {@code from} to {@code to}. How it got there is read off the flow: the
+     * Logic Split branch that matched (with the fact values it compared), the condition on the
+     * edge the model took, or the target's global condition when no edge leads there.
+     */
+    public void recordStageEntered(DialogOutcomeSink s, long companyId, long callAttemptId, Instant startedAt,
+                                   String from, String to) {
+        ScenarioDefinition scenario = s.scenario();
+        StageDef fromStage = scenario == null || from == null ? null : scenario.findStage(from);
+        StageDef toStage = scenario == null || to == null ? null : scenario.findStage(to);
+        Map<String, Object> facts = StageEntry.variables(s);
+
+        String via;
+        String branch = null;
+        Map<String, Object> compared = null;
+        String condition = null;
+        StageBranch matched = fromStage == null ? null : findMatchedBranch(fromStage.branches(), facts, to);
+        if (from == null) {
+            via = "START";
+        } else if (matched != null) {
+            via = "BRANCH";
+            branch = describe(matched);
+            if (matched.fact() != null) {
+                compared = new LinkedHashMap<>();
+                compared.put(matched.fact(), facts.get(matched.fact()));
+            }
+        } else if (fromStage != null && fromStage.transitionConditions() != null
+                && fromStage.transitionConditions().containsKey(to)) {
+            via = "CONDITION";
+            condition = fromStage.transitionConditions().get(to);
+        } else if (fromStage != null && (fromStage.allowedTransitions() == null || !fromStage.allowedTransitions().contains(to))
+                && toStage != null && toStage.globalCondition() != null && !toStage.globalCondition().isBlank()) {
+            via = "GLOBAL";
+            condition = toStage.globalCondition();
+        } else {
+            via = "EDGE";
+        }
+        callEventUseCase.record(companyId, callAttemptId, CallEventType.STAGE_ENTERED,
+                "stage", to,
+                "title", toStage != null ? toStage.title() : null,
+                "type", toStage != null && toStage.type() != null ? toStage.type().name() : null,
+                "from", from,
+                "via", via,
+                "branch", branch,
+                "facts", compared,
+                "condition", condition,
+                "offsetMs", offsetMs(startedAt));
+    }
+
+    /** A value the call recorded (a tool's outcome, a mapped response field, an extracted variable). */
+    public void recordFact(DialogOutcomeSink s, long companyId, long callAttemptId, AiAgent agent, Instant startedAt,
+                           String key, Object value) {
+        Object safeValue = value instanceof String text ? PiiRedactor.redact(text, agent) : value;
+        callEventUseCase.record(companyId, callAttemptId, CallEventType.FACT_RECORDED,
+                "key", key,
+                "value", safeValue instanceof Number || safeValue instanceof Boolean || safeValue instanceof String
+                        ? safeValue : String.valueOf(safeValue),
+                "stage", s.state(),
+                "offsetMs", offsetMs(startedAt));
+    }
+
+    /**
+     * The request a function sent and what came back, as it went over the wire: method, address and
+     * body with the company's secrets masked, the header names (their values may be credentials), the
+     * HTTP status — or the error when nothing came back — and the response body, cut like a tool result.
+     *
+     * @param status null when the request failed before an answer
+     */
+    public void recordHttpExchange(long companyId, long callAttemptId, String toolName, String method, String url,
+                                   List<String> headerNames, String requestBody, Integer status, String responseBody,
+                                   String error, long durationMs) {
+        callEventUseCase.record(companyId, callAttemptId, CallEventType.TOOL_HTTP,
+                "toolName", toolName,
+                "method", method,
+                "url", url,
+                "headers", headerNames == null || headerNames.isEmpty() ? null : headerNames,
+                "requestBody", parsed(cut(PiiRedactor.redact(requestBody))),
+                "status", status,
+                "responseBody", cut(PiiRedactor.redact(responseBody)),
+                "error", error,
+                "durationMs", durationMs);
+    }
+
+    /** One model request's tokens, as billed — prompt (of it, served from cache), completion and thinking. */
+    public void recordLlmUsage(DialogSession s, long promptTokens, long cachedTokens, long completionTokens,
+                               long thinkingTokens) {
+        callEventUseCase.record(s.companyId(), s.callAttemptId(), CallEventType.LLM_USAGE,
+                "stage", s.state(),
+                "promptTokens", promptTokens,
+                "cachedTokens", cachedTokens,
+                "completionTokens", completionTokens,
+                "thinkingTokens", thinkingTokens,
+                "offsetMs", offsetMs(s.startedAt()));
+    }
+
+    private static String cut(String text) {
+        return text != null && text.length() > MAX_RESULT_CHARS ? text.substring(0, MAX_RESULT_CHARS) + "…" : text;
+    }
+
+    /** The first branch that holds, if it is the one that sent the call to {@code to}. */
+    private static StageBranch findMatchedBranch(List<StageBranch> branches, Map<String, Object> facts, String to) {
+        if (branches == null) {
+            return null;
+        }
+        for (StageBranch branch : branches) {
+            if (branch != null && branch.operator() != null && StageBranchEvaluator.findTarget(List.of(branch), facts::get) != null) {
+                return to != null && to.equals(branch.goTo()) ? branch : null;
+            }
+        }
+        return null;
+    }
+
+    private static String describe(StageBranch branch) {
+        BranchOperator operator = branch.operator() == null ? BranchOperator.ALWAYS : branch.operator();
+        return switch (operator) {
+            case ALWAYS -> "ALWAYS";
+            case EXISTS, MISSING -> branch.fact() + " " + operator.name();
+            default -> branch.fact() + " " + operator.name() + " " + branch.value();
+        };
+    }
+
+    private static Long offsetMs(Instant startedAt) {
+        return startedAt == null ? null : Duration.between(startedAt, Instant.now()).toMillis();
+    }
+
+    /** The arguments as the object the model sent, so the history shows fields; the text when it is not JSON. */
+    private Object parsed(String argumentsJson) {
+        if (argumentsJson == null || argumentsJson.isBlank()) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(argumentsJson, Object.class);
+        } catch (Exception e) {
+            return argumentsJson;
+        }
+    }
+}

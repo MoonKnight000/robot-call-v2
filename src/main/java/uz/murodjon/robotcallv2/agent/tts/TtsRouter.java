@@ -81,7 +81,8 @@ public class TtsRouter {
     public short[] synthesize(String text, String language, String voiceId, EffectiveVoiceSettings style,
                               List<PronunciationRule> rules) {
         Routed r = route(language, voiceId, style);
-        String speech = SpeechTextNormalizer.normalize(text, r.lang(), rules);
+        String normalized = SpeechTextNormalizer.normalize(text, r.lang(), rules);
+        String speech = r.provider().applyStressMarks(normalized);
         log.debug("TTS synth: lang={} voice={} -> provider={}", r.lang(), r.voiceName(), r.provider().name());
 
         short[] hit = cache.get(r.provider().name(), r.lang(), r.voiceName(), speech, r.style());
@@ -102,7 +103,8 @@ public class TtsRouter {
                 log.warn("TTS provider '{}' failed ({}), attempting fallback to '{}'",
                         r.provider().name(), e.getMessage(), fallback.name());
                 try {
-                    pcm = fallback.synthesize(speech, r.lang(), null, EffectiveVoiceSettings.NONE);
+                    pcm = fallback.synthesize(fallback.applyStressMarks(normalized), r.lang(), null,
+                            EffectiveVoiceSettings.NONE);
                     fellBack = true;
                     metrics.ttsFailover();
                 } catch (RuntimeException fallbackEx) {
@@ -147,7 +149,8 @@ public class TtsRouter {
                                     List<PronunciationRule> rules,
                                     PcmChunkListener onChunk) {
         Routed r = route(language, voiceId, style);
-        String speech = SpeechTextNormalizer.normalize(text, r.lang(), rules);
+        String normalized = SpeechTextNormalizer.normalize(text, r.lang(), rules);
+        String speech = r.provider().applyStressMarks(normalized);
         log.debug("TTS synth (streaming): lang={} voice={} -> provider={}", r.lang(), r.voiceName(), r.provider().name());
 
         short[] hit = cache.get(r.provider().name(), r.lang(), r.voiceName(), speech, r.style());
@@ -171,7 +174,8 @@ public class TtsRouter {
                 log.warn("TTS streaming provider '{}' failed ({}) after {} chunk(s), falling back to '{}' (batch)",
                         r.provider().name(), e.getMessage(), chunks.size(), fallback.name());
                 try {
-                    short[] fallbackPcm = fallback.synthesize(speech, r.lang(), null, EffectiveVoiceSettings.NONE);
+                    short[] fallbackPcm = fallback.synthesize(fallback.applyStressMarks(normalized), r.lang(), null,
+                            EffectiveVoiceSettings.NONE);
                     metrics.ttsFailover();
                     // Played whole even if part of the primary's already went out: a repeated
                     // opening is better than a sentence (an amount, a date) that never finishes.

@@ -189,6 +189,14 @@ final class StageEntry {
         };
     }
 
+    /** Whether the stage is a job the caller does not hear: a tool to call or values to read, no line of its own. */
+    static boolean isSilentJob(StageDef stage) {
+        return stage != null && switch (stage.type()) {
+            case FUNCTION, MCP, EXTRACT_VARIABLE -> true;
+            default -> false;
+        };
+    }
+
     /** How many turns the stage's job takes the model: do it, then move on — or only the first for a closing stage. */
     static int countModelSteps(StageDef stage) {
         return stage.type() == StageType.ENDING || stage.type() == StageType.CALL_TRANSFER ? 1 : 2;

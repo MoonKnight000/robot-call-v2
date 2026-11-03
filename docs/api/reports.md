@@ -900,6 +900,68 @@ tugamagan joriy holat hozirgi vaqtgacha hisoblanadi. `OFFLINE` vaqti qaytarilmay
 
 ---
 
+### `GET /api/reports/calls/{callId}/trace` — AI qo'ng'iroqning bloklar bo'yicha izi
+
+Huquq: **CALL_DEBUG_READ** (tizim rollaridan `SUPERVISOR`, `ADMIN`, `DEVELOPER` da bor). Alohida huquq,
+chunki funksiyalarga yuborilgan va qaytgan CRM ma'lumotlari shu yerda. Javob shakli `/events` bilan bir xil
+(`List<CallEvent>`, vaqt tartibida), faqat quyidagi besh tur — ular `/events` da **qaytmaydi**.
+Hodisalar **qo'ng'iroq paytida** yoziladi (jonli qo'ng'iroqda ham bor), AI agent qo'ng'iroqlarida
+(CASCADE ham, REALTIME ham); `call_attempt` ga bog'lanmagan sessiyalarda (studiyadagi LLM test) yozilmaydi.
+Matnlar transkript kabi PII'dan tozalanadi (agentning `redactPhoneNumbers` i ham amal qiladi).
+`offsetMs` — dialog boshlanganidan o'tgan ms, transkript qatorlarining `tsOffsetMs` i bilan bir shkala:
+transkript qatorini blokka shu bo'yicha joylash mumkin (blok — o'zining `STAGE_ENTERED` idan keyingisigacha).
+
+**Xato:** `404 CALL_NOT_FOUND` (qo'ng'iroq yo'q yoki boshqa kompaniyaniki), `403` — huquq yo'q.
+
+| `type` | Qachon | `payload` |
+|---|---|---|
+| `STAGE_ENTERED` | Qo'ng'iroq ssenariy blokiga kirdi (boshlang'ich blok ham) | `stage` (`StageDef.id`), `title`, `type` (`StageType`), `from` (oldingi blok; boshlanishda yo'q), `via`, `branch`, `facts`, `condition`, `offsetMs` |
+| `FACT_RECORDED` | Qo'ng'iroq qiymat yozdi (funksiya natijasi, javobdan ajratilgan maydon, `extractVariables`) | `key`, `value` (son / boolean / matn), `stage`, `offsetMs` |
+| `TOOL_CALLED` | Agent funksiya chaqirdi; `at` — javob qaytgan payt | Pastdagi jadval |
+| `TOOL_HTTP` | HTTP funksiya (kompaniya funksiyasi yoki integratsiya/CRM) so'rov yubordi va javob oldi; `at` — javob kelgan payt, shu funksiyaning `TOOL_CALLED` idan oldin | Pastdagi jadval |
+| `LLM_USAGE` | Bitta LLM so'rovi tugadi (CASCADE; REALTIME'da yo'q) | `stage`, `promptTokens` (kesh ichida), `cachedTokens`, `completionTokens` (thinking ichida), `thinkingTokens`, `offsetMs` |
+
+**`STAGE_ENTERED.via`** — blokka qanday kirildi (flow'dan o'qiladi):
+
+| `via` | Ma'nosi | Qo'shimcha maydon |
+|---|---|---|
+| `START` | Qo'ng'iroq shu blokdan boshlandi | — |
+| `BRANCH` | Oldingi blokning mantiqiy sharti (`branches`) shu blokka yubordi | `branch` — mos kelgan shart (`"leadId EXISTS"`, `"debtAmount GREATER 0"`, `"ALWAYS"`), `facts` — shartda solishtirilgan fakt va uning qiymati (`{"leadId": 512}`) |
+| `CONDITION` | Model o'tish shartli chiziq bo'yicha o'tkazdi | `condition` — chiziq sharti (`transitionConditions`) |
+| `GLOBAL` | Oldingi blokdan chiziq yo'q — global blokka o'tildi | `condition` — blokning `globalCondition` i |
+| `EDGE` | Shartsiz chiziq bo'yicha (model yoki flow o'zi o'tkazdi) | — |
+
+**`TOOL_CALLED` payload** — har bir funksiya chaqiruvi: kompaniya funksiyalari, integratsiya (CRM), MCP,
+ssenariy funksiyalari va tizim funksiyalari (`endCall`, `transferCall`, …). Model mavjud bo'lmagan
+funksiyani chaqirsa ham yoziladi (`success: false`).
+
+| Maydon | Nima |
+|---|---|
+| `toolName` | Funksiya nomi |
+| `stage` | Chaqirilgan paytdagi blok (`StageDef.id`) |
+| `arguments` | Model yuborgan argumentlar — JSON obyekt; JSON bo'lmasa — matn. Argumentsiz chaqiruvda bo'lmaydi |
+| `result` | Modelga qaytgan javob (matn, ko'pincha JSON), 4000 belgidan keyin `…` bilan kesiladi. Funksiya exception bilan yiqilsa bo'lmaydi |
+| `success` | `false` — javob `ERROR:` bilan boshlandi yoki funksiya yiqildi |
+| `durationMs` | Funksiya qancha ishladi |
+| `offsetMs` | Dialog boshidan o'tgan ms |
+
+**`TOOL_HTTP` payload** — simda ketgan so'rov. Bitta funksiya chaqiruvining so'rovlari — o'sha funksiyaning
+(`toolName`) oldingi `TOOL_CALLED` idan keyingi va keyingisigacha bo'lgan `TOOL_HTTP` lar. Fonda ishlaydigan
+funksiya (`waitForResult: false`) so'rovi `TOOL_CALLED` dan keyin keladi.
+
+| Maydon | Nima |
+|---|---|
+| `toolName` | Funksiya nomi |
+| `method`, `url` | So'rov; URL'dagi kompaniya secret'lari `***` bilan yashirilgan |
+| `headers` | Yuborilgan header **nomlari** (qiymatlari credential bo'lishi mumkin — yuborilmaydi) |
+| `requestBody` | Yuborilgan body (JSON bo'lsa obyekt, aks holda matn); secret'lar yashirilgan, PII tozalangan. GET/DELETE da yo'q |
+| `status` | HTTP status kodi; javob kelmasa (timeout, tarmoq) yo'q |
+| `responseBody` | Kelgan javob, 4000 belgidan keyin `…` |
+| `error` | Javob kelmadi — sababi (secret'lar yashirilgan) |
+| `durationMs` | So'rov qancha davom etdi (qayta urinishlar bilan) |
+
+---
+
 ### `GET /api/reports/calls/{callId}/events` — Qo'ng'iroq timeline'i
 
 Huquq: **CALL_READ**. `callId` — `call_attempt.id` (`CallRow.callId` bilan bir xil). Qo'ng'iroq

@@ -22,7 +22,11 @@ public interface AuthUseCase {
 
     LoginResponse resetPassword(ResetPasswordRequest request);
 
-    void logout();
+    /**
+     * Ends the session the presented refresh token belongs to — this device only; with no token (or one
+     * that is not the current user's live session), every session of the user.
+     */
+    void logout(RefreshTokenRequest request, String cookieRefreshToken);
 
     CurrentUserResponse findCurrentUser(long companyId);
 

@@ -120,6 +120,27 @@ class HttpToolExecutorBodyTest {
         assertThat(nothing.has("search")).isFalse();
     }
 
+    /** A task's assignee: the lead's manager, else the webhook's, else the AI employee. */
+    private static final Map<String, Object> ASSIGNEE_SCHEMA = Map.of(
+            "type", "object",
+            "properties", Map.of(
+                    "assignedById", Map.of("type", "integer", "x-source", "variable", "x-value", "crmResponsibleId",
+                            "x-fallback", List.of("responsibleId", "crm_ai_employee_id"))));
+
+    @Test
+    void aVariableFieldWithoutItsVariableTakesTheFirstFallbackThatHasAValue() throws Exception {
+        JsonNode manager = JSON.readTree(toolRequestTemplates.buildSchemaBody(ASSIGNEE_SCHEMA,
+                Map.of("crmResponsibleId", 41, "responsibleId", 42, "crm_ai_employee_id", 55), Map.of(), Map.of()));
+        JsonNode webhook = JSON.readTree(toolRequestTemplates.buildSchemaBody(ASSIGNEE_SCHEMA,
+                Map.of("responsibleId", 42, "crm_ai_employee_id", 55), Map.of(), Map.of()));
+        JsonNode aiEmployee = JSON.readTree(toolRequestTemplates.buildSchemaBody(ASSIGNEE_SCHEMA,
+                Map.of("crm_ai_employee_id", 55), Map.of(), Map.of()));
+
+        assertThat(manager.path("assignedById").asInt()).isEqualTo(41);
+        assertThat(webhook.path("assignedById").asInt()).isEqualTo(42);
+        assertThat(aiEmployee.path("assignedById").asInt()).isEqualTo(55);
+    }
+
     @Test
     void theFallbackIsNotShownToTheModel() {
         JsonNode schema = toolSchemas.schemaForModel(JSON.valueToTree(CONTRACT_SCHEMA));

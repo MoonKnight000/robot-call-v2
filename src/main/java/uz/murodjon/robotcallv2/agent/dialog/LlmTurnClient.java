@@ -69,6 +69,7 @@ class LlmTurnClient {
     private final DialogExecutors executors;
     private final LlmMetrics metrics;
     private final LlmTimeoutProperties llmTimeout;
+    private final CallTraceLog callTraceLog;
     private final DialogTuningProperties dialogTuning;
 
     private volatile ChatClient chatClient;
@@ -81,7 +82,8 @@ class LlmTurnClient {
                   DialogExecutors executors,
                   LlmMetrics metrics,
                   LlmTimeoutProperties llmTimeout,
-                  DialogTuningProperties dialogTuning) {
+                  DialogTuningProperties dialogTuning,
+                  CallTraceLog callTraceLog) {
         this.chatModelProvider = chatModelProvider;
         this.dialogProperties = dialogProperties;
         this.promptFactory = promptFactory;
@@ -90,6 +92,7 @@ class LlmTurnClient {
         this.executors = executors;
         this.metrics = metrics;
         this.llmTimeout = llmTimeout;
+        this.callTraceLog = callTraceLog;
         this.dialogTuning = dialogTuning;
     }
 
@@ -288,6 +291,10 @@ class LlmTurnClient {
     void publishUsage(DialogSession s, TokenUsage usage) {
         usage.publish(s, metrics);
         s.addTokens(usage.total());
+        if (usage.total() > 0) {
+            callTraceLog.recordLlmUsage(s, usage.promptTokens(), usage.cachedTokens(), usage.completionTokens(),
+                    usage.thinkingTokens());
+        }
     }
 
     /** The stable, per-call half of the prompt — built once and then reused verbatim. */
@@ -435,8 +442,11 @@ class LlmTurnClient {
         List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
         // Read before the tools run: a transitionTo among them resets the step.
         boolean stageActionTurn = s.stageActionStep() > 0;
-        // What the request carries, so a slow or uncached turn can be traced to its size.
-        log.info("[{}] llm request: system={} chars, messages={}, tools={} ({} chars)", s.channelId(),
+        // What the request carries, so a slow or uncached turn can be traced to its size —
+        // and to its model: a provider's prompt cache is per model, so a turn that switched
+        // (fast model, a stage's own model) starts cold whatever the prefix.
+        log.info("[{}] llm request: model={}, system={} chars, messages={}, tools={} ({} chars)", s.channelId(),
+                speculated != null ? "speculated" : turnTools.buildOptions(s, tools, model).getModel(),
                 system.length(), messages.size(), tools.size(), tools.stream()
                         .mapToInt(tool -> Objects.toString(tool.getToolDefinition().description(), "").length()
                                 + Objects.toString(tool.getToolDefinition().inputSchema(), "").length())
@@ -965,7 +975,7 @@ class LlmTurnClient {
             }
             if (phrase != null && !phrase.isBlank()) {
                 log.info("[{}] pre-tool speech before executing tool '{}': {}", s.channelId(), call.name(), phrase);
-                speech.speakChunk(s, phrase);
+                speech.speakWaitingLine(s, phrase);
                 break;
             }
         }

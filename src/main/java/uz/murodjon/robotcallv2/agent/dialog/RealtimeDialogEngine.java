@@ -126,6 +126,7 @@ public class RealtimeDialogEngine implements CallDialog {
     private final RealtimeTranscriptRecorder transcriptRecorder;
     private final AgentHandoffResolver agentHandoffResolver;
     private final AgentWebhookUseCase agentWebhookUseCase;
+    private final CallTraceLog callTraceLog;
     private final IntentDetector intentDetector;
     private final OperatorProperties operatorProperties;
 
@@ -149,7 +150,8 @@ public class RealtimeDialogEngine implements CallDialog {
                                 AgentHandoffResolver agentHandoffResolver,
                                 AgentWebhookUseCase agentWebhookUseCase,
                                 IntentDetector intentDetector,
-                                OperatorProperties operatorProperties) {
+                                OperatorProperties operatorProperties,
+                                CallTraceLog callTraceLog) {
         this.registry = registry;
         this.promptFactory = promptFactory;
         this.callAttemptUseCase = callAttemptUseCase;
@@ -170,6 +172,7 @@ public class RealtimeDialogEngine implements CallDialog {
         this.agentWebhookUseCase = agentWebhookUseCase;
         this.intentDetector = intentDetector;
         this.operatorProperties = operatorProperties;
+        this.callTraceLog = callTraceLog;
     }
 
     @Override
@@ -223,6 +226,10 @@ public class RealtimeDialogEngine implements CallDialog {
                 companyId, agent, scenario, context, endpoint, hangup, transfer);
         session.setWebhookEventPublisher((event, data) -> agentWebhookUseCase.executeEvent(
                 companyId, callAttemptId, channelId, agent, event, data));
+        session.setCallTraceLog(callTraceLog);
+        if (session.state() != null) {
+            callTraceLog.recordStageEntered(session, companyId, callAttemptId, session.startedAt(), null, session.state());
+        }
         session.setSttDriven(halfCascade);
         session.setDtmfSender(dtmf);
         session.setInbound(callAttemptId != 0 && callAttemptUseCase.findInboundRouteIdByAttemptId(callAttemptId) != null);

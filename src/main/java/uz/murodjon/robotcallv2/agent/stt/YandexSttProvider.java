@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Yandex SpeechKit speech-to-text over the <b>v3 streaming</b> gRPC API
@@ -92,6 +93,15 @@ public class YandexSttProvider implements SttProvider {
         return sttProperties.yandex().sampleRate();
     }
 
+    /**
+     * SpeechKit ends a streaming session at 5 minutes with {@code OUT_OF_RANGE: Exceeded
+     * maximum allowed stream duration}, and the limit cannot be raised (SpeechKit STT FAQ).
+     */
+    @Override
+    public int maxStreamSeconds() {
+        return 300;
+    }
+
     @Override
     public SttSession startStream(String languageCode, List<String> alternativeLanguages,
                                   TranscriptListener listener, boolean externalEndpointing) {
@@ -122,8 +132,10 @@ public class YandexSttProvider implements SttProvider {
         // Shared by the two halves of the stream: the response side learns the stream is
         // gone (onError/onCompleted), the request side is what has to stop writing to it.
         AtomicBoolean alive = new AtomicBoolean(true);
+        // When our last EOU went out (System.nanoTime), 0 when none is awaiting its final.
+        AtomicLong eouSentAt = new AtomicLong();
         StreamObserver<Stt.StreamingResponse> responseObserver =
-                new ResponseHandler(languageCode, listener, alive);
+                new ResponseHandler(languageCode, listener, alive, eouSentAt);
         // The async stub's request side is always flow-control aware; the interface it is
         // declared as just hides it. Held as the wider type so the session can ask whether
         // the transport will actually carry the next frame (SttSession#isReady).
@@ -137,7 +149,7 @@ public class YandexSttProvider implements SttProvider {
                 (alternativeLanguages == null || alternativeLanguages.isEmpty())
                         ? "" : " (+" + String.join(", ", alternativeLanguages) + ")",
                 externalEndpointing ? "external" : "speechkit");
-        return new YandexSttSession(requestObserver, alive);
+        return new YandexSttSession(requestObserver, alive, eouSentAt);
     }
 
     /**
@@ -281,11 +293,16 @@ public class YandexSttProvider implements SttProvider {
         private final String language;
         private final TranscriptListener listener;
         private final AtomicBoolean alive;
+        private final AtomicLong eouSentAt;
+        private volatile String lastFinalText;
+        private volatile long lastFinalAt;
 
-        private ResponseHandler(String language, TranscriptListener listener, AtomicBoolean alive) {
+        private ResponseHandler(String language, TranscriptListener listener, AtomicBoolean alive,
+                                AtomicLong eouSentAt) {
             this.language = language;
             this.listener = listener;
             this.alive = alive;
+            this.eouSentAt = eouSentAt;
         }
 
         @Override
@@ -293,12 +310,48 @@ public class YandexSttProvider implements SttProvider {
             if (response.hasPartial() && sttProperties.yandex().interimResults()) {
                 emit(response.getPartial(), false);
             } else if (response.hasFinal()) {
+                recordFinalLatency(response);
                 emit(response.getFinal(), true);
             } else if (response.hasFinalRefinement()) {
                 // Normalized rewrite (punctuation/numbers) of the final we already
                 // emitted — NOT a new utterance. Forwarding it too made every client
                 // turn reach the dialog twice and wrote duplicate transcript rows.
-                log.debug("Yandex STT final refinement ignored ({})", language);
+                // text-normalization and literature-text only ever show up here — the final
+                // is the raw text — so both are logged, with how late the refinement came:
+                // that delay is what reading it instead of the final would cost every turn.
+                Stt.AlternativeUpdate refined = response.getFinalRefinement().getNormalizedText();
+                log.debug("Yandex STT final refinement ignored ({}, +{} ms after final): final='{}' refined='{}'",
+                        language, TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - lastFinalAt), lastFinalText,
+                        refined.getAlternativesCount() > 0 ? refined.getAlternatives(0).getText() : "");
+            } else if (response.hasStatusCode()) {
+                logStatus(response.getStatusCode());
+            }
+        }
+
+        /**
+         * EOU-to-final delay: the recognizer's and the network's share of the turnaround.
+         * Only measured when we sent the EOU (external endpointing) — with SpeechKit's own
+         * detector there is no moment on this side to measure from.
+         */
+        private void recordFinalLatency(Stt.StreamingResponse response) {
+            long sentAt = eouSentAt.getAndSet(0);
+            if (sentAt == 0) {
+                return;
+            }
+            long latencyMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - sentAt);
+            metrics.sttFinalLatency("yandex", latencyMs);
+            Stt.AudioCursors cursors = response.getAudioCursors();
+            log.debug("Yandex STT final {} ms after EOU ({}): received={}ms final={}ms eou={}ms",
+                    latencyMs, language, cursors.getReceivedDataMs(), cursors.getFinalTimeMs(),
+                    cursors.getEouTimeMs());
+        }
+
+        private void logStatus(Stt.StatusCode status) {
+            if (status.getCodeType() == Stt.CodeType.WARNING) {
+                metrics.sttProviderWarning("yandex");
+                log.warn("Yandex STT warning ({}): {}", language, status.getMessage());
+            } else if (status.getCodeType() == Stt.CodeType.CLOSED) {
+                log.debug("Yandex STT session closed by server ({}): {}", language, status.getMessage());
             }
         }
 
@@ -308,6 +361,10 @@ public class YandexSttProvider implements SttProvider {
             }
             Stt.Alternative alt = update.getAlternatives(0);
             String text = alt.getText();
+            if (isFinal) {
+                lastFinalText = text;
+                lastFinalAt = System.nanoTime();
+            }
             if (text != null && !text.isBlank()) {
                 // Always 0 here — v3's stt.proto marks Alternative.confidence "Currently is
                 // not used". The logged "conf=0.0" therefore says nothing about how well the
@@ -338,11 +395,14 @@ public class YandexSttProvider implements SttProvider {
 
         private final ClientCallStreamObserver<Stt.StreamingRequest> requestObserver;
         private final AtomicBoolean alive;
+        private final AtomicLong eouSentAt;
         private boolean closed;
 
-        private YandexSttSession(ClientCallStreamObserver<Stt.StreamingRequest> requestObserver, AtomicBoolean alive) {
+        private YandexSttSession(ClientCallStreamObserver<Stt.StreamingRequest> requestObserver, AtomicBoolean alive,
+                                 AtomicLong eouSentAt) {
             this.requestObserver = requestObserver;
             this.alive = alive;
+            this.eouSentAt = eouSentAt;
         }
 
         /**
@@ -373,6 +433,7 @@ public class YandexSttProvider implements SttProvider {
             requestObserver.onNext(Stt.StreamingRequest.newBuilder()
                     .setEou(Stt.Eou.newBuilder())
                     .build());
+            eouSentAt.set(System.nanoTime());
         }
 
         @Override

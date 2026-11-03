@@ -41,7 +41,7 @@ Tizimda biznesning eng ko'p talab qilinadigan sohalari uchun 14 ta built-in stse
 10. **`callback-request`** — Operatorlar band bo'lganda kiruvchi mijozdan qulay qayta qo'ng'iroq vaqtini so'rab olish.
 11. **`debt-pre-due-reminder`** — To'lov sanasi yaqinlashgan mijozga xushmuomala eslatma (qarz haqida gapirmaydi).
 12. **`debt-promise-follow-up`** — Va'da qilingan sana o'tgach: to'lov bo'lganini aniqlash yoki yangi sana olish.
-13. **`lead-qualification-crm`** — Uysot'dagi yangi lidga: qanday xonadon va qaysi TJM'dan olmoqchiligini aniqlash (`flatType`, `residentialComplex`), CRM'dagi lidga izoh yozish va bosqichini o'zgartirish.
+13. **`lead-qualification-crm`** — Uysot'dagi yangi lidga to'liq sotuv qadami: ehtiyojni aniqlash (`flatType`, `residentialComplex`, `budget`), `searchFlats` natijasidan sotuvdagi xonadon va narxni aytish (`offeredFlat`), uchrashuv yoki menejer qo'ng'irog'ini kelishish (`nextStep`); so'ng lid (`leadId` fakti, bo'lmasa telefon bo'yicha topiladi, topilmasa yaratiladi) ga izoh, kelishilgan vaqtga menejer topshirig'i va voronka bosqichi.
 14. **`debt-collection-crm`** — Qarzni eslatish, kechikish sababini (`reasonCode`, `reasonDetail`) va aniq to'lov sanasini (`promisedDate`) olish, Uysot'dagi lidga o'sha sanaga topshiriq ochish.
 
 ---

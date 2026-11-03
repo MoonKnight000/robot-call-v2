@@ -50,6 +50,17 @@ public final class ToolValidator {
      * A {@value Tool#BODY_SOURCE_KEY} field is filled once per request, so it cannot sit
      * inside array items: the model fills every item, and the source would have nowhere to go.
      */
+    private static void checkFallback(Map<?, ?> schema, String path) {
+        Object fallback = schema.get(Tool.BODY_FALLBACK_KEY);
+        if (fallback != null) {
+            List<?> names = fallback instanceof List<?> list ? list : List.of(fallback);
+            if (names.isEmpty() || !names.stream().allMatch(name -> name instanceof String text
+                    && VARIABLE_NAME.matcher(text).matches())) {
+                throw new ValidationException(ErrorCode.TOOL_BODY_FALLBACK_INVALID, path);
+            }
+        }
+    }
+
     private static void checkBodyField(Map<?, ?> schema, String path, boolean insideArray) {
         Object source = schema.get(Tool.BODY_SOURCE_KEY);
         if (source != null) {
@@ -59,16 +70,15 @@ public final class ToolValidator {
             if (!BODY_SOURCES.contains(String.valueOf(source))) {
                 throw new ValidationException(ErrorCode.TOOL_BODY_SOURCE_INVALID, path, source);
             }
-            return;
-        }
-        Object fallback = schema.get(Tool.BODY_FALLBACK_KEY);
-        if (fallback != null) {
-            List<?> names = fallback instanceof List<?> list ? list : List.of(fallback);
-            if (names.isEmpty() || !names.stream().allMatch(name -> name instanceof String text
-                    && VARIABLE_NAME.matcher(text).matches())) {
+            // A variable field may name fallbacks too; a static or secret one has nothing to fall back from.
+            if ("variable".equals(source)) {
+                checkFallback(schema, path);
+            } else if (schema.get(Tool.BODY_FALLBACK_KEY) != null) {
                 throw new ValidationException(ErrorCode.TOOL_BODY_FALLBACK_INVALID, path);
             }
+            return;
         }
+        checkFallback(schema, path);
         Object format = schema.get(Tool.BODY_FORMAT_KEY);
         if (format != null && !Tool.FORMAT_EPOCH_SECONDS.equals(format)) {
             throw new ValidationException(ErrorCode.TOOL_BODY_FORMAT_INVALID, path, format);

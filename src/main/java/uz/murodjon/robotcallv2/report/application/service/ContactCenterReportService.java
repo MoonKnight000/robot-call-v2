@@ -75,10 +75,22 @@ public class ContactCenterReportService implements ContactCenterReportUseCase {
 
     @Override
     public List<CallEvent> findCallEvents(long companyId, long callId) {
+        return findEvents(companyId, callId, false);
+    }
+
+    @Override
+    public List<CallEvent> findCallTrace(long companyId, long callId) {
+        return findEvents(companyId, callId, true);
+    }
+
+    /** The timeline split in two: the trace carries CRM data and needs its own right. */
+    private List<CallEvent> findEvents(long companyId, long callId, boolean trace) {
         if (callReportRepository.findCall(companyId, callId) == null) {
             throw new NotFoundException(ErrorCode.CALL_NOT_FOUND, callId);
         }
-        return callEventUseCase.findByCallAttemptId(companyId, callId);
+        return callEventUseCase.findByCallAttemptId(companyId, callId).stream()
+                .filter(event -> event.type().isCallTrace() == trace)
+                .toList();
     }
 
     /** A bare date in the range is the company's day, not UTC's. */

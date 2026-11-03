@@ -372,7 +372,9 @@ public class TurnRunner {
                 }
                 speech.speakChunk(s, DialogLines.fallback(s));
             }
-            if (!s.isEnded() && !cutOff && haveText && Farewells.saidByAgent(reply)) {
+            // Not from inside a silent stage job: the flow still has its steps ahead and its own ENDING.
+            boolean inSilentJob = stageActionTurn && StageEntry.isSilentJob(SystemPromptFactory.stageOf(s.scenario(), s.state()));
+            if (!s.isEnded() && !cutOff && haveText && !inSilentJob && Farewells.saidByAgent(reply)) {
                 // The model wrote a goodbye and reached for some other tool to say it with.
                 // endCall is what sets the flag the hangup hangs off, so without this the
                 // farewell goes out into a line that stays open until the caller drops it —
@@ -399,7 +401,8 @@ public class TurnRunner {
             } else if (interrupted && !s.isEnded()) {
                 // Silenced, but nothing came back to show for it. Give the words a moment
                 // to arrive before deciding the interruption was real.
-                bargeInRecovery.scheduleResume(s, turn);
+                // Blank text: the held words are stitched in as the turn's input (advance).
+                bargeInRecovery.scheduleResume(s, turn, () -> advance(s, "", true));
             }
         }
     }

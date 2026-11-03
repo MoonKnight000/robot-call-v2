@@ -58,9 +58,12 @@ class BargeInRecovery {
     /**
      * Silenced, but nothing came back to show for it. Give the words a moment to arrive
      * before deciding the interruption was real — and resume the reply if it was not.
+     *
+     * @param answerHeldWords runs a fresh turn on the caller's held words; used when the
+     *                        barge-in left no reply to resume
      */
-    void scheduleResume(DialogSession s, int turn) {
-        scheduleFalseInterruptionCheck(s, turn, () -> resumeInterruptedReply(s, turn));
+    void scheduleResume(DialogSession s, int turn, Runnable answerHeldWords) {
+        scheduleFalseInterruptionCheck(s, turn, () -> resumeInterruptedReply(s, turn, answerHeldWords));
     }
 
     /**
@@ -118,15 +121,29 @@ class BargeInRecovery {
      * the noise was not an answer, and starting over ("uzr, takrorlang") makes the caller
      * repeat something they never said. It is also what the mature voice stacks default
      * to. Only the unspoken remainder is played — the caller already heard the rest.
+     *
+     * <p>A barge-in that landed before the model had written anything speakable (its turn
+     * was only a tool call, say) leaves nothing to resume, while the caller's words are
+     * still held unanswered. Left there, the bot said nothing until the caller spoke
+     * again — 16 s on a recorded call — so the held words get a turn of their own.
      */
-    private void resumeInterruptedReply(DialogSession s, int turn) {
+    private void resumeInterruptedReply(DialogSession s, int turn, Runnable answerHeldWords) {
         if (!s.busy().compareAndSet(false, true)) {
             return; // a real turn claimed the call in the meantime; it will speak
         }
+        boolean answerHeld = false;
         try {
             MDC.put("channelId", s.channelId());
             String rest = s.takeUnspokenText();
-            if (rest == null || s.isEnded() || s.turnCount() != turn) {
+            if (s.isEnded() || s.turnCount() != turn) {
+                return;
+            }
+            if (rest == null || rest.isBlank()) {
+                answerHeld = s.hasUnansweredClientText();
+                if (answerHeld) {
+                    log.info("[{}] nothing to resume after the false barge-in — answering the held words",
+                            s.channelId());
+                }
                 return;
             }
             if (!speech.speakChunk(s, rest)) {
@@ -141,6 +158,10 @@ class BargeInRecovery {
         } finally {
             s.busy().set(false);
             MDC.remove("channelId");
+        }
+        if (answerHeld) {
+            // After busy is released: the new turn has to claim the call itself.
+            answerHeldWords.run();
         }
     }
 

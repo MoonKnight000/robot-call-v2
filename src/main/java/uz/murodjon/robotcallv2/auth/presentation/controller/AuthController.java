@@ -48,7 +48,9 @@ public interface AuthController {
             @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshTokenCookie);
 
     @PostMapping("/auth/logout")
-    ResponseEntity<ResponseData<Void>> logout();
+    ResponseEntity<ResponseData<Void>> logout(
+            @RequestBody(required = false) RefreshTokenRequest request,
+            @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshTokenCookie);
 
     @GetMapping("/auth/me")
     ResponseEntity<ResponseData<CurrentUserResponse>> me(@CurrentCompanyId long companyId);

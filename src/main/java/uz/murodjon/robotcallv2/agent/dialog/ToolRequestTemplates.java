@@ -259,7 +259,11 @@ final class ToolRequestTemplates {
         String key = configured != null && configured.isTextual() ? configured.asText() : name;
         return switch (schema.get(Tool.BODY_SOURCE_KEY).asText()) {
             case "static" -> configured;
-            case "variable" -> toJsonNode(callVariables == null ? null : callVariables.get(key));
+            case "variable" -> {
+                // The lead's own manager, else the AI employee: the first of the field's fallbacks that has a value.
+                JsonNode value = toJsonNode(callVariables == null ? null : callVariables.get(key));
+                yield isBlank(value) ? findFallback(schema, callVariables) : value;
+            }
             case "secret" -> secrets.containsKey(key) ? TextNode.valueOf(secrets.get(key)) : null;
             default -> null;
         };

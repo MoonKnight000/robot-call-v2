@@ -28,7 +28,7 @@ class SpeechOutputFinishTest {
     void setUp() {
         DialogPolicy dialogPolicy = new DialogPolicy(null, new DialogTuningProperties(0, 0, 0, 0, 0, 1, 0));
         // Only the closing path runs here: synthesis, metrics and executors are never reached.
-        speech = new SpeechOutput(null, null, null, null, null, null, dialogPolicy);
+        speech = new SpeechOutput(null, null, null, null, null, null, dialogPolicy, null);
         session = DialogSession.builder("chan-1", "uz-UZ")
                 .context(ScenarioFixtures.fullContext())
                 .scenario(ScenarioFixtures.debtCollection())

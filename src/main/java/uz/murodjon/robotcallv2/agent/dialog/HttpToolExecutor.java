@@ -33,6 +33,7 @@ import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -99,13 +100,15 @@ public class HttpToolExecutor {
     private final ToolResponseFormatter toolResponseFormatter;
     private final ToolConfirmation toolConfirmation;
     private final ClientMemoryUseCase clientMemoryUseCase;
+    private final CallTraceLog callTraceLog;
 
     public HttpToolExecutor(SecretUseCase secretUseCase, ToolExecutionUseCase toolExecutionUseCase,
                             ToolOAuthTokens oauthTokens, ToolSchemas toolSchemas,
                             ToolRequestTemplates toolRequestTemplates, ToolResponseFormatter toolResponseFormatter,
                             ToolConfirmation toolConfirmation, ClientMemoryUseCase clientMemoryUseCase,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper, CallTraceLog callTraceLog) {
         this.clientMemoryUseCase = clientMemoryUseCase;
+        this.callTraceLog = callTraceLog;
         this.objectMapper = objectMapper;
         this.canonicalWriter = objectMapper.writer().with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
         this.toolSchemas = toolSchemas;
@@ -250,6 +253,11 @@ public class HttpToolExecutor {
         Long callAttemptId = session == DRY_RUN ? null : callAttemptId(callVariables);
         String argsHash = ToolExecution.hashArguments(canonicalArgs);
         long started = System.nanoTime();
+        // What went over the wire, for the call's trace; filled in as the request is built.
+        String traceMethod = null;
+        String traceUrl = null;
+        String traceBody = null;
+        List<String> traceHeaders = new ArrayList<>();
 
         try {
             int timeoutSeconds = (tool.http().responseTimeoutSecs() != null && tool.http().responseTimeoutSecs() > 0)
@@ -268,6 +276,8 @@ public class HttpToolExecutor {
                 return toolResponseFormatter.formatBlocked(tool);
             }
             String method = (tool.http().method() != null ? tool.http().method().toUpperCase() : "POST");
+            traceMethod = method;
+            traceUrl = SecretPlaceholders.redact(resolvedUrl, secrets.values());
 
             PublicHttpRequest request = PublicHttpRequest.create(method, uri)
                     .setTimeout(Duration.ofSeconds(timeoutSeconds))
@@ -282,6 +292,7 @@ public class HttpToolExecutor {
                             && !(tool.http().auth() != null && AUTHORIZATION_HEADER.equalsIgnoreCase(header.key().trim()))) {
                         String headerValue = toolRequestTemplates.resolveTemplate(header.value(), callVariables, args, secrets);
                         request.addHeader(header.key().trim(), headerValue);
+                        traceHeaders.add(header.key().trim());
                         if ("content-type".equalsIgnoreCase(header.key().trim())) {
                             hasContentType = true;
                         }
@@ -294,6 +305,7 @@ public class HttpToolExecutor {
             if (tool.http().auth() != null && tool.companyId() != null) {
                 request.addHeader(AUTHORIZATION_HEADER,
                         "Bearer " + oauthTokens.findAccessToken(tool.companyId(), tool.http().auth(), secrets));
+                traceHeaders.add(AUTHORIZATION_HEADER);
             }
 
             // A retried POST must not become a second order: the key is the same on every
@@ -307,7 +319,9 @@ public class HttpToolExecutor {
                 if (!hasContentType) {
                     request.addHeader("Content-Type", "application/json");
                 }
-                request.setBody(toolRequestTemplates.buildBody(tool, callVariables, args, secrets));
+                String body = toolRequestTemplates.buildBody(tool, callVariables, args, secrets);
+                request.setBody(body);
+                traceBody = SecretPlaceholders.redact(body, secrets.values());
             }
 
             log.info("[{}] Executing HTTP tool '{}' {} {}", session.channelId(), tool.name(), method,
@@ -326,6 +340,8 @@ public class HttpToolExecutor {
             if (rawBody != null) {
                 rawBody.set(responseBody);
             }
+            traceExchange(tool, callVariables, callAttemptId, traceMethod, traceUrl, traceHeaders, traceBody,
+                    response.statusCode(), SecretPlaceholders.redact(responseBody, secrets.values()), null, started);
             if (tool.companyId() != null) {
                 toolExecutionUseCase.recordExecution(ToolExecution.answered(tool.companyId(), tool.id(), callAttemptId,
                         tool.name(), response.statusCode(), elapsedMs(started), argsHash,
@@ -352,6 +368,8 @@ public class HttpToolExecutor {
             String reason = SecretPlaceholders.redact(String.valueOf(e.getMessage()), secrets.values());
             log.error("[{}] Tool '{}' execution failed: {}", session.channelId(), tool.name(), reason);
             recordStatus(tool, session, false);
+            traceExchange(tool, callVariables, callAttemptId, traceMethod, traceUrl, traceHeaders, traceBody,
+                    null, null, reason, started);
             if (tool.companyId() != null) {
                 toolExecutionUseCase.recordExecution(ToolExecution.failed(tool.companyId(), tool.id(), callAttemptId,
                         tool.name(), elapsedMs(started), argsHash, reason));
@@ -476,6 +494,19 @@ public class HttpToolExecutor {
     }
 
     /** The call attempt a live call runs under ({@code TurnTools} puts it there); null when there is none. */
+    /** Onto the call's trace — only a real call's request; the panel's test run has no call attempt. */
+    private void traceExchange(Tool tool, Map<String, Object> callVariables, Long callAttemptId, String method,
+                               String url, List<String> headers, String requestBody, Integer status,
+                               String responseBody, String error, long started) {
+        Long companyId = tool.companyId() != null ? tool.companyId()
+                : callVariables.get("company_id") instanceof Number number ? number.longValue() : null;
+        if (callTraceLog == null || callAttemptId == null || companyId == null) {
+            return;
+        }
+        callTraceLog.recordHttpExchange(companyId, callAttemptId, tool.name(), method, url, headers, requestBody,
+                status, responseBody, error, elapsedMs(started));
+    }
+
     private static Long callAttemptId(Map<String, Object> callVariables) {
         Object id = callVariables == null ? null : callVariables.get("call_attempt_id");
         return id instanceof Number number && number.longValue() > 0 ? number.longValue() : null;

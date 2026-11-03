@@ -57,9 +57,10 @@ public class TurnTools {
     private final StageScriptRunner stageScriptRunner;
     private final ClientMemoryUseCase clientMemory;
     private final IntegrationHttpToolFactory integrationHttpToolFactory;
+    private final CallTraceLog callTraceLog;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null, null, null, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -71,7 +72,8 @@ public class TurnTools {
             CatalogSearchUseCase catalogSearch,
             StageScriptRunner stageScriptRunner,
             ClientMemoryUseCase clientMemory,
-            IntegrationHttpToolFactory integrationHttpToolFactory
+            IntegrationHttpToolFactory integrationHttpToolFactory,
+            CallTraceLog callTraceLog
     ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
@@ -81,6 +83,7 @@ public class TurnTools {
         this.stageScriptRunner = stageScriptRunner;
         this.clientMemory = clientMemory;
         this.integrationHttpToolFactory = integrationHttpToolFactory;
+        this.callTraceLog = callTraceLog;
     }
 
     /**
@@ -186,7 +189,14 @@ public class TurnTools {
         // a lookup the caller may need at any stage, and it changes nothing.
         mcp.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
         catalog.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
-        integration.forEach(callback -> allowed.add(callback.getToolDefinition().name()));
+        // A CRM tool the flow never mentions is available everywhere, like MCP. One the flow places in
+        // stages of its own belongs to those stages: offered everywhere, the model ran the whole CRM
+        // round (lookups, task) from the first question stage and never walked the flow.
+        Set<String> placed = findToolsPlacedByFlow(s.scenario());
+        integration.stream()
+                .map(callback -> callback.getToolDefinition().name())
+                .filter(name -> !placed.contains(name))
+                .forEach(allowed::add);
         return callbacks.stream()
                 .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
                 .toList();
@@ -248,6 +258,23 @@ public class TurnTools {
         return cached;
     }
 
+    /** Every tool a stage of the flow names, as its job or in its allowedTools. */
+    private static Set<String> findToolsPlacedByFlow(ScenarioDefinition def) {
+        Set<String> names = new HashSet<>();
+        if (def == null || def.stages() == null) {
+            return names;
+        }
+        for (StageDef stage : def.stages()) {
+            if (stage.action() != null && stage.action().toolName() != null) {
+                names.add(stage.action().toolName());
+            }
+            if (stage.allowedTools() != null) {
+                names.addAll(stage.allowedTools());
+            }
+        }
+        return names;
+    }
+
     private static Set<String> declaredToolNames(ScenarioDefinition def) {
         if (def.tools() == null) {
             return Set.of();
@@ -285,6 +312,11 @@ public class TurnTools {
         }
         if (stage != null && stage.type() == StageType.EXTRACT_VARIABLE) {
             allowed.add(StageEntry.EXTRACT_TOOL_NAME);
+        }
+        if (StageEntry.isSilentJob(stage)) {
+            // The job leads on by the flow's own ways, to its ENDING at the end; an endCall from inside
+            // it closed a call on its goodbye with the note, the task and the stage still ahead.
+            allowed.remove("endCall");
         }
         if (perStage == null) {
             if (s.scenario().tools() != null) {
@@ -490,11 +522,15 @@ public class TurnTools {
                 // name, or is reaching for an outcome that is not on the table yet.
                 log.warn("[{}] model called unavailable tool {} in {}",
                         s.channelId(), call.name(), s.state());
-                results.add("ERROR: " + call.name() + " is not available in the current stage");
+                String refused = "ERROR: " + call.name() + " is not available in the current stage";
+                logCall(s, call, refused, 0);
+                results.add(refused);
                 continue;
             }
+            long started = System.nanoTime();
             try {
                 String result = callback.call(call.arguments());
+                logCall(s, call, result, System.nanoTime() - started);
                 if (!result.startsWith("ERROR:")) {
                     s.publishWebhookEvent(AgentWebhookEvent.TOOL_EXECUTED, Map.of("toolName", call.name()));
                 }
@@ -504,9 +540,17 @@ public class TurnTools {
                 }
             } catch (Exception e) {
                 log.warn("[{}] tool {} failed: {}", s.channelId(), call.name(), e.getMessage());
+                logCall(s, call, null, System.nanoTime() - started);
                 results.add("ERROR: " + call.name() + " failed");
             }
         }
         return results.isEmpty() ? null : String.join(" ", results);
+    }
+
+    private void logCall(DialogSession s, AssistantMessage.ToolCall call, String result, long elapsedNanos) {
+        if (callTraceLog != null) {
+            callTraceLog.recordToolCall(s.companyId(), s.callAttemptId(), s.agent(), s.startedAt(), s.state(),
+                    call.name(), call.arguments(), result, elapsedNanos / 1_000_000);
+        }
     }
 }

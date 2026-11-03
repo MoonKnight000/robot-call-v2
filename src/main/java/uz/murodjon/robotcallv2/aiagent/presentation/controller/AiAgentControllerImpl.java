@@ -172,6 +172,11 @@ public class AiAgentControllerImpl implements AiAgentController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<AiAgentRow>> convert(long companyId, long id, ConvertAiAgentRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentUseCase.convertAgent(companyId, id, request.target())));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<AgentScenarioDto>> getScenario(long companyId, long id) {
         return ResponseEntity.ok(ResponseData.ok(aiAgentSettingsUseCase.findScenario(companyId, id)));
     }

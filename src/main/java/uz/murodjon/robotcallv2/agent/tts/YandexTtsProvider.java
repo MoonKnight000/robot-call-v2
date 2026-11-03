@@ -122,6 +122,15 @@ public class YandexTtsProvider implements TtsProvider {
                 && !voiceFor(language).isBlank();
     }
 
+    /**
+     * Kept: "+" before a vowel is SpeechKit's TTS markup for stress. Documented for Russian;
+     * the Uzbek voices are not documented either way, so check them by ear.
+     */
+    @Override
+    public String applyStressMarks(String text) {
+        return text;
+    }
+
     @Override
     public short[] synthesize(String text, String language, String voice) {
         return synthesize(text, language, voice, EffectiveVoiceSettings.NONE);

@@ -17,6 +17,14 @@ public interface TtsProvider extends NamedProvider {
     boolean supports(String language);
 
     /**
+     * {@code text} as this provider should receive it with respect to stress marks
+     * ({@link StressMarks}). The default removes them; a provider that reads them keeps them.
+     */
+    default String applyStressMarks(String text) {
+        return StressMarks.strip(text);
+    }
+
+    /**
      * Synthesize {@code text} into telephone-grade audio with the provider's
      * configured voice for {@code language}.
      *

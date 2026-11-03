@@ -63,6 +63,7 @@ class RealtimeToolRunner {
     private final ToolUseCase toolUseCase;
     private final HttpToolExecutor httpToolExecutor;
     private final McpToolCallbackFactory mcpToolCallbackFactory;
+    private final CallTraceLog callTraceLog;
 
     /**
      * Tool bodies hit the database and the CRM, and they arrive on the engine's network
@@ -75,7 +76,8 @@ class RealtimeToolRunner {
                        RealtimeProperties realtimeProperties, RealtimeMetrics metrics,
                        StageScriptRunner stageScriptRunner, ClientMemoryUseCase clientMemory,
                        IntegrationHttpToolFactory integrationHttpToolFactory, ToolUseCase toolUseCase,
-                       HttpToolExecutor httpToolExecutor, McpToolCallbackFactory mcpToolCallbackFactory) {
+                       HttpToolExecutor httpToolExecutor, McpToolCallbackFactory mcpToolCallbackFactory,
+                       CallTraceLog callTraceLog) {
         this.knowledgeRetrieval = knowledgeRetrieval;
         this.catalogSearch = catalogSearch;
         this.realtimeProperties = realtimeProperties;
@@ -86,6 +88,7 @@ class RealtimeToolRunner {
         this.toolUseCase = toolUseCase;
         this.httpToolExecutor = httpToolExecutor;
         this.mcpToolCallbackFactory = mcpToolCallbackFactory;
+        this.callTraceLog = callTraceLog;
     }
 
     /**
@@ -348,6 +351,14 @@ class RealtimeToolRunner {
     }
 
     private String execute(RealtimeDialogSession s, String name, String argumentsJson) {
+        long started = System.nanoTime();
+        String result = runTool(s, name, argumentsJson);
+        callTraceLog.recordToolCall(s.companyId(), s.callAttemptId(), s.agent(), s.startedAt(), s.state(),
+                name, argumentsJson, result, (System.nanoTime() - started) / 1_000_000);
+        return result;
+    }
+
+    private String runTool(RealtimeDialogSession s, String name, String argumentsJson) {
         try {
             ToolCallback callback = s.tools().stream()
                     .filter(t -> t.getToolDefinition().name().equals(name))

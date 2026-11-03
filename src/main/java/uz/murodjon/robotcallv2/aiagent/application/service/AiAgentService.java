@@ -11,7 +11,9 @@ import uz.murodjon.robotcallv2.aiagent.application.dto.AgentVoiceDto;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AiAgentRow;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentClearableField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentConversion;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.LlmFallbackMode;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateAiAgentRequest;
 import uz.murodjon.robotcallv2.aiagent.application.dto.CreateSinglePromptAgentRequest;
@@ -28,6 +30,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.*;
 import uz.murodjon.robotcallv2.aiagent.domain.event.AiAgentClonedEvent;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AgentRolloutRouter;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentSnapshot;
+import uz.murodjon.robotcallv2.aiagent.domain.service.FlowPromptWriter;
 import uz.murodjon.robotcallv2.aiagent.domain.service.AiAgentTemplates;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.company.domain.service.CompanyValidator;
@@ -524,6 +527,37 @@ public class AiAgentService implements AiAgentUseCase {
         // the source agent and are re-uploaded, not cloned.
         eventPublisher.publishEvent(new AiAgentClonedEvent(companyId, id, copyId));
         auditUseCase.record(companyId, "AI_AGENT_CLONE", "ai_agent", String.valueOf(copyId), "from " + id);
+        return findAgentRow(companyId, copyId);
+    }
+
+    @Override
+    @Transactional
+    public AiAgentRow convertAgent(long companyId, long id, AiAgentConversion target) {
+        AiAgent source = requireAgent(companyId, id);
+        AiAgent copy = switch (target) {
+            case SINGLE_PROMPT -> {
+                AiAgentScript script = source.script();
+                if (script.scenarioId() == null && script.definition() == null) {
+                    throw new ConflictException(ErrorCode.AI_AGENT_ALREADY_SINGLE_PROMPT, id);
+                }
+                String prompt = FlowPromptWriter.writePrompt(resolveScenario(companyId, source).definition(), script.systemPrompt());
+                yield source.asCopy(source.name() + " (bitta prompt)", Instant.now(), currentUser.id().orElse(null)).toBuilder()
+                        .mode(AiAgentMode.SINGLE_PROMPT)
+                        .script(new AiAgentScript(script.templateId(), null, ScenarioMode.PROMPT, null, script.firstMessage(), prompt))
+                        .build();
+            }
+            case CHAT -> {
+                if (source.channel() == AiAgentChannel.CHAT) {
+                    throw new ConflictException(ErrorCode.AI_AGENT_ALREADY_CHAT, id);
+                }
+                yield source.asCopy(source.name() + " (chat)", Instant.now(), currentUser.id().orElse(null))
+                        .withChannel(AiAgentChannel.CHAT);
+            }
+        };
+        long copyId = repository.create(drafts.validate(companyId, copy));
+        // Tool links are copied as on a clone.
+        eventPublisher.publishEvent(new AiAgentClonedEvent(companyId, id, copyId));
+        auditUseCase.record(companyId, "AI_AGENT_CONVERT", "ai_agent", String.valueOf(copyId), target + " from " + id);
         return findAgentRow(companyId, copyId);
     }
 

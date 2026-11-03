@@ -88,6 +88,7 @@ Tizimda AI Agentlar **QuickVoice** arxitekturasi asosida to'liq yangilandi. Endi
 | `GET` | `/api/ai-agents/{id}/estimate` | `AI_AGENT_READ` | Bir daqiqa suhbat narxi (so'm), kechikish va tokenlar — studiyaning yuqori qatori (§14.3) |
 | `POST` | `/api/ai-agents/{id}/test-chat` | `AI_AGENT_EDIT` yoki `AGENT_EVAL_RUN` | Studiyaning "LLM test"i: agent qoralamasi bilan matnli suhbatning bitta navbati (§14.4) |
 | `POST` | `/api/ai-agents/{id}/clone` | `AI_AGENT_EDIT` | Nusxa olish (sozlamalar + tool bog'lanishlari) |
+| `POST` | `/api/ai-agents/{id}/convert` | `AI_AGENT_EDIT` | Bitta prompt'li yoki chat agentga aylantirilgan nusxa (§14.5) |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/ai-agents/{id}/test-cases[/{caseId}]` | `AI_AGENT_READ`/`EDIT` | Eval test holatlari (§15) |
 | `POST` | `/api/ai-agents/{id}/evaluate` | `AI_AGENT_EDIT` | Evalni boshlash (§15) |
 | `GET` | `/api/ai-agents/{id}/eval-runs[/{runId}]` | `AI_AGENT_READ` | Eval yugurishlari va natijalari (§15) |
@@ -500,7 +501,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 >   ovozi o'z tempida gapiradi. Mijoz kayfiyatiga moslashuv (`emotionAdaptiveVoice`) shu tezlikdan
 >   hisoblanadi.
 > - `speakingWarmth` — agent gapining iliqlik darajasi (standart `BALANCED`). O'zbek Yandex ovozlarida
->   (`nigora`, `zarina`) hissiyot rejimlari yo'q, shuning uchun jonlilikni faqat **matn** beradi:
+>   (`nigora`, `zamira`) hissiyot rejimlari yo'q, shuning uchun jonlilikni faqat **matn** beradi:
 >   - `RESERVED` — bir so'zli munosabat ("Tushunarli"), hamdardlik ko'pi bilan ikki so'z. Eski uslub; qat'iy
 >     ohang kerak bo'lgan agent uchun.
 >   - `BALANCED` — mijoz aytgan narsaga bog'langan qisqa munosabat ("Ha, ish bo'lmasa qiyin"), jonli og'zaki
@@ -1239,10 +1240,22 @@ TTS modeli so'zlashayotganda qisqartmalar, xorijiy atamalar yoki sohaviy so'zlar
       "replacement": "xumo",
       "caseSensitive": false,
       "language": "uz"
+    },
+    {
+      "word": "Saroy",
+      "replacement": "Sar+oy",
+      "caseSensitive": false,
+      "language": "uz"
     }
   ]
 }
 ```
+
+**Urg'u (`+`):** `replacement` ichida urg'uli unli oldiga `+` qo'yiladi (`Sar+oy`, `з+амок`) — Yandex
+SpeechKit TTS markup'i. Faqat Yandex ovozlari uni o'qiydi; boshqa provayderlarga (ElevenLabs, Gemini,
+Aisha, …) matn `+` belgilarisiz yuboriladi. Raqamdan keyingi `+` (`+998`) va so'z boshlamaydigan `+`
+o'zgarmaydi. Yandex hujjatida urg'u faqat rus tili uchun yozilgan — o'zbek ovozlarida (`nigora`,
+`zamira`, `yulduz`) ta'sirini quloq bilan tekshiring.
 
 ---
 
@@ -1712,6 +1725,30 @@ model bo'sh javob qaytarsa — `502 CHAT_NO_REPLY`.
 Qoralamaning nusxasi: `"<nom> (nusxa)"`, e'lon qilinmagan, o'sha tool bog'lanishlari bilan.
 Bilim manbalari (knowledge sources) nusxalanmaydi — ular yangi agentga qayta yuklanadi.
 Javob — yangi agentning `AiAgentRow`i. Audit: `AI_AGENT_CLONE`.
+
+### 14.5. `POST /api/ai-agents/{id}/convert`
+
+Retell'ning "Convert to Single Prompt" / "Convert to Chat Agent" amallari. Asl agent **o'zgarmaydi** —
+clone kabi yangi qoralama yaratiladi (e'lon qilinmagan, o'sha tool bog'lanishlari bilan) va o'zgartiriladi.
+
+```json
+{ "target": "SINGLE_PROMPT" }
+```
+
+| `target` | Yangi agent |
+|---|---|
+| `SINGLE_PROMPT` | `"<nom> (bitta prompt)"`, `mode: SINGLE_PROMPT`, `script.mode: PROMPT`, `scenarioId` va `definition` yo'q. `script.systemPrompt` — flow'dan yozilgan bitta prompt: role prompt (bo'lmasa agentning o'z `systemPrompt`i), `callPurpose`, start bosqichidan boshlab har bir bosqich (nomi, yo'riqnomasi, statik gap, funksiyasi, qayerga va qachon o'tishi; mantiqiy shart shoxlari "Agar … → …" / "Aks holda → …"), global savollar va guardrail'lar. NOTE bloklar tashlanadi, subflow'lar ichiga yoyiladi. Ssenariyning o'z `tools`, `factSchema`, `outcomeSchema` lari ko'chmaydi — agent funksiyalari (`functions`) qoladi. |
+| `CHAT` | `"<nom> (chat)"`, `channel: CHAT`; qolgan hamma narsa — asl agentniki. |
+
+Javob — yangi agentning `AiAgentRow`i. Audit: `AI_AGENT_CONVERT`.
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 400 | `VALIDATION_FAILED` | `target` yo'q |
+| 400 | `AI_AGENT_SYSTEM_PROMPT_TOO_LONG` | Yozilgan prompt 12 000 belgidan uzun (flow juda katta) |
+| 404 | `AI_AGENT_NOT_FOUND` | Agent yo'q yoki boshqa kompaniyaniki |
+| 409 | `AI_AGENT_ALREADY_SINGLE_PROMPT` | `SINGLE_PROMPT`, lekin agentda flow (`scenarioId`/`definition`) yo'q |
+| 409 | `AI_AGENT_ALREADY_CHAT` | `CHAT`, lekin agent allaqachon `channel: CHAT` |
 
 ### Qoralamani sinash
 

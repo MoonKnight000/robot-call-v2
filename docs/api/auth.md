@@ -270,15 +270,22 @@ daqiqasiga 30 tadan ortiq refresh — `429 RATE_LIMITED`.
 
 ## `POST /api/auth/logout` — chiqish
 
-Rol: istalgan (kirgan bo'lsa yetarli). So'rov qaysi qurilmani chaqirayotganini
-aytmaydi, shuning uchun joriy foydalanuvchining **barcha** qurilmalaridagi
-sessiyalarini serverda bekor qiladi (`200`) — bitta qurilmani saqlab
-qolib boshqasini chiqarish kerak bo'lsa, o'sha maqsad uchun
-[`DELETE /api/profile/sessions/{id}`](profile.md#delete-apiprofilesessionsid--sessiyani-tugatish)
-ishlatiladi. Shu bilan birga foydalanuvchining shu paytgacha berilgan **barcha
-`accessToken`lari ham** bekor qilinadi (Redis'dagi "shu vaqtdan oldin berilgan
-tokenlar yaroqsiz" belgisi) — keyingi so'rov `401` oladi; klient tokenni o'zi
-ham tashlab yuboradi (localStorage/memory). Javob `refresh_token` cookie'sini ham o'chiradi
+Rol: istalgan (kirgan bo'lsa yetarli).
+
+**Body** (ixtiyoriy): `{ "refreshToken": "..." }` — yoki `refresh_token` cookie.
+
+- Refresh token berilsa va u joriy foydalanuvchining faol sessiyasi bo'lsa — **faqat shu sessiya
+  (shu qurilma / brauzer)** serverda bekor qilinadi. Boshqa tab, brauzer va qurilmalardagi sessiyalar
+  ishlashda davom etadi (avval bitta chiqish hammasini o'chirardi va boshqa joylarda keyingi
+  yangilash `403 REFRESH_TOKEN_INVALID` olardi). Shu qurilmaning `accessToken` i muddati tugaguncha
+  (≤ 60 daqiqa) serverda yaroqli qoladi — klient uni o'zi tashlab yuboradi.
+- Token berilmasa (yoki u joriy foydalanuvchining faol sessiyasi bo'lmasa) — avvalgidek **barcha**
+  qurilmalardagi sessiyalar va shu paytgacha berilgan barcha `accessToken`lar bekor qilinadi
+  (Redis'dagi "shu vaqtdan oldin berilgan tokenlar yaroqsiz" belgisi) — keyingi so'rov `401` oladi.
+  Bitta boshqa qurilmani chiqarish uchun —
+  [`DELETE /api/profile/sessions/{id}`](profile.md#delete-apiprofilesessionsid--sessiyani-tugatish).
+
+Javob `200`, `data: null`; `refresh_token` cookie'si o'chiriladi
 (`Set-Cookie: refresh_token=; Path=/api/auth; Max-Age=0; ...`).
 
 ---

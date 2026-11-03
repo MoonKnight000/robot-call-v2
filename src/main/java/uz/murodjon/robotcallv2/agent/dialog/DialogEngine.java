@@ -69,6 +69,7 @@ public class DialogEngine implements CallDialog {
     private final OwnLlmChatModels ownLlmChatModels;
     private final AgentHandoffResolver agentHandoffResolver;
     private final AgentWebhookUseCase agentWebhookUseCase;
+    private final CallTraceLog callTraceLog;
     private final OperatorProperties operatorProperties;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
@@ -95,7 +96,8 @@ public class DialogEngine implements CallDialog {
                         OwnLlmChatModels ownLlmChatModels,
                         AgentHandoffResolver agentHandoffResolver,
                         AgentWebhookUseCase agentWebhookUseCase,
-                        OperatorProperties operatorProperties) {
+                        OperatorProperties operatorProperties,
+                        CallTraceLog callTraceLog) {
         this.dialogProperties = dialogProperties;
         this.callAttemptUseCase = callAttemptUseCase;
         this.callTranscriptUseCase = callTranscriptUseCase;
@@ -119,6 +121,7 @@ public class DialogEngine implements CallDialog {
         this.agentHandoffResolver = agentHandoffResolver;
         this.agentWebhookUseCase = agentWebhookUseCase;
         this.operatorProperties = operatorProperties;
+        this.callTraceLog = callTraceLog;
     }
 
     @Override
@@ -243,6 +246,10 @@ public class DialogEngine implements CallDialog {
         if (!simulated) {
             session.setWebhookEventPublisher((event, data) -> agentWebhookUseCase.executeEvent(
                     companyId, callAttemptId, channelId, agent, event, data));
+            session.setCallTraceLog(callTraceLog);
+            if (session.state() != null) {
+                callTraceLog.recordStageEntered(session, companyId, callAttemptId, session.startedAt(), null, session.state());
+            }
         }
         if (simulated) {
             session.setMcpTools(List.of());
