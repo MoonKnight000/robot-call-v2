@@ -1,23 +1,17 @@
-# Asterisk, media and the outbound dialer. Nothing here is a Spring detail — every value
-# has a counterpart in asterisk/etc/asterisk/*.conf.
+# Asterisk, media and the outbound dialer. Every value has a counterpart in asterisk/etc/asterisk/*.conf.
 voice-agent:
   telephony:
-    # LiveKit engine (CompanyConfig.telephonyEngine = LIVEKIT) — LiveKitProperties,
-    # docker-compose services livekit + livekit-sip, docs/LIVEKIT.md
+    # LiveKit engine (LiveKitProperties)
     livekit:
       enabled: ${LIVEKIT_ENABLED:false}
       host: ${LIVEKIT_HOST:http://localhost:7880}
       api-key: ${LIVEKIT_API_KEY:}
       api-secret: ${LIVEKIT_API_SECRET:}
-      # The platform company's LiveKit trunk (ST_...); other companies dial their own managed trunk.
       sip-trunk-id: ${LIVEKIT_SIP_TRUNK_ID:}
-      # The LiveKit address a browser connects to (wss://...), for operators taking a transferred call.
       public-url: ${LIVEKIT_PUBLIC_URL:}
-      # The Go media bridge (livekit-bridge/): joins each room and streams it to our RTP port.
       bridge-url: ${LIVEKIT_BRIDGE_URL:http://localhost:8090}
-      # How long an outbound call rings before it is given up as NO_ANSWER.
       answer-timeout-sec: ${LIVEKIT_ANSWER_TIMEOUT_SEC:30}
-  # ARI (call control) — AsteriskProperties. Credentials must match ari.conf [robot_call].
+  # ARI call control (AsteriskProperties)
   asterisk:
     enabled: ${ASTERISK_ENABLED:true}
     ari-url: ${ARI_URL:http://localhost:8088/}
@@ -27,41 +21,35 @@ voice-agent:
     trunk-endpoint: ${TRUNK_ENDPOINT:trunk-endpoint}
     local-endpoint: ${LOCAL_ENDPOINT:softphone}
     local-number-pattern: ${LOCAL_NUMBER_PATTERN:\d\d\d\d?}
-    # Read AsteriskProperties#callerId before filling this in.
     caller-id: ${CALLER_ID:}
     answer-timeout-sec: 30
-    # adaptive | fixed | blank (off) — AsteriskProperties#jitterBuffer
     jitter-buffer: ${ASTERISK_JITTER_BUFFER:}
-    # Blank on the operator cell (or a single cell); elsewhere the PJSIP endpoint to the
-    # operators' Asterisk, e.g. operator-cell — AsteriskProperties#operatorTrunk, asterisk/etc/asterisk/pjsip_cells.conf.example
     operator-trunk: ${ASTERISK_OPERATOR_TRUNK:}
 
-    # Browser test calls (POST /api/calls/web-test) — WebTestProperties, docs/api/calls.md
+    # Browser test calls (WebTestProperties)
     web-test:
       ws-url: ${WEB_TEST_WS_URL:ws://localhost:8088/ws}
       sip-user: ${WEB_TEST_SIP_USER:webtest}
-      # No default: the same value asterisk/render-auth.sh writes into pjsip_local_auth.conf.
       sip-password: ${WEB_TEST_SIP_PASSWORD:}
       dial-number: ${WEB_TEST_DIAL_NUMBER:700}
 
-    # Used for one thing only: reloading res_pjsip.so after a managed trunk changes.
-    # AmiProperties; needs manager.conf on the Asterisk side.
+    # Manager interface (AmiProperties)
     ami:
       enabled: ${AMI_ENABLED:false}
       host: ${AMI_HOST:localhost}
       port: ${AMI_PORT:5038}
       username: ${AMI_USER:uysot-ami}
       password: ${AMI_PASSWORD:CHANGE_ME_AMI_PASSWORD}
-      # How often TrunkRegistrationMonitor polls trunk registration over AMI.
+      # Poll interval of TrunkRegistrationMonitor (no Properties class)
       registration-check-seconds: ${AMI_REGISTRATION_CHECK_SECONDS:60}
 
-  # Generated PJSIP trunk config — PjsipConfigProperties, PjsipConfigWriter
+  # Generated PJSIP trunk config (PjsipConfigProperties)
   siptrunk:
     enabled: ${SIPTRUNK_CONFIG_ENABLED:false}
     config-dir: ${SIPTRUNK_CONFIG_DIR:}
     config-file-name: ${SIPTRUNK_CONFIG_FILE:pjsip_trunks.conf}
 
-  # The media leg — RtpProperties
+  # Media leg (RtpProperties)
   rtp:
     local-ip: ${RTP_LOCAL_IP:127.0.0.1}
     port-range-start: 20000
@@ -71,10 +59,9 @@ voice-agent:
     recording-mode: ${RTP_RECORDING_MODE:SPATIAL_STEREO}
     test-playback-file: ${RTP_TEST_PLAYBACK_FILE:}
     event-loop-threads: ${RTP_EVENT_LOOP_THREADS:0}
-    # Inbound packets one call may queue for its worker before new ones are dropped (40 s of 20 ms frames).
     receive-queue-capacity: ${RTP_RECEIVE_QUEUE_CAPACITY:2000}
 
-  # Scheduled outbound dialer (Stage 10) — DialerProperties, RetryProperties
+  # Outbound dialer (DialerProperties, RetryProperties)
   dialer:
     enabled: ${DIALER_ENABLED:true}
     tick-seconds: ${DIALER_TICK_SECONDS:5}
@@ -82,7 +69,6 @@ voice-agent:
     max-concurrent-calls: ${DIALER_MAX_CONCURRENT:2}
     max-concurrent-calls-per-company: ${DIALER_MAX_CONCURRENT_PER_COMPANY:2}
     reclaim-after-sec: ${DIALER_RECLAIM_AFTER_SEC:60}
-    # Calls per second per trunk, when the trunk sets no max_cps (Skyline: 2). 0 = no limit.
     default-trunk-cps: ${DIALER_DEFAULT_TRUNK_CPS:1}
     retry:
       no-answer-minutes: ${DIALER_RETRY_NO_ANSWER_MINUTES:180}
@@ -90,14 +76,11 @@ voice-agent:
       voicemail-minutes: ${DIALER_RETRY_VOICEMAIL_MINUTES:1200}
       respect-dial-window: ${DIALER_RETRY_RESPECT_WINDOW:true}
 
-  # Human-operator transfer (§11.6) — OperatorProperties
+  # Human-operator transfer (OperatorProperties)
   operator:
     enabled: ${OPERATOR_ENABLED:true}
     endpoint: ${OPERATOR_ENDPOINT:Local/support@operators}
     answer-timeout-sec: ${OPERATOR_ANSWER_TIMEOUT:30}
-    # The operators' generated PJSIP endpoints, next to pjsip_trunks.conf (voice-agent.siptrunk.config-dir)
     sip-config-file-name: ${OPERATOR_SIP_CONFIG_FILE:pjsip_operators.conf}
-    # Transfer without a queue: the operator presses 1 after the briefing before the caller is
-    # connected. Off by default — a softphone operator expects the call on answer.
     require-acceptance: ${OPERATOR_REQUIRE_ACCEPTANCE:false}
     accept-timeout-sec: ${OPERATOR_ACCEPT_TIMEOUT:10}

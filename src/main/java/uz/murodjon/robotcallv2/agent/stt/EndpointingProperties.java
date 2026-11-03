@@ -29,7 +29,11 @@ package uz.murodjon.robotcallv2.agent.stt;
  * @param shortUtteranceMs speech up to this long counts as a short answer. Above it the
  *                         caller is saying something, and the conservative wait applies
  * @param shortSilenceMs   silence that ends a short answer. This is the whole saving:
- *                         it replaces the post-roll, not adds to it
+ *                         it replaces the post-roll, not adds to it. Every short answer the turn
+ *                         dataset caught closing at 500 ms was a real end (8 of 8), and this
+ *                         wait is paid on the most common turn there is. Go back to 700 if
+ *                         stitched turns ({@code voice.dialog.turn.stitched}) climb on short
+ *                         answers
  * @param maxUtteranceMs   safety net. With an external classifier nothing but us ever
  *                         ends an utterance, so a VAD that fails mid-call (or a line
  *                         with constant noise) would otherwise leave the recognizer

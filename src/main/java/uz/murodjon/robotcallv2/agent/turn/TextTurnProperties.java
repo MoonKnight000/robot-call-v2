@@ -19,7 +19,10 @@ import java.util.List;
  * {@link #languages()} defaults to ru-RU: add uz-UZ only once a replay run over real
  * recordings ({@code TurnReplayTool}) says the verdicts hold.
  *
- * @param enabled        master switch. Off, or with either file missing, nothing is loaded
+ * @param enabled        master switch. Off by default: the ~310 MB model is loaded at startup but
+ *                       only ever serves ru-RU calls, so enable it ({@code TEXT_TURN_DETECTOR=true})
+ *                       only on deployments that take Russian calls. Off, or with either file
+ *                       missing, nothing is loaded
  * @param modelPath      path to the ONNX graph ({@code model_quant.onnx})
  * @param tokenizerPath  path to the model's {@code tokenizer.json}
  * @param languages      BCP-47 languages the model is trusted for; any other call keeps its timer

@@ -6,8 +6,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * The default operator yardstick of the ROI report ({@code voice-agent.report.roi.*});
  * a request may name its own hourly cost.
  *
- * @param operatorHourlyCostUzs     an operator's hour, salary and taxes included
- * @param operatorSecondsPerAttempt what each call costs an operator besides the talking
+ * @param operatorHourlyCostUzs     an operator's hour, salary and taxes included; the default
+ *                                  is ~5.3 mln so'm a month gross with social tax, over 176 hours
+ * @param operatorSecondsPerAttempt what each call costs an operator besides the talking:
+ *                                  dialling, ringing and writing up the result, per call —
+ *                                  answered or not
  * @param operatorHoursPerMonth     one full-time operator's working hours in a month
  */
 @ConfigurationProperties(prefix = "voice-agent.report.roi")

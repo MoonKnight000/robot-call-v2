@@ -5,6 +5,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * The daily insight job (UNIVERSAL-OPERATOR-PLAN D.3). Bound from {@code voice-agent.insight.*}.
  *
+ * <p>{@code voice-agent.insight.cron} is read by the {@code @Scheduled} placeholder in
+ * {@code DailyInsightJob}, not bound here. It defaults to early morning (06:20), so the
+ * night's proposals are waiting rather than appearing during the day; for testing,
+ * {@code INSIGHT_CRON="0 * * * * *"} runs it every minute.
+ *
  * @param enabled     when false nothing is proposed. The job reads what the quality judge wrote,
  *                    so it is worth nothing on a deployment with the judge turned off
  * @param windowHours how far back one run looks; a day, overlapping the last run on purpose,

@@ -179,7 +179,8 @@ class SpeculationManager {
 
     private static final Set<String> COMPLETE_SHORT_UTTERANCES = Set.of(
             "ha", "yoq", "yo'q", "aha", "shunday", "mayli", "xop", "xo'p", "to'g'ri", "togri", "albatta",
-            "да", "нет", "ага", "так", "ясно", "ладно", "верно", "конечно"
+            "boldi", "bo'ldi", "yaxshi", "rost", "tushundim", "kelishdik", "eshitaman", "eshityapman", "kuting",
+            "да", "нет", "ага", "так", "ясно", "ладно", "верно", "конечно", "слушаю", "хорошо", "понял"
     );
 
     private static int wordCount(String text) {
@@ -319,7 +320,7 @@ class SpeculationManager {
             return;
         }
         guessed.append(chunk);
-        String sentence = SentenceSplitter.takeSentence(guessed);
+        String sentence = SentenceSplitter.takeSentence(guessed, true);
         if (sentence != null && warmed.compareAndSet(false, true)) {
             executors.submit(() -> speech.warmSentence(s, sentence));
         }

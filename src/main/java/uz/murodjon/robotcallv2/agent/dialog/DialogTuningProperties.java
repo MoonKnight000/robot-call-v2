@@ -18,7 +18,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                          for a provider shedding load to recover, short enough to stay
  *                          inside the silence the filler covers
  * @param maxStageAttempts  turns a scripted call may spend in one stage before it is taken
- *                          as a loop and handed to an operator
+ *                          as a loop and handed to an operator. Was 4, but a caller with two
+ *                          questions and an objection is not a loop, and 4 handed them over
  * @param playbackPollMs    how often a closing call checks whether its queued audio has
  *                          finished playing; 0 means 100
  * @param hangupTailMs      pause after the queue has drained and before the hangup (or

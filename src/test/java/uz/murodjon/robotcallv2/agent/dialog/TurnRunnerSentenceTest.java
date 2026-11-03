@@ -92,4 +92,23 @@ class TurnRunnerSentenceTest {
         assertThat(sentence).isEqualTo("Iltimos, uysot.uz saytiga kiring.");
         assertThat(pending.toString()).isEmpty();
     }
+
+    @Test
+    void splitsOpeningGreetingImmediatelyWhenOpeningIsTrue() {
+        StringBuilder pending = new StringBuilder("Assalomu alaykum! Sizga qanday yordam bera olaman?");
+        // "Assalomu alaykum!" is 17 characters (> OPENING_MIN_CHARS 14, < MIN_CHUNK_CHARS 20)
+        String first = SentenceSplitter.takeSentence(pending, true);
+
+        assertThat(first).isEqualTo("Assalomu alaykum!");
+        assertThat(pending.toString()).isEqualTo(" Sizga qanday yordam bera olaman?");
+    }
+
+    @Test
+    void splitsOnSemicolonWhenLengthSufficient() {
+        StringBuilder pending = new StringBuilder("Hujjatlar tayyorlandi; ularni qabul qilib oling.");
+        String sentence = SentenceSplitter.takeSentence(pending);
+
+        assertThat(sentence).isEqualTo("Hujjatlar tayyorlandi;");
+        assertThat(pending.toString()).isEqualTo(" ularni qabul qilib oling.");
+    }
 }

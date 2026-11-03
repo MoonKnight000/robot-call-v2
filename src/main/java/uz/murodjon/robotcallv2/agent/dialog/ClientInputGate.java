@@ -344,7 +344,7 @@ public class ClientInputGate {
      * the spot. Anything shorter waits for its final, where the model decides.
      */
     public void onInterim(DialogSession s, String text) {
-        if (s.isBargeInPending() && saidEnoughToInterrupt(s, text) && s.settleBargeIn()) {
+        if (s.isBargeInPending() && (saidEnoughToInterrupt(s, text) || Boolean.TRUE.equals(FloorRules.decide(text))) && s.settleBargeIn()) {
             confirmBargeIn(s, true);
         }
     }

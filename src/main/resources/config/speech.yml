@@ -1,33 +1,18 @@
-# ==============================================================================
-# Everything between the wire and the words: the realtime engines, recognition,
-# turn detection, synthesis, VAD/AMD.
-#
-# Every value below is documented on its properties class — RealtimeProperties,
-# SttProperties (+ VadGatingProperties, EndpointingProperties, the per-provider
-# records), SmartTurnProperties, TtsProperties, VadProperties, AmdProperties.
-# The measured reasoning behind the tuned numbers lives there too, not here.
-# ==============================================================================
+# Everything between the wire and the words: realtime engines, recognition, turn detection, synthesis, VAD/AMD.
 voice-agent:
-  # ffmpeg for POST /api/stt/preview — AudioTranscoder
+  # ffmpeg for the STT preview (AudioTranscoder)
   audio:
     ffmpeg-path: ${FFMPEG_PATH:ffmpeg}
 
-  # Speech-to-speech engines (PipelineMode.REALTIME): one vendor does recognition,
-  # reasoning and speech, replacing the stt/tts/dialog chain below rather than
-  # sitting beside it.
+  # Speech-to-speech engines (RealtimeProperties, GeminiLiveProperties)
   realtime:
     enabled: ${REALTIME_ENABLED:true}
     provider: ${REALTIME_PROVIDER:}
     facts-in-prompt: ${REALTIME_FACTS_IN_PROMPT:true}
     normalize-output-level: ${REALTIME_NORMALIZE_OUTPUT_LEVEL:true}
     echo-gate-ratio: ${REALTIME_ECHO_GATE_RATIO:0.25}
-    # Below this bot output level (RMS) the bot is not really talking, so nothing counts as echo.
     echo-min-bot-level: ${REALTIME_ECHO_MIN_BOT_LEVEL:300}
-    # A tool the engine called that has not answered in this long is reported to it as
-    # failed, so the caller hears an apology instead of open-ended silence.
     tool-timeout-seconds: ${REALTIME_TOOL_TIMEOUT_SECONDS:15}
-    # The caller's transcript lines come from voice-agent.stt, not the engine's own
-    # input transcription (which wrote Uzbek callers down in Russian or Turkish).
     transcript-stt: ${REALTIME_TRANSCRIPT_STT:true}
     gemini-live:
       api-key: ${GEMINI_API_KEY:}
@@ -38,14 +23,10 @@ voice-agent:
       start-of-speech-sensitivity: ${REALTIME_GEMINI_START_SENSITIVITY:LOW}
       end-of-speech-sensitivity: ${REALTIME_GEMINI_END_SENSITIVITY:}
       prefix-padding-ms: ${REALTIME_GEMINI_PREFIX_PADDING_MS:100}
-      # Recorded human collectors answer 150-350 ms after the caller stops; 800 sounded slow.
       silence-duration-ms: ${REALTIME_GEMINI_SILENCE_DURATION_MS:500}
       context-compression-trigger-tokens: ${REALTIME_GEMINI_CONTEXT_COMPRESSION_TOKENS:25600}
-      # Tone-aware replies and ignoring audio not meant for the bot — GeminiLiveProperties.
-      # Off until a call confirms the model accepts them: an unknown field fails the setup.
       affective-dialog: ${REALTIME_GEMINI_AFFECTIVE_DIALOG:false}
       proactive-audio: ${REALTIME_GEMINI_PROACTIVE_AUDIO:false}
-      # LOW, MEDIUM, or HIGH for models that require it (e.g. gemini-3.8-live-extended-thinking).
       thinking-level: ${REALTIME_GEMINI_THINKING_LEVEL:}
     open-ai:
       api-key: ${OPENAI_API_KEY:}
@@ -80,27 +61,18 @@ voice-agent:
       sample-rate: 16000
       connect-timeout-seconds: ${REALTIME_PIPECAT_CONNECT_TIMEOUT_SECONDS:15}
 
-  # Recognition. provider is the fallback; an agent may name its own sttProvider.
-  # vad-gating + endpointing move the end-of-utterance decision to this side, and are
-  # inert without a VAD model — see VadGatingProperties.
+  # Recognition (SttProperties, VadGatingProperties, EndpointingProperties)
   stt:
     enabled: ${STT_ENABLED:true}
     provider: ${STT_PROVIDER:yandex}
     default-language: ${STT_DEFAULT_LANGUAGE:uz-UZ}
     detect-languages: ${STT_DETECT_LANGUAGES:uz-UZ}
     response-timeout-ms: ${STT_RESPONSE_TIMEOUT_MS:30000}
-    # SttStreamProperties — former SttStreamBridge constants; these are the values they had.
+    # Stream bridge tuning (SttStreamProperties)
     stream:
       replay-buffer-samples: ${STT_REPLAY_BUFFER_SAMPLES:16000}
       promoted-final-ttl-ms: ${STT_PROMOTED_FINAL_TTL_MS:2500}
       failover-after-failures: ${STT_FAILOVER_AFTER_FAILURES:2}
-    # Model per provider for an agent's or stage's transcriptionMode (FAST / ACCURATE),
-    # keyed by provider name (yandex, deepgram, openai, gemini, aisha). An unmapped provider
-    # or mode keeps the agent's sttModel or the provider default. Empty: no verified
-    # fast/accurate model pairs yet. Example:
-    #   deepgram:
-    #     fast: nova-3
-    #     accurate: nova-3
     transcription-modes: {}
     vad-gating:
       enabled: ${STT_VAD_GATING:true}
@@ -110,11 +82,8 @@ voice-agent:
     endpointing:
       enabled: ${STT_ENDPOINTING:true}
       short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1500}
-      # 500: every short answer the turn dataset caught closing at 500 ms was a real end
-      # (8 of 8), and this wait is paid on the most common turn there is. Back to 700 if
-      # stitched turns (voice.dialog.turn.stitched) climb on short answers.
-      short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:500}
-      complete-silence-ms: ${STT_ENDPOINTING_COMPLETE_SILENCE_MS:1000}
+      short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:350}
+      complete-silence-ms: ${STT_ENDPOINTING_COMPLETE_SILENCE_MS:400}
       max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:25000}
       final-grace-ms: ${STT_ENDPOINTING_FINAL_GRACE_MS:250}
       dynamic:
@@ -125,7 +94,6 @@ voice-agent:
     gemini:
       api-key: ${GEMINI_API_KEY:}
       url: ${STT_GEMINI_URL:wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent}
-      # Must be a Live (bidiGenerateContent) model — GeminiSttProperties.
       model: ${STT_GEMINI_MODEL:gemini-3.5-transcribe-live}
       sample-rate: 16000
       connect-timeout-seconds: ${STT_GEMINI_CONNECT_TIMEOUT_SECONDS:10}
@@ -139,10 +107,8 @@ voice-agent:
       auto-detect-model: ${STT_YANDEX_AUTO_DETECT_MODEL:general}
       interim-results: ${STT_YANDEX_INTERIM:true}
       eou-sensitivity: ${STT_YANDEX_EOU_SENSITIVITY:DEFAULT}
-      # Not read while vad-gating + endpointing are on — YandexSttProperties.
       eou-max-pause-hint-ms: ${STT_YANDEX_EOU_MAX_PAUSE_MS:900}
       keep-alive-seconds: ${STT_YANDEX_KEEPALIVE_SECONDS:60}
-      # Digits for spoken numbers, and punctuation ("A?" vs "A") — YandexSttProperties.
       text-normalization: ${STT_YANDEX_TEXT_NORMALIZATION:true}
       literature-text: ${STT_YANDEX_LITERATURE_TEXT:true}
     aisha:
@@ -163,13 +129,11 @@ voice-agent:
       sample-rate: ${STT_OPENAI_SAMPLE_RATE:24000}
       connect-timeout-seconds: ${STT_OPENAI_TIMEOUT_SECONDS:10}
 
-  # Semantic end-of-turn (Smart Turn v3) — SmartTurnProperties.
-  # Off: no ONNX model, and the published model does not cover uz-UZ.
+  # Semantic end-of-turn, Smart Turn (SmartTurnProperties)
   turn:
     enabled: ${TURN_DETECTOR:true}
     model-path: ${TURN_MODEL_PATH:models/smart_turn_v3.onnx}
-    languages: ${TURN_LANGUAGES:ru-RU}
-    # Scored at each close and written to the turn dataset only — never moves the wait.
+    languages: ${TURN_LANGUAGES:ru-RU,uz-UZ}
     shadow-languages: ${TURN_SHADOW_LANGUAGES:uz-UZ}
     threshold: ${TURN_THRESHOLD:0.5}
     max-extend-ms: ${TURN_MAX_EXTEND_MS:500}
@@ -180,11 +144,7 @@ voice-agent:
     mels: ${TURN_MELS:80}
     frames: ${TURN_FRAMES:800}
 
-  # End of turn from the words (TextTurnProperties, NAMO Turn Detector v1 Multilingual).
-  # Used only where Smart Turn is not installed for the call. uz-UZ is not among the
-  # model's fine-tuned languages — add it to TEXT_TURN_LANGUAGES only after a replay run.
-  # Off by default: the ~310 MB model is loaded at startup but only ever serves ru-RU calls,
-  # so enable it (TEXT_TURN_DETECTOR=true) only on deployments that take Russian calls.
+  # Text-based end-of-turn (TextTurnProperties)
   text-turn:
     enabled: ${TEXT_TURN_DETECTOR:false}
     model-path: ${TEXT_TURN_MODEL_PATH:models/namo/model_quant.onnx}
@@ -195,22 +155,16 @@ voice-agent:
     early-wait-ms: ${TEXT_TURN_EARLY_WAIT_MS:0}
     early-threshold: ${TEXT_TURN_EARLY_THRESHOLD:0.9}
     max-tokens: ${TEXT_TURN_MAX_TOKENS:128}
-  # TurnDatasetProperties — labelled end-of-turn examples from live calls (VOICE-PIPELINE-PLAN
-  # Bosqich 1): the interim at each speech-gate close + whether the caller carried on.
-  # Needs vad-gating + dynamic endpointing (the reopen grace is the label). Writes redacted
-  # caller words to disk — switch on only while a dataset is being gathered.
+  # End-of-turn dataset collection (TurnDatasetProperties)
   turn-dataset:
     enabled: ${TURN_DATASET_ENABLED:true}
     directory: ${TURN_DATASET_DIR:data/turn-dataset}
-  # DenoiserProperties — neural noise suppression on the caller's leg (VOICE-PIPELINE-PLAN
-  # Bosqich 6). Replaces the broadband gate for agents with noise cancellation on. The model
-  # is downloaded, not committed (see docs/VOICE-PIPELINE-PLAN.md Bosqich 6).
+  # Neural noise suppression (DenoiserProperties)
   denoiser:
     enabled: ${DENOISER_ENABLED:true}
     model-path: ${DENOISER_MODEL_PATH:models/gtcrn_simple.onnx}
 
-  # Synthesis — TtsProperties. The selectable voice catalog is in the tts_voice table
-  # (§2.5); these are the deployment defaults behind it.
+  # Synthesis (TtsProperties)
   tts:
     enabled: ${TTS_ENABLED:true}
     provider: ${TTS_PROVIDER:yandex}
@@ -247,14 +201,12 @@ voice-agent:
       port: ${TTS_YANDEX_PORT:443}
       sample-rate: 8000
       keep-alive-seconds: ${TTS_YANDEX_KEEPALIVE_SECONDS:60}
-      # gRPC deadline on one synthesis — YandexTtsProperties#requestTimeoutMs. 0 = none.
       request-timeout-ms: ${TTS_YANDEX_TIMEOUT_MS:10000}
     aisha:
       api-key: ${TTS_AISHA_API_KEY:}
       url: ${TTS_AISHA_URL:wss://back.aisha.group/api/v1/tts/realtime}
       speaker: ${TTS_AISHA_SPEAKER:neutral}
       speakers: {}
-      # The realtime speaker_ids Aisha documents; any other mood is spoken as `speaker`.
       moods: [neutral, cheerful, happy, sad]
       request-timeout-ms: ${TTS_AISHA_TIMEOUT_MS:10000}
     cartesia:
@@ -285,8 +237,7 @@ voice-agent:
         ru-RU: ${TTS_ELEVENLABS_VOICE_RU:}
       connect-timeout-seconds: ${TTS_ELEVENLABS_TIMEOUT_SECONDS:10}
 
-  # Barge-in and answering-machine detection — VadProperties, AmdProperties.
-  # Without model-path there is no barge-in, no STT gating and no endpointing.
+  # Barge-in and answering-machine detection (VadProperties, AmdProperties)
   vad:
     enabled: ${VAD_ENABLED:true}
     model-path: ${VAD_MODEL_PATH:models/silero_vad.onnx}
@@ -296,11 +247,11 @@ voice-agent:
     listening-threshold: ${VAD_LISTENING_THRESHOLD:0.3}
     min-energy-rms: ${VAD_MIN_ENERGY_RMS:100.0}
     noise-floor-margin: ${VAD_NOISE_FLOOR_MARGIN:2.5}
-    min-speech-ms: ${VAD_MIN_SPEECH_MS:400}
+    min-speech-ms: ${VAD_MIN_SPEECH_MS:240}
     silence-reset-ms: ${VAD_SILENCE_RESET_MS:250}
     echo-gate-ratio: ${VAD_ECHO_GATE_RATIO:0.2}
     echo-min-bot-level: ${VAD_ECHO_MIN_BOT_LEVEL:300.0}
-    sustained-speech-ms: ${VAD_SUSTAINED_SPEECH_MS:800}
+    sustained-speech-ms: ${VAD_SUSTAINED_SPEECH_MS:500}
     amd:
       enabled: ${VAD_AMD_ENABLED:true}
       observe-ms: ${VAD_AMD_OBSERVE_MS:5000}

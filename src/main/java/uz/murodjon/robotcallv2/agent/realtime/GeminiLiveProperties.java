@@ -32,7 +32,8 @@ package uz.murodjon.robotcallv2.agent.realtime;
  * @param prefixPaddingMs how much speech the engine must hear before a start of speech
  *                 counts; 0 leaves the engine's default
  * @param silenceDurationMs how much silence ends the caller's turn; 0 leaves the engine's
- *                 default
+ *                 default. Recorded human collectors answer 150-350 ms after the caller
+ *                 stops; 800 sounded slow
  * @param contextCompressionTriggerTokens when the conversation's context reaches this many
  *                 tokens, the engine drops its oldest turns (sliding window) instead of
  *                 ending the session. A long call with many tool results otherwise runs

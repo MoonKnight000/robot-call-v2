@@ -628,8 +628,8 @@ class LlmTurnClient {
                 // that is what a false interruption resumes from.
                 continue;
             }
-            for (String sentence = SentenceSplitter.takeSentence(pending); sentence != null;
-                 sentence = SentenceSplitter.takeSentence(pending)) {
+            for (String sentence = SentenceSplitter.takeSentence(pending, sentences.isOpening()); sentence != null;
+                 sentence = SentenceSplitter.takeSentence(pending, sentences.isOpening())) {
                 sentences.add(sentence);
             }
         }
@@ -666,6 +666,10 @@ class LlmTurnClient {
 
         private SentenceQueue(DialogSession s) {
             this.s = s;
+        }
+
+        boolean isOpening() {
+            return opening;
         }
 
         void add(String sentence) {

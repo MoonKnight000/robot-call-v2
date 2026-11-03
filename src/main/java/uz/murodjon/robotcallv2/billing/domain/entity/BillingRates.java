@@ -21,7 +21,9 @@ package uz.murodjon.robotcallv2.billing.domain.entity;
  *                                priced on the minutes it ran. One number for recognition,
  *                                reasoning and speech together, because that is how the
  *                                vendor does the work — its audio tokens priced at the
- *                                text-LLM rate would bear no relation to what it costs
+ *                                text-LLM rate would bear no relation to what it costs.
+ *                                About 0.03 USD/min for Gemini Live at typical talk ratios;
+ *                                set it from the vendor's invoice, not from the default
  * @param telephonyPerMinuteUzs   what a connected minute costs, one number for every
  *                                trunk: a company's trunks are priced the same by its
  *                                provider, and nobody has asked for a per-trunk table

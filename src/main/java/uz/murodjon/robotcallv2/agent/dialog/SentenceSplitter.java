@@ -29,6 +29,8 @@ final class SentenceSplitter {
 
     /** Shortest clause that may be cut at a comma rather than waiting for its sentence end. */
     static final int LONG_CLAUSE_CHARS = 90;
+    static final int OPENING_MIN_CHARS = 14;
+    static final int OPENING_CLAUSE_CHARS = 50;
 
     private SentenceSplitter() {
     }
@@ -39,6 +41,12 @@ final class SentenceSplitter {
      * is not cut on its own but carried into the next one.
      */
     static String takeSentence(StringBuilder pending) {
+        return takeSentence(pending, false);
+    }
+
+    static String takeSentence(StringBuilder pending, boolean opening) {
+        int minChars = opening ? OPENING_MIN_CHARS : MIN_CHUNK_CHARS;
+        int longClauseChars = opening ? OPENING_CLAUSE_CHARS : LONG_CLAUSE_CHARS;
         for (int i = 0; i < pending.length(); i++) {
             char c = pending.charAt(i);
             // Ignore decimal/number formatting dots and commas: e.g. 1.500.000 or 1,500
@@ -46,7 +54,7 @@ final class SentenceSplitter {
                     && i + 1 < pending.length() && Character.isDigit(pending.charAt(i + 1))) {
                 continue;
             }
-            if (i + 1 < MIN_CHUNK_CHARS) {
+            if (i + 1 < minChars) {
                 continue; // too short to be worth a round trip of its own
             }
             if (c == '.') {
@@ -57,7 +65,7 @@ final class SentenceSplitter {
                 pending.delete(0, i + 1);
                 return sentence.isEmpty() ? null : sentence;
             }
-            if (c == '!' || c == '?' || c == '\n' || c == '…') {
+            if (c == '!' || c == '?' || c == '\n' || c == '…' || c == ';') {
                 String sentence = pending.substring(0, i + 1).trim();
                 pending.delete(0, i + 1);
                 return sentence.isEmpty() ? null : sentence;
@@ -65,7 +73,7 @@ final class SentenceSplitter {
             // Only a really long clause is cut at a comma. Each piece is synthesized on its
             // own and ends on a sentence-final fall, so a 30-char cut made every
             // "Murodjon aka," sound like the end of a sentence — the robotic cadence.
-            if (c == ',' && i >= LONG_CLAUSE_CHARS) {
+            if (c == ',' && i >= longClauseChars) {
                 if (i + 1 < pending.length() && !Character.isWhitespace(pending.charAt(i + 1))) {
                     continue;
                 }

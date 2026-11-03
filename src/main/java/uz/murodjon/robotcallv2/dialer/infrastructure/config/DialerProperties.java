@@ -8,7 +8,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * <p>The sweep scans ACTIVE campaigns every {@code tickSeconds} and dispatches due targets
  * over RabbitMQ, bounded by {@code dispatchBatch} (rate) and the concurrency limits below.
  *
- * @param maxConcurrentCalls           calls the whole platform may hold at once. The RTP
+ * @param reclaimAfterSec              how long a dialled call may stay unanswered before its slot is reclaimed
+ * @param maxConcurrentCalls          calls the whole platform may hold at once. The RTP
  *                                     port range caps it in turn
  *                                     ({@code RtpProperties#mediaCapacity()}): past that a
  *                                     call is answered and then dropped for want of a

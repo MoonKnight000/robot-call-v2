@@ -3,7 +3,7 @@
 AI voice agent: SIP orqali mijozlarga qo'ng'iroq qilib, o'zbek/rus tilida suhbatlashadi
 va natijani CRM ga yozadi.
 
-**Stack:** Java 21 · Spring Boot 4.1.1 · Spring AI 2.0.1 · Asterisk 20 (ari4java) ·
+**Stack:** Java 21 · Spring Boot 4.1.2 · Spring AI 2.0.1 · Asterisk 20 (ari4java) ·
 PostgreSQL + Flyway · RabbitMQ · Redis · MinIO · Netty (RTP) · ONNX Runtime (VAD, turn)
 **Base paket:** `uz.murodjon.robotcallv2` · bitta Gradle moduli
 Bosqichlar tarixi: `docs/claude/CLAUDE.md`

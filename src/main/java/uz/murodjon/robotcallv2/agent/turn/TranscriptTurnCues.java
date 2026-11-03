@@ -59,7 +59,9 @@ public final class TranscriptTurnCues {
             "ha", "yoq", "xop", "mayli", "boldi", "bopti", "rahmat", "kerak", "mumkin", "emas",
             "edi", "ekan", "shunday", "togri", "yaxshi", "tushunarli", "tushundim", "bilmadim",
             "bilmayman", "albatta", "aniq", "hozircha", "ertaga", "indinga", "bugun", "kechqurun",
-            "ertalab", "eshitaman", "eshityapman", "som", "dollar", "kun", "hafta", "oy"
+            "ertalab", "eshitaman", "eshityapman", "som", "dollar", "kun", "hafta", "oy",
+            "toladim", "tolayman", "tolandi", "kelishdik", "boladi", "bolmaydi", "yetadi",
+            "qilaman", "qildim", "beraman", "berdim", "kuting", "kutaman", "koramiz", "yoqdir"
     );
 
     /**
@@ -74,7 +76,8 @@ public final class TranscriptTurnCues {
             "ganman", "ganmiz", "gansiz", "ganlar", "kanman", "qanman",
             "dim", "dik", "ding", "dingiz", "dilar", "di",
             "man", "miz", "aman", "amiz", "asiz", "adi", "ydi", "ydilar",
-            "ing", "sin"
+            "mayman", "maysiz", "maydi", "madim", "madingiz", "madi",
+            "ing", "sin", "dir"
     );
 
     /** Case endings and converbs — a noun or clause whose verb has not come yet. */

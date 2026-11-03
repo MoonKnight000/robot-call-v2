@@ -3,7 +3,7 @@ import com.google.protobuf.gradle.id
 plugins {
     java
     jacoco
-    id("org.springframework.boot") version "4.1.1"
+    id("org.springframework.boot") version "4.1.2"
     id("io.spring.dependency-management") version "1.1.7"
     id("com.google.protobuf") version "0.10.0"
 }
@@ -24,7 +24,7 @@ repositories {
 }
 
 extra["flyway.version"] = "13.4.0"
-// netty.version is deliberately NOT pinned. Boot 4.1.1 already manages 4.2.17.Final, and
+// netty.version is deliberately NOT pinned. Boot 4.1.2 already manages 4.2.17.Final, and
 // it does so by importing netty-bom — but netty-bom 4.2.0.Final lists no QUIC artifact at
 // all, so pinning the property back to 4.2.0 left netty-handler at 4.2.0 while
 // netty-codec-native-quic still resolved to 4.2.17 through reactor-netty. The newer
@@ -32,7 +32,7 @@ extra["flyway.version"] = "13.4.0"
 // older netty-handler does not have, and the client blew up with NoSuchFieldError at the
 // first HTTPS call. The pin dated from when Boot's default was still Netty 4.1 and
 // ari4java 0.18.0 needed 4.2; the default is 4.2 now, so it only dragged Netty backwards.
-extra["springAiVersion"] = "2.1.0-M1"
+extra["springAiVersion"] = "2.0.2"
 
 dependencyManagement {
     imports {
@@ -107,7 +107,7 @@ dependencies {
 
     // VAD — Silero voice-activity model (ONNX) for barge-in (PROJECT.md §2.3, §7.2).
     // The silero_vad.onnx model file is supplied at runtime (voice-agent.vad.model-path).
-    implementation("com.microsoft.onnxruntime:onnxruntime:1.20.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime:1.31.1")
     // Tokenizer for the text end-of-turn model (NAMO, voice-agent.text-turn); reads its tokenizer.json.
     implementation("ai.djl.huggingface:tokenizers:0.39.0")
 
@@ -139,7 +139,7 @@ dependencies {
     runtimeOnly("org.postgresql:postgresql")
 
     //Doc
-    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0")
+    implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:3.2.0")
 
     // Test
     testImplementation("org.springframework.boot:spring-boot-starter-test")

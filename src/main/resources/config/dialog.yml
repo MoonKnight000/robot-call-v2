@@ -1,12 +1,11 @@
 # The LLM side of a call: which model answers a turn, and how the dialog engine drives it.
-# Reasoning behind the values lives in DialogProperties, SummaryProperties and
-# TurnTools#buildOptions — the vendor defaults below are only what Spring AI binds when a
-# company has no AiModelConfig of its own.
+# Vendor defaults below are what Spring AI binds when a company has no AiModelConfig of its own.
 spring:
   ai:
     model:
       chat: ${LLM_CHAT_PROVIDER:google-genai}
 
+    # Gemini
     google:
       genai:
         api-key: ${GEMINI_API_KEY:}
@@ -17,8 +16,7 @@ spring:
             # LOW / MEDIUM / HIGH (MINIMAL is unsupported on 3.8 Flash)
             thinking-level: ${LLM_REASONING_EFFORT:LOW}
 
-    # OpenAI itself, not an OpenAI-compatible vendor — see TurnTools#buildOptions before
-    # repointing base-url.
+    # OpenAI itself, not an OpenAI-compatible vendor (see TurnTools#buildOptions)
     openai:
       base-url: ${OPENAI_BASE_URL:https://api.openai.com}
       api-key: ${OPENAI_API_KEY:disabled}
@@ -35,13 +33,10 @@ spring:
         enabled: false
       chat:
         options:
-          # luna is the cost-optimised, high-volume tier and the right default for a voice
-          # turn; terra/sol trade cost for reasoning, astra is the flagship and slowest.
           model: ${LLM_DIALOG_MODEL:gpt-5.6-luna}
           max-tokens: 1024
 
-    # Claude. Auto-configured only when LLM_CHAT_PROVIDER=anthropic; otherwise built from
-    # voice-agent.llm.anthropic-api-key the first time a request names a claude-* model.
+    # Claude
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:disabled}
       chat:
@@ -50,10 +45,7 @@ spring:
           max-tokens: 1024
 
 voice-agent:
-  # Which text-LLM vendors can be picked, and the one a request naming no model runs on —
-  # ChatProviderProperties. A vendor with no key is neither offered in the model catalog nor
-  # routed to; spring.ai.model.chat above is the one Spring AI auto-configures, the other
-  # vendors are built from these keys on first use (ChatModelRegistry).
+  # Selectable text-LLM vendors (ChatProviderProperties)
   llm:
     default-provider: ${LLM_CHAT_PROVIDER:google-genai}
     gemini-api-key: ${GEMINI_API_KEY:}
@@ -61,27 +53,26 @@ voice-agent:
     open-ai-base-url: ${OPENAI_BASE_URL:https://api.openai.com}
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
 
-  # Panel AI copilot — CopilotProperties
+  # Panel AI copilot (CopilotProperties)
   copilot:
     model: ${COPILOT_MODEL:gemini-3.8-flash}
     max-tokens: ${COPILOT_MAX_TOKENS:8192}
     max-tool-calls: ${COPILOT_MAX_TOOL_CALLS:15}
     max-history: ${COPILOT_MAX_HISTORY:20}
 
-  # Post-call summary — SummaryProperties
+  # Post-call summary (SummaryProperties)
   summary:
     enabled: ${SUMMARY_ENABLED:true}
     model: ${SUMMARY_MODEL:gemini-3.8-flash}
     reasoning-effort: ${SUMMARY_REASONING_EFFORT:low}
     max-tokens: ${SUMMARY_MAX_TOKENS:2048}
-    # One summary request — SummaryProperties#timeoutMs.
     timeout-ms: ${SUMMARY_TIMEOUT_MS:60000}
 
-  # Real-time intent detection — IntentProperties
+  # Real-time intent detection (IntentProperties)
   intent:
     enabled: ${INTENT_DETECTION_ENABLED:true}
 
-  # DialogProperties documents every value below, including why the zeroes are zero.
+  # Dialog engine (DialogProperties, LlmTimeoutProperties, DialogTuningProperties, TestContextProperties)
   dialog:
     enabled: ${DIALOG_ENABLED:true}
     auto-start: ${DIALOG_AUTO_START:true}
@@ -97,30 +88,22 @@ voice-agent:
     backchannel-volume-percent: ${DIALOG_BACKCHANNEL_VOLUME_PERCENT:35}
     interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:25000}
     false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
-    # After waitForCaller: silence this long means the caller is waiting for the bot after all.
     wait-for-caller-timeout-ms: ${DIALOG_WAIT_FOR_CALLER_TIMEOUT_MS:3000}
-    # LlmTimeoutProperties — a stalled model stream becomes a transient failure (one
-    # retry, then the fast model) instead of holding the caller for as long as the socket lives.
     llm-timeout:
       token-gap-ms: ${DIALOG_LLM_TOKEN_GAP_TIMEOUT_MS:5000}
       queue-drain-ms: ${DIALOG_LLM_QUEUE_DRAIN_TIMEOUT_MS:30000}
-      # One blocking (non-streaming) model call — LlmTimeoutProperties#callTimeoutMs. 0 = none.
       call-timeout-ms: ${DIALOG_LLM_CALL_TIMEOUT_MS:15000}
-      # No first token by then: the fast model is raced against it — LlmTimeoutProperties#backupAfterMs. 0 = off.
-      backup-after-ms: ${DIALOG_LLM_BACKUP_AFTER_MS:1500}
-    # DialogTuningProperties — former constants of the dialog loop; these are the values they had.
+      backup-after-ms: ${DIALOG_LLM_BACKUP_AFTER_MS:1000}
     tuning:
       drain-timeout-ms: ${DIALOG_DRAIN_TIMEOUT_MS:30000}
       farewell-grace-ms: ${DIALOG_FAREWELL_GRACE_MS:15000}
       min-echo-chars: ${DIALOG_MIN_ECHO_CHARS:15}
       llm-retry-backoff-ms: ${DIALOG_LLM_RETRY_BACKOFF_MS:200}
-      # Was 4: a caller with two questions and an objection is not a loop, and 4 handed them to an operator.
       max-stage-attempts: ${DIALOG_MAX_STAGE_ATTEMPTS:8}
       playback-poll-ms: 100
       hangup-tail-ms: ${DIALOG_HANGUP_TAIL_MS:500}
     preemptive: ${DIALOG_PREEMPTIVE:true}
     preemptive-tts: ${DIALOG_PREEMPTIVE_TTS:true}
-    # The guess's first chunk (text vs waitForCaller) moves the speech gate's wait — DialogProperties.
     speculative-turn-cue: ${DIALOG_SPECULATIVE_TURN_CUE:true}
     preemptive-min-chars: ${DIALOG_PREEMPTIVE_MIN_CHARS:5}
     min-interruption-words: ${DIALOG_MIN_INTERRUPTION_WORDS:3}
@@ -131,18 +114,14 @@ voice-agent:
     history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
     no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}
     no-input-max-prompts: ${DIALOG_NO_INPUT_MAX_PROMPTS:2}
-    # Fast-path for deterministic intent turns (<20ms latency, zero LLM tokens)
     fast-path: ${DIALOG_FAST_PATH:true}
     knowledge-base: ${DIALOG_KNOWLEDGE_BASE:true}
     low-confidence-threshold: ${DIALOG_LOW_CONFIDENCE_THRESHOLD:0.5}
     fact-guard: ${DIALOG_FACT_GUARD:true}
-    # REALTIME only: spoken fact violations before the call goes to an operator; 0 = never.
     fact-violation-escalate-after: ${DIALOG_FACT_VIOLATION_ESCALATE_AFTER:2}
     pre-tool-speech: ${DIALOG_PRE_TOOL_SPEECH:true}
     knowledge-passages: ${DIALOG_KNOWLEDGE_PASSAGES:3}
-    # Follow-up model rounds that answer with a data tool's result in the same turn; 0 = off.
     tool-result-rounds: ${DIALOG_TOOL_RESULT_ROUNDS:2}
-    # Deployment-wide token budget of one call, when its AiModelConfig sets none; 0 = no budget.
     max-tokens-per-call: ${DIALOG_MAX_TOKENS_PER_CALL:0}
     test-context:
       client-name: ${TEST_CLIENT_NAME:Murodjon}

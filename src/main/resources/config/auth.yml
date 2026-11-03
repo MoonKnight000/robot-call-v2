@@ -1,45 +1,36 @@
-# Login, tokens and the first admin account. See SecurityProperties, JwtProperties,
-# EncryptionProperties, UserBootstrapProperties.
+# Login, tokens and the first admin account.
 voice-agent:
+  # CORS and refresh cookie (SecurityProperties)
   security:
-    # Empty = no cross-origin browser may call the API (never a wildcard).
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000,http://localhost:5174,http://localhost:8080,http://127.0.0.1:5173,http://127.0.0.1:3000}
-    # Secure flag on the refresh-token cookie. Off only for plain-HTTP LAN dev
-    # (http://192.168.x.x) — browsers drop Secure cookies there; localhost is fine either way.
     refresh-cookie-secure: ${REFRESH_COOKIE_SECURE:true}
+    # Access token (JwtProperties)
     jwt:
       secret: ${JWT_SECRET:}
-      # Short on purpose: revocation (logout, password/role change, block) is enforced
-      # through Redis, and this is the longest a token outlives it on an instance that
-      # cannot reach Redis. Refresh tokens last 30 days, so nobody logs in hourly.
       expiry-minutes: ${JWT_EXPIRY_MINUTES:60}
-    # Per-address ceilings on the endpoints that need no token — RateLimitProperties,
-    # RateLimitFilter. Counted in Redis, so they hold across instances.
+    # Per-address limits on public endpoints (RateLimitProperties)
     rate-limit:
       enabled: ${RATE_LIMIT_ENABLED:true}
-      # Only behind a reverse proxy that sets X-Forwarded-For itself.
       trust-forwarded-for: ${RATE_LIMIT_TRUST_FORWARDED_FOR:false}
       login-per-minute: ${RATE_LIMIT_LOGIN_PER_MINUTE:5}
-      # Failed logins one username may collect from one client address before that
-      # username+address pair is locked for lockout-minutes.
       login-failures-per-user: ${RATE_LIMIT_LOGIN_FAILURES_PER_USER:10}
       lockout-minutes: ${RATE_LIMIT_LOCKOUT_MINUTES:15}
       refresh-per-minute: ${RATE_LIMIT_REFRESH_PER_MINUTE:30}
       password-reset-per-hour: ${RATE_LIMIT_PASSWORD_RESET_PER_HOUR:3}
       public-widget-per-minute: ${RATE_LIMIT_PUBLIC_WIDGET_PER_MINUTE:20}
+    # Password reset mail
     password-reset:
       from: ${PASSWORD_RESET_FROM:no-reply@uysot.uz}
-    # Self-service signup, POST /api/auth/signup (SignupProperties). Off unless turned on.
+    # Self-service signup (SignupProperties)
     signup:
       enabled: ${SIGNUP_ENABLED:false}
-      # Frontend page that reads ?token= and calls POST /api/auth/activate.
       activation-url: ${SIGNUP_ACTIVATION_URL:http://localhost:5173/activate}
       from: ${SIGNUP_FROM:no-reply@uysot.uz}
+  # Secret encryption keys (EncryptionProperties)
   encryption:
     secret-key: ${ENCRYPTION_SECRET_KEY:}
-    # Rotation: move the old key here (comma-separated, newest first), set a new
-    # secret-key, restart. Stored secrets keep decrypting; re-save them to move them over.
     previous-secret-keys: ${ENCRYPTION_PREVIOUS_SECRET_KEYS:}
+  # First admin account (UserBootstrapProperties)
   user:
     bootstrap-admin-name: ${BOOTSTRAP_ADMIN_NAME:Admin}
     bootstrap-admin-username: ${BOOTSTRAP_ADMIN_USERNAME:}

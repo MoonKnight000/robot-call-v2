@@ -1,7 +1,7 @@
 # Everything this platform talks to that is not a phone: object storage, the Uysot CRM,
 # Telegram, outgoing mail.
 voice-agent:
-  # MinIO/S3 for recordings, logos and avatars — AudioStorageProperties
+  # MinIO/S3 object storage (AudioStorageProperties)
   storage:
     enabled: ${STORAGE_ENABLED:true}
     endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
@@ -13,11 +13,7 @@ voice-agent:
     ffmpeg-path: ${STORAGE_FFMPEG_PATH:${voice-agent.audio.ffmpeg-path:ffmpeg}}
     bitrate-kbps: ${STORAGE_BITRATE_KBPS:32}
 
-  # How long personal data is kept — RetentionProperties, RetentionService. 0 = forever.
-  # A call an agent ran keeps its transcript and recording for that agent's
-  # conversationRetentionDays (a zeroPiiRetention agent: zero-pii-grace after the call);
-  # conversation-days is for calls no agent ran and for voicemail / local leftovers.
-  # The summary, client-memory and audit purges are off until set.
+  # Personal data retention (RetentionProperties)
   retention:
     cron: ${RETENTION_CRON:${STORAGE_RETENTION_CRON:0 30 3 * * *}}
     conversation-days: ${RETENTION_CONVERSATION_DAYS:${STORAGE_RETENTION_DAYS:90}}
@@ -25,12 +21,10 @@ voice-agent:
     summary-days: ${RETENTION_SUMMARY_DAYS:0}
     client-memory-days: ${RETENTION_CLIENT_MEMORY_DAYS:0}
     audit-days: ${RETENTION_AUDIT_DAYS:0}
-    # SENT / DEAD outbox_message rows — delivery bookkeeping, not personal data, so on by default.
     outbox-days: ${RETENTION_OUTBOX_DAYS:30}
     batch-size: ${RETENTION_BATCH_SIZE:5000}
 
-  # Uysot Open API v1 — CrmProperties, DebtorImportProperties.
-  # https://apidoc.app.uysot.uz
+  # Uysot CRM (CrmProperties, DebtorImportProperties)
   crm:
     enabled: ${CRM_ENABLED:true}
     base-url: ${CRM_BASE_URL:https://api.service.app.uysot.uz}
@@ -47,8 +41,7 @@ voice-agent:
       page-size: ${CRM_DEBTOR_PAGE_SIZE:100}
       max-pages: ${CRM_DEBTOR_MAX_PAGES:20}
     call-history-employee-id: ${CRM_CALL_HISTORY_EMPLOYEE_ID:}
-    # Reads the agent's real-estate tools and the settings screen browse — UysotCatalogProperties.
-    # Blank path = that read is off. Paths as documented at https://apidoc.app.uysot.uz/docs/open-api/uysot-open-api.
+    # CRM catalog reads (UysotCatalogProperties)
     catalog:
       houses-path: ${CRM_HOUSES_PATH:v1/open-api/house/all}
       flat-filter-path: ${CRM_FLAT_FILTER_PATH:v1/open-api/flat/filter}
@@ -59,8 +52,7 @@ voice-agent:
       directory-ttl: ${CRM_DIRECTORY_TTL:15m}
       flat-ttl: ${CRM_FLAT_TTL:3m}
 
-  # Per-company OAuth connection to the same CRM — UysotOAuthProperties.
-  # Takes precedence over the static crm.api-token above.
+  # Per-company CRM OAuth (UysotOAuthProperties)
   integration:
     uysot:
       authorize-url: ${UYSOT_OAUTH_AUTHORIZE_URL:https://app.uysot.uz/oauth/authorize}
@@ -71,13 +63,12 @@ voice-agent:
       client-id: ${UYSOT_OAUTH_CLIENT_ID:}
       client-secret: ${UYSOT_OAUTH_CLIENT_SECRET:}
 
+  # Telegram and notification e-mail (NotificationProperties)
   notification:
     telegram-bot-token: ${TELEGRAM_BOT_TOKEN:}
-    # Sender address of notification e-mails. Falls back to the scheduled-report sender,
-    # which this used to borrow outright.
     email-from: ${NOTIFICATION_EMAIL_FROM:${REPORT_SCHEDULE_FROM:no-reply@uysot.uz}}
 
-  # SMS gateway — SmsProperties. Disabled: the message is logged (masked) and not sent.
+  # SMS gateway (SmsProperties)
   sms:
     enabled: ${SMS_ENABLED:false}
     default-sender: ${SMS_DEFAULT_SENDER:4546}
@@ -87,17 +78,16 @@ voice-agent:
       base-url: ${SMS_ESKIZ_BASE_URL:https://notify.eskiz.uz/api}
       callback-url: ${SMS_ESKIZ_CALLBACK_URL:}
 
-  # Post-call outbox — OutboxProperties: summary retries, and retries of the CRM note and call
-  # history (their first delivery, right after the call, happens either way).
+  # Post-call outbox (OutboxProperties)
   outbox:
     enabled: ${OUTBOX_ENABLED:true}
     interval-minutes: ${OUTBOX_INTERVAL_MINUTES:5}
     max-attempts: ${OUTBOX_MAX_ATTEMPTS:5}
     batch: ${OUTBOX_BATCH:20}
     delivery-interval-seconds: ${OUTBOX_DELIVERY_INTERVAL_SECONDS:30}
-    # Wait after a CRM write's first failure; doubled after each further one, at most an hour.
     backoff-seconds: ${OUTBOX_BACKOFF_SECONDS:120}
 
+  # Scheduled report e-mails (ReportScheduleService)
   report-schedule:
     enabled: ${REPORT_SCHEDULE_ENABLED:false}
     check-minutes: ${REPORT_SCHEDULE_CHECK_MINUTES:60}

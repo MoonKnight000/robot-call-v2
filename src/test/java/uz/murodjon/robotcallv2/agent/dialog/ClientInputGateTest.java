@@ -147,4 +147,15 @@ class ClientInputGateTest {
         verify(endpoint).flushPlayback();
         verify(session).setInterrupted(true);
     }
+
+    @Test
+    void interimWithFloorTakingWordConfirmsBargeInImmediately() {
+        when(session.isBargeInPending()).thenReturn(true);
+        when(session.settleBargeIn()).thenReturn(true);
+
+        gate.onInterim(session, "to'xtang");
+
+        verify(endpoint).flushPlayback();
+        verify(session).setInterrupted(true);
+    }
 }

@@ -6,6 +6,7 @@ import java.util.List;
 
 /**
  * The daily pull of voices from each TTS provider's own list API ({@code voice-agent.voice-sync.*}).
+ * Only providers with a list API (ElevenLabs, Gemini, Cartesia) take part; the rest stay seeded.
  *
  * @param enabled        master switch; off leaves the catalog to the seed alone
  * @param languages      BCP-47 languages a synced voice is filed under (uz-UZ, ru-RU, ...)

@@ -4,8 +4,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /**
- * Uysot Open API v1 settings. Bound from {@code voice-agent.crm.*} (Stage 9,
- * MASTER_ROADMAP.md §11).
+ * Uysot Open API v1 settings (https://apidoc.app.uysot.uz). Bound from {@code voice-agent.crm.*}
+ * (Stage 9, MASTER_ROADMAP.md §11).
  *
  * <p>The paths are configurable rather than compiled in because prod and dev are the same
  * API behind different hosts, and because a path is the one part of this integration that

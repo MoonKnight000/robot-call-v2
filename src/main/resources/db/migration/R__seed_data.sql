@@ -180,7 +180,6 @@ INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
     ('gemini-3.8-live',             'LLM', 'gemini-live',     'REALTIME', 'Gemini 3.8 Live — tezroq, tool''lar fonda ishlaydi'),
     ('gemini-3.8-live-extended-thinking', 'LLM', 'gemini-live', 'REALTIME', 'Gemini 3.8 Live Extended Thinking — standart, murakkab suhbatlar uchun, sekinroq'),
     ('gemini-3.1-flash-live-preview', 'LLM', 'gemini-live',   'REALTIME', 'Gemini 3.1 Flash Live — oldingi avlod, preview'),
-    ('gemini-2.5-flash-native-audio-latest', 'LLM', 'gemini-live', 'REALTIME', 'Gemini 2.5 Flash Native Audio — barqarorroq, tool chaqirish ishonchli'),
     ('gpt-realtime-2.1',            'LLM', 'openai-realtime', 'REALTIME', 'GPT Realtime 2.1 — standart, tool chaqirish bilan'),
     ('gpt-realtime-2.1-mini',       'LLM', 'openai-realtime', 'REALTIME', 'GPT Realtime 2.1 mini — arzonroq'),
     ('qwen-omni-turbo',             'LLM', 'qwen-omni',       'REALTIME', 'Qwen Omni Turbo'),

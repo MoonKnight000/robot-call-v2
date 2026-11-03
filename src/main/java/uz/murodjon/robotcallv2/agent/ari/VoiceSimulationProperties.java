@@ -6,6 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Voice-level agent evaluation ({@link VoiceCallSimulator}). Bound from
  * {@code voice-agent.simulation.voice.*}.
  *
+ * <p>Used by evaluation runs with mode=VOICE (VOICE-PIPELINE-PLAN Bosqich 5): the persona is
+ * synthesized, put under noise and sent as RTP through the real pipeline. Spends TTS + STT on
+ * every case, on the deployment's default providers.
+ *
  * @param personaVoice  catalog id of the voice the simulated caller speaks with; blank uses
  *                      the default TTS provider's default voice for the call's language
  * @param snrDb         background noise under the caller, as signal-to-noise in dB — lower

@@ -41,7 +41,11 @@ import java.util.Map;
  * @param openAi            OpenAI-specific settings
  * @param transcriptionModes the model each provider (keyed by its {@link SttProvider#name()})
  *                          uses for an agent's or stage's {@code transcriptionMode}; a provider
- *                          or mode missing here leaves the call on its usual model
+ *                          or mode missing here leaves the call on its usual model. Keys are
+ *                          provider names (yandex, deepgram, openai, gemini, aisha), modes are
+ *                          {@code fast} / {@code accurate}; empty by default, as there are no
+ *                          verified pairs yet. Example in YAML:
+ *                          {@code deepgram: {fast: nova-3, accurate: nova-3}}
  */
 @ConfigurationProperties(prefix = "voice-agent.stt")
 public record SttProperties(
