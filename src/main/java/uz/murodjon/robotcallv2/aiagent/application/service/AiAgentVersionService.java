@@ -50,7 +50,7 @@ public class AiAgentVersionService implements AiAgentVersionUseCase {
     private final AgentRolloutRepository rolloutRepository;
     private final AgentFunctionsService agentFunctionsService;
 
-    public AiAgentVersionService(AiAgentVersionRepository versionRepository, AiAgentDrafts drafts,
+    AiAgentVersionService(AiAgentVersionRepository versionRepository, AiAgentDrafts drafts,
                                  UserUseCase userUseCase, AuditUseCase auditUseCase, CurrentUser currentUser,
                                  AgentTestCaseRepository testCaseRepository, AgentEvalRepository evalRepository,
                                  AiAgentUseCase aiAgentUseCase, AgentEvalProperties agentEvalProperties,

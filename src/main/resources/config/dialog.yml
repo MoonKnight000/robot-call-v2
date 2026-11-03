@@ -10,39 +10,25 @@ spring:
       genai:
         api-key: ${GEMINI_API_KEY:}
         chat:
-          options:
-            model: ${LLM_DIALOG_MODEL:gemini-3.8-flash}
-            max-output-tokens: 1024
-            # LOW / MEDIUM / HIGH (MINIMAL is unsupported on 3.8 Flash)
-            thinking-level: ${LLM_REASONING_EFFORT:LOW}
+          model: ${LLM_DIALOG_MODEL:gemini-3.8-flash}
+          max-output-tokens: 1024
+          # LOW / MEDIUM / HIGH (MINIMAL is unsupported on 3.8 Flash)
+          thinking-level: ${LLM_REASONING_EFFORT:LOW}
 
     # OpenAI itself, not an OpenAI-compatible vendor (see TurnTools#buildOptions)
     openai:
       base-url: ${OPENAI_BASE_URL:https://api.openai.com}
       api-key: ${OPENAI_API_KEY:disabled}
-      audio:
-        speech:
-          enabled: false
-        transcription:
-          enabled: false
-      embedding:
-        enabled: false
-      image:
-        enabled: false
-      moderation:
-        enabled: false
       chat:
-        options:
-          model: ${LLM_DIALOG_MODEL:gpt-5.6-luna}
-          max-tokens: 1024
+        model: ${LLM_DIALOG_MODEL:gpt-5.6-luna}
+        max-tokens: 1024
 
     # Claude
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:disabled}
       chat:
-        options:
-          model: ${LLM_DIALOG_MODEL:claude-haiku-5-5}
-          max-tokens: 1024
+        model: ${LLM_DIALOG_MODEL:claude-haiku-5-5}
+        max-tokens: 1024
 
 voice-agent:
   # Selectable text-LLM vendors (ChatProviderProperties)

@@ -109,9 +109,9 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     private volatile BiPredicate<String, String> smsToNumberSender;
     private volatile boolean ended;
     /** Turns the engine completed — the closest realtime equivalent of an LLM turn count. */
-    private volatile int turnCount;
+    private final AtomicInteger turnCount = new AtomicInteger();
     /** Of {@link #turnCount}, the ones in which the caller actually heard the engine speak. */
-    private volatile int spokenTurnCount;
+    private final AtomicInteger spokenTurnCount = new AtomicInteger();
     /**
      * {@link #turnCount} when the FSM stepped into {@link #state}. Starts at zero for the
      * opening stage, which the call begins in rather than transitions into.
@@ -197,7 +197,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     public void setState(String state) {
         String previousState = this.state;
         if (!Objects.equals(this.state, state)) {
-            this.stageEnteredTurn = turnCount;
+            this.stageEnteredTurn = turnCount.get();
         }
         this.state = state;
         if (previousState != null && !Objects.equals(previousState, state)) {
@@ -220,7 +220,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
      * nothing (see {@code RealtimeToolRunner#refuse}).
      */
     public boolean stageJustEntered() {
-        return stageEnteredTurn == turnCount;
+        return stageEnteredTurn == turnCount.get();
     }
 
     @Override
@@ -329,7 +329,10 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     /** Continue under {@code next} from its start stage; what was said stays in the engine's history. */
     void switchScenario(ScenarioDefinition next) {
         this.scenario = next;
-        setState(next.findStartStage().id());
+        var start = next.findStartStage();
+        if (start != null) {
+            setState(start.id());
+        }
     }
 
     public void setDtmfSender(Consumer<String> sender) {
@@ -542,19 +545,19 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     }
 
     public int turnCount() {
-        return turnCount;
+        return turnCount.get();
     }
 
     public void countTurn() {
-        turnCount++;
+        turnCount.incrementAndGet();
     }
 
     public int spokenTurnCount() {
-        return spokenTurnCount;
+        return spokenTurnCount.get();
     }
 
     public void countSpokenTurn() {
-        spokenTurnCount++;
+        spokenTurnCount.incrementAndGet();
     }
 
     public void recordBargeIn() {

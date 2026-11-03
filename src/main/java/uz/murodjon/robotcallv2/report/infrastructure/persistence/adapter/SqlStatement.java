@@ -54,6 +54,7 @@ final class SqlStatement {
         return Collections.unmodifiableMap(params);
     }
 
+    @SuppressWarnings("SqlSourceToSinkFlow")
     JdbcClient.StatementSpec prepare(JdbcClient jdbc) {
         return jdbc.sql(sql()).params(params);
     }

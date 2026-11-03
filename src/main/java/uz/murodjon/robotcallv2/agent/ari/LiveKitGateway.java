@@ -141,7 +141,7 @@ public class LiveKitGateway implements TelephonyGateway {
                 if (i == 0) {
                     throw e;
                 }
-                log.debug("Trunk {} is not available for LiveKit failover: {}", trunk.id(), e.getMessage());
+                log.debug("Trunk {} is not available for LiveKit failover: {}", trunk != null ? trunk.id() : "null", e.getMessage());
             }
         }
         return routes;

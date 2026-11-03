@@ -44,7 +44,7 @@ public final class ContactFrequencyPolicy {
             // the window frees a slot.
             Instant freed = attempts.get(maxAttemptsPerWeek - 1).plus(WINDOW);
             if (freed.isAfter(now)) {
-                earliest = later(earliest, freed);
+                earliest = freed;
             }
         }
         if (quietDays > 0 && history.lastConversationAt() != null) {

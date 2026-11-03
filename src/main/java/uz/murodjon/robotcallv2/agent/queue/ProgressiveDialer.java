@@ -57,6 +57,7 @@ public class ProgressiveDialer {
 
     /** One client dialled for one operator. */
     private static final class ProgressiveCall {
+        private final Object lock = new Object();
         private final String token = UUID.randomUUID().toString();
         private final long companyId;
         private final long userId;
@@ -160,7 +161,7 @@ public class ProgressiveDialer {
         if (call == null) {
             join = false;
         } else {
-            synchronized (call) {
+            synchronized (call.lock) {
                 join = !call.machine && !call.clientGone;
                 call.operatorAnswered = join;
             }
@@ -208,7 +209,7 @@ public class ProgressiveDialer {
         calls.remove(call.token);
         AriService ari = ariProvider.getObject();
         ari.stopWatchingForAnsweringMachine(call.clientChannelId);
-        synchronized (call) {
+        synchronized (call.lock) {
             call.clientGone = true;
             if (call.machine || call.operatorAnswered) {
                 return; // settled by the machine, or left to the operator's wrap-up
@@ -235,7 +236,7 @@ public class ProgressiveDialer {
 
     /** Before answering — rang out or refused — unless the call is already over for another reason. */
     private void onOperatorGone(ProgressiveCall call) {
-        synchronized (call) {
+        synchronized (call.lock) {
             if (call.operatorAnswered || call.machine || call.clientGone) {
                 return;
             }
@@ -261,7 +262,7 @@ public class ProgressiveDialer {
     /** On a call thread, once: the client's side is a recording, not a person. */
     private void onMachine(ProgressiveCall call) {
         boolean operatorAnswered;
-        synchronized (call) {
+        synchronized (call.lock) {
             if (call.machine || call.clientGone) {
                 return;
             }
@@ -288,7 +289,7 @@ public class ProgressiveDialer {
     }
 
     private static boolean isMachine(ProgressiveCall call) {
-        synchronized (call) {
+        synchronized (call.lock) {
             return call.machine;
         }
     }

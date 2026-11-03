@@ -49,6 +49,7 @@ final class PinnedOpenAiHttpClient implements HttpClient {
     }
 
     @Override
+    @SuppressWarnings("resource")
     public HttpResponse execute(HttpRequest request, RequestOptions requestOptions) {
         HttpUriRequestBase message = new HttpUriRequestBase(request.method().name(), URI.create(request.url()));
         Headers headers = request.headers();

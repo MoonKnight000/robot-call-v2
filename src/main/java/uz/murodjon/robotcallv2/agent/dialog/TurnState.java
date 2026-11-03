@@ -47,7 +47,7 @@ class TurnState {
     private volatile boolean interrupted = false;
 
     /** Written on the turn thread, read by the watchdog — hence volatile. */
-    private volatile int turnCount;
+    private final AtomicInteger turnCount = new AtomicInteger();
 
     /**
      * Set when the client's turn ends, cleared once the bot's first audio for that
@@ -165,11 +165,11 @@ class TurnState {
     }
 
     int turnCount() {
-        return turnCount;
+        return turnCount.get();
     }
 
     int incrementTurn() {
-        return ++turnCount;
+        return turnCount.incrementAndGet();
     }
 
     /** Start the turnaround clock — the client just stopped speaking. */

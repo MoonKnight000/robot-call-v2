@@ -16,6 +16,7 @@ import java.util.List;
 
 /** Spring Data repository for {@link OutboxMessageEntity}. */
 @Repository
+@SuppressWarnings("SpringDataModifyingAnnotationMissing")
 public interface OutboxMessageJpaRepository extends JpaRepository<OutboxMessageEntity, Long> {
 
     /** The new row's id — empty when a row with that idempotency key already exists. */

@@ -147,12 +147,11 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
 
     @Override
     public boolean existsByCompanyIdAndAgentId(long companyId, Long agentId) {
-        Boolean exists = jdbcClient.sql("SELECT EXISTS (SELECT 1" + VISIBLE + ")")
+        return Boolean.TRUE.equals(jdbcClient.sql("SELECT EXISTS (SELECT 1" + VISIBLE + ")")
                 .param("companyId", companyId)
                 .param("agentId", agentId, Types.BIGINT)
                 .query(Boolean.class)
-                .single();
-        return Boolean.TRUE.equals(exists);
+                .single());
     }
 
     /**

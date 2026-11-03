@@ -156,7 +156,7 @@ public class AnalyticsMetricsService {
 
     /** Simple atomic double for thread-safe accumulation. */
     private static class AtomicDouble {
-        private volatile long storedBits = 0;
+        private volatile long storedBits;
 
         AtomicDouble(double value) {
             storedBits = Double.doubleToLongBits(value);

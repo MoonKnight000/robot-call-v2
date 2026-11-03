@@ -24,6 +24,7 @@ public final class ShutdownTasks {
      *
      * @return how many tasks had not finished by the deadline
      */
+    @SuppressWarnings("resource")
     public static int runInParallel(List<Runnable> tasks, Duration timeout) {
         if (tasks.isEmpty()) {
             return 0;

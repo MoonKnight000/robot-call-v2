@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
@@ -12,6 +13,11 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 public record IntentProperties(
         @DefaultValue("true") boolean enabled
 ) {
+
+    @ConstructorBinding
+    public IntentProperties(boolean enabled) {
+        this.enabled = enabled;
+    }
 
     public IntentProperties() {
         this(true);

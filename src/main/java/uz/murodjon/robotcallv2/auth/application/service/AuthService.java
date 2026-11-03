@@ -128,6 +128,9 @@ public class AuthService implements AuthUseCase {
             }
             throw new ValidationException(ErrorCode.LOGIN_INVALID_CREDENTIALS);
         }
+        if (user == null) {
+            throw new ValidationException(ErrorCode.LOGIN_INVALID_CREDENTIALS);
+        }
         if (twoFactor.isEnabled(user.id())) {
             if (request.otpCode() == null || request.otpCode().isBlank()) {
                 // The password was right; the second factor is what is missing. Not a failure.

@@ -12,6 +12,7 @@ import uz.murodjon.robotcallv2.agent.turn.TurnCue;
 
 import java.io.Closeable;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.IntConsumer;
 
@@ -82,7 +83,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
      * recognized, and clearing it there let a provider that stalls every thirty seconds
      * reset its own count forever without the call ever moving off it.
      */
-    private volatile int providerFailures;
+    private final AtomicInteger providerFailures = new AtomicInteger();
     private final String language;
     /** Other languages this caller may answer in ({@code voice-agent.stt.detect-languages}). */
     private final List<String> alternativeLanguages;
@@ -223,7 +224,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         this.downstream = listener;
         this.listener = (text, isFinal, confidence) -> {
             lastResponseAt = System.currentTimeMillis();
-            providerFailures = 0;
+            providerFailures.set(0);
             heardSinceOpen = true;
             if (closed) {
                 log.warn("[{}] transcript arrived after the call ended, ignored: {}", channelId, text);
@@ -478,7 +479,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         // nothing passes every liveness check there is, so reopening it forever is exactly
         // what this used to do — and a call spent listening to a recognizer that never
         // speaks is indistinguishable, from the caller's side, from a bot that ignores them.
-        providerFailures++;
+        providerFailures.incrementAndGet();
         chargedThisStream = true;
         try {
             session.close();
@@ -512,7 +513,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
             // the failover below and the call stayed deaf to the end. Charged once per
             // stream: a stall dropStalledStream already counted is not counted again.
             if (!chargedThisStream && sentSinceOpen > 0 && !heardSinceOpen) {
-                providerFailures++;
+                providerFailures.incrementAndGet();
                 chargedThisStream = true;
             }
             try {
@@ -520,7 +521,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
             } catch (Exception e) {
                 log.debug("[{}] closing the dead STT session failed: {}", channelId, e.getMessage());
             }
-            if (providerFailures >= streamProperties.failoverAfterFailures()) {
+            if (providerFailures.get() >= streamProperties.failoverAfterFailures()) {
                 failOver();
             }
             try {
@@ -531,10 +532,10 @@ public class SttStreamBridge implements AudioListener, Closeable {
                 // A reopen that fails outright is this provider failing too. Uncounted, a
                 // vendor refusing every connection was retried once a second for the whole
                 // call and the failover never came.
-                providerFailures++;
+                providerFailures.incrementAndGet();
                 metrics.sttError();
                 log.warn("[{}] STT stream reopen failed ({} failure(s) on {}): {}",
-                        channelId, providerFailures, provider.name(), e.getMessage());
+                        channelId, providerFailures.get(), provider.name(), e.getMessage());
                 return false;
             }
         } finally {
@@ -736,18 +737,18 @@ public class SttStreamBridge implements AudioListener, Closeable {
             // REOPEN_COOLDOWN_MS, and this is the line that explains a call going quiet.
             log.warn("[{}] {} has failed {} times and this build has no other STT provider "
                             + "configured — the call stays on it",
-                    channelId, provider.name(), providerFailures);
-            providerFailures = 0;
+                    channelId, provider.name(), providerFailures.get());
+            providerFailures.set(0);
             return;
         }
         log.error("[{}] STT failing over: {} failed {} times, switching to {}",
-                channelId, provider.name(), providerFailures, replacement.name());
+                channelId, provider.name(), providerFailures.get(), replacement.name());
         metrics.sttFailover(provider.name(), replacement.name());
         provider = replacement;
         targetSampleRate = replacement.sampleRate();
         model = null;
         agentModel = null;
-        providerFailures = 0;
+        providerFailures.set(0);
     }
 
     /**

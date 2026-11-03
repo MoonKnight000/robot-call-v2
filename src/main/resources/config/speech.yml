@@ -244,7 +244,7 @@ voice-agent:
     sample-rate: 8000
     window-samples: 256
     threshold: ${VAD_THRESHOLD:0.4}
-    listening-threshold: ${VAD_LISTENING_THRESHOLD:0.3}
+    listening-threshold: ${VAD_LISTENING_THRESHOLD:0.4}
     min-energy-rms: ${VAD_MIN_ENERGY_RMS:100.0}
     noise-floor-margin: ${VAD_NOISE_FLOOR_MARGIN:2.5}
     min-speech-ms: ${VAD_MIN_SPEECH_MS:240}

@@ -176,7 +176,10 @@ public final class ScenarioValidator {
         subflow.stages().forEach(s -> byId.put(s.id(), s));
         Set<String> reached = new HashSet<>();
         Deque<String> queue = new ArrayDeque<>();
-        queue.add(subflow.findStartStage().id());
+        StageDef start = subflow.findStartStage();
+        if (start != null) {
+            queue.add(start.id());
+        }
         while (!queue.isEmpty()) {
             String id = queue.poll();
             if (!reached.add(id)) {

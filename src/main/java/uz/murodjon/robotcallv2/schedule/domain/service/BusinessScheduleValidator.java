@@ -55,6 +55,7 @@ public final class BusinessScheduleValidator {
             return;
         }
         try {
+            //noinspection ResultOfMethodCallIgnored
             ZoneId.of(timezone.trim());
         } catch (DateTimeException e) {
             throw new ValidationException(ErrorCode.BUSINESS_SCHEDULE_TIMEZONE_UNKNOWN, timezone);

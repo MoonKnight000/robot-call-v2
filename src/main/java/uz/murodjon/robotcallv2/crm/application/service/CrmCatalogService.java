@@ -44,7 +44,7 @@ public class CrmCatalogService implements CrmCatalogUseCase {
     private final CrmUseCase crmUseCase;
     private final Map<String, Cached> cache = new ConcurrentHashMap<>();
 
-    public CrmCatalogService(CrmConnectionResolver connectionResolver, UysotCatalogPort catalogPort,
+    CrmCatalogService(CrmConnectionResolver connectionResolver, UysotCatalogPort catalogPort,
                              UysotCatalogProperties catalogProperties, Clock clock, CrmUseCase crmUseCase) {
         this.connectionResolver = connectionResolver;
         this.catalogPort = catalogPort;

@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>Outbound: the room the bot is calling from, and the typing under the pause while a
  * reply is composed, both mixed under the voice by {@link AmbientSoundGenerator}.
  */
-public class RtpEndpoint implements Closeable {
+public class RtpEndpoint {
 
     private static final Logger log = LoggerFactory.getLogger(RtpEndpoint.class);
 
@@ -491,6 +491,7 @@ public class RtpEndpoint implements Closeable {
         outboundLevelIndex = (slot + 1) % OUTBOUND_LEVEL_FRAMES;
     }
 
+    @SuppressWarnings("resource")
     private void startPacer() {
         if (channel == null || channel.eventLoop() == null) {
             return;

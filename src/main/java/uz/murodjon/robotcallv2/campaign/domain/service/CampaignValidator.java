@@ -101,6 +101,7 @@ public class CampaignValidator {
         }
         if (rules.timezoneMode() == TimezoneMode.FIXED) {
             try {
+                //noinspection ResultOfMethodCallIgnored
                 ZoneId.of(rules.fixedTimezone());
             } catch (RuntimeException e) {
                 throw new ValidationException(ErrorCode.CAMPAIGN_DIAL_TIMEZONE_INVALID, rules.fixedTimezone());

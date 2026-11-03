@@ -130,7 +130,7 @@ public class PaymeMerchantService implements PaymeMerchantUseCase {
             return refuse(id, refusal);
         }
         PaymentPaymeProperties payme = paymentProperties.payme();
-        PaymeReceiptDetail detail = payme.sendsReceipt()
+        PaymeReceiptDetail detail = (payme.sendsReceipt() && topup != null)
                 ? paymeMapper.toReceiptDetail(topup, payme.ikpuCode(), payme.packageCode(), payme.vatPercent())
                 : null;
         return PaymeResponse.ofResult(id, new PaymeCheckPerformResult(true, detail));

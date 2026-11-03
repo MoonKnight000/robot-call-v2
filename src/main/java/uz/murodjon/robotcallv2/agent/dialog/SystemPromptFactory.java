@@ -932,11 +932,10 @@ public class SystemPromptFactory {
             sb.append("\n[SYSTEM WARNING: You have already repeated yourself ").append(stageAttempts)
                     .append(" times in the '").append(s.state())
                     .append("' stage. Do NOT ASK the client the same question AGAIN! ")
-                    .append("Briefly acknowledge the client's objection or question and move to the next stage at once "
-                            + "(call the transitionTo tool)"
-                            + (TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())
+                    .append("Briefly acknowledge the client's objection or question and move to the next stage at once (call the transitionTo tool)")
+                    .append(TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())
                             ? ", or if the client does not agree or understand, hand over to an operator (requestHumanTransfer).]"
-                            : ".]"));
+                            : ".]");
         }
         String whisper = s.operatorWhisper();
         if (whisper != null) {

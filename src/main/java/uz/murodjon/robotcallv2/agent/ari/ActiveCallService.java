@@ -148,6 +148,7 @@ class ActiveCallService {
         return new SayResponse(channelId, text, language, "speaking");
     }
 
+    @SuppressWarnings("resource")
     AudioStreamWriter listen(String channelId) {
         CallSession session = callSessionRegistry.find(channelId);
         if (session == null) {

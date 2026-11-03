@@ -188,8 +188,8 @@ public class CallFlowService implements CallFlowUseCase {
 
     private void requireOwnFile(long companyId, long fileId) {
         DownloadableFile file = fileStorageUseCase.download(companyId, fileId);
-        try (InputStream ignored = file.content()) {
-            // only the access check mattered
+        try {
+            file.content().close();
         } catch (IOException e) {
             log.debug("Closing prompt file {} failed: {}", fileId, e.getMessage());
         }

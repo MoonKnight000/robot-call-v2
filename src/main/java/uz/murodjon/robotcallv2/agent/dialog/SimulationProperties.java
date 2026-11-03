@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 
 /**
  * Offline dialog-simulation settings. Bound from {@code voice-agent.simulation.*}.
@@ -10,6 +12,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@code voice-agent.simulation.enabled} switches on. Never a deployment setting — it
  * spends LLM tokens on every boot.
  *
+ * @param enabled      switches on the simulation runner
  * @param personasPath file of caller personas to replay; blank disables the runner
  * @param scenarioId   scenario the simulated calls run, 0 for the campaign default
  * @param language     BCP-47 language the simulated caller speaks
@@ -18,6 +21,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "voice-agent.simulation")
 public record SimulationProperties(
+        @DefaultValue("false") boolean enabled,
         String personasPath,
         long scenarioId,
         String language,
@@ -25,6 +29,7 @@ public record SimulationProperties(
         String personaModel
 ) {
 
+    @ConstructorBinding
     public SimulationProperties {
         if (language == null || language.isBlank()) {
             language = "uz-UZ";
@@ -35,5 +40,9 @@ public record SimulationProperties(
         if (personaModel == null || personaModel.isBlank()) {
             personaModel = "gemini-3.8-flash";
         }
+    }
+
+    public SimulationProperties(String personasPath, long scenarioId, String language, int maxTurns, String personaModel) {
+        this(false, personasPath, scenarioId, language, maxTurns, personaModel);
     }
 }

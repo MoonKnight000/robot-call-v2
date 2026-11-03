@@ -29,7 +29,7 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
     private final AuditUseCase auditUseCase;
     private final AiAgentEngineGuard engineGuard;
 
-    public AiAgentSettingsService(AiAgentDrafts drafts, AuditUseCase auditUseCase, AiAgentEngineGuard engineGuard) {
+    AiAgentSettingsService(AiAgentDrafts drafts, AuditUseCase auditUseCase, AiAgentEngineGuard engineGuard) {
         this.drafts = drafts;
         this.auditUseCase = auditUseCase;
         this.engineGuard = engineGuard;

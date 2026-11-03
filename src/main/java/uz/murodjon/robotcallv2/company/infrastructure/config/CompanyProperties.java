@@ -21,6 +21,10 @@ public class CompanyProperties {
         return defaultId;
     }
 
+    public long getDefaultId() {
+        return defaultId;
+    }
+
     public void setDefaultId(long defaultId) {
         this.defaultId = defaultId;
     }

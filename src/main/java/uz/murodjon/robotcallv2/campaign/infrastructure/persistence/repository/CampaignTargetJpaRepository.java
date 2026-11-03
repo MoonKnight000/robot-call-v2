@@ -20,6 +20,7 @@ import java.util.Optional;
  * Spring Data repository for {@link CampaignTargetEntity}.
  */
 @Repository
+@SuppressWarnings("SpringDataModifyingAnnotationMissing")
 public interface CampaignTargetJpaRepository extends JpaRepository<CampaignTargetEntity, Long> {
 
     @Query("SELECT t FROM CampaignTargetEntity t WHERE t.id = :id AND t.company.id = :companyId")

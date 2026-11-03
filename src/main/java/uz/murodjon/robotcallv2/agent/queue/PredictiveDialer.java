@@ -75,6 +75,7 @@ public class PredictiveDialer {
 
     /** One client dialled for whichever operator is free when they answer. */
     private static final class PredictiveCall {
+        private final Object lock = new Object();
         private final String token = UUID.randomUUID().toString();
         private final long callQueueId;
         /** What the AI agent needs to take the client over; prepared before dialling. Also the call's target. */
@@ -198,7 +199,7 @@ public class PredictiveDialer {
             handToAi(call);
             return;
         }
-        synchronized (call) {
+        synchronized (call.lock) {
             call.operatorUserId = userId; // before the ring: the answer may come back before originate returns
         }
         try {
@@ -206,14 +207,14 @@ public class PredictiveDialer {
             String operatorChannelId = ari.originateToStasis(ari.buildOperatorDialString(account.endpointName()),
                     "predictive-operator," + token, OPERATOR_RING_SEC,
                     "\"Kampaniya\" <" + call.aiCall.phone().replaceAll("\\D", "") + ">");
-            synchronized (call) {
+            synchronized (call.lock) {
                 call.operatorChannelId = operatorChannelId;
             }
             byChannel.put(operatorChannelId, call);
         } catch (RuntimeException e) {
             log.warn("Predictive call to {}: operator {} could not be rung: {}", PhoneMasker.mask(call.aiCall.phone()),
                     userId, e.getMessage());
-            synchronized (call) {
+            synchronized (call.lock) {
                 call.operatorUserId = null;
             }
             operatorPresenceUseCase.releaseRinging(userId);
@@ -229,7 +230,7 @@ public class PredictiveDialer {
         if (call == null) {
             join = false;
         } else {
-            synchronized (call) {
+            synchronized (call.lock) {
                 join = !call.machine && !call.clientGone && !call.handedToAi;
                 call.operatorAnswered = join;
             }
@@ -281,7 +282,7 @@ public class PredictiveDialer {
         ari.stopWatchingForAnsweringMachine(call.clientChannelId);
         String operatorChannelId;
         Long operatorUserId;
-        synchronized (call) {
+        synchronized (call.lock) {
             call.clientGone = true;
             if (call.handedToAi) {
                 return; // an AI call now: teardown releases the slot and settles the target
@@ -318,7 +319,7 @@ public class PredictiveDialer {
     /** The operator's phone rang out or was refused: the AI agent takes the client instead. */
     private void onOperatorGone(PredictiveCall call, String operatorChannelId) {
         Long userId;
-        synchronized (call) {
+        synchronized (call.lock) {
             if (!operatorChannelId.equals(call.operatorChannelId) || call.operatorAnswered || call.machine
                     || call.clientGone || call.handedToAi) {
                 return;
@@ -336,7 +337,7 @@ public class PredictiveDialer {
      * target and the attempt row are teardown's from here on, as for any outbound AI call.
      */
     private void handToAi(PredictiveCall call) {
-        synchronized (call) {
+        synchronized (call.lock) {
             if (call.machine || call.clientGone || call.operatorAnswered || call.handedToAi) {
                 return;
             }
@@ -361,7 +362,7 @@ public class PredictiveDialer {
         boolean operatorAnswered;
         String operatorChannelId;
         Long operatorUserId;
-        synchronized (call) {
+        synchronized (call.lock) {
             if (call.machine || call.clientGone || call.handedToAi) {
                 return;
             }
@@ -420,13 +421,13 @@ public class PredictiveDialer {
     }
 
     private static boolean isMachine(PredictiveCall call) {
-        synchronized (call) {
+        synchronized (call.lock) {
             return call.machine;
         }
     }
 
     private static boolean isOperatorAnswered(PredictiveCall call) {
-        synchronized (call) {
+        synchronized (call.lock) {
             return call.operatorAnswered;
         }
     }

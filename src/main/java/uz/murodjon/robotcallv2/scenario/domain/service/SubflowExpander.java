@@ -47,7 +47,7 @@ public final class SubflowExpander {
         Map<String, String> entries = new HashMap<>();
         for (StageDef stage : definition.stages()) {
             SubflowDef subflow = findEmbedded(definition, stage);
-            if (subflow != null) {
+            if (subflow != null && subflow.findStartStage() != null) {
                 entries.put(key(stage.id()), stage.id() + SEPARATOR + subflow.findStartStage().id());
             }
         }
@@ -59,7 +59,7 @@ public final class SubflowExpander {
         List<StageDef> flattened = new ArrayList<>();
         for (StageDef stage : definition.stages()) {
             SubflowDef subflow = findEmbedded(definition, stage);
-            if (subflow != null) {
+            if (subflow != null && subflow.findStartStage() != null) {
                 flattened.addAll(inline(subflow, stage, toEntry));
             } else {
                 flattened.add(retarget(stage, toEntry));

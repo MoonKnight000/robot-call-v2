@@ -66,6 +66,7 @@ public final class AiAgentValidator {
     public static void validate(AiAgent agent, Integer companyMaxCallSeconds) {
         if (agent.timezone() != null) {
             try {
+                //noinspection ResultOfMethodCallIgnored
                 ZoneId.of(agent.timezone());
             } catch (DateTimeException e) {
                 throw new ValidationException(ErrorCode.AI_AGENT_TIMEZONE_INVALID, agent.timezone());
@@ -204,8 +205,9 @@ public final class AiAgentValidator {
             }
         }
         boolean isCode = action.actionType() == PostCallActionType.CODE;
-        if (isCode != (action.code() != null)
-                || (action.code() != null && action.code().length() > WorkflowValidator.MAX_CODE_CHARS)) {
+        boolean hasCode = action.code() != null;
+        if (isCode != hasCode
+                || (hasCode && action.code().length() > WorkflowValidator.MAX_CODE_CHARS)) {
             throw new ValidationException(ErrorCode.AI_AGENT_POST_CALL_CODE_INVALID, action.id(),
                     WorkflowValidator.MAX_CODE_CHARS);
         }

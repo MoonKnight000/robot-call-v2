@@ -183,7 +183,7 @@ public class DialogSession implements DialogOutcomeSink {
      * answer an Uzbek caller in Russian.
      */
     private volatile String candidateLanguage;
-    private volatile int candidateLanguageTurns;
+    private int candidateLanguageTurns;
     /** Whether the §11.1 disclosure has already been spoken from code this call. */
     private volatile boolean disclosureSpoken;
 
@@ -516,7 +516,7 @@ public class DialogSession implements DialogOutcomeSink {
      * Note that the caller answered in {@code language} while this call is being held in
      * another one, and return how many finals in a row have now said so.
      */
-    public int noteLanguageCandidate(String language) {
+    public synchronized int noteLanguageCandidate(String language) {
         if (language.equals(candidateLanguage)) {
             return ++candidateLanguageTurns;
         }
@@ -526,7 +526,7 @@ public class DialogSession implements DialogOutcomeSink {
     }
 
     /** The caller is speaking the language this call is already in. */
-    public void resetLanguageCandidate() {
+    public synchronized void resetLanguageCandidate() {
         candidateLanguage = null;
         candidateLanguageTurns = 0;
     }
@@ -575,7 +575,10 @@ public class DialogSession implements DialogOutcomeSink {
      */
     public void switchScenario(ScenarioDefinition next) {
         this.scenario = next;
-        setState(next.findStartStage().id());
+        var start = next.findStartStage();
+        if (start != null) {
+            setState(start.id());
+        }
         this.systemPrefix = null;
     }
 

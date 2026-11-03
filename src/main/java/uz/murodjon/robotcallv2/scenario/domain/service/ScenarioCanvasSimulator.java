@@ -54,7 +54,7 @@ public final class ScenarioCanvasSimulator {
         }
         if (currentStage == null) {
             currentStage = definition.findStartStage();
-            currentStageId = currentStage.id();
+            currentStageId = currentStage != null ? currentStage.id() : null;
         }
 
         String userInput = request.userInput() != null ? request.userInput().trim() : "";

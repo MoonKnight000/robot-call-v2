@@ -229,7 +229,7 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
         private final RealtimeListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch ready;
-        private final StringBuilder botTranscript = new StringBuilder();
+
 
         private PipecatResponseHandler(String channelId, RealtimeListener listener,
                                       AtomicBoolean alive, CountDownLatch ready) {
@@ -282,13 +282,13 @@ public class PipecatRealtimeProvider implements RealtimeProvider {
                             if ("user".equalsIgnoreCase(role)) {
                                 listener.onInputTranscript(text, true);
                             } else {
-                                botTranscript.append(text);
+
                                 listener.onOutputTranscript(text);
                             }
                         }
                     }
                     case "turn_complete", "bot_stopped_speaking" -> {
-                        botTranscript.setLength(0);
+
                         listener.onTurnComplete();
                     }
                     case "user_transcript", "input_transcript" -> {

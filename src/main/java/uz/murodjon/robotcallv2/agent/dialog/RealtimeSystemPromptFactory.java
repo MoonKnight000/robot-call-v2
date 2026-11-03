@@ -110,7 +110,7 @@ public class RealtimeSystemPromptFactory {
                 .append(SystemPromptFactory.TIME_ANCHORS).append('\n');
 
         appendFacts(sb, s, factsInPrompt);
-        SystemPromptFactory.appendMemory(sb, context.memory(), zone);
+        SystemPromptFactory.appendMemory(sb, context != null ? context.memory() : null, zone);
 
         boolean singleStage = StageEntry.hasNowhereToTransition(def);
         if (singleStage) {

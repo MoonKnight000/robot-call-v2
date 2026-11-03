@@ -170,8 +170,8 @@ public class VoicemailService implements VoicemailUseCase {
     /** Opening the file is the company check storage already has; the stream itself is not needed. */
     private void requireOwnFile(long companyId, long fileId) {
         DownloadableFile file = fileStorageService.download(companyId, fileId);
-        try (InputStream ignored = file.content()) {
-            // only the access check mattered
+        try {
+            file.content().close();
         } catch (IOException e) {
             log.debug("Closing greeting file {} failed: {}", fileId, e.getMessage());
         }

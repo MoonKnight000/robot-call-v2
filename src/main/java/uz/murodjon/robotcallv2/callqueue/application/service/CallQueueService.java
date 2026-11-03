@@ -127,6 +127,9 @@ public class CallQueueService implements CallQueueUseCase {
             requireOwnFile(companyId, queue.holdMusicFileId());
         }
         Long target = queue.overflowTargetId();
+        if (target == null) {
+            return;
+        }
         switch (queue.overflowAction()) {
             case QUEUE -> {
                 if (target.equals(selfId)) {
@@ -144,8 +147,8 @@ public class CallQueueService implements CallQueueUseCase {
 
     private void requireOwnFile(long companyId, long fileId) {
         DownloadableFile file = fileStorageUseCase.download(companyId, fileId);
-        try (InputStream ignored = file.content()) {
-            // only the access check mattered
+        try {
+            file.content().close();
         } catch (IOException e) {
             log.debug("Closing hold music file {} failed: {}", fileId, e.getMessage());
         }

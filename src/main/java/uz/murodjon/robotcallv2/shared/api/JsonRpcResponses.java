@@ -17,6 +17,7 @@ public final class JsonRpcResponses {
     private JsonRpcResponses() {
     }
 
+    @SuppressWarnings("OptionalUsedAsFieldOrParameterType")
     public static ResponseEntity<String> of(Optional<String> response) {
         return response
                 .map(body -> ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body))

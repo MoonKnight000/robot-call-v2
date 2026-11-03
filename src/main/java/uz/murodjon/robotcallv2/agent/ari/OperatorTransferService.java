@@ -106,7 +106,7 @@ class OperatorTransferService {
             flowCallService.transferCallToQueue(callAttemptUseCase.findCompanyIdByAttemptId(session.callAttemptId()), channelId, transferQueueId);
             return;
         }
-        String targetEndpoint = null;
+        String targetEndpoint;
         if (toOperator) {
             targetEndpoint = asteriskProperties.buildOperatorDialString(operatorEndpoint.trim());
         } else if (toStageNumber) {
