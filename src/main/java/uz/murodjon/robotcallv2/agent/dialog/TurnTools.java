@@ -50,6 +50,16 @@ public class TurnTools {
 
     private static final Logger log = LoggerFactory.getLogger(TurnTools.class);
 
+    /**
+     * Sampling penalties on the OpenAI-shaped options. Left at 0 the model kept opening
+     * reply after reply with the same word ("Tushunarli", "Xo'p") and re-asking a question
+     * in the same sentence: everything it said earlier in the call is in its context, and
+     * nothing made repeating it cost anything. Gemini 3+ takes no sampling parameters, so
+     * its branch goes without.
+     */
+    private static final double FREQUENCY_PENALTY = 0.4;
+    private static final double PRESENCE_PENALTY = 0.3;
+
     private final DialogProperties dialogProperties;
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final HttpToolExecutor httpToolExecutor;
@@ -456,6 +466,7 @@ public class TurnTools {
             if (aiModel.temperature() != null) {
                 builder.temperature(aiModel.temperature());
             }
+            builder.frequencyPenalty(FREQUENCY_PENALTY).presencePenalty(PRESENCE_PENALTY);
             return builder.build();
         }
         // This turn's own choice (the fast model on a one-word answer) first, then the
@@ -497,6 +508,7 @@ public class TurnTools {
             if (aiModel.temperature() != null) {
                 builder.temperature(aiModel.temperature());
             }
+            builder.frequencyPenalty(FREQUENCY_PENALTY).presencePenalty(PRESENCE_PENALTY);
             return builder.build();
         }
 
