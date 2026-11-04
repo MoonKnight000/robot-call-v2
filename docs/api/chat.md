@@ -116,7 +116,7 @@ u ham `voice-agent.retention.conversation-days` bo'yicha o'chiriladi (`Retention
 
 ## Hozircha yo'q (keyingi bosqich)
 
-- Chat tahlili (`analysis`) faqat panelda ko'rinadi — `CHAT_ENDED`/`CHAT_ANALYZED` webhook'lari keyingi bosqich.
+- Tahlil va suhbat hodisalari webhook bilan ham yuboriladi: `CHAT_STARTED`, `CHAT_ENDED`, `CHAT_ANALYZED` ([ai-agents.md](ai-agents.md)).
   Mijoz xotirasi va CRM izohi telefon ma'lum bo'lsa yoziladi (Telegram raqam ulashish).
 
 ---

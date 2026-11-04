@@ -8,5 +8,11 @@ public enum AgentWebhookEvent {
     STAGE_TRANSITION,
     TRANSFER_REQUESTED,
     VOICEMAIL_DETECTED,
-    INTENT_DETECTED
+    INTENT_DETECTED,
+    /** A chat conversation opened (widget, Telegram or the chat API). */
+    CHAT_STARTED,
+    /** A chat ended, or fell silent past its TTL. */
+    CHAT_ENDED,
+    /** A finished chat's post-chat analysis is ready. */
+    CHAT_ANALYZED
 }

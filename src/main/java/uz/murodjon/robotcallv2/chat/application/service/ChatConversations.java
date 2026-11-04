@@ -25,6 +25,8 @@ import uz.murodjon.robotcallv2.chat.domain.enums.ChatRole;
 import uz.murodjon.robotcallv2.chat.infrastructure.config.ChatProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
@@ -105,12 +107,13 @@ class ChatConversations {
     private final CrmUseCase crmUseCase;
     private final CallTraceLog callTraceLog;
     private final CallBillingUseCase callBillingUseCase;
+    private final AgentWebhookUseCase agentWebhookUseCase;
 
     ChatConversations(ChatSessionRepository repository, ChatQuotaPort chatQuota, AiAgentUseCase aiAgentUseCase,
                       ToolUseCase toolUseCase, AiModelConfigUseCase aiModelConfigUseCase,
                       CompanyUseCase companyUseCase, ClientMemoryUseCase clientMemoryUseCase, TextTurnEngine textTurnEngine,
                       ChatProperties chatProperties, Clock clock, CrmUseCase crmUseCase, CallTraceLog callTraceLog,
-                      CallBillingUseCase callBillingUseCase) {
+                      CallBillingUseCase callBillingUseCase, AgentWebhookUseCase agentWebhookUseCase) {
         this.repository = repository;
         this.chatQuota = chatQuota;
         this.aiAgentUseCase = aiAgentUseCase;
@@ -124,6 +127,7 @@ class ChatConversations {
         this.crmUseCase = crmUseCase;
         this.callTraceLog = callTraceLog;
         this.callBillingUseCase = callBillingUseCase;
+        this.agentWebhookUseCase = agentWebhookUseCase;
     }
 
     /**
@@ -168,6 +172,9 @@ class ChatConversations {
         ChatSession afterGreeting = repository.save(saved.afterTurn(dialog.state(), dialog.outcome(), disposition,
                 ended, 1, clock.instant()));
         chargeTurn(afterGreeting, dialog);
+        agentWebhookUseCase.executeEvent(afterGreeting.companyId(), 0, null, agent, AgentWebhookEvent.CHAT_STARTED,
+                Map.of("chatId", afterGreeting.id() != null ? afterGreeting.id() : 0, "channel", afterGreeting.channel().name(),
+                        "language", afterGreeting.language() != null ? afterGreeting.language() : ""));
         if (ended) {
             rememberIfEnded(afterGreeting, dialog, agent, disposition);
         }

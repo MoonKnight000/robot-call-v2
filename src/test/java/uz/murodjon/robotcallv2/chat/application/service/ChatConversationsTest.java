@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.chat.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
@@ -89,7 +90,8 @@ class ChatConversationsTest {
         conversations = new ChatConversations(
                 repository, chatQuota, aiAgentUseCase, toolUseCase,
                 aiModelConfigUseCase, companyUseCase, clientMemoryUseCase,
-                textTurnEngine, chatProperties, clock, mock(CrmUseCase.class), mock(CallTraceLog.class), callBillingUseCase);
+                textTurnEngine, chatProperties, clock, mock(CrmUseCase.class), mock(CallTraceLog.class), callBillingUseCase,
+                mock(AgentWebhookUseCase.class));
 
         agent = AiAgentFixtures.agent(AGENT_ID, COMPANY_ID, 1L, "uz", "yandex:zahar");
         ScenarioDefinition def = ScenarioDefinition.builder()

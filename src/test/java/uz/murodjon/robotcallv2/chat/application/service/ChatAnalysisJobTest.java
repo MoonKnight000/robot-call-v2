@@ -7,8 +7,10 @@ import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
 import uz.murodjon.robotcallv2.agent.summary.SummarizedCall;
 import uz.murodjon.robotcallv2.agent.summary.SummaryService;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
+import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.chat.application.port.output.ChatSessionRepository;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatAnalysis;
@@ -41,8 +43,9 @@ class ChatAnalysisJobTest {
     private final AiAgentUseCase aiAgentUseCase = mock(AiAgentUseCase.class);
     private final SummaryService summaryService = mock(SummaryService.class);
     private final CallBillingUseCase callBillingUseCase = mock(CallBillingUseCase.class);
+    private final AgentWebhookUseCase agentWebhookUseCase = mock(AgentWebhookUseCase.class);
     private final ChatAnalysisJob job = new ChatAnalysisJob(repository, aiAgentUseCase, summaryService,
-            callBillingUseCase, new ChatProperties(40, 200, 120), mock(ClusterJobLock.class),
+            callBillingUseCase, new ChatProperties(40, 200, 120), agentWebhookUseCase, mock(ClusterJobLock.class),
             Clock.fixed(NOW, ZoneId.of("UTC")), true);
 
     private final ChatSession session = new ChatSession(5L, "key", COMPANY_ID, AGENT_ID, 100L, null, null, "uz",
@@ -75,6 +78,8 @@ class ChatAnalysisJobTest {
         assertThat(analysis.getValue().outcome()).containsEntry("rooms", 3);
         assertThat(analysis.getValue().analyzedAt()).isEqualTo(NOW);
         verify(callBillingUseCase).chargeChatTurn(eq(COMPANY_ID), eq(5L), eq("analysis"), any());
+        verify(agentWebhookUseCase).executeEvent(eq(COMPANY_ID), eq(0L), isNull(), any(), eq(AgentWebhookEvent.CHAT_ENDED), anyMap());
+        verify(agentWebhookUseCase).executeEvent(eq(COMPANY_ID), eq(0L), isNull(), any(), eq(AgentWebhookEvent.CHAT_ANALYZED), anyMap());
     }
 
     @Test

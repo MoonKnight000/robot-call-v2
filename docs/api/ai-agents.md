@@ -551,6 +551,12 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > da scalar `value` yuboriladi; matndagi karta/passport/PINFL/CVV/email PII qiymatlari
 > redakt qilinadi. Caller transkripti event payload'iga kiritilmaydi. `INTENT_DETECTED`
 > faqat intent aniqlagich mavjud va yoqilgan bo'lsa yuboriladi.
+>
+> **Chat hodisalari** (chat agentlari uchun): `CHAT_STARTED` — suhbat ochildi (`data`: `chatId`, `channel`
+> `WIDGET`/`TELEGRAM`/`API`, `language`); `CHAT_ENDED` — suhbat tugadi yoki TTL bo'yi jim turdi (`chatId`,
+> `channel`, `reason` `ENDED`/`TIMEOUT`, `messageCount`, `disposition`); `CHAT_ANALYZED` — suhbatdan keyingi tahlil
+> tayyor (`chatId`, `channel`, `summary`, `sentiment`, `needsFollowUp`). Chat hodisalarida `callAttemptId` `0`,
+> `channelId` `null`. `CHAT_ENDED` va `CHAT_ANALYZED` tahlil job'idan ketadi — suhbat tugaganidan ~1 daqiqa ichida.
 
 > **`transferMessage`** (string, ixtiyoriy) — operatorga ulashdan oldin mijoz eshitadigan gap. U
 > transfer qayerdan boshlanganidan qat'i nazar aytiladi: model `requestHumanTransfer` ni gapsiz
