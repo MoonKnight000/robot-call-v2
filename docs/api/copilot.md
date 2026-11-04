@@ -4,8 +4,8 @@
 
 Panelning AI yordamchisi. Foydalanuvchi oddiy tilda so'raydi ("oxirgi haftada nega transferlar
 ko'paydi?", "shu qo'ng'iroqda agent nega summani aytdi?", "agentga transfer qoidasini qo'sh"),
-copilot esa platformaning [MCP server tool'lari](mcp-server.md) orqali qo'ng'iroqlar, transkriptlar,
-agentlar va eval natijalarini o'qib javob beradi.
+copilot esa platformaning [MCP server tool'lari](mcp-server.md) orqali qo'ng'iroqlar, analitika, transkriptlar,
+agentlar, kampaniyalar va eval natijalarini o'qib javob beradi va qoralamalarni sozlaydi.
 
 **Qoidalar:**
 - **Sanash — bazada.** Copilot "qancha / qanday ulush / o'sdimi" savollariga avval sanalgan tool'lar
@@ -16,6 +16,8 @@ agentlar va eval natijalarini o'qib javob beradi.
   `AI_AGENT_EDIT` bo'lsa ham. U yaratgan agent o'chiq holda boshlanadi, `enabled` ni o'zgartirmaydi,
   qo'ng'iroqlari qoralamada ishlayotgan agentni tahrirlamaydi, **publish qila olmaydi**. Publish —
   panelda odam tomonidan.
+  Kampaniyani faqat `DRAFT` holatda yaratadi/o'zgartiradi va kontakt yuklaydi; **ishga tushira olmaydi**
+  (`403 MCP_CAMPAIGN_NOT_DRAFT`, [mcp-server.md](mcp-server.md#3-agent_draft_edit--faqat-qoralama)).
 - **Huquqlar foydalanuvchiniki.** Copilot faqat so'rayotgan foydalanuvchining huquqlari ochgan
   tool'larni ko'radi: `REPORT_READ` siz — qo'ng'iroqlarni o'qiy olmaydi, `AI_AGENT_EDIT`/
   `AGENT_DRAFT_EDIT` siz — qoralamaga yoza olmaydi.

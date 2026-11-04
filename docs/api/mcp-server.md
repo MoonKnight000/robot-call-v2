@@ -67,6 +67,15 @@ tool'larni ko'radi.
 | `compare_campaigns` | `REPORT_READ` | `campaign-comparison` bilan bir xil (`from`, `to`, `campaignIds` ≤20; berilmasa — hammasi) |
 | `get_call_trace` | `REPORT_READ` | `GET /api/reports/calls/{callId}/trace` bilan bir xil (`callId`) |
 | `list_agent_insights` | `AI_AGENT_READ` | `POST /api/agent-insights/filter` bilan bir xil (`aiAgentId`, `type`, `status`, `page`, `size`) |
+| `list_campaigns` | `CAMPAIGN_READ`, `CAMPAIGN_EDIT` | Kampaniyalar (`search`, `status`, `aiAgentId`, `page`, `size`) |
+| `get_campaign` | `CAMPAIGN_READ`, `CAMPAIGN_EDIT` | `GET /api/campaigns/{id}/overview` bilan bir xil: kampaniya, raqamlar puli, `launchBlocker` |
+| `create_campaign_draft` | `CAMPAIGN_EDIT` | `POST /api/campaigns` maydonlari; kampaniya doim `DRAFT` |
+| `update_campaign_draft` | `CAMPAIGN_EDIT` | `PUT /api/campaigns/{id}` — lekin **qisman**: berilmagan maydon o'zgarmaydi, guruh (`schedule`, `retry`, `limits`, ...) maydonma-maydon birlashtiriladi |
+| `preview_campaign_targets` | `CAMPAIGN_EDIT` | `targets/csv/preview` bilan bir xil (`campaignId`, `csv` matn) — hech narsa yuklamaydi |
+| `import_campaign_targets` | `CAMPAIGN_EDIT` | `targets/csv` bilan bir xil (`campaignId`, `csv` matn) |
+| `list_campaign_variants` | `CAMPAIGN_READ`, `CAMPAIGN_EDIT` | A/B variantlar |
+| `get_campaign_ab_report` | `CAMPAIGN_READ`, `CAMPAIGN_EDIT` | A/B natija |
+| `create_campaign_variant` | `CAMPAIGN_EDIT` | `POST /api/campaigns/{id}/variants` maydonlari |
 
 Har bir tool REST API chaqiradigan o'sha use case'ni chaqiradi, shuning uchun validatsiya, audit
 va xatolar bir xil. Argumentlar **qat'iy** o'qiladi: noma'lum maydon (`systemPromt`) jimgina
@@ -93,6 +102,12 @@ Publish, rollout, rollback, o'chirish va agentni yoqish — faqat `AI_AGENT_EDIT
 endpoint'lar bu huquqni qabul qilmaydi: u faqat MCP server orqali ishlaydi.
 
 `AI_AGENT_EDIT` bilan ulangan klientga bu cheklovlar qo'llanmaydi.
+
+**Kampaniyalar.** Faqat-qoralama klient (`AI_AGENT_EDIT` siz kalit va panel copiloti — har doim) faqat
+`DRAFT` holatdagi kampaniyani o'zgartiradi: `update_campaign_draft`, `import_campaign_targets`,
+`create_campaign_variant` boshqa holatda `403 MCP_CAMPAIGN_NOT_DRAFT` — ishlayotgan kampaniyaning sozlamasi,
+kontakti va varianti darhol jonli terishga ta'sir qiladi. Kampaniyani ishga tushirish / to'xtatish / pauza
+qiladigan tool **umuman yo'q** — bu panelda odamning tugmasi.
 
 ---
 

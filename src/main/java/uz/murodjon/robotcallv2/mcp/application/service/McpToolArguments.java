@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.mcp.application.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.validation.Validator;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
@@ -82,6 +83,30 @@ public final class McpToolArguments {
             ids.add(requireId(tool, value, i));
         }
         return ids;
+    }
+
+    /**
+     * A partial update over the current value: an object in {@code patch} is merged field by field
+     * into the same object of {@code base}, anything else replaces it. {@code base} is changed and returned.
+     */
+    public ObjectNode merge(ObjectNode base, JsonNode patch) {
+        patch.properties().forEach(entry -> {
+            JsonNode current = base.get(entry.getKey());
+            if (current instanceof ObjectNode currentObject && entry.getValue().isObject()) {
+                merge(currentObject, entry.getValue());
+            } else {
+                base.set(entry.getKey(), entry.getValue());
+            }
+        });
+        return base;
+    }
+
+    public String requireText(String tool, JsonNode args, String field) {
+        String value = optionalText(args, field);
+        if (value == null) {
+            throw ValidationException.withErrors(ErrorCode.MCP_TOOL_ARGUMENTS_INVALID, List.of(field + " is required"), tool);
+        }
+        return value;
     }
 
     public Integer optionalInt(JsonNode args, String field) {

@@ -128,6 +128,7 @@ public enum ErrorCode {
     SIGNUP_DISABLED("self-service signup is turned off on this platform"),
     PARTNER_REQUIRED("company %s is not a partner"),
     MCP_AGENT_LIVE_ON_DRAFT("AI agent %s takes calls on its draft (enabled, never published) — only AI_AGENT_EDIT may change it"),
+    MCP_CAMPAIGN_NOT_DRAFT("campaign %s is %s — this caller changes only DRAFT campaigns; edit a running one in the panel"),
     /** @deprecated another company's row answers 404 *_NOT_FOUND instead; kept because the frontend may still translate it. */
     @Deprecated
     CROSS_COMPANY_ACCESS_FORBIDDEN("cross-company access forbidden"),
