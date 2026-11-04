@@ -119,3 +119,25 @@ chaqirildimi, javobdagi raqam tool javobidagi bilan bir xilmi.
 3. Copilot kampaniyani **ishga tushira olmasligi** to'g'rimi (reja shunday), yoki tasdiq bilan ruxsat berilsinmi?
 4. Eskiz kiruvchi SMS'ni webhook bilan beradimi (A7 uchun)?
 5. `analyze_calls_batch` (C5) narxi kimga yoziladi va bir martada maksimum nechta qo'ng'iroq?
+
+---
+
+## Bajarilish holati (2026-11-04, branch `claude/practical-cannon-fj34hk`)
+
+Build/test Claude tomonidan ishga tushirilmagan (§8.6) — har bosqichning tekshiruvini foydalanuvchi bajaradi.
+
+| Bosqich | Holat | Commit mazmuni | Tekshiruv |
+|---|---|---|---|
+| C1 + C4 | ✅ | 9 ta sanalgan analitika tool'i (`get_call_stats`, `compare_periods`, `get_call_timeseries`, `get_stage_funnel`, `get_call_topics`, `get_hourly_heatmap`, `compare_campaigns`, `get_call_trace`, `list_agent_insights`) — `CallAnalyticsMcpToolSet`; tool'lar endi `McpToolSet` bean'larida e'lon qilinadi; `copilot.txt` ga CALL ANALYSIS | `CallPeriodComparisonTest`, `CopilotInstructionsTest`; copilot'dan "oxirgi 7 kun vs oldingi 7 kun transfer ulushi" — raqam dashboard bilan bir xil |
+| B1 | ✅ | `AskCopilotRequest.context` (`page`, `agentId`, `campaignId`, `callId`, `scenarioId`) | `CopilotInstructionsTest`; agent sahifasidan "shu agentni yaxshila" |
+| B2 | ✅ | `CampaignMcpToolSet`: list/get, `create_campaign_draft`, qisman `update_campaign_draft`, CSV preview/import, A/B variant; faqat DRAFT (`MCP_CAMPAIGN_NOT_DRAFT`), ishga tushirish tool'i yo'q; `copilot.txt` ga CAMPAIGN SETUP | `CampaignMcpToolSetTest`; "ertaga 9–18, 3 urinish, shu CSV" → DRAFT kampaniya |
+| A1 | ✅ | `channel`: CHAT agent kampaniya/variant/sequence/inbound route'ga biriktirilmaydi (`AI_AGENT_NOT_FOR_CALLS`), VOICE agent Telegram botga (`AI_AGENT_NOT_FOR_CHAT`) | `AiAgentChannelTest`, `CampaignServiceTest` |
+| A4 | ✅ | Chat turn tokenlari balansdan (`chat-charge:<id>:<n>`), balanssiz chat ochilmaydi (`CHAT_NO_BALANCE`) | `ChatConversationsTest`; ledger'da `chat-charge:*` |
+| A3 | ✅ | `ChatAnalysisJob` + V33: summary, sentiment, needsFollowUp, outcome → `GET /api/chats/{id}` `analysis` | `ChatAnalysisJobTest`; widget chatni tugatib 1 daqiqadan keyin detail'da `analysis` |
+| B6, B3, B4, B5, B7 | ⏳ | — | — |
+| C2, C3 (qolgani), C5, C6, C7 | ⏳ | — | — |
+| A2, A5–A9 | ⏳ | — | — |
+
+**Ochiq savollarga olingan standart javoblar** (foydalanuvchi o'zgartirishi mumkin): chat agent — Retell kabi
+alohida tur, OMNICHANNEL ikkalasini ham qiladi; copilot kampaniyani ishga tushira olmaydi; tasdiq oqimi (B6)
+hali qilinmagan — copilot hozircha qoralamaga darhol yozadi.
