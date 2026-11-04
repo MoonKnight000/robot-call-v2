@@ -53,6 +53,8 @@ class TurnToolsTest {
         assertThat(openAiOptions.getModel()).isEqualTo("gpt-5.6-luna");
         assertThat(openAiOptions.getTemperature()).isEqualTo(0.6);
         assertThat(openAiOptions.getMaxTokens()).isEqualTo(120);
+        assertThat(openAiOptions.getFrequencyPenalty()).isEqualTo(0.4);
+        assertThat(openAiOptions.getPresencePenalty()).isEqualTo(0.3);
     }
 
     @Test

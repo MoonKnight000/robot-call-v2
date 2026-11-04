@@ -565,14 +565,17 @@ public class SystemPromptFactory {
         // A reaction only acknowledges NEW information; waiting lines belong to the system. The old
         // rule ("open with a reaction") collided with agents' own guardrail ("do not open with
         // 'Tushunarli'"), and a caller who said "aytdimku uch xonali…" heard "Bir lahza. Tushunarli…".
-        rules.add("When the client gives you NEW information (an answer to your question, a reason, an objection, "
-                + "a date, a question of their own), you may open your reply with a brief reaction "
+        // "Tushunarli" is out of the examples too: offered as a permitted opener, the model took it
+        // as the expected one and began reply after reply with it, against the platform guardrail.
+        rules.add("Most replies start straight with the answer or the next question, with no opening word at all. "
+                + "Only when the client gives you NEW information (an answer to your question, a reason, an objection, "
+                + "a date, a question of their own) may you sometimes open your reply with a brief reaction "
                 // No "Aha" among the uz examples: the synthesized voice draws it out into a
                 // long "Aaa…", heard on calls as the bot stalling before every answer.
-                + (russian ? "(\"Хорошо\", \"Понятно\", \"Да, конечно\")" : "(\"Xo'p\", \"Tushunarli\", \"Yaxshi\")")
+                + (russian ? "(\"Хорошо\", \"Понятно\", \"Да, конечно\")" : "(\"Xo'p\", \"Yaxshi\", \"Mayli\")")
                 + ", tied to what they said when you can ("
                 + (russian ? "\"Трёхкомнатная, хорошо.\"" : "\"Uch xonali, yaxshi.\"")
-                + ") rather than a bare word, and never the same one in two replies in a row. If the client simply confirms "
+                + ") rather than a bare word, and never start two replies in a row with the same word. If the client simply confirms "
                 + (russian ? "(\"да\", \"ага\", \"хорошо\")" : "(\"ha\", \"aha\", \"xo'p\", \"shunday\")")
                 + " — do not react, go straight to the task: confirming a confirmation sounds "
                 + "robotic. If the client repeats something they already told you or says they already did "
@@ -629,9 +632,15 @@ public class SystemPromptFactory {
             }
         } else {
             rules.add("Banned formal written words: \"ushbu\", \"mazkur\", \"amalga oshirish\", "
-                    + "\"hurmatli mijoz\", \"hurmatli fuqaro\", \"suhbatdosh\", \"suhbatdoshim\", \"mijoz\".");
-            rules.add("Choose the spoken form: not \"amalga oshirasiz\" but a plain verb (\"qilasiz\"); "
-                    + "not \"ma'lumot beraman\" but \"aytaman\".");
+                    + "\"hurmatli mijoz\", \"hurmatli fuqaro\", \"suhbatdosh\", \"suhbatdoshim\", \"mijoz\", "
+                    + "\"ko'maklashish\", \"mablag'\", \"tafsilotlar\", \"taqdim etish\", \"bag'oyat mamnunman\", "
+                    + "\"qondirildi\", \"zahmat chekmang\", \"aniqlik kiritib olsak\", \"iltifot qiling\".");
+            rules.add("Choose the spoken form: not \"amalga oshirasiz\" but a plain verb (\"qilasiz\", \"to'laysiz\"); "
+                    + "not \"ma'lumot beraman\" / \"taqdim etaman\" but \"aytaman\"; not \"ko'maklashaman\" but "
+                    + "\"yordam beraman\"; not \"mablag'\" but \"pul\" or \"to'lov\"; not \"ushbu\" but \"shu\"/\"bu\"; "
+                    + "not \"tafsilotlar\" but \"ma'lumotlar\"; not \"bag'oyat mamnunman\" but \"jonim bilan\"; "
+                    + "not \"qondirildi\" but \"hal bo'ldi\"; not \"zahmat chekmang\" but \"xavotir olmang\"; "
+                    + "not \"aniqlik kiritib olsak\" but \"bilib olaylik\"; not \"iltifot qiling\" but \"marhamat\".");
             rules.add("Form of address: add \"aka\"/\"opa\" to the first name only (\"Murodjon aka\", \"Shahnoza opa\") — "
                     + "never say the surname or the full name.");
             rules.add("STRICTLY FORBIDDEN: \"Siz [Ism]misiz?\", \"Siz [Ism] bo'lasizmi?\", or rambling with 'men kimligingizni so'ramoqchiman'. "
@@ -715,7 +724,11 @@ public class SystemPromptFactory {
                         + "✗ (client: \"Kim bu?\") \"Uzr, adashibmiz.\" → "
                         + "✓ \"Aka, kompaniyadan telefon qilyapman. Murodjon aka o'zlarimi?\"\n"
                         + "✗ (client: \"Men... endi, haligi...\") \"Tushunarli, rahmat!\" → "
-                        + "✓ say nothing — call waitForCaller and let them finish\n");
+                        + "✓ say nothing — call waitForCaller and let them finish\n"
+                        + "✗ (client: \"Ha, to'g'ri.\") \"Tushunarli, tasdiqlaganingiz uchun rahmat. Ushbu to'lovni qachon "
+                        + "amalga oshirasiz?\" → ✓ \"Qachonga qilasiz to'lovni?\"\n"
+                        + "✗ (client: \"Hozir gaplasholmayman, mashinadaman.\") \"Tushundim, noqulaylik tug'dirganimdan "
+                        + "afsusdaman.\" → ✓ \"Mayli, xalaqit bermay. Qachon qaytib telefon qilay?\"\n");
         appendStyleExamples(sb, scenario, language);
         return sb.toString();
     }

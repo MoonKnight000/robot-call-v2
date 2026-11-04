@@ -251,7 +251,7 @@ public class DialogEngine implements CallDialog {
                     companyId, callAttemptId, channelId, agent, event, data));
             session.setCallTraceLog(callTraceLog);
             if (session.state() != null) {
-                callTraceLog.recordStageEntered(session, companyId, callAttemptId, session.startedAt(), null, session.state());
+                callTraceLog.recordStageEntered(session, companyId, callAttemptId, 0, session.startedAt(), null, session.state());
             }
         }
         if (simulated) {
@@ -561,7 +561,10 @@ public class DialogEngine implements CallDialog {
                         s.startedAt(),
                         s.state(),
                         s.language(),
-                        asString(s.context(), "clientName")))
+                        asString(s.context(), "clientName"),
+                        s.isInbound(),
+                        s.agent() != null ? s.agent().id() : null,
+                        s.agent() != null ? s.agent().name() : null))
                 .toList();
     }
 

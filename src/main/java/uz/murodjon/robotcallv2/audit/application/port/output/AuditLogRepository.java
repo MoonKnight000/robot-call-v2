@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.audit.application.port.output;
 
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFacets;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 
@@ -13,6 +14,8 @@ public interface AuditLogRepository {
     List<AuditLog> findByCompanyId(long companyId, AuditFilter filter);
 
     long countByCompanyId(long companyId, AuditFilter filter);
+
+    AuditFacets findFacets(long companyId);
 
     /** Deletes up to {@code batchSize} rows, across every company, written before {@code cutoff}. */
     int deleteCreatedBefore(Instant cutoff, int batchSize);

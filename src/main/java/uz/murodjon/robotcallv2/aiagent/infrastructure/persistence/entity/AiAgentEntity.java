@@ -133,7 +133,7 @@ public class AiAgentEntity {
     @Column(name = "fallback_llm_mode")
     private LlmFallbackMode fallbackLlmMode;
 
-    private Double temperature = 0.3;
+    private Double temperature = 0.65;
 
     @Column(name = "max_output_tokens")
     private Integer maxOutputTokens = 300;

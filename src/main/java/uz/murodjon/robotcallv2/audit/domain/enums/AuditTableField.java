@@ -7,6 +7,7 @@ public enum AuditTableField implements TableField {
     ID("id"),
     CREATED_AT("created_at"),
     ACTION("action"),
+    ACTOR("actor"),
     ENTITY("entity");
 
     private final String column;

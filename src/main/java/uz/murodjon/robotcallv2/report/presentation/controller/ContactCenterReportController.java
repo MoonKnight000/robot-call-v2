@@ -62,4 +62,14 @@ public interface ContactCenterReportController {
     ResponseEntity<ResponseData<List<CallEvent>>> callTrace(
             @CurrentCompanyId long companyId,
             @PathVariable long callId);
+
+    /**
+     * The same trace for a chat conversation (widget or Telegram) — the agent runs the same blocks and
+     * functions there (docs/api/reports.md). Same right: the functions' requests carry CRM data.
+     */
+    @PreAuthorize("hasAuthority('CALL_DEBUG_READ')")
+    @GetMapping("/chats/{chatId}/trace")
+    ResponseEntity<ResponseData<List<CallEvent>>> chatTrace(
+            @CurrentCompanyId long companyId,
+            @PathVariable long chatId);
 }

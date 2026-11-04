@@ -22,4 +22,7 @@ public interface ContactCenterReportUseCase {
 
     /** An AI agent call's block-by-block trace: blocks entered, values recorded, functions run. */
     List<CallEvent> findCallTrace(long companyId, long callId);
+
+    /** The same trace for a chat conversation; 404 when the chat is not the company's. */
+    List<CallEvent> findChatTrace(long companyId, long chatId);
 }

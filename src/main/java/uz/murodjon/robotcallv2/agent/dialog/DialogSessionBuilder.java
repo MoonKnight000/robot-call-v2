@@ -31,6 +31,7 @@ public class DialogSessionBuilder {
     Runnable hangup;
     Runnable transfer;
     long callAttemptId;
+    long chatSessionId;
     long companyId;
     NoInputWatchdog watchdog;
     boolean disclosureEnabled = true;
@@ -83,6 +84,12 @@ public class DialogSessionBuilder {
 
     public DialogSessionBuilder callAttemptId(long callAttemptId) {
         this.callAttemptId = callAttemptId;
+        return this;
+    }
+
+    /** The chat conversation this session answers (chat_session.id); 0 on a call. */
+    public DialogSessionBuilder chatSessionId(long chatSessionId) {
+        this.chatSessionId = chatSessionId;
         return this;
     }
 

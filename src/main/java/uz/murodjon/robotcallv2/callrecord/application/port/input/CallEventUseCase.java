@@ -19,4 +19,13 @@ public interface CallEventUseCase {
     void recordAt(long companyId, long callAttemptId, CallEventType type, Instant at, Object... keyValues);
 
     List<CallEvent> findByCallAttemptId(long companyId, long callAttemptId);
+
+    /**
+     * Records one step of the agent's trace in a chat conversation (the trace types only —
+     * {@link CallEventType#isCallTrace()}); never throws, like {@link #record}.
+     */
+    void recordForChat(long companyId, long chatSessionId, CallEventType type, Object... keyValues);
+
+    /** A chat conversation's trace, oldest first. */
+    List<CallEvent> findByChatSessionId(long companyId, long chatSessionId);
 }

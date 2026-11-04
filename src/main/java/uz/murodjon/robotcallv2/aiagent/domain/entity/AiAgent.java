@@ -121,7 +121,9 @@ public record AiAgent(
             persona = AgentPersona.AI_ASSISTANT;
         }
         if (temperature == null) {
-            temperature = 0.3;
+            // 0.3 sat close to greedy decoding: the same caller answer got the same
+            // opening word every time ("Tushunarli, ..."), turn after turn.
+            temperature = 0.65;
         }
         if (maxOutputTokens == null) {
             maxOutputTokens = 300;

@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 import uz.murodjon.robotcallv2.agent.dialog.DialogSession;
 import uz.murodjon.robotcallv2.agent.dialog.PromptTemplateEngine;
 import uz.murodjon.robotcallv2.agent.dialog.TextTurn;
+import uz.murodjon.robotcallv2.agent.dialog.CallTraceLog;
 import uz.murodjon.robotcallv2.agent.dialog.TextTurnEngine;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
@@ -100,11 +101,12 @@ class ChatConversations {
     private final ChatProperties chatProperties;
     private final Clock clock;
     private final CrmUseCase crmUseCase;
+    private final CallTraceLog callTraceLog;
 
     ChatConversations(ChatSessionRepository repository, ChatQuotaPort chatQuota, AiAgentUseCase aiAgentUseCase,
                       ToolUseCase toolUseCase, AiModelConfigUseCase aiModelConfigUseCase,
                       CompanyUseCase companyUseCase, ClientMemoryUseCase clientMemoryUseCase, TextTurnEngine textTurnEngine,
-                      ChatProperties chatProperties, Clock clock, CrmUseCase crmUseCase) {
+                      ChatProperties chatProperties, Clock clock, CrmUseCase crmUseCase, CallTraceLog callTraceLog) {
         this.repository = repository;
         this.chatQuota = chatQuota;
         this.aiAgentUseCase = aiAgentUseCase;
@@ -116,6 +118,7 @@ class ChatConversations {
         this.chatProperties = chatProperties;
         this.clock = clock;
         this.crmUseCase = crmUseCase;
+        this.callTraceLog = callTraceLog;
     }
 
     /**
@@ -143,6 +146,11 @@ class ChatConversations {
                 session.language(), agent.language());
         ChatSession saved = repository.save(session.withLanguage(resolvedLanguage));
         DialogSession dialog = newDialogSession(saved, agent, scenario, phone, memory);
+        traceFromHere(dialog);
+        if (dialog.state() != null) {
+            callTraceLog.recordStageEntered(dialog, saved.companyId(), 0, saved.id() != null ? saved.id() : 0,
+                    dialog.startedAt(), null, dialog.state());
+        }
         String greeting = greet(dialog, agent);
         repository.addMessage(ChatMessage.written(saved.id(), ChatRole.AGENT, greeting));
         // The stage from the dialog, not the one it started in: an agent with no opening line
@@ -169,6 +177,7 @@ class ChatConversations {
         }
         AiAgent agent = requireAgent(session);
         DialogSession dialog = rebuild(session, agent);
+        traceFromHere(dialog);
         TextTurn turn = textTurnEngine.reply(dialog, text);
         if (turn.isEmpty()) {
             throw new ExternalServiceException(ErrorCode.CHAT_NO_REPLY, "llm");
@@ -357,6 +366,7 @@ class ChatConversations {
         }
 
         DialogSession dialog = DialogSession.builder("chat-" + session.sessionKey(), session.language())
+                .chatSessionId(session.id() != null ? session.id() : 0)
                 .context(new CallContext(facts, null, memory, phone))
                 .scenario(scenario)
                 .companyId(session.companyId())
@@ -370,6 +380,14 @@ class ChatConversations {
                 .build();
         dialog.setFastModel(agent.fastLlmModel());
         return dialog;
+    }
+
+    /**
+     * The agent's trace (blocks, values, functions, tokens) for this conversation from now on.
+     * Not before: rebuilding replays the stored stage and outcome, which are not new steps.
+     */
+    private void traceFromHere(DialogSession dialog) {
+        dialog.setCallTraceLog(callTraceLog);
     }
 
     private ClientMemory findMemory(long companyId, String phone) {

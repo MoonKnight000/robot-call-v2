@@ -228,7 +228,7 @@ public class RealtimeDialogEngine implements CallDialog {
                 companyId, callAttemptId, channelId, agent, event, data));
         session.setCallTraceLog(callTraceLog);
         if (session.state() != null) {
-            callTraceLog.recordStageEntered(session, companyId, callAttemptId, session.startedAt(), null, session.state());
+            callTraceLog.recordStageEntered(session, companyId, callAttemptId, 0, session.startedAt(), null, session.state());
         }
         session.setSttDriven(halfCascade);
         session.setDtmfSender(dtmf);
@@ -677,7 +677,9 @@ public class RealtimeDialogEngine implements CallDialog {
         return sessions.values().stream()
                 .filter(s -> !s.isEnded())
                 .map(s -> new LiveDialogSnapshot(s.channelId(), s.startedAt(), s.state(), s.language(),
-                        factText(s.context(), "clientName")))
+                        factText(s.context(), "clientName"), s.isInbound(),
+                        s.agent() != null ? s.agent().id() : null,
+                        s.agent() != null ? s.agent().name() : null))
                 .toList();
     }
 

@@ -1,7 +1,9 @@
 package uz.murodjon.robotcallv2.report.application.service;
 
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
+import uz.murodjon.robotcallv2.chat.application.port.input.ChatHistoryUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallEvent;
 import uz.murodjon.robotcallv2.campaign.application.port.input.CampaignUseCase;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
@@ -34,11 +36,14 @@ public class ContactCenterReportService implements ContactCenterReportUseCase {
     private final CompanyConfigUseCase companyConfigUseCase;
     private final CampaignUseCase campaignUseCase;
     private final Clock clock;
+    private final ChatHistoryUseCase chatHistoryUseCase;
+    private final AuditUseCase auditUseCase;
 
     public ContactCenterReportService(ContactCenterReportRepository contactCenterReportRepository,
                                       CallReportRepository callReportRepository, ReportMapper reportMapper,
                                       CallEventUseCase callEventUseCase, CompanyConfigUseCase companyConfigUseCase,
-                                      CampaignUseCase campaignUseCase, Clock clock) {
+                                      CampaignUseCase campaignUseCase, Clock clock, ChatHistoryUseCase chatHistoryUseCase,
+                                      AuditUseCase auditUseCase) {
         this.campaignUseCase = campaignUseCase;
         this.contactCenterReportRepository = contactCenterReportRepository;
         this.callReportRepository = callReportRepository;
@@ -46,6 +51,8 @@ public class ContactCenterReportService implements ContactCenterReportUseCase {
         this.callEventUseCase = callEventUseCase;
         this.companyConfigUseCase = companyConfigUseCase;
         this.clock = clock;
+        this.chatHistoryUseCase = chatHistoryUseCase;
+        this.auditUseCase = auditUseCase;
     }
 
     @Override
@@ -80,7 +87,17 @@ public class ContactCenterReportService implements ContactCenterReportUseCase {
 
     @Override
     public List<CallEvent> findCallTrace(long companyId, long callId) {
-        return findEvents(companyId, callId, true);
+        List<CallEvent> trace = findEvents(companyId, callId, true);
+        // The trace carries the CRM data the functions sent and received: who opened it is on record.
+        auditUseCase.record(companyId, "CALL_TRACE_VIEW", "call", String.valueOf(callId), null);
+        return trace;
+    }
+
+    @Override
+    public List<CallEvent> findChatTrace(long companyId, long chatId) {
+        chatHistoryUseCase.requireChat(companyId, chatId);
+        auditUseCase.record(companyId, "CHAT_TRACE_VIEW", "chat", String.valueOf(chatId), null);
+        return callEventUseCase.findByChatSessionId(companyId, chatId);
     }
 
     /** The timeline split in two: the trace carries CRM data and needs its own right. */

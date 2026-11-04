@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
+import uz.murodjon.robotcallv2.agent.dialog.CallTraceLog;
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
 import uz.murodjon.robotcallv2.agent.dialog.DialogSession;
 import uz.murodjon.robotcallv2.agent.dialog.TextTurn;
@@ -82,7 +83,7 @@ class ChatConversationsTest {
         conversations = new ChatConversations(
                 repository, chatQuota, aiAgentUseCase, toolUseCase,
                 aiModelConfigUseCase, companyUseCase, clientMemoryUseCase,
-                textTurnEngine, chatProperties, clock, mock(CrmUseCase.class));
+                textTurnEngine, chatProperties, clock, mock(CrmUseCase.class), mock(CallTraceLog.class));
 
         agent = AiAgentFixtures.agent(AGENT_ID, COMPANY_ID, 1L, "uz", "yandex:zahar");
         ScenarioDefinition def = ScenarioDefinition.builder()
