@@ -103,6 +103,15 @@ public interface CallBillingUseCase {
      */
     long chargeCopilotReply(long companyId, long messageId, CallUsage usage);
 
+    /**
+     * Charges the tokens one chat turn used, under its own ledger entry
+     * ({@code chat-charge:<chatSessionId>:<turnKey>}), so a retry is charged once.
+     *
+     * @param turnKey what tells this turn from the conversation's others (its message count, or {@code analysis})
+     * @return what was taken off the balance; 0 when nothing was — no tokens, or already charged
+     */
+    long chargeChatTurn(long companyId, long chatSessionId, String turnKey, CallUsage usage);
+
     /** What {@code usage} costs at the current rates, in UZS. Charges nothing — for an estimate. */
     long findUsageCostUzs(CallUsage usage);
 

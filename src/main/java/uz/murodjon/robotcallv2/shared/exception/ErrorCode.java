@@ -503,6 +503,7 @@ public enum ErrorCode {
     CALL_REANALYSIS_ALREADY_ACTIVE("a reanalysis is already queued or running for this company"),
     CALL_REANALYSIS_NOT_ACTIVE("reanalysis %s is %s — only a QUEUED or RUNNING one can be cancelled"),
     COPILOT_NO_BALANCE("not enough balance to ask the copilot — top up first"),
+    CHAT_NO_BALANCE("not enough balance for agent %s to hold a chat — top up first"),
     COPILOT_NOT_CONFIGURED("the copilot is not available — no chat model is configured"),
     PROMPT_REWRITE_EMPTY("give a prompt to improve or an instruction to write one from"),
     OWN_LLM_API_KEY_MISSING("the company's own LLM needs secret '%s', which is gone or cannot be decrypted"),

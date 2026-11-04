@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.chat.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import uz.murodjon.robotcallv2.shared.exception.ConflictException;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.agent.dialog.CallTraceLog;
 import uz.murodjon.robotcallv2.agent.dialog.CallContext;
@@ -42,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
@@ -62,6 +65,7 @@ class ChatConversationsTest {
     private TextTurnEngine textTurnEngine;
     private ChatProperties chatProperties;
     private Clock clock;
+    private CallBillingUseCase callBillingUseCase;
 
     private ChatConversations conversations;
     private AiAgent agent;
@@ -78,12 +82,14 @@ class ChatConversationsTest {
         clientMemoryUseCase = mock(ClientMemoryUseCase.class);
         textTurnEngine = mock(TextTurnEngine.class);
         chatProperties = new ChatProperties(40, 200, 120);
+        callBillingUseCase = mock(CallBillingUseCase.class);
+        when(callBillingUseCase.hasBalanceForCall(COMPANY_ID)).thenReturn(true);
         clock = Clock.fixed(NOW, ZoneId.of("UTC"));
 
         conversations = new ChatConversations(
                 repository, chatQuota, aiAgentUseCase, toolUseCase,
                 aiModelConfigUseCase, companyUseCase, clientMemoryUseCase,
-                textTurnEngine, chatProperties, clock, mock(CrmUseCase.class), mock(CallTraceLog.class));
+                textTurnEngine, chatProperties, clock, mock(CrmUseCase.class), mock(CallTraceLog.class), callBillingUseCase);
 
         agent = AiAgentFixtures.agent(AGENT_ID, COMPANY_ID, 1L, "uz", "yandex:zahar");
         ScenarioDefinition def = ScenarioDefinition.builder()
@@ -112,6 +118,27 @@ class ChatConversationsTest {
         assertThat(started.greeting()).isEqualTo("Assalomu alaykum! Qanday yordam bera olaman?");
         assertThat(started.session().language()).isEqualTo("uz");
         verify(clientMemoryUseCase, never()).findByCompanyIdAndPhone(anyLong(), anyString());
+    }
+
+    @Test
+    void startChatWithoutBalance_isRefusedBeforeAnyTokenIsSpent() {
+        when(callBillingUseCase.hasBalanceForCall(COMPANY_ID)).thenReturn(false);
+        ChatSession session = ChatSession.startingOnWidget("key-nb", COMPANY_ID, AGENT_ID, 100L, null, "GREETING");
+
+        assertThatThrownBy(() -> conversations.start(session))
+                .isInstanceOf(ConflictException.class);
+        verify(textTurnEngine, never()).reply(any(DialogSession.class), anyString());
+        verify(chatQuota, never()).bookSession(anyLong(), anyInt());
+    }
+
+    @Test
+    void aTurnIsChargedUnderItsOwnLedgerKey() {
+        when(textTurnEngine.reply(any(DialogSession.class), anyString()))
+                .thenReturn(new TextTurn("Salom!", List.of()));
+
+        conversations.start(ChatSession.startingOnWidget("key-ch", COMPANY_ID, AGENT_ID, 100L, null, "GREETING"));
+
+        verify(callBillingUseCase).chargeChatTurn(eq(COMPANY_ID), anyLong(), eq("1"), any());
     }
 
     @Test

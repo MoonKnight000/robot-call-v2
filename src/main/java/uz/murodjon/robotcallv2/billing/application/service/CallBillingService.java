@@ -38,6 +38,7 @@ public class CallBillingService implements CallBillingUseCase {
 
     private static final String CALL_REFERENCE = "call_attempt";
     private static final String COPILOT_REFERENCE = "copilot_message";
+    private static final String CHAT_REFERENCE = "chat_session";
     private static final String TARGET_REFERENCE = "campaign_target";
     private static final int MIN_AFFORDABLE_CALL_SECONDS = 60;
 
@@ -237,6 +238,17 @@ public class CallBillingService implements CallBillingUseCase {
     @Override
     @Transactional
     public long chargeCopilotReply(long companyId, long messageId, CallUsage usage) {
+        return chargeTokens(companyId, usage, COPILOT_REFERENCE, messageId, "copilot-charge:" + messageId);
+    }
+
+    @Override
+    @Transactional
+    public long chargeChatTurn(long companyId, long chatSessionId, String turnKey, CallUsage usage) {
+        return chargeTokens(companyId, usage, CHAT_REFERENCE, chatSessionId, "chat-charge:" + chatSessionId + ":" + turnKey);
+    }
+
+    /** Model tokens outside a call, as one AI_CHARGE ledger entry under {@code ledgerKey} — written once. */
+    private long chargeTokens(long companyId, CallUsage usage, String reference, long referenceId, String ledgerKey) {
         if (usage == null || usage.promptTokens() + usage.completionTokens() == 0) {
             return 0;
         }
@@ -245,7 +257,7 @@ public class CallBillingService implements CallBillingUseCase {
         long chargedUzs = chargeableUzs(cost.totalUzs(), balanceBefore);
         boolean written = billingLedgerRepository.append(LedgerEntry.of(companyId,
                 LedgerEntryType.AI_CHARGE, -chargedUzs, balanceBefore, balanceBefore - chargedUzs,
-                COPILOT_REFERENCE, String.valueOf(messageId), "copilot-charge:" + messageId));
+                reference, String.valueOf(referenceId), ledgerKey));
         if (!written) {
             return 0;
         }
@@ -254,7 +266,7 @@ public class CallBillingService implements CallBillingUseCase {
     }
 
     @Override
-    public long findUsageCostUzs(CallUsage usage) {
+    public long findUsageCostUzs)(CallUsage usage) {
         return CallCostCalculator.calculate(usage, billingRateProperties.rates()).totalUzs();
     }
 

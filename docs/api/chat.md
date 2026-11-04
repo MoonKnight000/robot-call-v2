@@ -74,6 +74,7 @@ xabarlar chegarasi tugadi.
 | `409` | `CHAT_SESSION_FULL` | Xabarlar chegarasi (standart 40) tugadi |
 | `409` | `CHAT_SESSION_EXPIRED` | Suhbat 120 daqiqadan ko'p jim turdi |
 | `409` | `CHAT_DAILY_LIMIT_REACHED` | Agent bugungi chat kvotasini tugatdi |
+| `409` | `CHAT_NO_BALANCE` | Kompaniya balansi yetarli emas — suhbat ochilmaydi (Telegram'da ham)|
 | `409` | `CHAT_MODEL_NOT_CONFIGURED` | Serverda chat model sozlanmagan |
 | `502` | `CHAT_NO_REPLY` | Model javob bermadi |
 
@@ -106,12 +107,16 @@ alertlari qaraydigan joy), javob esa ketadi.
 Kvota Redis'da atomik (`chat:daily:<agentId>:<sana>`); Redis yetib bo'lmasa suhbat **rad etiladi** —
 ochiq endpoint uchun o'chib qoladigan chegara chegara emas.
 
+**To'lov.** Har bir agent javobi (salomlashish ham) ishlatgan tokenlar balansdan yechiladi — ledger'da
+`AI_CHARGE`, `chat-charge:<chatSessionId>:<messageCount>` (qayta urinishda ikki marta yechilmaydi). Balans
+bo'lmasa yangi suhbat ochilmaydi — `409 CHAT_NO_BALANCE`; ochiq suhbat davom etadi.
+
 **Saqlash muddati.** Chat transkripti — qo'ng'iroq transkripti bilan bir xil ma'lumot, shuning uchun
 u ham `voice-agent.retention.conversation-days` bo'yicha o'chiriladi (`RetentionService`).
 
 ## Hozircha yo'q (keyingi bosqich)
 
-- Chat uchun post-call xulosa va billing — qo'ng'iroqdagi `CallFinalizer` yo'li chat'ga ulanmagan.
+- Chat uchun post-call xulosa — qo'ng'iroqdagi `CallFinalizer` yo'li chat'ga ulanmagan.
   Suhbat natijasi (`outcome`, `disposition`) `chat_session` da turadi. Mijoz xotirasi va CRM izohi
   telefon ma'lum bo'lsa yoziladi (Telegram raqam ulashish).
 

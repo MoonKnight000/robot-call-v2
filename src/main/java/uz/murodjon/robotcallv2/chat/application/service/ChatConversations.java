@@ -25,6 +25,8 @@ import uz.murodjon.robotcallv2.chat.domain.enums.ChatRole;
 import uz.murodjon.robotcallv2.chat.infrastructure.config.ChatProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
+import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
+import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
@@ -102,11 +104,13 @@ class ChatConversations {
     private final Clock clock;
     private final CrmUseCase crmUseCase;
     private final CallTraceLog callTraceLog;
+    private final CallBillingUseCase callBillingUseCase;
 
     ChatConversations(ChatSessionRepository repository, ChatQuotaPort chatQuota, AiAgentUseCase aiAgentUseCase,
                       ToolUseCase toolUseCase, AiModelConfigUseCase aiModelConfigUseCase,
                       CompanyUseCase companyUseCase, ClientMemoryUseCase clientMemoryUseCase, TextTurnEngine textTurnEngine,
-                      ChatProperties chatProperties, Clock clock, CrmUseCase crmUseCase, CallTraceLog callTraceLog) {
+                      ChatProperties chatProperties, Clock clock, CrmUseCase crmUseCase, CallTraceLog callTraceLog,
+                      CallBillingUseCase callBillingUseCase) {
         this.repository = repository;
         this.chatQuota = chatQuota;
         this.aiAgentUseCase = aiAgentUseCase;
@@ -119,6 +123,7 @@ class ChatConversations {
         this.clock = clock;
         this.crmUseCase = crmUseCase;
         this.callTraceLog = callTraceLog;
+        this.callBillingUseCase = callBillingUseCase;
     }
 
     /**
@@ -132,6 +137,9 @@ class ChatConversations {
      */
     StartedChat start(ChatSession session) {
         AiAgent agent = requireAgent(session);
+        if (!callBillingUseCase.hasBalanceForCall(session.companyId())) {
+            throw new ConflictException(ErrorCode.CHAT_NO_BALANCE, agent.id());
+        }
         // Counted before a single token is spent, and refused when the counter cannot be
         // reached: both channels are reachable by anything that can send an HTTP request.
         if (!chatQuota.bookSession(agent.id(), chatProperties.dailySessionsPerAgent())) {
@@ -159,6 +167,7 @@ class ChatConversations {
         Disposition disposition = ended ? dialog.disposition() : null;
         ChatSession afterGreeting = repository.save(saved.afterTurn(dialog.state(), dialog.outcome(), disposition,
                 ended, 1, clock.instant()));
+        chargeTurn(afterGreeting, dialog);
         if (ended) {
             rememberIfEnded(afterGreeting, dialog, agent, disposition);
         }
@@ -197,6 +206,7 @@ class ChatConversations {
         Disposition disposition = ended ? dialog.disposition() : null;
         ChatSession saved = repository.save(session.afterTurn(dialog.state(), dialog.outcome(), disposition,
                 ended, 2, clock.instant()));
+        chargeTurn(saved, dialog);
         if (ended) {
             rememberIfEnded(saved, dialog, agent, disposition);
         }
@@ -471,6 +481,17 @@ class ChatConversations {
             sb.append(": ").append(lastText.length() > 200 ? lastText.substring(0, 200) + "..." : lastText);
         }
         return sb.toString();
+    }
+
+    /**
+     * The tokens this turn took, off the company's balance. The dialog is rebuilt for every
+     * message, so its ledger holds this turn only; the message count keys the entry, so a
+     * retried save is not charged twice.
+     */
+    private void chargeTurn(ChatSession session, DialogSession dialog) {
+        long chatSessionId = session.id() != null ? session.id() : 0;
+        callBillingUseCase.chargeChatTurn(session.companyId(), chatSessionId, String.valueOf(session.messageCount()),
+                new CallUsage(0, dialog.promptTokens(), dialog.completionTokens(), dialog.cachedTokens(), 0, 0));
     }
 
     private AiAgent requireAgent(ChatSession session) {
