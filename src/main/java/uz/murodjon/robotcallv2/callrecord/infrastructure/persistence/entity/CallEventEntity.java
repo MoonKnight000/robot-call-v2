@@ -19,8 +19,11 @@ public class CallEventEntity {
     @Column(name = "company_id", nullable = false)
     private Long companyId;
 
-    @Column(name = "call_attempt_id", nullable = false)
+    @Column(name = "call_attempt_id")
     private Long callAttemptId;
+
+    @Column(name = "chat_session_id")
+    private Long chatSessionId;
 
     @Column(nullable = false)
     private Instant at;
@@ -51,6 +54,14 @@ public class CallEventEntity {
 
     public void setCallAttemptId(Long callAttemptId) {
         this.callAttemptId = callAttemptId;
+    }
+
+    public Long getChatSessionId() {
+        return chatSessionId;
+    }
+
+    public void setChatSessionId(Long chatSessionId) {
+        this.chatSessionId = chatSessionId;
     }
 
     public Instant getAt() {

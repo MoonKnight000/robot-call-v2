@@ -12,6 +12,9 @@ public interface CallEventRepository {
     /** The call's timeline, oldest first. */
     List<CallEvent> findByCallAttemptId(long companyId, long callAttemptId);
 
+    /** A chat conversation's trace, oldest first. */
+    List<CallEvent> findByChatSessionId(long companyId, long chatSessionId);
+
     /** Deletes events that happened before cutoff, at most batchSize rows. */
     int deleteCreatedBefore(Instant cutoff, int batchSize);
 }

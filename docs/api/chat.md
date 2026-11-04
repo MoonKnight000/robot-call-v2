@@ -230,6 +230,8 @@ Hamma filtr ixtiyoriy. `orders` berilmasa — `LAST_MESSAGE_AT DESC`.
 
 ## Bitta suhbat
 
+> Agentning shu suhbatdagi bloklar bo'yicha izi (qaysi blokka kirdi, qaysi funksiyani qanday so'rov bilan chaqirdi, nechta token) — [`GET /api/reports/chats/{chatId}/trace`](reports.md#get-apireportschatschatidtrace--chat-suhbatining-bloklar-boyicha-izi), huquq **CALL_DEBUG_READ**.
+
 ```
 GET /api/chats/318
 ```

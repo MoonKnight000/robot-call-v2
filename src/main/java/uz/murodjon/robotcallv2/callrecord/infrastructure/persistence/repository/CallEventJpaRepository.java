@@ -16,6 +16,8 @@ public interface CallEventJpaRepository extends JpaRepository<CallEventEntity, L
 
     List<CallEventEntity> findByCompanyIdAndCallAttemptIdOrderByAtAscIdAsc(long companyId, long callAttemptId);
 
+    List<CallEventEntity> findByCompanyIdAndChatSessionIdOrderByAtAscIdAsc(long companyId, long chatSessionId);
+
     @Modifying @Transactional
     @Query(value = "DELETE FROM call_event WHERE id IN "
             + "(SELECT id FROM call_event WHERE at < :cutoff LIMIT :batchSize)", nativeQuery = true)

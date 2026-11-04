@@ -494,17 +494,19 @@ public class HttpToolExecutor {
     }
 
     /** The call attempt a live call runs under ({@code TurnTools} puts it there); null when there is none. */
-    /** Onto the call's trace — only a real call's request; the panel's test run has no call attempt. */
+    /** Onto the call's (or chat's) trace — the panel's test run has neither and records nothing. */
     private void traceExchange(Tool tool, Map<String, Object> callVariables, Long callAttemptId, String method,
                                String url, List<String> headers, String requestBody, Integer status,
                                String responseBody, String error, long started) {
         Long companyId = tool.companyId() != null ? tool.companyId()
                 : callVariables.get("company_id") instanceof Number number ? number.longValue() : null;
-        if (callTraceLog == null || callAttemptId == null || companyId == null) {
+        Object chat = callVariables == null ? null : callVariables.get("chat_session_id");
+        long chatSessionId = chat instanceof Number chatId ? chatId.longValue() : 0;
+        if (callTraceLog == null || companyId == null || (callAttemptId == null && chatSessionId <= 0)) {
             return;
         }
-        callTraceLog.recordHttpExchange(companyId, callAttemptId, tool.name(), method, url, headers, requestBody,
-                status, responseBody, error, elapsedMs(started));
+        callTraceLog.recordHttpExchange(companyId, callAttemptId != null ? callAttemptId : 0, chatSessionId,
+                tool.name(), method, url, headers, requestBody, status, responseBody, error, elapsedMs(started));
     }
 
     private static Long callAttemptId(Map<String, Object> callVariables) {

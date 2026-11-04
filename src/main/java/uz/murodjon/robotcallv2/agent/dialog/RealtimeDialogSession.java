@@ -206,7 +206,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         }
         CallTraceLog trace = callTraceLog;
         if (trace != null && state != null && !Objects.equals(previousState, state)) {
-            trace.recordStageEntered(this, companyId(), callAttemptId(), startedAt(), previousState, state);
+            trace.recordStageEntered(this, companyId(), callAttemptId(), 0, startedAt(), previousState, state);
         }
     }
 
@@ -228,7 +228,7 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         outcomeLedger.recordOutcome(key, value);
         CallTraceLog trace = callTraceLog;
         if (trace != null && key != null && value != null) {
-            trace.recordFact(this, companyId(), callAttemptId(), agent(), startedAt(), key, value);
+            trace.recordFact(this, companyId(), callAttemptId(), 0, agent(), startedAt(), key, value);
         }
         if (key != null && value != null) {
             Map<String, Object> data = new HashMap<>();

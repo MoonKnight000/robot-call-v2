@@ -24,6 +24,11 @@ import java.util.Map;
  * ({@link CallEventType#FACT_RECORDED}), and every function the model ran with what it was sent
  * and what came back ({@link CallEventType#TOOL_CALLED}). Text is redacted like the transcript.
  * Times are {@code offsetMs} from the dialog's start — the transcript lines' clock.
+ *
+ * <p>A chat conversation writes the same trace ({@code GET /api/chats/{id}/trace}): its session
+ * carries a {@code chatSessionId} instead of a call attempt. A chat session is rebuilt for every
+ * message, so its {@code offsetMs} counts from that message, and {@code at} is the clock to read.
+ * A session with neither (the studio's test runs) records nothing.
  */
 @Component
 public class CallTraceLog {
@@ -42,11 +47,11 @@ public class CallTraceLog {
     /**
      * @param result what the tool returned to the model; null when it threw
      */
-    public void recordToolCall(long companyId, long callAttemptId, AiAgent agent, Instant startedAt, String stage,
-                               String toolName, String argumentsJson, String result, long durationMs) {
+    public void recordToolCall(long companyId, long callAttemptId, long chatSessionId, AiAgent agent, Instant startedAt,
+                               String stage, String toolName, String argumentsJson, String result, long durationMs) {
         String arguments = PiiRedactor.redact(argumentsJson, agent);
         String safeResult = result == null ? null : cut(PiiRedactor.redact(result, agent));
-        callEventUseCase.record(companyId, callAttemptId, CallEventType.TOOL_CALLED,
+        write(companyId, callAttemptId, chatSessionId, CallEventType.TOOL_CALLED,
                 "toolName", toolName,
                 "stage", stage,
                 "arguments", parsed(arguments),
@@ -61,8 +66,8 @@ public class CallTraceLog {
      * Logic Split branch that matched (with the fact values it compared), the condition on the
      * edge the model took, or the target's global condition when no edge leads there.
      */
-    public void recordStageEntered(DialogOutcomeSink s, long companyId, long callAttemptId, Instant startedAt,
-                                   String from, String to) {
+    public void recordStageEntered(DialogOutcomeSink s, long companyId, long callAttemptId, long chatSessionId,
+                                   Instant startedAt, String from, String to) {
         ScenarioDefinition scenario = s.scenario();
         StageDef fromStage = scenario == null || from == null ? null : scenario.findStage(from);
         StageDef toStage = scenario == null || to == null ? null : scenario.findStage(to);
@@ -93,7 +98,7 @@ public class CallTraceLog {
         } else {
             via = "EDGE";
         }
-        callEventUseCase.record(companyId, callAttemptId, CallEventType.STAGE_ENTERED,
+        write(companyId, callAttemptId, chatSessionId, CallEventType.STAGE_ENTERED,
                 "stage", to,
                 "title", toStage != null ? toStage.title() : null,
                 "type", toStage != null && toStage.type() != null ? toStage.type().name() : null,
@@ -106,10 +111,10 @@ public class CallTraceLog {
     }
 
     /** A value the call recorded (a tool's outcome, a mapped response field, an extracted variable). */
-    public void recordFact(DialogOutcomeSink s, long companyId, long callAttemptId, AiAgent agent, Instant startedAt,
-                           String key, Object value) {
+    public void recordFact(DialogOutcomeSink s, long companyId, long callAttemptId, long chatSessionId, AiAgent agent,
+                           Instant startedAt, String key, Object value) {
         Object safeValue = value instanceof String text ? PiiRedactor.redact(text, agent) : value;
-        callEventUseCase.record(companyId, callAttemptId, CallEventType.FACT_RECORDED,
+        write(companyId, callAttemptId, chatSessionId, CallEventType.FACT_RECORDED,
                 "key", key,
                 "value", safeValue instanceof Number || safeValue instanceof Boolean || safeValue instanceof String
                         ? safeValue : String.valueOf(safeValue),
@@ -124,10 +129,11 @@ public class CallTraceLog {
      *
      * @param status null when the request failed before an answer
      */
-    public void recordHttpExchange(long companyId, long callAttemptId, String toolName, String method, String url,
+    public void recordHttpExchange(long companyId, long callAttemptId, long chatSessionId, String toolName,
+                                   String method, String url,
                                    List<String> headerNames, String requestBody, Integer status, String responseBody,
                                    String error, long durationMs) {
-        callEventUseCase.record(companyId, callAttemptId, CallEventType.TOOL_HTTP,
+        write(companyId, callAttemptId, chatSessionId, CallEventType.TOOL_HTTP,
                 "toolName", toolName,
                 "method", method,
                 "url", url,
@@ -142,13 +148,22 @@ public class CallTraceLog {
     /** One model request's tokens, as billed — prompt (of it, served from cache), completion and thinking. */
     public void recordLlmUsage(DialogSession s, long promptTokens, long cachedTokens, long completionTokens,
                                long thinkingTokens) {
-        callEventUseCase.record(s.companyId(), s.callAttemptId(), CallEventType.LLM_USAGE,
+        write(s.companyId(), s.callAttemptId(), s.chatSessionId(), CallEventType.LLM_USAGE,
                 "stage", s.state(),
                 "promptTokens", promptTokens,
                 "cachedTokens", cachedTokens,
                 "completionTokens", completionTokens,
                 "thinkingTokens", thinkingTokens,
                 "offsetMs", offsetMs(s.startedAt()));
+    }
+
+    /** Onto the call's trace, else the chat's; a session with neither is a test run and keeps nothing. */
+    private void write(long companyId, long callAttemptId, long chatSessionId, CallEventType type, Object... keyValues) {
+        if (callAttemptId != 0) {
+            callEventUseCase.record(companyId, callAttemptId, type, keyValues);
+        } else if (chatSessionId != 0) {
+            callEventUseCase.recordForChat(companyId, chatSessionId, type, keyValues);
+        }
     }
 
     private static String cut(String text) {

@@ -384,7 +384,13 @@ public class TurnTools {
     }
 
     private static Map<String, Object> buildCallVariables(DialogSession s) {
-        return ToolCallVariables.build(s.channelId(), s.companyId(), s.language(), s.callAttemptId(), s.context());
+        Map<String, Object> variables = ToolCallVariables.build(s.channelId(), s.companyId(), s.language(),
+                s.callAttemptId(), s.context());
+        if (s.chatSessionId() > 0) {
+            // Where HttpToolExecutor puts a chat's request on the chat's trace.
+            variables.put("chat_session_id", s.chatSessionId());
+        }
+        return variables;
     }
 
     /**
@@ -625,7 +631,7 @@ public class TurnTools {
             recordRunMs(s.companyId(), call.name(), elapsedNanos);
         }
         if (callTraceLog != null) {
-            callTraceLog.recordToolCall(s.companyId(), s.callAttemptId(), s.agent(), s.startedAt(), s.state(),
+            callTraceLog.recordToolCall(s.companyId(), s.callAttemptId(), s.chatSessionId(), s.agent(), s.startedAt(), s.state(),
                     call.name(), call.arguments(), result, elapsedNanos / 1_000_000);
         }
     }

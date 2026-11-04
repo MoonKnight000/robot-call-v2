@@ -46,4 +46,9 @@ public class ContactCenterReportControllerImpl implements ContactCenterReportCon
     public ResponseEntity<ResponseData<List<CallEvent>>> callTrace(long companyId, long callId) {
         return ResponseEntity.ok(ResponseData.ok(contactCenterReportUseCase.findCallTrace(companyId, callId)));
     }
+
+    @Override
+    public ResponseEntity<ResponseData<List<CallEvent>>> chatTrace(long companyId, long chatId) {
+        return ResponseEntity.ok(ResponseData.ok(contactCenterReportUseCase.findChatTrace(companyId, chatId)));
+    }
 }

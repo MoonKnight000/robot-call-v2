@@ -40,21 +40,43 @@ public class CallEventService implements CallEventUseCase {
         if (callAttemptId == 0) {
             return;
         }
+        write(new CallEvent(0, companyId, callAttemptId, 0, at, type, payloadOf(keyValues)));
+    }
+
+    @Override
+    public void recordForChat(long companyId, long chatSessionId, CallEventType type, Object... keyValues) {
+        if (chatSessionId == 0) {
+            return;
+        }
+        write(new CallEvent(0, companyId, 0, chatSessionId, Instant.now(), type, payloadOf(keyValues)));
+    }
+
+    @Override
+    public List<CallEvent> findByCallAttemptId(long companyId, long callAttemptId) {
+        return repository.findByCallAttemptId(companyId, callAttemptId);
+    }
+
+    @Override
+    public List<CallEvent> findByChatSessionId(long companyId, long chatSessionId) {
+        return repository.findByChatSessionId(companyId, chatSessionId);
+    }
+
+    private static Map<String, Object> payloadOf(Object... keyValues) {
         Map<String, Object> payload = new LinkedHashMap<>();
         for (int i = 0; i + 1 < keyValues.length; i += 2) {
             if (keyValues[i + 1] != null) {
                 payload.put(String.valueOf(keyValues[i]), keyValues[i + 1]);
             }
         }
-        try {
-            repository.create(new CallEvent(0, companyId, callAttemptId, at, type, payload));
-        } catch (Exception e) {
-            log.warn("Could not record {} for call {}: {}", type, callAttemptId, e.getMessage());
-        }
+        return payload;
     }
 
-    @Override
-    public List<CallEvent> findByCallAttemptId(long companyId, long callAttemptId) {
-        return repository.findByCallAttemptId(companyId, callAttemptId);
+    private void write(CallEvent event) {
+        try {
+            repository.create(event);
+        } catch (Exception e) {
+            log.warn("Could not record {} for call {} / chat {}: {}", event.type(), event.callAttemptId(),
+                    event.chatSessionId(), e.getMessage());
+        }
     }
 }

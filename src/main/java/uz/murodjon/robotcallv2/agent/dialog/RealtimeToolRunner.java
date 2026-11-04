@@ -353,7 +353,7 @@ class RealtimeToolRunner {
     private String execute(RealtimeDialogSession s, String name, String argumentsJson) {
         long started = System.nanoTime();
         String result = runTool(s, name, argumentsJson);
-        callTraceLog.recordToolCall(s.companyId(), s.callAttemptId(), s.agent(), s.startedAt(), s.state(),
+        callTraceLog.recordToolCall(s.companyId(), s.callAttemptId(), 0, s.agent(), s.startedAt(), s.state(),
                 name, argumentsJson, result, (System.nanoTime() - started) / 1_000_000);
         return result;
     }

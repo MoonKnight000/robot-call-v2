@@ -30,7 +30,8 @@ public class CallEventRepositoryAdapter implements CallEventRepository {
     public void create(CallEvent event) {
         CallEventEntity entity = new CallEventEntity();
         entity.setCompanyId(event.companyId());
-        entity.setCallAttemptId(event.callAttemptId());
+        entity.setCallAttemptId(event.callAttemptId() > 0 ? event.callAttemptId() : null);
+        entity.setChatSessionId(event.chatSessionId() > 0 ? event.chatSessionId() : null);
         entity.setAt(event.at());
         entity.setType(event.type());
         try {
@@ -44,9 +45,22 @@ public class CallEventRepositoryAdapter implements CallEventRepository {
     @Override
     public List<CallEvent> findByCallAttemptId(long companyId, long callAttemptId) {
         return jpaRepository.findByCompanyIdAndCallAttemptIdOrderByAtAscIdAsc(companyId, callAttemptId).stream()
-                .map(e -> new CallEvent(e.getId(), e.getCompanyId(), e.getCallAttemptId(), e.getAt(), e.getType(),
-                        readPayload(e.getPayload())))
+                .map(this::toCallEvent)
                 .toList();
+    }
+
+    @Override
+    public List<CallEvent> findByChatSessionId(long companyId, long chatSessionId) {
+        return jpaRepository.findByCompanyIdAndChatSessionIdOrderByAtAscIdAsc(companyId, chatSessionId).stream()
+                .map(this::toCallEvent)
+                .toList();
+    }
+
+    private CallEvent toCallEvent(CallEventEntity e) {
+        return new CallEvent(e.getId(), e.getCompanyId(),
+                e.getCallAttemptId() != null ? e.getCallAttemptId() : 0,
+                e.getChatSessionId() != null ? e.getChatSessionId() : 0,
+                e.getAt(), e.getType(), readPayload(e.getPayload()));
     }
 
     private Map<String, Object> readPayload(String json) {

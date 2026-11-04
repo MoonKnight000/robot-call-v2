@@ -960,6 +960,21 @@ funksiya (`waitForResult: false`) so'rovi `TOOL_CALLED` dan keyin keladi.
 | `error` | Javob kelmadi — sababi (secret'lar yashirilgan) |
 | `durationMs` | So'rov qancha davom etdi (qayta urinishlar bilan) |
 
+### `GET /api/reports/chats/{chatId}/trace` — chat suhbatining bloklar bo'yicha izi
+
+Huquq: **CALL_DEBUG_READ** (qo'ng'iroq izi bilan bir xil — funksiyalarning CRM so'rov/javoblari shu yerda).
+`chatId` — `ChatRow.id` ([chat.md](chat.md)). Widget va Telegram suhbatlarida agent qo'ng'iroqdagi kabi
+bloklardan o'tadi va funksiya chaqiradi; javob shakli va hodisa turlari yuqoridagi `/calls/{callId}/trace`
+bilan bir xil (`STAGE_ENTERED`, `FACT_RECORDED`, `TOOL_CALLED`, `TOOL_HTTP`, `LLM_USAGE`).
+
+Farqlar:
+- `callAttemptId` — `0`, `chatSessionId` — chat id'si.
+- Chat sessiyasi har bir xabarda qayta tiklanadi, shuning uchun `offsetMs` **o'sha xabardan** hisoblanadi — tartib va
+  vaqt uchun `at` ni o'qing; xabarlar bilan `at` bo'yicha joylashtiriladi (`ChatMessage.createdAt`).
+- Hodisalar shu o'zgarishdan (V10 migratsiya) keyin boshlangan suhbatlarda bor; avvalgilarida ro'yxat bo'sh.
+
+**Xato:** `404 CHAT_SESSION_NOT_FOUND` (suhbat yo'q yoki boshqa kompaniyaniki), `403` — huquq yo'q.
+
 ---
 
 ### `GET /api/reports/calls/{callId}/events` — Qo'ng'iroq timeline'i
@@ -992,7 +1007,8 @@ qaytaradi: call flow tugunlari, navbat, operatorga taklif, hold, uzatish, monito
 |---|---|---|
 | `id` | number | Hodisa id'si |
 | `companyId` | number | Kompaniya |
-| `callAttemptId` | number | Qo'ng'iroq (`callId`) |
+| `callAttemptId` | number | Qo'ng'iroq (`callId`); chat izida `0` |
+| `chatSessionId` | number | Chat (`chatId`) — faqat chat izida; qo'ng'iroqda `0` |
 | `at` | ISO instant | Hodisa vaqti |
 | `type` | `CallEventType` | Pastdagi jadval |
 | `payload` | object | Turga xos maydonlar; bo'lmasa — `{}` (hech qachon `null` emas) |

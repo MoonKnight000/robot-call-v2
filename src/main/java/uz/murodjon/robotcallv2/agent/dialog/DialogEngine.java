@@ -251,7 +251,7 @@ public class DialogEngine implements CallDialog {
                     companyId, callAttemptId, channelId, agent, event, data));
             session.setCallTraceLog(callTraceLog);
             if (session.state() != null) {
-                callTraceLog.recordStageEntered(session, companyId, callAttemptId, session.startedAt(), null, session.state());
+                callTraceLog.recordStageEntered(session, companyId, callAttemptId, 0, session.startedAt(), null, session.state());
             }
         }
         if (simulated) {

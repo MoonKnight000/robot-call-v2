@@ -87,6 +87,7 @@ public class DialogSession implements DialogOutcomeSink {
     /** Puts keypad tones on this call (IVR navigation); null when the call has no channel. */
     private volatile Consumer<String> dtmfSender;
     private final long callAttemptId;
+    private final long chatSessionId;
     /** The company this call's campaign belongs to — scopes the per-company lookups a turn makes. */
     private final long companyId;
     /** This call's company's AI-model overrides merged over the process defaults (§11 settings), resolved once. */
@@ -252,6 +253,7 @@ public class DialogSession implements DialogOutcomeSink {
         this.hangup = builder.hangup;
         this.transfer = builder.transfer;
         this.callAttemptId = builder.callAttemptId;
+        this.chatSessionId = builder.chatSessionId;
         this.companyId = builder.companyId;
         this.watchdog = builder.watchdog;
         this.disclosureEnabled = builder.disclosureEnabled;
@@ -489,6 +491,11 @@ public class DialogSession implements DialogOutcomeSink {
         return callAttemptId;
     }
 
+    /** The chat conversation this session answers; 0 on a call (and in a test run). */
+    public long chatSessionId() {
+        return chatSessionId;
+    }
+
     public long companyId() {
         return companyId;
     }
@@ -648,7 +655,7 @@ public class DialogSession implements DialogOutcomeSink {
         }
         CallTraceLog trace = callTraceLog;
         if (trace != null && state != null && !java.util.Objects.equals(previousState, state)) {
-            trace.recordStageEntered(this, companyId(), callAttemptId(), startedAt(), previousState, state);
+            trace.recordStageEntered(this, companyId(), callAttemptId(), chatSessionId(), startedAt(), previousState, state);
         }
         Consumer<DialogSession> listener = stageListener;
         if (listener != null) {
@@ -748,7 +755,7 @@ public class DialogSession implements DialogOutcomeSink {
         outcomeLedger.recordOutcome(key, value);
         CallTraceLog trace = callTraceLog;
         if (trace != null && key != null && value != null) {
-            trace.recordFact(this, companyId(), callAttemptId(), agent(), startedAt(), key, value);
+            trace.recordFact(this, companyId(), callAttemptId(), chatSessionId(), agent(), startedAt(), key, value);
         }
         if (key != null && value != null) {
             Map<String, Object> data = new HashMap<>();
