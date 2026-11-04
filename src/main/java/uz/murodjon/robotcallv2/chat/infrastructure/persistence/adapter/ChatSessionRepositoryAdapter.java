@@ -6,6 +6,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.chat.application.port.output.ChatSessionRepository;
+import uz.murodjon.robotcallv2.chat.domain.entity.ChatAnalysis;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatFilter;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatMessage;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
@@ -101,6 +102,24 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
         messageJpaRepository.deleteByChatSessionIds(expired.stream().map(ChatSessionEntity::getId).toList());
         sessionJpaRepository.deleteAll(expired);
         return expired.size();
+    }
+
+    @Override
+    public List<ChatSession> findSessionsToAnalyze(Instant silentBefore, int limit) {
+        return sessionJpaRepository.findToAnalyze(silentBefore, Limit.of(limit)).stream()
+                .map(mapper::toChatSession)
+                .toList();
+    }
+
+    @Override
+    public void updateAnalysis(long chatSessionId, ChatAnalysis analysis) {
+        sessionJpaRepository.findById(chatSessionId).ifPresent(entity ->
+                sessionJpaRepository.save(mapper.toAnalysedEntity(analysis, entity)));
+    }
+
+    @Override
+    public ChatAnalysis findAnalysis(long chatSessionId) {
+        return sessionJpaRepository.findById(chatSessionId).map(mapper::toChatAnalysis).orElse(null);
     }
 
     private static Specification<ChatSessionEntity> matching(long companyId, ChatFilter filter) {

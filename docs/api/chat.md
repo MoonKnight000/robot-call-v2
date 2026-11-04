@@ -116,9 +116,8 @@ u ham `voice-agent.retention.conversation-days` bo'yicha o'chiriladi (`Retention
 
 ## Hozircha yo'q (keyingi bosqich)
 
-- Chat uchun post-call xulosa — qo'ng'iroqdagi `CallFinalizer` yo'li chat'ga ulanmagan.
-  Suhbat natijasi (`outcome`, `disposition`) `chat_session` da turadi. Mijoz xotirasi va CRM izohi
-  telefon ma'lum bo'lsa yoziladi (Telegram raqam ulashish).
+- Chat tahlili (`analysis`) faqat panelda ko'rinadi — `CHAT_ENDED`/`CHAT_ANALYZED` webhook'lari keyingi bosqich.
+  Mijoz xotirasi va CRM izohi telefon ma'lum bo'lsa yoziladi (Telegram raqam ulashish).
 
 ---
 
@@ -250,7 +249,14 @@ GET /api/chats/318
     "messages": [
       { "id": 5501, "chatSessionId": 318, "role": "AGENT",  "text": "Assalomu alaykum! ...", "createdAt": "2026-09-16T09:12:04Z" },
       { "id": 5502, "chatSessionId": 318, "role": "CLIENT", "text": "Ikkita lavash",          "createdAt": "2026-09-16T09:12:30Z" }
-    ]
+    ],
+    "analysis": {
+      "summary": "Mijoz ikkita lavash buyurtma qildi, Yunusobodga yetkazish.",
+      "sentiment": "POSITIVE",
+      "needsFollowUp": false,
+      "outcome": { "order_items": "2 lavash", "address": "Yunusobod 12" },
+      "analyzedAt": "2026-09-16T11:15:00Z"
+    }
   },
   "message": null, "messageCode": null, "errors": null
 }
@@ -258,6 +264,12 @@ GET /api/chats/318
 
 - `outcome` — ssenariy tool'lari yozgan qiymatlar (qo'ng'iroqdagi natija maydonlari bilan bir xil).
 - `messages` — yozilgan tartibda; `role`: `CLIENT` (mehmon) yoki `AGENT`.
+- `analysis` — suhbatdan keyingi tahlil (Retell `chat_analysis`); suhbat tugamaguncha yoki `CHAT_SESSION_TTL_MINUTES`
+  jim turmaguncha `null`. Qo'ng'iroq xulosasi bilan bir xil o'tish: agentning `dataNeeded`/`dataEvaluation` va
+  ssenariyning `outcomeSchema`si bo'yicha. `sentiment`: `POSITIVE` \| `NEUTRAL` \| `NEGATIVE` \| `HOSTILE`.
+  `summary` `null`, `outcome` `{}` — tahlil qilinmadi (faqat salomlashish bo'lgan yoki model javob bermadi);
+  qayta urinilmaydi. Tahlil tokenlari balansdan yechiladi (`chat-charge:<id>:analysis`). Job har daqiqada
+  (`voice-agent.chat.analysis-check-ms`, o'chirish — `voice-agent.chat.analysis-enabled=false`).
 
 **Xatolar**
 

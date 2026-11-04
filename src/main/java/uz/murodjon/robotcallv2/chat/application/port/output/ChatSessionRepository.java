@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.chat.application.port.output;
 
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatFilter;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatMessage;
+import uz.murodjon.robotcallv2.chat.domain.entity.ChatAnalysis;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
 
 import java.time.Instant;
@@ -39,4 +40,12 @@ public interface ChatSessionRepository {
      * them, and answers how many went. Their messages go with them.
      */
     int deleteSessionsCreatedBefore(Instant cutoff, int batchSize);
+
+    /** Conversations not analysed yet that ended, or fell silent before {@code silentBefore}; quietest first. */
+    List<ChatSession> findSessionsToAnalyze(Instant silentBefore, int limit);
+
+    void updateAnalysis(long chatSessionId, ChatAnalysis analysis);
+
+    /** The post-chat analysis; null while there is none yet. */
+    ChatAnalysis findAnalysis(long chatSessionId);
 }

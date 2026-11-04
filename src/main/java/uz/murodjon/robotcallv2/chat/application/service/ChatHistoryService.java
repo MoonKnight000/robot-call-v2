@@ -50,7 +50,8 @@ public class ChatHistoryService implements ChatHistoryUseCase {
             throw new NotFoundException(ErrorCode.CHAT_SESSION_NOT_FOUND, id);
         }
         String agentName = aiAgentUseCase.findNamesByIds(List.of(session.aiAgentId())).get(session.aiAgentId());
-        return new ChatDetail(toRow(session, agentName), session.outcome(), repository.findMessages(session.id()));
+        return new ChatDetail(toRow(session, agentName), session.outcome(), repository.findMessages(session.id()),
+                repository.findAnalysis(session.id()));
     }
 
     private static ChatRow toRow(ChatSession session, String agentName) {

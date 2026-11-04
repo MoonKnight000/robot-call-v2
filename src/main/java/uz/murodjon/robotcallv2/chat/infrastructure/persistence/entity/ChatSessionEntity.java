@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 
 import java.time.Instant;
 
@@ -63,9 +64,46 @@ public class ChatSessionEntity {
     @Column(name = "operator_user_id")
     private Long operatorUserId;
 
+    @Column(name = "analysis_summary", columnDefinition = "text")
+    private String analysisSummary;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "analysis_sentiment", length = 20)
+    private Sentiment analysisSentiment;
+
+    @Column(name = "analysis_needs_follow_up")
+    private Boolean analysisNeedsFollowUp;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "analysis_outcome", columnDefinition = "jsonb")
+    private String analysisOutcome;
+
+    @Column(name = "analyzed_at")
+    private Instant analyzedAt;
+
     public Long getOperatorUserId() { return operatorUserId; }
 
     public void setOperatorUserId(Long operatorUserId) { this.operatorUserId = operatorUserId; }
+
+    public String getAnalysisSummary() { return analysisSummary; }
+
+    public void setAnalysisSummary(String analysisSummary) { this.analysisSummary = analysisSummary; }
+
+    public Sentiment getAnalysisSentiment() { return analysisSentiment; }
+
+    public void setAnalysisSentiment(Sentiment analysisSentiment) { this.analysisSentiment = analysisSentiment; }
+
+    public Boolean getAnalysisNeedsFollowUp() { return analysisNeedsFollowUp; }
+
+    public void setAnalysisNeedsFollowUp(Boolean analysisNeedsFollowUp) { this.analysisNeedsFollowUp = analysisNeedsFollowUp; }
+
+    public String getAnalysisOutcome() { return analysisOutcome; }
+
+    public void setAnalysisOutcome(String analysisOutcome) { this.analysisOutcome = analysisOutcome; }
+
+    public Instant getAnalyzedAt() { return analyzedAt; }
+
+    public void setAnalyzedAt(Instant analyzedAt) { this.analyzedAt = analyzedAt; }
 
     public Long getId() { return id; }
 

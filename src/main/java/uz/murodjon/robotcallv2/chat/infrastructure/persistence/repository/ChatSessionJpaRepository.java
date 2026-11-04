@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.chat.infrastructure.persistence.repository;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import uz.murodjon.robotcallv2.chat.infrastructure.persistence.entity.ChatSessionEntity;
 
 import java.time.Instant;
@@ -22,4 +24,10 @@ public interface ChatSessionJpaRepository extends JpaRepository<ChatSessionEntit
 
     /** Retention takes conversations in batches, oldest first, so one sweep cannot lock the table. */
     List<ChatSessionEntity> findByCreatedAtLessThanOrderByIdAsc(Instant cutoff, Limit limit);
+
+    @Query("""
+            select s from ChatSessionEntity s
+            where s.analyzedAt is null and (s.ended = true or s.lastMessageAt < :silentBefore)
+            order by s.lastMessageAt asc""")
+    List<ChatSessionEntity> findToAnalyze(@Param("silentBefore") Instant silentBefore, Limit limit);
 }

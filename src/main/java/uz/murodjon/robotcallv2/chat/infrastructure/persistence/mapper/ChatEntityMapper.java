@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.chat.infrastructure.persistence.mapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.chat.domain.entity.ChatAnalysis;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatMessage;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
 import uz.murodjon.robotcallv2.chat.infrastructure.persistence.entity.ChatMessageEntity;
@@ -51,6 +52,24 @@ public class ChatEntityMapper {
         entity.setCreatedAt(session.createdAt() != null ? session.createdAt() : now);
         entity.setLastMessageAt(session.lastMessageAt() != null ? session.lastMessageAt() : now);
         entity.setOperatorUserId(session.operatorUserId());
+        return entity;
+    }
+
+    /** Null while the chat has not been analysed. */
+    public ChatAnalysis toChatAnalysis(ChatSessionEntity entity) {
+        if (entity.getAnalyzedAt() == null) {
+            return null;
+        }
+        return new ChatAnalysis(entity.getAnalysisSummary(), entity.getAnalysisSentiment(),
+                entity.getAnalysisNeedsFollowUp(), readOutcome(entity.getAnalysisOutcome()), entity.getAnalyzedAt());
+    }
+
+    public ChatSessionEntity toAnalysedEntity(ChatAnalysis analysis, ChatSessionEntity entity) {
+        entity.setAnalysisSummary(analysis.summary());
+        entity.setAnalysisSentiment(analysis.sentiment());
+        entity.setAnalysisNeedsFollowUp(analysis.needsFollowUp());
+        entity.setAnalysisOutcome(writeOutcome(analysis.outcome()));
+        entity.setAnalyzedAt(analysis.analyzedAt());
         return entity;
     }
 
