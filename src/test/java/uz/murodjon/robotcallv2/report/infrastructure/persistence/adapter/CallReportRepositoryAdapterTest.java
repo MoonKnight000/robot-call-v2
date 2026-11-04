@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Sort;
+import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.enums.CallTableField;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -25,7 +26,7 @@ class CallReportRepositoryAdapterTest {
     private static final Pattern PLACEHOLDER = Pattern.compile("(?<!:):([a-zA-Z]\\w*)");
 
     private static CallFilter filter(Integer page, Integer size, String q, List<Long> ids, Long afterId) {
-        return new CallFilter(page, size, null, q, null, null, null, null, null, null, ids, afterId);
+        return new CallFilter(page, size, null, q, null, null, null, null, null, null, ids, afterId, null, null, null);
     }
 
     @Test
@@ -46,10 +47,29 @@ class CallReportRepositoryAdapterTest {
     }
 
     @Test
+    void aRandomSampleOfOneAgentsNegativeCallsIgnoresPageAndOrder() {
+        CallFilter sample = new CallFilter(4, 10, null, null, null, null, null, null, null, null, null, null,
+                12L, Sentiment.NEGATIVE, true);
+
+        SqlStatement page = CallReportRepositoryAdapter.buildCallPage(7L, null, sample);
+
+        assertThat(page.sql())
+                .contains("a.ai_agent_id = :aiAgentId")
+                .contains("sr.sentiment = :sentiment")
+                .endsWith("ORDER BY random() LIMIT :limit")
+                .doesNotContain("OFFSET");
+        assertThat(page.params())
+                .containsEntry("aiAgentId", 12L)
+                .containsEntry("sentiment", "NEGATIVE")
+                .containsEntry("limit", 10);
+        assertEveryPlaceholderIsBound(page);
+    }
+
+    @Test
     void cursorPageReadsBelowTheCursorNewestFirstWithoutOffset() {
         LinkedHashMap<CallTableField, Sort.Direction> orders = new LinkedHashMap<>();
         orders.put(CallTableField.STARTED_AT, Sort.Direction.ASC);
-        CallFilter cursor = new CallFilter(3, 20, orders, null, null, null, null, null, null, null, null, 1000L);
+        CallFilter cursor = new CallFilter(3, 20, orders, null, null, null, null, null, null, null, null, 1000L, null, null, null);
 
         SqlStatement page = CallReportRepositoryAdapter.buildCallPage(7L, null, cursor);
 
@@ -67,7 +87,7 @@ class CallReportRepositoryAdapterTest {
     @Test
     void cursorKeepsTheFilterAndTheCampaign() {
         CallFilter cursor = new CallFilter(null, null, null, "998", null, Disposition.FAILED,
-                null, null, null, null, null, 500L);
+                null, null, null, null, null, 500L, null, null, null);
 
         SqlStatement page = CallReportRepositoryAdapter.buildCallPage(7L, 3L, cursor);
 
@@ -97,7 +117,7 @@ class CallReportRepositoryAdapterTest {
     @Test
     void explicitIdsReplaceTheFilterButNeverTheCompanyOrTheCampaign() {
         CallFilter selection = new CallFilter(null, null, null, "998", 9L, Disposition.FAILED,
-                Instant.parse("2026-09-01T00:00:00Z"), null, 10, null, List.of(1L, 2L), null);
+                Instant.parse("2026-09-01T00:00:00Z"), null, 10, null, List.of(1L, 2L), null, null, null, null);
 
         SqlStatement where = CallReportRepositoryAdapter.applyCallFilter(new SqlStatement(HEAD), 7L, 3L, selection);
 
@@ -111,7 +131,7 @@ class CallReportRepositoryAdapterTest {
     @Test
     void everyFilterFieldAddsItsConditionTogetherWithItsValue() {
         CallFilter all = new CallFilter(null, null, null, null, 9L, Disposition.NO_ANSWER,
-                Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-02T00:00:00Z"), 10, 600, null, null);
+                Instant.parse("2026-09-01T00:00:00Z"), Instant.parse("2026-09-02T00:00:00Z"), 10, 600, null, null, null, null, null);
 
         SqlStatement where = CallReportRepositoryAdapter.applyCallFilter(new SqlStatement(HEAD), 7L, null, all);
 
@@ -130,7 +150,7 @@ class CallReportRepositoryAdapterTest {
 
     @Test
     void theCountReadsTheSameCallsAsThePage() {
-        CallFilter filter = new CallFilter(1, 20, null, "90", 9L, Disposition.REFUSED, null, null, 5, null, null, null);
+        CallFilter filter = new CallFilter(1, 20, null, "90", 9L, Disposition.REFUSED, null, null, 5, null, null, null, null, null, null);
 
         Map<String, Object> pageParams = new HashMap<>(
                 CallReportRepositoryAdapter.buildCallPage(7L, 3L, filter).params());

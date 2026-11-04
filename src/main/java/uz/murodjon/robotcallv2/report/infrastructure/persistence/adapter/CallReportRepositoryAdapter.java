@@ -121,6 +121,9 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
      */
     static SqlStatement buildCallPage(long companyId, Long campaignId, CallFilter filter) {
         SqlStatement statement = applyCallFilter(new SqlStatement(CALL_SELECT), companyId, campaignId, filter);
+        if (Boolean.TRUE.equals(filter.randomSample())) {
+            return statement.append("ORDER BY random() LIMIT :limit").bind("limit", filter.sizeOrDefault());
+        }
         if (filter.hasCursor()) {
             return statement.where("a.id < :afterId", "afterId", filter.afterId())
                     .append("ORDER BY a.id DESC LIMIT :limit")
@@ -167,6 +170,13 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
         }
         if (filter.durationMaxSec() != null) {
             statement.where("a.duration_sec <= :durationMaxSec", "durationMaxSec", filter.durationMaxSec());
+        }
+        if (filter.aiAgentId() != null) {
+            statement.where("a.ai_agent_id = :aiAgentId", "aiAgentId", filter.aiAgentId());
+        }
+        if (filter.sentiment() != null) {
+            statement.where("EXISTS (SELECT 1 FROM call_result sr WHERE sr.call_id = a.id AND sr.sentiment = :sentiment)",
+                    "sentiment", filter.sentiment().name());
         }
         return statement;
     }

@@ -41,7 +41,7 @@ class ChatHistoryServiceTest {
 
     @Test
     void listsBothChannelsWithAgentNames() {
-        ChatFilter filter = new ChatFilter(0, 20, null, null, null, null, null, null);
+        ChatFilter filter = new ChatFilter(0, 20, null, null, null, null, null, null, null, null);
         when(repository.findAll(eq(1L), any())).thenReturn(List.of(widgetChat(10L), telegramChat(11L)));
         when(repository.count(eq(1L), any())).thenReturn(2L);
         when(aiAgentUseCase.findNamesByIds(anyCollection())).thenReturn(Map.of(42L, "Shop agent"));

@@ -43,6 +43,9 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `disposition` | `Disposition` | Yakuniy natija bo'yicha filtr ([calls.md](calls.md#-qongiroq-yakuniy-natijalari-dispositions)) |
 | `dateFrom` / `dateTo` | ISO instant | Qo'ng'iroq boshlanish vaqti oralig'i. **`from`/`to` emas** |
 | `durationMinSec` / `durationMaxSec` | number | Suhbat davomiyligi oralig'i (soniya) |
+| `aiAgentId` | number | Faqat shu agent o'tkazgan qo'ng'iroqlar |
+| `sentiment` | `POSITIVE` · `NEUTRAL` · `NEGATIVE` · `HOSTILE` | Qo'ng'iroq xulosasidagi kayfiyat bo'yicha |
+| `randomSample` | boolean | `true` — eng yangilari emas, mos qo'ng'iroqlardan **tasodifiy** namuna (`size` ta); `page`, `orders`, `afterId` e'tiborga olinmaydi, `totalElements` — barcha moslar soni |
 | `ids` | `array<number>` | Aniq qo'ng'iroq id'lari (bulk oqimida tanlanganlarni qayta o'qish uchun). Berilsa, boshqa filtr maydonlari e'tiborga olinmaydi |
 | `afterId` | number \| null | Keyset kursori (`≥ 1`) — pastdagi ["Kursor bilan sahifalash"](#kursor-bilan-sahifalash-afterid) ga qarang. Eksportda e'tiborga olinmaydi |
 

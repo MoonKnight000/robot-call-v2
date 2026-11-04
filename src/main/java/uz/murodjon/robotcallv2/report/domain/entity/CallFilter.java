@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.report.domain.entity;
 
+import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.Sort;
@@ -32,6 +33,11 @@ import java.util.List;
  *                        {@code orders} other than the default is refused, and no total is
  *                        counted. Pass the last {@code callId} of the previous page. Ignored by
  *                        the export.
+ * @param aiAgentId       only calls this agent handled
+ * @param sentiment       only calls whose post-call summary found this sentiment
+ * @param randomSample    true: the page is a random sample of the matching calls instead of the newest —
+ *                        for reading examples that represent the whole period; {@code page} and
+ *                        {@code orders} are ignored
  */
 public record CallFilter(
         @Min(0) Integer page,
@@ -45,7 +51,10 @@ public record CallFilter(
         Integer durationMinSec,
         Integer durationMaxSec,
         List<Long> ids,
-        @Min(1) Long afterId)
+        @Min(1) Long afterId,
+        Long aiAgentId,
+        Sentiment sentiment,
+        Boolean randomSample)
         implements FilterInterface<CallTableField> {
 
     /** Newest first by default, matching what a "what just happened" view needs. */

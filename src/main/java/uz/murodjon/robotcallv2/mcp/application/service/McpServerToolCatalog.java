@@ -278,11 +278,18 @@ public class McpServerToolCatalog {
                   "catalogItemsPath": {"type": "string"}}}""",
                 (companyId, tool, args, draftOnly) -> importPack(companyId, convert(tool, args, InstallDraftRequest.class), draftOnly));
 
-        register("list_calls", "The company's calls, newest first, with disposition and summary.", CALL_READ, """
+        register("list_calls", """
+                The company's calls, newest first, with disposition and summary. Examples, not statistics: \
+                use randomSample for calls that represent the period, the analytics tools for counts.""", CALL_READ, """
                 {"type": "object", "properties": {
                   "q": {"type": "string", "description": "Phone number or text"},
                   "campaignId": {"type": "integer"},
+                  "aiAgentId": {"type": "integer"},
                   "disposition": {"type": "string"},
+                  "sentiment": {"type": "string", "enum": ["POSITIVE", "NEUTRAL", "NEGATIVE", "HOSTILE"]},
+                  "durationMinSec": {"type": "integer", "minimum": 0},
+                  "durationMaxSec": {"type": "integer", "minimum": 0},
+                  "randomSample": {"type": "boolean", "description": "A random sample of the matching calls instead of the newest"},
                   "dateFrom": {"type": "string", "format": "date-time"},
                   "dateTo": {"type": "string", "format": "date-time"},
                   "page": {"type": "integer", "minimum": 0},

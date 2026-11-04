@@ -143,6 +143,12 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
             if (filter.to() != null) {
                 predicates.add(cb.lessThan(root.get("createdAt"), filter.to()));
             }
+            if (filter.sentiment() != null) {
+                predicates.add(cb.equal(root.get("analysisSentiment"), filter.sentiment()));
+            }
+            if (filter.needsFollowUp() != null) {
+                predicates.add(cb.equal(root.get("analysisNeedsFollowUp"), filter.needsFollowUp()));
+            }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
     }

@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.chat.domain.entity;
 
+import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.data.domain.Sort;
@@ -18,6 +19,8 @@ import java.util.LinkedHashMap;
  * @param ended     true — only finished ones, false — only those not marked finished; null for all
  * @param from      inclusive, by when the conversation was opened
  * @param to        exclusive
+ * @param sentiment     only analysed conversations with this sentiment (post-chat analysis)
+ * @param needsFollowUp only analysed conversations the person is waiting on (true) or not (false)
  */
 public record ChatFilter(
         @Min(0) Integer page,
@@ -27,7 +30,9 @@ public record ChatFilter(
         ChatChannel channel,
         Boolean ended,
         Instant from,
-        Instant to
+        Instant to,
+        Sentiment sentiment,
+        Boolean needsFollowUp
 ) implements FilterInterface<ChatTableField> {
 
     public ChatFilter {

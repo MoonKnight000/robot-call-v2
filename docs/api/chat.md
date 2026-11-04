@@ -198,6 +198,8 @@ Hamma filtr ixtiyoriy. `orders` berilmasa — `LAST_MESSAGE_AT DESC`.
 | `channel` | `WIDGET` · `TELEGRAM` | Faqat shu kanal |
 | `ended` | `true` · `false` | `true` — yakunlanganlar; `false` — yakunlanmagan deb belgilanganlar (jim qolib muddati o'tganlar ham shu yerga tushadi) |
 | `from` / `to` | ISO vaqt | Suhbat ochilgan vaqt bo'yicha: `from` kiradi, `to` kirmaydi |
+| `sentiment` | `POSITIVE` · `NEUTRAL` · `NEGATIVE` · `HOSTILE` | Faqat tahlil qilingan, shu kayfiyatdagi suhbatlar (`analysis.sentiment`) |
+| `needsFollowUp` | `true` · `false` | Faqat tahlil qilingan: mijoz kompaniyadan javob kutyaptimi (`analysis.needsFollowUp`) |
 | `orders` kalitlari | `ID` · `CREATED_AT` · `LAST_MESSAGE_AT` · `MESSAGE_COUNT` | Saralash |
 
 ```json

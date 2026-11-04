@@ -56,7 +56,7 @@ tool'larni ko'radi.
 | `get_evaluation_run` | `AI_AGENT_READ` | Run holati, holatlar bo'yicha `passRate`, har urinish transkripti va muammolari |
 | `export_agent` | `AI_AGENT_READ` | Agent paket JSON'i sifatida ([packs.md](packs.md#get-apipacksagentsagentidexport--agentni-paketga-aylantirish)) |
 | `import_agent_pack` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | Paketni yangi agent sifatida o'rnatish (`install-draft` bilan bir xil) |
-| `list_calls` | `REPORT_READ` | Qo'ng'iroqlar (`q`, `campaignId`, `disposition`, `dateFrom`, `dateTo`, `page`, `size`) |
+| `list_calls` | `REPORT_READ` | Qo'ng'iroqlar (`q`, `campaignId`, `aiAgentId`, `disposition`, `sentiment`, `durationMinSec`, `durationMaxSec`, `randomSample`, `dateFrom`, `dateTo`, `page`, `size`) |
 | `get_call` | `REPORT_READ` | Bitta qo'ng'iroq: transkript, ajratilgan ma'lumot, sifat bahosi |
 | `get_call_stats` | `REPORT_READ` | Davrdagi **barcha** qo'ng'iroqlar bo'yicha sanalgan raqamlar (`from`, `to`, `campaignId`): `summary` (`ReportSummary`: `totals`, `outcomes`, `funnel`, `campaigns`) va `kpiAgainstPreviousPeriod` (`dashboard/kpi` — oldingi teng davrga nisbatan `changePct`) |
 | `compare_periods` | `REPORT_READ` | Ikki davr (`from`/`to` va `compareFrom`/`compareTo`; ikkinchisi berilmasa — undan oldingi teng davr). Javob `CallPeriodComparison`: `current`, `previous`, `totalCallsChangePct`, `answerRatePct`, `previousAnswerRatePct`, `answerRateChangePoints`, `avgDurationChangePct`, `dispositionShares` (%), `dispositionShareChangePoints` (punkt). Oldingi davr 0 bo'lsa `%` o'zgarish `null` |
