@@ -208,8 +208,14 @@ class ChatConversations {
         repository.addMessage(ChatMessage.written(session.id(), ChatRole.CLIENT, text));
         repository.addMessage(ChatMessage.written(session.id(), ChatRole.AGENT, turn.line()));
 
-        boolean full = session.messageCount() + 2 >= chatProperties.maxMessagesPerSession();
+        boolean full = session.messageCount() + 2 >= maxMessagesOf(agent);
         boolean ended = dialog.isEnded() || full;
+        String reply = turn.line();
+        String endMessage = agent.chatSettings().endMessage();
+        if (ended && endMessage != null && !endMessage.isBlank()) {
+            repository.addMessage(ChatMessage.written(session.id(), ChatRole.AGENT, endMessage));
+            reply = reply + "\n\n" + endMessage;
+        }
         Disposition disposition = ended ? dialog.disposition() : null;
         ChatSession saved = repository.save(session.afterTurn(dialog.state(), dialog.outcome(), disposition,
                 ended, 2, clock.instant()));
@@ -217,7 +223,7 @@ class ChatConversations {
         if (ended) {
             rememberIfEnded(saved, dialog, agent, disposition);
         }
-        return new ChatTurn(turn.line(), saved);
+        return new ChatTurn(reply, saved);
     }
 
     /**
@@ -277,26 +283,39 @@ class ChatConversations {
         if (session.ended()) {
             throw new ConflictException(ErrorCode.CHAT_SESSION_ENDED, session.sessionKey());
         }
-        if (session.messageCount() >= chatProperties.maxMessagesPerSession()) {
-            throw new ConflictException(ErrorCode.CHAT_SESSION_FULL, chatProperties.maxMessagesPerSession());
+        AiAgent agent = requireAgent(session);
+        if (session.messageCount() >= maxMessagesOf(agent)) {
+            throw new ConflictException(ErrorCode.CHAT_SESSION_FULL, maxMessagesOf(agent));
         }
-        if (isSilentTooLong(session)) {
-            throw new ConflictException(ErrorCode.CHAT_SESSION_EXPIRED, chatProperties.sessionTtlMinutes());
+        if (isSilentTooLong(session, agent)) {
+            throw new ConflictException(ErrorCode.CHAT_SESSION_EXPIRED, ttlMinutesOf(agent));
         }
     }
 
     /** The same question without the refusal — a bot starts a new conversation instead of complaining. */
     boolean isOver(ChatSession session) {
-        return session.ended() || session.messageCount() >= chatProperties.maxMessagesPerSession()
-                || isSilentTooLong(session);
+        if (session.ended()) {
+            return true;
+        }
+        AiAgent agent = requireAgent(session);
+        return session.messageCount() >= maxMessagesOf(agent) || isSilentTooLong(session, agent);
     }
 
     int messagesLeft(ChatSession session) {
-        return Math.max(0, chatProperties.maxMessagesPerSession() - session.messageCount());
+        return Math.max(0, maxMessagesOf(requireAgent(session)) - session.messageCount());
     }
 
-    int maxMessages() {
-        return chatProperties.maxMessagesPerSession();
+    int maxMessages(ChatSession session) {
+        return maxMessagesOf(requireAgent(session));
+    }
+
+    /** The agent's own limit, never above the platform's. */
+    private int maxMessagesOf(AiAgent agent) {
+        return agent.chatSettings().resolveMaxMessages(chatProperties.maxMessagesPerSession());
+    }
+
+    private int ttlMinutesOf(AiAgent agent) {
+        return agent.chatSettings().resolveInactivityTimeoutMinutes(chatProperties.sessionTtlMinutes());
     }
 
     boolean modelAvailable() {
@@ -317,10 +336,10 @@ class ChatConversations {
         return "cht_" + UUID.randomUUID().toString().replace("-", "").substring(0, 24);
     }
 
-    private boolean isSilentTooLong(ChatSession session) {
+    private boolean isSilentTooLong(ChatSession session, AiAgent agent) {
         Instant silentSince = session.lastMessageAt() != null ? session.lastMessageAt() : session.createdAt();
         return silentSince != null && silentSince
-                .plus(Duration.ofMinutes(chatProperties.sessionTtlMinutes()))
+                .plus(Duration.ofMinutes(ttlMinutesOf(agent)))
                 .isBefore(clock.instant());
     }
 

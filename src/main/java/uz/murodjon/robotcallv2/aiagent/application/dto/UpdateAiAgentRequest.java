@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentPostCallAnalysis;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentChatSettings;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentPhrases;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
@@ -81,6 +82,7 @@ public record UpdateAiAgentRequest(
         Boolean enabled,
         Long version,
         Set<AgentClearableField> clearFields,
-        AiAgentPhrases phrases
+        AiAgentPhrases phrases,
+        @Valid AgentChatSettings chatSettings
 ) {
 }

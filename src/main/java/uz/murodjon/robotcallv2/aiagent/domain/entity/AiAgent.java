@@ -90,7 +90,8 @@ public record AiAgent(
         String ragInstruction,
         List<String> disabledIntegrationTools,
         List<AgentFunction> functions,
-        AiAgentPhrases phrases
+        AiAgentPhrases phrases,
+        AgentChatSettings chatSettings
 ) {
 
     public AiAgent {
@@ -153,6 +154,9 @@ public record AiAgent(
         }
         if (phrases == null) {
             phrases = AiAgentPhrases.NONE;
+        }
+        if (chatSettings == null) {
+            chatSettings = AgentChatSettings.NONE;
         }
         if (dataPolicy == null) {
             dataPolicy = new AiAgentDataPolicy(false, true, null, null);

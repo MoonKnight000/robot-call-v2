@@ -53,7 +53,7 @@ public class ChatApiService implements ChatApiUseCase {
         StartedChat started = conversations.start(ChatSession.startingOnApi(conversations.newSessionKey(), companyId,
                 request.agentId(), language, conversations.firstStageOf(companyId, request.agentId()), request.facts()));
         return new StartChatResponse(started.session().sessionKey(), started.greeting(), started.session().language(),
-                conversations.maxMessages());
+                conversations.maxMessages(started.session()));
     }
 
     @Override

@@ -187,6 +187,18 @@ public class AiAgentEntity {
     private String phrases;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "chat_settings", columnDefinition = "jsonb")
+    private String chatSettings;
+
+    public String getChatSettings() {
+        return chatSettings;
+    }
+
+    public void setChatSettings(String chatSettings) {
+        this.chatSettings = chatSettings;
+    }
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "initiation_webhook", columnDefinition = "jsonb")
     private String initiationWebhook;
 

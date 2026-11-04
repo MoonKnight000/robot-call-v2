@@ -64,6 +64,7 @@ public class AiAgentBuilder {
     private List<String> disabledIntegrationTools;
     private List<AgentFunction> functions;
     private AiAgentPhrases phrases;
+    private AgentChatSettings chatSettings;
 
     AiAgentBuilder() {
     }
@@ -115,6 +116,7 @@ public class AiAgentBuilder {
         this.disabledIntegrationTools = source.disabledIntegrationTools();
         this.functions = source.functions();
         this.phrases = source.phrases();
+        this.chatSettings = source.chatSettings();
     }
 
     public AiAgentBuilder id(Long id) {
@@ -340,6 +342,11 @@ public class AiAgentBuilder {
         return this;
     }
 
+    public AiAgentBuilder chatSettings(AgentChatSettings chatSettings) {
+        this.chatSettings = chatSettings;
+        return this;
+    }
+
     public AiAgentBuilder postCallAnalysis(AgentPostCallAnalysis postCallAnalysis) {
         this.postCallAnalysis = postCallAnalysis;
         return this;
@@ -397,7 +404,8 @@ public class AiAgentBuilder {
                 ragInstruction,
                 disabledIntegrationTools,
                 functions,
-                phrases
+                phrases,
+                chatSettings
         );
     }
 }

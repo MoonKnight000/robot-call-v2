@@ -373,7 +373,7 @@ class AiAgentServiceTest {
                 null, null, null,
                 version,
                 clearFields,
-                null);
+                null, null);
     }
 
     private static <E extends AppException> void assertRefused(ThrowingCallable call, Class<E> type, ErrorCode code) {

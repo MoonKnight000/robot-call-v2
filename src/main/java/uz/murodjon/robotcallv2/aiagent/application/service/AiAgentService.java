@@ -435,6 +435,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .functions(functions)
                 // An object replaces all of them; {} puts every line back on the standard one.
                 .phrases(request.phrases() != null ? request.phrases() : existing.phrases())
+                .chatSettings(request.chatSettings() != null ? request.chatSettings() : existing.chatSettings())
                 .initiationWebhook(request.initiationWebhook() != null ? request.initiationWebhook() : existing.initiationWebhook())
                 .postCallWebhook(request.postCallWebhook() != null ? request.postCallWebhook() : existing.postCallWebhook())
                 .handbook(request.handbook() != null ? request.handbook() : existing.handbook())

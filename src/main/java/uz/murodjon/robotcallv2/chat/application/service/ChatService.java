@@ -69,7 +69,7 @@ public class ChatService implements ChatUseCase {
         auditUseCase.record(target.companyId(), "CHAT_START", "agent_widget",
                 String.valueOf(target.widgetId()), origin);
         return new StartChatResponse(started.session().sessionKey(), started.greeting(),
-                started.session().language(), conversations.maxMessages());
+                started.session().language(), conversations.maxMessages(started.session()));
     }
 
     @Override

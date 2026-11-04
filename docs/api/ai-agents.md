@@ -1801,6 +1801,18 @@ clone kabi yangi qoralama yaratiladi (e'lon qilinmagan, o'sha tool bog'lanishlar
 Tekshiruv agent **biriktirilganda** (kampaniya/variant/route/bot saqlanganda) bo'ladi; avval saqlangan
 biriktirishlar ishlashda davom etadi. Sayt vidjeti ikkala kanalni ham ochadi, shuning uchun unga qoida yo'q.
 
+**`chatSettings`** (`PUT /api/ai-agents/{id}`, ixtiyoriy; `AiAgentRow` da ham) — yozma suhbat sozlamalari (vidjet, Telegram,
+[chat API](chat-api.md)):
+
+| Maydon | Turi | Izoh |
+|---|---|---|
+| `inactivityTimeoutMinutes` | `number` 1–1440 \| `null` | Shuncha jimlikdan keyin suhbat yopiladi; `null` — platforma qiymati (`CHAT_SESSION_TTL_MINUTES`, standart 120) |
+| `maxMessages` | `number` 2–500 \| `null` | Bitta suhbatdagi xabarlar (mijoz + agent); `null` — platforma qiymati (`CHAT_MAX_MESSAGES`, standart 40) |
+| `endMessage` | `string` ≤500 \| `null` | Suhbat tugaganda (agent tugatdi yoki chegara) agent javobiga qo'shiladigan tayyor gap |
+
+Agent qiymati platformanikidan **katta bo'la olmaydi** — kattasi berilsa platformaniki ishlaydi. `PUT` da
+`chatSettings` berilmasa — avvalgisi qoladi; berilsa — butunlay almashadi.
+
 Javob — yangi agentning `AiAgentRow`i. Audit: `AI_AGENT_CONVERT`.
 
 | Status | `messageCode` | Qachon |
