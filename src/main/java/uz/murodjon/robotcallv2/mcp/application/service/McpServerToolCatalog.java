@@ -28,7 +28,6 @@ import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
-import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.util.*;
 
@@ -84,22 +83,28 @@ public class McpServerToolCatalog {
     private final PackUseCase packUseCase;
     private final ReportUseCase reportUseCase;
     private final CurrentUser currentUser;
-    private final Validator validator;
+    private final McpToolArguments arguments;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper json = newMapper();
     private final Map<String, ToolSpec> tools = new LinkedHashMap<>();
 
     public McpServerToolCatalog(AiAgentUseCase aiAgentUseCase, AgentEvaluationUseCase agentEvaluationUseCase,
                                 PackUseCase packUseCase, ReportUseCase reportUseCase, CurrentUser currentUser,
-                                Validator validator, PlatformTransactionManager transactionManager) {
+                                Validator validator, PlatformTransactionManager transactionManager,
+                                List<McpToolSet> toolSets) {
         this.aiAgentUseCase = aiAgentUseCase;
         this.agentEvaluationUseCase = agentEvaluationUseCase;
         this.packUseCase = packUseCase;
         this.reportUseCase = reportUseCase;
         this.currentUser = currentUser;
-        this.validator = validator;
+        this.arguments = new McpToolArguments(validator);
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         registerTools();
+        for (McpToolSet toolSet : toolSets) {
+            for (McpToolDefinition tool : toolSet.findTools()) {
+                register(tool.name(), tool.description(), tool.anyOf(), tool.inputSchema(), tool.handler());
+            }
+        }
     }
 
     /**
@@ -303,7 +308,11 @@ public class McpServerToolCatalog {
         });
     }
 
-    private void register(String name, String description, Set<Permission> anyOf, String inputSchema, Handler handler) {
+    private void register(String name, String description, Set<Permission> anyOf, String inputSchema,
+                          McpToolHandler handler) {
+        if (tools.containsKey(name)) {
+            throw new IllegalStateException("MCP tool " + name + " is registered twice");
+        }
         try {
             tools.put(name, new ToolSpec(name, description, anyOf, json.readTree(inputSchema), handler));
         } catch (JsonProcessingException e) {
@@ -320,46 +329,18 @@ public class McpServerToolCatalog {
     }
 
     private <T> T convert(String tool, JsonNode args, Class<T> type) {
-        T value;
-        try {
-            value = json.treeToValue(args, type);
-        } catch (JsonProcessingException | IllegalArgumentException e) {
-            String reason = e instanceof JsonProcessingException parse ? parse.getOriginalMessage() : e.getMessage();
-            throw ValidationException.withErrors(ErrorCode.MCP_TOOL_ARGUMENTS_INVALID, List.of(reason), tool);
-        }
-        List<String> problems = validator.validate(value).stream()
-                .map(violation -> violation.getPropertyPath() + " " + violation.getMessage())
-                .sorted()
-                .toList();
-        if (!problems.isEmpty()) {
-            throw ValidationException.withErrors(ErrorCode.MCP_TOOL_ARGUMENTS_INVALID, problems, tool);
-        }
-        return value;
+        return arguments.convert(tool, args, type);
     }
 
-    /** A model writes an id as a number or as digits in a string; both are taken. */
-    private static long requireId(String tool, JsonNode args, String field) {
-        JsonNode value = args.get(field);
-        if (value != null && value.isIntegralNumber()) {
-            return value.asLong();
-        }
-        if (value != null && value.isTextual() && value.asText().matches("\\d{1,18}")) {
-            return Long.parseLong(value.asText());
-        }
-        throw ValidationException.withErrors(ErrorCode.MCP_TOOL_ARGUMENTS_INVALID, List.of(field + " is required"), tool);
+    private long requireId(String tool, JsonNode args, String field) {
+        return arguments.requireId(tool, args, field);
     }
 
-    private static Integer optionalInt(JsonNode args, String field) {
-        JsonNode value = args.get(field);
-        return value == null || value.isNull() ? null : value.asInt();
-    }
-
-    @FunctionalInterface
-    private interface Handler {
-        Object call(long companyId, String tool, ObjectNode arguments, boolean draftOnly);
+    private Integer optionalInt(JsonNode args, String field) {
+        return arguments.optionalInt(args, field);
     }
 
     private record ToolSpec(String name, String description, Set<Permission> anyOf, JsonNode inputSchema,
-                            Handler handler) {
+                            McpToolHandler handler) {
     }
 }

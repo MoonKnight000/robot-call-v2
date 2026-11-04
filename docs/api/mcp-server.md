@@ -58,6 +58,15 @@ tool'larni ko'radi.
 | `import_agent_pack` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | Paketni yangi agent sifatida o'rnatish (`install-draft` bilan bir xil) |
 | `list_calls` | `REPORT_READ` | Qo'ng'iroqlar (`q`, `campaignId`, `disposition`, `dateFrom`, `dateTo`, `page`, `size`) |
 | `get_call` | `REPORT_READ` | Bitta qo'ng'iroq: transkript, ajratilgan ma'lumot, sifat bahosi |
+| `get_call_stats` | `REPORT_READ` | Davrdagi **barcha** qo'ng'iroqlar bo'yicha sanalgan raqamlar (`from`, `to`, `campaignId`): `summary` (`ReportSummary`: `totals`, `outcomes`, `funnel`, `campaigns`) va `kpiAgainstPreviousPeriod` (`dashboard/kpi` — oldingi teng davrga nisbatan `changePct`) |
+| `compare_periods` | `REPORT_READ` | Ikki davr (`from`/`to` va `compareFrom`/`compareTo`; ikkinchisi berilmasa — undan oldingi teng davr). Javob `CallPeriodComparison`: `current`, `previous`, `totalCallsChangePct`, `answerRatePct`, `previousAnswerRatePct`, `answerRateChangePoints`, `avgDurationChangePct`, `dispositionShares` (%), `dispositionShareChangePoints` (punkt). Oldingi davr 0 bo'lsa `%` o'zgarish `null` |
+| `get_call_timeseries` | `REPORT_READ` | `dashboard/timeseries` bilan bir xil (`from`, `to`, `campaignId`) |
+| `get_stage_funnel` | `REPORT_READ` | `stage-funnel` bilan bir xil (`agentId` majburiy, `from`, `to`, `campaignId`) |
+| `get_call_topics` | `REPORT_READ` | `call-topics` bilan bir xil (`from`, `to`, `agentId`, `campaignId`, `limit` 1–50) |
+| `get_hourly_heatmap` | `REPORT_READ` | `hourly-heatmap` bilan bir xil (`from`, `to`, `campaignId`) |
+| `compare_campaigns` | `REPORT_READ` | `campaign-comparison` bilan bir xil (`from`, `to`, `campaignIds` ≤20; berilmasa — hammasi) |
+| `get_call_trace` | `REPORT_READ` | `GET /api/reports/calls/{callId}/trace` bilan bir xil (`callId`) |
+| `list_agent_insights` | `AI_AGENT_READ` | `POST /api/agent-insights/filter` bilan bir xil (`aiAgentId`, `type`, `status`, `page`, `size`) |
 
 Har bir tool REST API chaqiradigan o'sha use case'ni chaqiradi, shuning uchun validatsiya, audit
 va xatolar bir xil. Argumentlar **qat'iy** o'qiladi: noma'lum maydon (`systemPromt`) jimgina

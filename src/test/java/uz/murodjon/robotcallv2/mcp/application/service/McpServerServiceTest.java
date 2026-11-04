@@ -30,7 +30,8 @@ class McpServerServiceTest {
     private final CurrentUser currentUser = mock(CurrentUser.class);
     private final McpServerService service = new McpServerService(new McpServerToolCatalog(aiAgentUseCase,
             mock(AgentEvaluationUseCase.class), mock(PackUseCase.class), mock(ReportUseCase.class), currentUser,
-            Validation.buildDefaultValidatorFactory().getValidator(), mock(PlatformTransactionManager.class)));
+            Validation.buildDefaultValidatorFactory().getValidator(), mock(PlatformTransactionManager.class),
+            List.of()));
 
     @Test
     void initializeAgreesOnASupportedProtocolAndOffersTools() throws Exception {

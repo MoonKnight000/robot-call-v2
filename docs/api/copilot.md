@@ -8,6 +8,10 @@ copilot esa platformaning [MCP server tool'lari](mcp-server.md) orqali qo'ng'iro
 agentlar va eval natijalarini o'qib javob beradi.
 
 **Qoidalar:**
+- **Sanash — bazada.** Copilot "qancha / qanday ulush / o'sdimi" savollariga avval sanalgan tool'lar
+  (`get_call_stats`, `compare_periods`, `get_stage_funnel`, `get_call_topics`, ... — [mcp-server.md](mcp-server.md#2-toollar))
+  bilan javob beradi; `list_calls`/`get_call` faqat misol va dalil uchun. Javob shakli: **Xulosa** (raqamlar),
+  **Sabab** (qo'ng'iroq ID'lari bilan), **Ishonch** (30 tadan kam qo'ng'iroqda "taxminiy"), **Taklif**.
 - **Faqat qoralama.** Copilot har doim drafts-only rejimda ishlaydi — foydalanuvchida
   `AI_AGENT_EDIT` bo'lsa ham. U yaratgan agent o'chiq holda boshlanadi, `enabled` ni o'zgartirmaydi,
   qo'ng'iroqlari qoralamada ishlayotgan agentni tahrirlamaydi, **publish qila olmaydi**. Publish —
