@@ -129,6 +129,10 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
             throw new ValidationException(ErrorCode.AGENT_EVAL_REPEAT_INVALID, MAX_REPEAT);
         }
         AiAgent agent = aiAgentUseCase.requireAgentVersion(companyId, agentId, version);
+        if (effectiveMode == AgentEvalMode.VOICE && !agent.channel().takesCalls()) {
+            // A chat agent has no voice to play the cases through.
+            throw new ValidationException(ErrorCode.AI_AGENT_NOT_FOR_CALLS, agentId);
+        }
         List<AgentTestCase> cases = testCaseRepository.findByAgent(companyId, agentId);
         if (cases.isEmpty()) {
             throw new ConflictException(ErrorCode.AGENT_EVAL_NO_TEST_CASES, agentId);

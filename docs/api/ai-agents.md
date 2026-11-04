@@ -1965,7 +1965,7 @@ LLM sozlanmagan bo'lsa har holat `problems`da sababi bilan yiqiladi.
 
 `cases` — har holatning barcha urinishlari bo'yicha xulosasi: `passRate` foizda, `flaky: true` — ba'zi
 urinishlar o'tgan, ba'zilari yo'q (agent bu holatda ishonchsiz). `repeat` 1–10 dan tashqarida —
-`400 AGENT_EVAL_REPEAT_INVALID`.
+`400 AGENT_EVAL_REPEAT_INVALID`. Chat agentida (`channel: CHAT`) `mode: VOICE` — `400 AI_AGENT_NOT_FOR_CALLS`; chat agent `TEXT` rejimda sinaladi (standart).
 
 ---
 
