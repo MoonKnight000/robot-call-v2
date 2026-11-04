@@ -161,7 +161,7 @@ bo'lsa profil ro'yxatda chiqmaydi).
       "sttModel": "general",
       "llmModel": "gemini-3.8-flash",
       "fastLlmModel": "gemini-3.5-flash-lite",
-      "temperature": 0.3,
+      "temperature": 0.65,
       "maxOutputTokens": 300
     }
   ]
