@@ -42,13 +42,15 @@ timeout'ini shunga moslang).
 **Request body** (`AskCopilotRequest`):
 
 ```json
-{ "sessionId": null, "message": "Oxirgi 7 kunda qaysi agentda transferlar ko'paydi va nega?" }
+{ "sessionId": null, "message": "Shu agentda nega transferlar ko'paydi?",
+  "context": { "page": "agent-editor", "agentId": 4, "campaignId": null, "callId": null, "scenarioId": null } }
 ```
 
 | Maydon | Turi | Majburiy | Izoh |
 |---|---|---|---|
 | `sessionId` | `number` \| `null` | ❌ | Davom ettiriladigan suhbat; `null` — yangi suhbat (sarlavhasi — shu savol) |
 | `message` | `string` (≤4000) | ✅ | Savol |
+| `context` | `object` \| `null` | ❌ | Savol berilgan panel sahifasi: `page` (`[a-z0-9-]{1,40}`, masalan `agent-editor`, `campaign`, `call-detail`), `agentId`, `campaignId`, `callId`, `scenarioId` — hammasi ixtiyoriy. Copilot "shu agent", "bu qo'ng'iroq" ni shular deb tushunadi va ularni tool orqali o'qiydi (kompaniya tekshiriladi — begona ID hech narsa ochmaydi). Noto'g'ri `page` — `400 VALIDATION_FAILED` |
 
 **Response** (`CopilotReplyResponse`):
 

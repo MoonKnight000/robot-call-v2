@@ -89,7 +89,8 @@ public class CopilotService implements CopilotUseCase {
         history.add(question);
 
         RecordingToolInvoker invoker = new RecordingToolInvoker(companyId, session.id());
-        CopilotModelReply reply = modelPort.generateReply(CopilotInstructions.forDate(today(companyId)), history,
+        CopilotModelReply reply = modelPort.generateReply(
+                CopilotInstructions.forQuestion(today(companyId), request.context()), history,
                 mcpServerUseCase.findServerTools(), invoker);
 
         CopilotMessage answer = repository.createMessage(companyId, CopilotMessage.assistant(session.id(), reply));
@@ -127,8 +128,8 @@ public class CopilotService implements CopilotUseCase {
                 .start(currentUser.wrap(() -> {
             try {
                 StreamingToolInvoker invoker = new StreamingToolInvoker(companyId, session.id(), sink, cancelled);
-                CopilotModelReply reply = modelPort.generateReply(CopilotInstructions.forDate(today(companyId)), history,
-                        tools, invoker);
+                CopilotModelReply reply = modelPort.generateReply(
+                        CopilotInstructions.forQuestion(today(companyId), request.context()), history, tools, invoker);
 
                 if (cancelled.get()) {
                     return;

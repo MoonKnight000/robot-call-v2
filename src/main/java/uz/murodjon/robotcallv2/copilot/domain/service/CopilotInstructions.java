@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.copilot.domain.service;
 
+import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotPageContext;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.time.LocalDate;
@@ -17,12 +18,37 @@ public final class CopilotInstructions {
     private CopilotInstructions() {
     }
 
-    public static String forDate(LocalDate today) {
-        return TEXT.formatted(today);
+    /**
+     * @param context the panel page the question came from; null or empty adds nothing
+     */
+    public static String forQuestion(LocalDate today, CopilotPageContext context) {
+        String text = TEXT.formatted(today);
+        if (context == null || context.isEmpty()) {
+            return text;
+        }
+        StringBuilder page = new StringBuilder("\n\nCURRENT PAGE\nThe user is asking from the panel");
+        if (context.page() != null) {
+            page.append(" page \"").append(context.page()).append('"');
+        }
+        page.append(". What is open there:");
+        appendId(page, "agent", context.agentId());
+        appendId(page, "campaign", context.campaignId());
+        appendId(page, "call", context.callId());
+        appendId(page, "scenario", context.scenarioId());
+        page.append("\n\"Shu agent\", \"bu kampaniya\", \"bu qo'ng'iroq\" (\"этот агент\", ...) mean these. ")
+                .append("Read them with your tools before answering; a question clearly about something else ")
+                .append("is about that instead.");
+        return text + page;
     }
 
     /** For the prompt editors' AI button: rewrites or writes one prompt, no tools. */
     public static String forPromptRewrite() {
         return PROMPT_REWRITE_TEXT;
+    }
+
+    private static void appendId(StringBuilder page, String label, Long id) {
+        if (id != null) {
+            page.append("\n- ").append(label).append(" ID ").append(id);
+        }
     }
 }
