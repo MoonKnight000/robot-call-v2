@@ -31,6 +31,9 @@ public final class ApiKeyScopes {
             Permission.KNOWLEDGE_BASE_READ, Permission.KNOWLEDGE_BASE_EDIT,
             Permission.AI_AGENT_READ,
             Permission.CHAT_AGENT_READ,
+            // The second paid exception: holding conversations through /api/v1/chats (the company's own app
+            // talking to its chat agent). Granted per key; agent settings stay with AI_AGENT_EDIT.
+            Permission.CHAT_AGENT_EDIT,
             // The one exception to "a key does not cost money": an evaluation run, so CI can gate a
             // release on it. It edits nothing, and a key holds it only when granted it.
             Permission.AGENT_EVAL_RUN,

@@ -55,7 +55,7 @@ public class ChatHistoryService implements ChatHistoryUseCase {
     }
 
     private static ChatRow toRow(ChatSession session, String agentName) {
-        ChatChannel channel = session.telegramBotId() != null ? ChatChannel.TELEGRAM : ChatChannel.WIDGET;
+        ChatChannel channel = session.channel();
         return new ChatRow(session.id(), session.aiAgentId(), agentName, channel, session.widgetId(),
                 session.telegramBotId(), session.language(), session.stage(), session.disposition(),
                 session.ended(), session.messageCount(), session.createdAt(), session.lastMessageAt(),

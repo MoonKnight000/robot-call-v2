@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.chat.domain.entity;
 
+import uz.murodjon.robotcallv2.chat.domain.enums.ChatChannel;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Instant;
@@ -83,6 +84,24 @@ public record ChatSession(
                                                  String telegramChatId, String language, String stage) {
         return new ChatSession(null, sessionKey, companyId, aiAgentId, null, telegramBotId, telegramChatId,
                 language, stage, Map.of(), null, false, 0, null, null);
+    }
+
+    /**
+     * The same, for the company's own app through the chat API. {@code facts} are what the app already
+     * knows about the person (name, phone, order) — the agent reads them like a call's target facts.
+     */
+    public static ChatSession startingOnApi(String sessionKey, long companyId, long aiAgentId, String language,
+                                            String stage, Map<String, Object> facts) {
+        return new ChatSession(null, sessionKey, companyId, aiAgentId, null, null, null, language, stage,
+                facts != null ? facts : Map.of(), null, false, 0, null, null);
+    }
+
+    /** Which channel the conversation arrived on. */
+    public ChatChannel channel() {
+        if (telegramBotId != null) {
+            return ChatChannel.TELEGRAM;
+        }
+        return widgetId != null ? ChatChannel.WIDGET : ChatChannel.API;
     }
 
     /**

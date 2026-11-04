@@ -132,6 +132,9 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
             if (filter.channel() == ChatChannel.TELEGRAM) {
                 predicates.add(cb.isNotNull(root.get("telegramBotId")));
             } else if (filter.channel() == ChatChannel.WIDGET) {
+                predicates.add(cb.isNotNull(root.get("widgetId")));
+            } else if (filter.channel() == ChatChannel.API) {
+                predicates.add(cb.isNull(root.get("widgetId")));
                 predicates.add(cb.isNull(root.get("telegramBotId")));
             }
             if (filter.ended() != null) {
