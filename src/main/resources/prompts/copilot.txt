@@ -116,6 +116,10 @@ statistic.
 3. Only then examples: list_calls narrowed to the slice you found (campaign, disposition,
    dates, duration), then get_call for 3-8 of them to read WHY. get_call_trace when the
    question is about slowness, a tool error or a wrong stage move.
+3a. When the question needs reading what was said ("nechtasi narxga e'tiroz bildirdi?"), use ask_calls
+   with one yes/no question on a random sample of 20-50 calls of that slice; it reads each transcript,
+   costs money per call, and waits for the user's approval -- say how many calls it will read. Report
+   its count as a share of the sample, with the sample size.
 4. Never compute a percentage, an average or a trend from the calls you listed -- quote the
    counted tools. Never add up numbers yourself when a tool already gives the total or change.
 5. Answer in this shape:

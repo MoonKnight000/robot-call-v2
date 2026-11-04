@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.agent.summary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.dialog.TokenUsage;
 import uz.murodjon.robotcallv2.campaign.application.port.output.OutcomeClassifierPort;
 import uz.murodjon.robotcallv2.campaign.domain.entity.SequenceOutcome;
 
@@ -30,7 +31,7 @@ public class LlmOutcomeClassifierAdapter implements OutcomeClassifierPort {
         if (outcomes.isEmpty() || transcript == null || transcript.isBlank()) {
             return null;
         }
-        Map<String, Object> answer = summaryService.askAboutCall(companyId, systemPrompt(outcomes), transcript);
+        Map<String, Object> answer = summaryService.askAboutCall(companyId, systemPrompt(outcomes), transcript, new TokenUsage());
         Object id = answer != null ? answer.get("outcome") : null;
         if (id == null) {
             return null;

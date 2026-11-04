@@ -67,6 +67,7 @@ tool'larni ko'radi.
 | `compare_campaigns` | `REPORT_READ` | `campaign-comparison` bilan bir xil (`from`, `to`, `campaignIds` ≤20; berilmasa — hammasi) |
 | `get_call_trace` | `REPORT_READ` | `GET /api/reports/calls/{callId}/trace` bilan bir xil (`callId`) |
 | `list_agent_insights` | `AI_AGENT_READ` | `POST /api/agent-insights/filter` bilan bir xil (`aiAgentId`, `type`, `status`, `page`, `size`) |
+| `ask_calls` | `REPORT_READ` | Bitta ha/yo'q savolni ko'p qo'ng'iroqqa beradi va sanaydi (`question`, `list_calls` filtri, `ids`; standart — 20 ta tasodifiy namuna, ko'pi bilan 50). Javob `CallQuestionAnswer`: `asked`, `counts` (`yes`/`no`/`unclear`), `callIds`, `evidence` (har javobga ≤5 iqtibos), `chargedUzs`. Har qo'ng'iroq uchun tokenlar balansdan (`call-question:<callId>:<batch>`); copilot'da tasdiq talab qiladi |
 | `list_campaigns` | `CAMPAIGN_READ`, `CAMPAIGN_EDIT` | Kampaniyalar (`search`, `status`, `aiAgentId`, `page`, `size`) |
 | `get_campaign` | `CAMPAIGN_READ`, `CAMPAIGN_EDIT` | `GET /api/campaigns/{id}/overview` bilan bir xil: kampaniya, raqamlar puli, `launchBlocker` |
 | `create_campaign_draft` | `CAMPAIGN_EDIT` | `POST /api/campaigns` maydonlari; kampaniya doim `DRAFT` |

@@ -112,6 +112,12 @@ public interface CallBillingUseCase {
      */
     long chargeChatTurn(long companyId, long chatSessionId, String turnKey, CallUsage usage);
 
+    /**
+     * Charges one question asked about a finished call (the copilot's ask_calls), as its own ledger entry
+     * ({@code call-question:<callId>:<batchKey>}).
+     */
+    long chargeCallQuestion(long companyId, long callId, String batchKey, CallUsage usage);
+
     /** What {@code usage} costs at the current rates, in UZS. Charges nothing — for an estimate. */
     long findUsageCostUzs(CallUsage usage);
 

@@ -120,8 +120,9 @@ public class SummaryService {
      *
      * @return the model's JSON answer, or null when summaries are off, the transcript is empty,
      *         no model is available or the request failed
+     * @param tokens what the question took is added here, for whoever pays for it
      */
-    public Map<String, Object> askAboutCall(long companyId, String system, String transcript) {
+    public Map<String, Object> askAboutCall(long companyId, String system, String transcript, TokenUsage tokens) {
         if (!enabled || transcript == null || transcript.isBlank()) {
             return null;
         }
@@ -136,7 +137,7 @@ public class SummaryService {
             ChatOptions options = ownLlm != null
                     ? OpenAiChatOptions.builder().model(ownLlm.model()).maxTokens(maxTokens).build()
                     : options(model);
-            return ask(client, options, system, transcript, new TokenUsage());
+            return ask(client, options, system, transcript, tokens);
         } catch (Exception e) {
             log.warn("Question about a call failed (company {}): {}", companyId, e.getMessage());
             return null;

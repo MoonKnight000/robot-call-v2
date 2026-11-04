@@ -39,6 +39,7 @@ public class CallBillingService implements CallBillingUseCase {
     private static final String CALL_REFERENCE = "call_attempt";
     private static final String COPILOT_REFERENCE = "copilot_message";
     private static final String CHAT_REFERENCE = "chat_session";
+    private static final String CALL_QUESTION_REFERENCE = "call_attempt";
     private static final String TARGET_REFERENCE = "campaign_target";
     private static final int MIN_AFFORDABLE_CALL_SECONDS = 60;
 
@@ -245,6 +246,12 @@ public class CallBillingService implements CallBillingUseCase {
     @Transactional
     public long chargeChatTurn(long companyId, long chatSessionId, String turnKey, CallUsage usage) {
         return chargeTokens(companyId, usage, CHAT_REFERENCE, chatSessionId, "chat-charge:" + chatSessionId + ":" + turnKey);
+    }
+
+    @Override
+    @Transactional
+    public long chargeCallQuestion(long companyId, long callId, String batchKey, CallUsage usage) {
+        return chargeTokens(companyId, usage, CALL_QUESTION_REFERENCE, callId, "call-question:" + callId + ":" + batchKey);
     }
 
     /** Model tokens outside a call, as one AI_CHARGE ledger entry under {@code ledgerKey} — written once. */
