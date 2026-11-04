@@ -16,7 +16,7 @@ class CopilotInstructionsTest {
         String text = CopilotInstructions.forQuestion(TODAY, null);
 
         assertThat(text).contains("2026-11-04").contains("CALL ANALYSIS").contains("get_call_stats")
-                .contains("9.1% -> 21.4%").doesNotContain("CURRENT PAGE");
+                .contains("9.1% -> 21.4%").contains("SCOPE").doesNotContain("CURRENT PAGE");
     }
 
     @Test

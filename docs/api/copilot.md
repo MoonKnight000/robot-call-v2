@@ -8,6 +8,14 @@ copilot esa platformaning [MCP server tool'lari](mcp-server.md) orqali qo'ng'iro
 agentlar, kampaniyalar va eval natijalarini o'qib javob beradi va qoralamalarni sozlaydi.
 
 **Qoidalar:**
+- **Faqat platforma.** Copilot faqat shu platforma bo'yicha yordam beradi (agentlar, ssenariylar, promptlar,
+  kampaniyalar, qo'ng'iroq va chat tahlili, bilim bazasi, tool'lar, panel). Umumiy dasturlash/kod, matematika,
+  umumiy bilim, tarjima, insho va hokazo so'rovga javob bermaydi va tool chaqirmaydi — bir gapda rad etadi.
+- **O'zgarish — taklif sifatida.** Yozuvchi tool (`create_*`, `update_*`, `upsert_*`, `import_*`, `add_*`,
+  `attach_*`, `clone_*`, `run_evaluation`) standart holatda **bajarilmaydi**: `TOOL` qatori `proposalStatus: "PENDING"`
+  bilan saqlanadi va foydalanuvchi panelda "Qo'llash" / "Rad etish" ni bosadi. `applyChanges: true` bilan so'ralsa —
+  darhol bajariladi (avvalgidek). O'qiydigan tool'lar (`list_*`, `get_*`, `validate_*`, `diff_*`, `compare_*`,
+  `export_*`, `preview_*`) har doim darhol ishlaydi.
 - **Sanash — bazada.** Copilot "qancha / qanday ulush / o'sdimi" savollariga avval sanalgan tool'lar
   (`get_call_stats`, `compare_periods`, `get_stage_funnel`, `get_call_topics`, ... — [mcp-server.md](mcp-server.md#2-toollar))
   bilan javob beradi; `list_calls`/`get_call` faqat misol va dalil uchun. Javob shakli: **Xulosa** (raqamlar),
@@ -53,6 +61,7 @@ timeout'ini shunga moslang).
 | `sessionId` | `number` \| `null` | ❌ | Davom ettiriladigan suhbat; `null` — yangi suhbat (sarlavhasi — shu savol) |
 | `message` | `string` (≤4000) | ✅ | Savol |
 | `context` | `object` \| `null` | ❌ | Savol berilgan panel sahifasi: `page` (`[a-z0-9-]{1,40}`, masalan `agent-editor`, `campaign`, `call-detail`), `agentId`, `campaignId`, `callId`, `scenarioId` — hammasi ixtiyoriy. Copilot "shu agent", "bu qo'ng'iroq" ni shular deb tushunadi va ularni tool orqali o'qiydi (kompaniya tekshiriladi — begona ID hech narsa ochmaydi). Noto'g'ri `page` — `400 VALIDATION_FAILED` |
+| `applyChanges` | `boolean` \| `null` | ❌ | `true` — copilot o'zgarishlarni darhol qo'llaydi; `null`/`false` — har bir o'zgarish taklif (`PENDING`) bo'lib qoladi |
 
 **Response** (`CopilotReplyResponse`):
 
@@ -75,7 +84,8 @@ timeout'ini shunga moslang).
         "toolName": "list_calls",
         "toolArguments": "{\"disposition\":\"TRANSFERRED\",\"dateFrom\":\"2026-10-02T00:00:00Z\"}",
         "toolError": false, "promptTokens": 0, "completionTokens": 0, "chargedUzs": 0,
-        "createdAt": "2026-10-09T08:00:04Z"
+        "createdAt": "2026-10-09T08:00:04Z",
+        "proposalStatus": null
       }
     ]
   },
@@ -129,6 +139,24 @@ Suhbat va uning barcha xabarlari o'chiriladi. Billing ledger'dagi yozuvlar qolad
 
 ---
 
+## `POST /api/copilot/proposals/{messageId}/apply` va `.../reject` — taklifni qo'llash / rad etish
+
+Huquq: **AI_AGENT_READ** yoki **REPORT_READ** (tool foydalanuvchining huquqini yana tekshiradi). Faqat o'z
+suhbatidagi `PENDING` taklif. `apply` tool'ni drafts-only rejimda bajaradi va qatorni qaytaradi:
+`proposalStatus` `APPLIED` (`content` — tool javobi) yoki `FAILED` (`toolError: true`, `content` — xato kodi va matni).
+`reject` — `REJECTED`, hech narsa bajarilmaydi. Ikkalasidan keyin suhbatga `role: "NOTE"` qatori qo'shiladi — keyingi
+savolda model foydalanuvchi nima qilganini biladi (frontend uni tizim izohi sifatida ko'rsatadi).
+
+SSE oqimida taklif `tool_result` emas, `proposal` hodisasi bilan keladi (ichida o'sha `CopilotMessage`).
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 404 | `COPILOT_PROPOSAL_NOT_FOUND` | Bunday taklif yo'q yoki u taklif emas |
+| 404 | `COPILOT_SESSION_NOT_FOUND` | Taklif boshqa foydalanuvchining suhbatida |
+| 409 | `COPILOT_PROPOSAL_SETTLED` | Allaqachon qo'llangan yoki rad etilgan |
+
+---
+
 ## `POST /api/copilot/prompt/rewrite` — prompt'ni AI bilan yozish/yaxshilash
 
 Prompt muharrirlaridagi AI tugmasi uchun. Hech narsa saqlanmaydi va suhbat tarixiga yozilmaydi —
@@ -155,6 +183,6 @@ til — prompt tili (prompt bo'lmasa — instruction tili).
 { "accept": true, "data": { "prompt": "..." }, "message": null, "messageCode": null, "errors": null }
 ```
 
-**Xatolar:** `400 PROMPT_REWRITE_EMPTY`, `400 VALIDATION_FAILED` (uzunlik), `409 COPILOT_NO_BALANCE`,
+**Xatolar:** `400 PROMPT_REWRITE_EMPTY`, `400 PROMPT_REWRITE_OUT_OF_SCOPE` (instruction agent promptidan boshqa narsani so'radi — kod, matematika va h.k.), `400 VALIDATION_FAILED` (uzunlik), `409 COPILOT_NO_BALANCE`,
 `409 COPILOT_NOT_CONFIGURED`, `502 COPILOT_REPLY_FAILED`. Tokenlar hozircha balansdan yechilmaydi
 (faqat balans borligi tekshiriladi).

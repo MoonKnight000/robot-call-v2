@@ -15,8 +15,10 @@ import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotModelReply;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSession;
 import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotMessageRole;
+import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotProposalStatus;
 import uz.murodjon.robotcallv2.copilot.infrastructure.config.CopilotProperties;
 import uz.murodjon.robotcallv2.mcp.application.port.input.McpServerUseCase;
+import uz.murodjon.robotcallv2.mcp.domain.entity.McpTool;
 import uz.murodjon.robotcallv2.security.CurrentUser;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -69,7 +71,7 @@ class CopilotServiceTest {
         when(repository.createMessage(eq(COMPANY_ID), any())).thenAnswer(call -> {
             CopilotMessage m = call.getArgument(1);
             return new CopilotMessage(ids.incrementAndGet(), m.sessionId(), m.role(), m.content(), m.toolName(),
-                    m.toolArguments(), m.toolError(), m.promptTokens(), m.completionTokens(), 0, null);
+                    m.toolArguments(), m.toolError(), m.promptTokens(), m.completionTokens(), 0, null, m.proposalStatus());
         });
         service = new CopilotService(repository, modelPort, mcpServerUseCase, callBillingUseCase,
                 mock(CompanyConfigUseCase.class), currentUser, new CopilotProperties(null, 0, 2, 0),
@@ -93,7 +95,7 @@ class CopilotServiceTest {
         when(mcpServerUseCase.callServerToolAsDraftOnly(COMPANY_ID, "list_calls", "{}")).thenReturn("[]");
         when(callBillingUseCase.chargeCopilotReply(eq(COMPANY_ID), anyLong(), any())).thenReturn(45L);
 
-        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "Nega transferlar ko'paydi?", null));
+        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "Nega transferlar ko'paydi?", null, null));
 
         assertThat(response.sessionId()).isEqualTo(SESSION_ID);
         assertThat(response.reply().content()).isEqualTo("javob");
@@ -120,7 +122,7 @@ class CopilotServiceTest {
         when(callBillingUseCase.chargeCopilotReply(eq(COMPANY_ID), anyLong(), any())).thenReturn(45L);
         EventSink sink = mock(EventSink.class);
 
-        EventSubscription sub = service.askStream(COMPANY_ID, new AskCopilotRequest(null, "Stream savol", null), sink);
+        EventSubscription sub = service.askStream(COMPANY_ID, new AskCopilotRequest(null, "Stream savol", null, null), sink);
         assertThat(sub).isNotNull();
 
         // Give virtual thread a moment to run
@@ -137,17 +139,66 @@ class CopilotServiceTest {
         givenModelCalls("a", "b", "c");
         when(mcpServerUseCase.callServerToolAsDraftOnly(eq(COMPANY_ID), anyString(), anyString())).thenReturn("ok");
 
-        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null));
+        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, null));
 
         assertThat(response.toolCalls()).hasSize(2);
         verify(mcpServerUseCase, times(2)).callServerToolAsDraftOnly(eq(COMPANY_ID), anyString(), anyString());
     }
 
     @Test
+    void aToolThatWritesIsKeptAsAProposalUnlessChangesAreAppliedAtOnce() {
+        when(mcpServerUseCase.findServerTools()).thenReturn(List.of(
+                new McpTool("get_agent", "", "{}", true, false),
+                new McpTool("update_agent_draft", "", "{}", false, false)));
+        givenModelCalls("get_agent", "update_agent_draft");
+        when(mcpServerUseCase.callServerToolAsDraftOnly(eq(COMPANY_ID), anyString(), anyString())).thenReturn("ok");
+
+        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, null));
+
+        verify(mcpServerUseCase).callServerToolAsDraftOnly(COMPANY_ID, "get_agent", "{}");
+        verify(mcpServerUseCase, never()).callServerToolAsDraftOnly(COMPANY_ID, "update_agent_draft", "{}");
+        assertThat(response.toolCalls().get(1).proposalStatus()).isEqualTo(CopilotProposalStatus.PENDING);
+        assertThat(response.toolCalls().get(1).content()).startsWith("PROPOSED");
+
+        service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, true));
+        verify(mcpServerUseCase).callServerToolAsDraftOnly(COMPANY_ID, "update_agent_draft", "{}");
+    }
+
+    @Test
+    void applyingAProposalRunsTheToolOnceAndTellsTheModelNextTime() {
+        CopilotMessage pending = new CopilotMessage(55L, SESSION_ID, CopilotMessageRole.TOOL, "", "update_agent_draft",
+                "{\"agentId\":4}", false, 0, 0, 0, null, CopilotProposalStatus.PENDING);
+        when(repository.findMessageById(55L)).thenReturn(pending);
+        when(repository.findSessionByCompanyIdAndUserIdAndId(COMPANY_ID, USER_ID, SESSION_ID))
+                .thenReturn(new CopilotSession(SESSION_ID, COMPANY_ID, USER_ID, "t", null, null));
+        when(repository.updateProposal(eq(55L), any(), anyString(), anyBoolean())).thenReturn(true);
+        when(mcpServerUseCase.callServerToolAsDraftOnly(COMPANY_ID, "update_agent_draft", "{\"agentId\":4}")).thenReturn("saved");
+
+        service.applyProposal(COMPANY_ID, 55L);
+
+        verify(repository).updateProposal(55L, CopilotProposalStatus.APPLIED, "saved", false);
+        ArgumentCaptor<CopilotMessage> note = ArgumentCaptor.forClass(CopilotMessage.class);
+        verify(repository).createMessage(eq(COMPANY_ID), note.capture());
+        assertThat(note.getValue().role()).isEqualTo(CopilotMessageRole.NOTE);
+        assertThat(note.getValue().content()).contains("#55").contains("saved");
+    }
+
+    @Test
+    void aSettledProposalCannotBeAppliedAgain() {
+        when(repository.findMessageById(56L)).thenReturn(new CopilotMessage(56L, SESSION_ID, CopilotMessageRole.TOOL,
+                "ok", "update_agent_draft", "{}", false, 0, 0, 0, null, CopilotProposalStatus.APPLIED));
+        when(repository.findSessionByCompanyIdAndUserIdAndId(COMPANY_ID, USER_ID, SESSION_ID))
+                .thenReturn(new CopilotSession(SESSION_ID, COMPANY_ID, USER_ID, "t", null, null));
+
+        assertThatThrownBy(() -> service.applyProposal(COMPANY_ID, 56L)).isInstanceOf(ConflictException.class);
+        verify(mcpServerUseCase, never()).callServerToolAsDraftOnly(anyLong(), anyString(), anyString());
+    }
+
+    @Test
     void anApiKeyCannotAskTheCopilot() {
         when(currentUser.id()).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?", null)))
+        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?", null, null)))
                 .isInstanceOf(ForbiddenException.class);
         verifyNoInteractions(modelPort);
     }
@@ -156,7 +207,7 @@ class CopilotServiceTest {
     void anotherUsersSessionCannotBeReused() {
         when(repository.findSessionByCompanyIdAndUserIdAndId(COMPANY_ID, USER_ID, 77L)).thenReturn(null);
 
-        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(77L, "?", null)))
+        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(77L, "?", null, null)))
                 .isInstanceOf(NotFoundException.class);
         verifyNoInteractions(modelPort);
     }
@@ -165,7 +216,7 @@ class CopilotServiceTest {
     void withoutBalanceNothingIsAsked() {
         when(callBillingUseCase.hasBalanceForCall(COMPANY_ID)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?", null)))
+        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?", null, null)))
                 .isInstanceOf(ConflictException.class);
         verifyNoInteractions(modelPort);
         verify(repository, never()).createSession(anyLong(), any());
@@ -181,7 +232,7 @@ class CopilotServiceTest {
                 CopilotMessage.assistant(SESSION_ID, new CopilotModelReply("javob", 1, 1))));
         givenModelCalls();
 
-        service.ask(COMPANY_ID, new AskCopilotRequest(SESSION_ID, "ikkinchi", null));
+        service.ask(COMPANY_ID, new AskCopilotRequest(SESSION_ID, "ikkinchi", null, null));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<CopilotMessage>> history = ArgumentCaptor.forClass(List.class);

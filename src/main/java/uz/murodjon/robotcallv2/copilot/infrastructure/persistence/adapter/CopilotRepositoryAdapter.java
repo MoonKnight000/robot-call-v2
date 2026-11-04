@@ -5,6 +5,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.copilot.application.port.output.CopilotRepository;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
+import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotProposalStatus;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSession;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSessionFilter;
 import uz.murodjon.robotcallv2.copilot.infrastructure.persistence.entity.CopilotMessageEntity;
@@ -84,5 +85,15 @@ public class CopilotRepositoryAdapter implements CopilotRepository {
     @Override
     public void updateMessageCharge(long id, long chargedUzs) {
         messageJpaRepository.updateChargedUzs(id, chargedUzs);
+    }
+
+    @Override
+    public CopilotMessage findMessageById(long id) {
+        return messageJpaRepository.findById(id).map(mapper::toCopilotMessage).orElse(null);
+    }
+
+    @Override
+    public boolean updateProposal(long id, CopilotProposalStatus status, String content, boolean toolError) {
+        return messageJpaRepository.updateProposal(id, status.name(), content, toolError) == 1;
     }
 }

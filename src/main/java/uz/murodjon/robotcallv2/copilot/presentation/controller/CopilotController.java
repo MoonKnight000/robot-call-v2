@@ -60,6 +60,20 @@ public interface CopilotController {
             @CurrentCompanyId long companyId,
             @PathVariable long sessionId);
 
+    /** Applies a PENDING change the copilot proposed; the tool's answer comes back on the row. */
+    @PreAuthorize("hasAnyAuthority('AI_AGENT_READ', 'REPORT_READ')")
+    @PostMapping("/proposals/{messageId:\\d+}/apply")
+    ResponseEntity<ResponseData<CopilotMessage>> applyProposal(
+            @CurrentCompanyId long companyId,
+            @PathVariable long messageId);
+
+    /** Rejects a PENDING change the copilot proposed. */
+    @PreAuthorize("hasAnyAuthority('AI_AGENT_READ', 'REPORT_READ')")
+    @PostMapping("/proposals/{messageId:\\d+}/reject")
+    ResponseEntity<ResponseData<CopilotMessage>> rejectProposal(
+            @CurrentCompanyId long companyId,
+            @PathVariable long messageId);
+
     /**
      * The prompt editors' AI button: improves the prompt, writes one from the instruction, or
      * rewrites the prompt by the instruction. Returns the text only — nothing is saved.

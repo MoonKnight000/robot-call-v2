@@ -33,6 +33,12 @@ public interface CopilotUseCase {
 
     void deleteSession(long companyId, long sessionId);
 
+    /** Runs a change the copilot proposed (drafts only, like every copilot tool) and tells the model next time. */
+    CopilotMessage applyProposal(long companyId, long messageId);
+
+    /** Turns a proposed change down; nothing runs. */
+    CopilotMessage rejectProposal(long companyId, long messageId);
+
     /** The prompt editors' AI button: improves or writes one prompt. Nothing is saved. */
     RewritePromptResponse rewritePrompt(long companyId, RewritePromptRequest request);
 }

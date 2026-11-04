@@ -15,6 +15,9 @@ public final class CopilotInstructions {
     private static final String TEXT = PromptText.text("copilot.txt");
     private static final String PROMPT_REWRITE_TEXT = PromptText.text("prompt-rewrite.txt");
 
+    /** What the prompt button's model answers when asked for something other than an agent prompt. */
+    public static final String OUT_OF_SCOPE = "OUT_OF_SCOPE";
+
     private CopilotInstructions() {
     }
 

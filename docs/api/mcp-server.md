@@ -94,6 +94,9 @@ tool'larni ko'radi.
 | `attach_tool_to_agent` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | Tool'ni agentga biriktirish (`agentId`, `toolId`) |
 | `list_inbound_routes` | `INBOUND_ROUTE_READ`, `INBOUND_ROUTE_EDIT` | Kiruvchi raqamlar va ularga javob beradigan agent / call flow |
 
+`tools/list` dagi har bir tool `annotations.readOnlyHint` bilan keladi: `list_*`, `get_*`, `validate_*`, `diff_*`,
+`compare_*`, `export_*`, `preview_*` — `true` (hech narsa o'zgartirmaydi), qolganlari — `false`.
+
 Har bir tool REST API chaqiradigan o'sha use case'ni chaqiradi, shuning uchun validatsiya, audit
 va xatolar bir xil. Argumentlar **qat'iy** o'qiladi: noma'lum maydon (`systemPromt`) jimgina
 tashlanmaydi, rad etiladi.

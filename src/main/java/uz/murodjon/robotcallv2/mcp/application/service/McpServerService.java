@@ -89,7 +89,7 @@ public class McpServerService implements McpServerUseCase {
     public List<McpTool> findServerTools() {
         return toolCatalog.findVisibleTools().stream()
                 .map(tool -> new McpTool(tool.path("name").asText(), tool.path("description").asText(),
-                        tool.path("inputSchema").toString(), false, false))
+                        tool.path("inputSchema").toString(), tool.at("/annotations/readOnlyHint").asBoolean(), false))
                 .toList();
     }
 

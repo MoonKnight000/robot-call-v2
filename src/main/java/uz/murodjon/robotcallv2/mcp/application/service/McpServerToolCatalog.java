@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentFilter;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentEvalMode;
 import uz.murodjon.robotcallv2.mcp.domain.service.AgentDraftPolicy;
+import uz.murodjon.robotcallv2.mcp.domain.service.McpToolAccess;
 import uz.murodjon.robotcallv2.pack.application.dto.InstallDraftRequest;
 import uz.murodjon.robotcallv2.pack.application.dto.PackInstallResponse;
 import uz.murodjon.robotcallv2.pack.application.port.input.PackUseCase;
@@ -128,6 +129,7 @@ public class McpServerToolCatalog {
                 descriptor.put("name", tool.name());
                 descriptor.put("description", tool.description());
                 descriptor.set("inputSchema", tool.inputSchema());
+                descriptor.putObject("annotations").put("readOnlyHint", McpToolAccess.isReadOnly(tool.name()));
                 visible.add(descriptor);
             }
         }

@@ -17,7 +17,7 @@ public class CopilotEntityMapper {
     public CopilotMessage toCopilotMessage(CopilotMessageEntity entity) {
         return new CopilotMessage(entity.getId(), entity.getSessionId(), entity.getRole(), entity.getContent(),
                 entity.getToolName(), entity.getToolArguments(), entity.isToolError(), entity.getPromptTokens(),
-                entity.getCompletionTokens(), entity.getChargedUzs(), entity.getCreatedAt());
+                entity.getCompletionTokens(), entity.getChargedUzs(), entity.getCreatedAt(), entity.getProposalStatus());
     }
 
     public CopilotMessageEntity toCopilotMessageEntity(long companyId, CopilotMessage message) {
@@ -31,6 +31,7 @@ public class CopilotEntityMapper {
         entity.setToolError(message.toolError());
         entity.setPromptTokens(message.promptTokens());
         entity.setCompletionTokens(message.completionTokens());
+        entity.setProposalStatus(message.proposalStatus());
         return entity;
     }
 }

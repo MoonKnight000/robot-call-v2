@@ -17,4 +17,12 @@ public interface CopilotMessageJpaRepository extends JpaRepository<CopilotMessag
     @Transactional
     @Query(value = "UPDATE copilot_message SET charged_uzs = :chargedUzs WHERE id = :id", nativeQuery = true)
     void updateChargedUzs(@Param("id") long id, @Param("chargedUzs") long chargedUzs);
+
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE copilot_message SET proposal_status = :status, content = :content, tool_error = :toolError
+            WHERE id = :id AND proposal_status = 'PENDING'""", nativeQuery = true)
+    int updateProposal(@Param("id") long id, @Param("status") String status, @Param("content") String content,
+                       @Param("toolError") boolean toolError);
 }

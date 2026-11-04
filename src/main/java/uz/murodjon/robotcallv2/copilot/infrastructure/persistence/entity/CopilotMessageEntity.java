@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.copilot.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
 import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotMessageRole;
+import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotProposalStatus;
 
 import java.time.Instant;
 
@@ -47,6 +48,14 @@ public class CopilotMessageEntity {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "proposal_status", length = 16, updatable = false)
+    private CopilotProposalStatus proposalStatus;
+
+    public CopilotProposalStatus getProposalStatus() { return proposalStatus; }
+
+    public void setProposalStatus(CopilotProposalStatus proposalStatus) { this.proposalStatus = proposalStatus; }
 
     public Long getId() {
         return id;

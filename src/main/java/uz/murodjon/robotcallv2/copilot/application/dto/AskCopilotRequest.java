@@ -9,10 +9,17 @@ import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotPageContext;
  * @param sessionId the conversation to continue; null starts a new one
  * @param message   the question
  * @param context   the panel page the question was asked on; null when none
+ * @param applyChanges true runs the copilot's changes at once; null or false keeps each as a proposal
+ *                     the user applies or rejects in the panel
  */
 public record AskCopilotRequest(
         Long sessionId,
         @NotBlank @Size(max = 4000) String message,
-        @Valid CopilotPageContext context
+        @Valid CopilotPageContext context,
+        Boolean applyChanges
 ) {
+
+    public boolean applyChangesOrDefault() {
+        return Boolean.TRUE.equals(applyChanges);
+    }
 }

@@ -54,6 +54,16 @@ public class CopilotControllerImpl implements CopilotController {
     }
 
     @Override
+    public ResponseEntity<ResponseData<CopilotMessage>> applyProposal(long companyId, long messageId) {
+        return ResponseEntity.ok(ResponseData.ok(copilotUseCase.applyProposal(companyId, messageId)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CopilotMessage>> rejectProposal(long companyId, long messageId) {
+        return ResponseEntity.ok(ResponseData.ok(copilotUseCase.rejectProposal(companyId, messageId)));
+    }
+
+    @Override
     public ResponseEntity<ResponseData<RewritePromptResponse>> rewritePrompt(long companyId,
                                                                              RewritePromptRequest request) {
         return ResponseEntity.ok(ResponseData.ok(copilotUseCase.rewritePrompt(companyId, request)));

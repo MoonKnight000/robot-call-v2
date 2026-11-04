@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.copilot.application.port.output;
 
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
+import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotProposalStatus;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSession;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSessionFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
@@ -28,4 +29,12 @@ public interface CopilotRepository {
     List<CopilotMessage> findMessagesBySessionId(long sessionId);
 
     void updateMessageCharge(long id, long chargedUzs);
+
+    CopilotMessage findMessageById(long id);
+
+    /**
+     * Settles a PENDING proposal; false when it was no longer pending (applied or rejected meanwhile),
+     * so two clicks cannot run the same change twice.
+     */
+    boolean updateProposal(long id, CopilotProposalStatus status, String content, boolean toolError);
 }
