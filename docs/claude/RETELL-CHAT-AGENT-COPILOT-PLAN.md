@@ -134,10 +134,14 @@ Build/test Claude tomonidan ishga tushirilmagan (§8.6) — har bosqichning teks
 | A1 | ✅ | `channel`: CHAT agent kampaniya/variant/sequence/inbound route'ga biriktirilmaydi (`AI_AGENT_NOT_FOR_CALLS`), VOICE agent Telegram botga (`AI_AGENT_NOT_FOR_CHAT`) | `AiAgentChannelTest`, `CampaignServiceTest` |
 | A4 | ✅ | Chat turn tokenlari balansdan (`chat-charge:<id>:<n>`), balanssiz chat ochilmaydi (`CHAT_NO_BALANCE`) | `ChatConversationsTest`; ledger'da `chat-charge:*` |
 | A3 | ✅ | `ChatAnalysisJob` + V33: summary, sentiment, needsFollowUp, outcome → `GET /api/chats/{id}` `analysis` | `ChatAnalysisJobTest`; widget chatni tugatib 1 daqiqadan keyin detail'da `analysis` |
-| B6, B3, B4, B5, B7 | ⏳ | — | — |
-| C2, C3 (qolgani), C5, C6, C7 | ⏳ | — | — |
-| A2, A5–A9 | ⏳ | — | — |
+| B3, B4, B5, B7 | ✅ | `ScenarioMcpToolSet` (versiyalab saqlash), `AgentResourcesMcpToolSet` (ovoz, model, publish diff, bilim, REST tool, inbound); prompt: SCENARIOS, FULL SETUP, FROM ANALYSIS TO ACTION | `AgentDraftDiffTest`; "shu agentga 'siz kimsiz' javobini qo'sh" |
+| B6 | ✅ | Yozuvchi tool — `PENDING` taklif (V34), `POST /api/copilot/proposals/{id}/apply|reject`, `applyChanges`, `NOTE`; `annotations.readOnlyHint` | `CopilotServiceTest`; panelda "Qo'llash" |
+| Doira | ✅ | Copilot faqat platforma bo'yicha (kod/matematika rad etiladi); `PROMPT_REWRITE_OUT_OF_SCOPE` | "Java'da saralash yoz" → rad |
+| C2, C3, C5, C6, C7 | ✅ | `list_calls`: `aiAgentId`, `sentiment`, `randomSample`; `ask_calls` (≤50 qo'ng'iroq, billing); `list_chats`/`get_chat`; prompt 3a | `CallReportRepositoryAdapterTest` |
+| A2, A5, A6, A8, A9 | ✅ | `chatSettings` (V35), `CHAT_*` webhook'lar, `/api/v1/chats` (API kalit `CHAT_AGENT_EDIT`), CHAT agent faqat TEXT eval, chat filtrlari (`sentiment`, `needsFollowUp`, `API` kanali) | `AgentChatSettingsTest`, `ChatAnalysisJobTest` |
+| A7 (SMS) | ⏸ | Eskiz kiruvchi SMS webhook berishi tasdiqlanmagan | — |
+| Frontend | ✅ | `robot-call-front`, shu nomli branch: copilot takliflari/kontekst/tugma, agent kanali tanlovi, chat sozlamalari, chat tahlili va filtrlari, agent ro'yxatlari kanal bo'yicha, xato matnlari. `tsc -b`, `vitest` (55), `vite build` o'tdi | — |
 
 **Ochiq savollarga olingan standart javoblar** (foydalanuvchi o'zgartirishi mumkin): chat agent — Retell kabi
 alohida tur, OMNICHANNEL ikkalasini ham qiladi; copilot kampaniyani ishga tushira olmaydi; tasdiq oqimi (B6)
-hali qilinmagan — copilot hozircha qoralamaga darhol yozadi.
+qilindi — standart holatda taklif, panelda "O'zgarishlarni darhol qo'llash" tugmasi bilan darhol.
