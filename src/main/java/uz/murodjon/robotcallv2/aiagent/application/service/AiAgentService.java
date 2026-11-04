@@ -595,6 +595,24 @@ public class AiAgentService implements AiAgentUseCase {
     }
 
     @Override
+    public AiAgent requireAgentForCalls(long companyId, long id) {
+        AiAgent agent = drafts.requireAgent(companyId, id);
+        if (!agent.channel().takesCalls()) {
+            throw new ValidationException(ErrorCode.AI_AGENT_NOT_FOR_CALLS, id);
+        }
+        return agent;
+    }
+
+    @Override
+    public AiAgent requireAgentForChat(long companyId, long id) {
+        AiAgent agent = drafts.requireAgent(companyId, id);
+        if (!agent.channel().takesChats()) {
+            throw new ValidationException(ErrorCode.AI_AGENT_NOT_FOR_CHAT, id);
+        }
+        return agent;
+    }
+
+    @Override
     public AiAgent findAgent(long companyId, long id) {
         return repository.findByCompanyIdAndId(companyId, id);
     }

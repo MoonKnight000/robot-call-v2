@@ -289,6 +289,9 @@ POST /api/telegram-bots
 { "agentId": 42, "name": "@my_shop_bot", "tokenSecretKey": "TELEGRAM_BOT_TOKEN", "language": "uz-UZ" }
 ```
 
+Agent `channel` i `CHAT` yoki `OMNICHANNEL` bo'lishi kerak — ovozli (`VOICE`) agent `400 AI_AGENT_NOT_FOR_CHAT`
+([ai-agents.md](ai-agents.md), "`channel` nimani hal qiladi").
+
 4. Webhook'ni ro'yxatdan o'tkazing — **manzilni siz berasiz**, chunki deployment qaysi domenda
    javob berishini ilova ichidan bilib bo'lmaydi:
 

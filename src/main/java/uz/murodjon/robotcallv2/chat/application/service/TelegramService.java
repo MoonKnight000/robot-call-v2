@@ -91,7 +91,7 @@ public class TelegramService implements TelegramUseCase {
 
     @Override
     public TelegramBotRow createBot(long companyId, SaveTelegramBotRequest request) {
-        aiAgentUseCase.requireAgent(companyId, request.agentId());
+        aiAgentUseCase.requireAgentForChat(companyId, request.agentId());
         requireSecret(companyId, request.tokenSecretKey());
         TelegramBot saved = botRepository.save(new TelegramBot(null, companyId, request.agentId(),
                 request.name().trim(), request.tokenSecretKey().trim(), newWebhookSecret(), request.language(),

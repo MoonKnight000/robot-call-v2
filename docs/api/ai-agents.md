@@ -1784,6 +1784,17 @@ clone kabi yangi qoralama yaratiladi (e'lon qilinmagan, o'sha tool bog'lanishlar
 | `SINGLE_PROMPT` | `"<nom> (bitta prompt)"`, `mode: SINGLE_PROMPT`, `script.mode: PROMPT`, `scenarioId` va `definition` yo'q. `script.systemPrompt` — flow'dan yozilgan bitta prompt: role prompt (bo'lmasa agentning o'z `systemPrompt`i), `callPurpose`, start bosqichidan boshlab har bir bosqich (nomi, yo'riqnomasi, statik gap, funksiyasi, qayerga va qachon o'tishi; mantiqiy shart shoxlari "Agar … → …" / "Aks holda → …"), global savollar va guardrail'lar. NOTE bloklar tashlanadi, subflow'lar ichiga yoyiladi. Ssenariyning o'z `tools`, `factSchema`, `outcomeSchema` lari ko'chmaydi — agent funksiyalari (`functions`) qoladi. |
 | `CHAT` | `"<nom> (chat)"`, `channel: CHAT`; qolgan hamma narsa — asl agentniki. |
 
+**`channel` nimani hal qiladi** (Retell'dagi Voice agent / Chat agent):
+
+| `channel` | Qo'ng'iroq (kampaniya, `sequence` qadami, A/B variant, inbound route) | Matn (Telegram bot) |
+|---|---|---|
+| `VOICE` | ✅ | ❌ `400 AI_AGENT_NOT_FOR_CHAT` |
+| `CHAT` | ❌ `400 AI_AGENT_NOT_FOR_CALLS` | ✅ |
+| `OMNICHANNEL` | ✅ | ✅ |
+
+Tekshiruv agent **biriktirilganda** (kampaniya/variant/route/bot saqlanganda) bo'ladi; avval saqlangan
+biriktirishlar ishlashda davom etadi. Sayt vidjeti ikkala kanalni ham ochadi, shuning uchun unga qoida yo'q.
+
 Javob — yangi agentning `AiAgentRow`i. Audit: `AI_AGENT_CONVERT`.
 
 | Status | `messageCode` | Qachon |

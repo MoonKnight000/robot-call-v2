@@ -65,7 +65,7 @@ public class CampaignVariantService implements CampaignVariantUseCase {
      */
     private void requireOwnAgent(long companyId, Long aiAgentId) {
         if (aiAgentId != null) {
-            aiAgentUseCase.requireAgent(companyId, aiAgentId);
+            aiAgentUseCase.requireAgentForCalls(companyId, aiAgentId);
         }
     }
 

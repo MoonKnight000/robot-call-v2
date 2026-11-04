@@ -48,6 +48,12 @@ public interface AiAgentUseCase {
     /** The agent as its editors see it — the draft row. Reached from every screen and every ownership check. */
     AiAgent requireAgent(long companyId, long id);
 
+    /** {@link #requireAgent}, refused with {@code AI_AGENT_NOT_FOR_CALLS} when it is a chat-only agent — for campaigns, variants and inbound routes. */
+    AiAgent requireAgentForCalls(long companyId, long id);
+
+    /** {@link #requireAgent}, refused with {@code AI_AGENT_NOT_FOR_CHAT} when it is a voice-only agent — for text channels. */
+    AiAgent requireAgentForChat(long companyId, long id);
+
     /**
      * The agent a call runs under — the latest published snapshot, or the draft itself when
      * the agent was never published (NEXT-PLAN A.1). Reached from the dialer sweep, the

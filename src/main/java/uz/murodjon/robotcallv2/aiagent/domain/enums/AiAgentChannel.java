@@ -12,5 +12,15 @@ package uz.murodjon.robotcallv2.aiagent.domain.enums;
 public enum AiAgentChannel {
     VOICE,
     CHAT,
-    OMNICHANNEL
+    OMNICHANNEL;
+
+    /** Whether a campaign, an inbound route or an A/B variant may hand phone calls to this agent. */
+    public boolean takesCalls() {
+        return this != CHAT;
+    }
+
+    /** Whether a text channel (Telegram bot, chat API) may hand conversations to this agent. */
+    public boolean takesChats() {
+        return this != VOICE;
+    }
 }

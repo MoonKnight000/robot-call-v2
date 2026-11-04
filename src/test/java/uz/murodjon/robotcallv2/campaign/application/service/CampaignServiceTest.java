@@ -208,7 +208,7 @@ class CampaignServiceTest {
     @Test
     void updateCampaignAnswers409WhenTheCampaignWasSavedAfterItWasRead() {
         when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(campaign(3, 0));
-        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(aiAgents.requireAgentForCalls(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
         when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(false);
 
         assertThatThrownBy(() -> service.updateCampaign(1L, CAMPAIGN_ID, updateRequest(5L)))
@@ -222,7 +222,7 @@ class CampaignServiceTest {
     @Test
     void updateCampaignWithoutVersionUsesTheOneJustRead() {
         when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(campaign(3, 0));
-        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(aiAgents.requireAgentForCalls(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
         when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(true);
 
         service.updateCampaign(1L, CAMPAIGN_ID, updateRequest(null));
@@ -258,7 +258,7 @@ class CampaignServiceTest {
 
     @Test
     void campaignWithoutDialModeIsAnAiCampaign() {
-        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(aiAgents.requireAgentForCalls(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
 
         service.createCampaign(1L, createRequest(null, AI_AGENT_ID, null));
 
@@ -271,7 +271,7 @@ class CampaignServiceTest {
     /** A campaign that names no hours calls in the company's own dial window. */
     @Test
     void campaignWithoutWindowTakesTheCompanysDialWindow() {
-        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(aiAgents.requireAgentForCalls(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
         when(companyConfig.find(1L)).thenReturn(CompanyConfig.settings(LocalTime.of(10, 0), LocalTime.of(18, 0),
                 "Asia/Tashkent", 0, 0, false, false));
 
@@ -285,7 +285,7 @@ class CampaignServiceTest {
 
     @Test
     void campaignWithoutWindowOrCompanySettingsCallsNineToEight() {
-        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(aiAgents.requireAgentForCalls(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
 
         service.createCampaign(1L, createRequestWithWindow(null, null));
 
@@ -298,7 +298,7 @@ class CampaignServiceTest {
     @Test
     void updateCampaignWithoutWindowKeepsItsOwn() {
         when(campaigns.find(1L, CAMPAIGN_ID)).thenReturn(campaign(3, 0));
-        when(aiAgents.requireAgent(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
+        when(aiAgents.requireAgentForCalls(1L, AI_AGENT_ID)).thenReturn(AiAgentFixtures.agent(AI_AGENT_ID, 1L, 0L, "uz-UZ", null));
         when(campaigns.update(eq(1L), eq(CAMPAIGN_ID), any())).thenReturn(true);
 
         service.updateCampaign(1L, CAMPAIGN_ID, new UpdateCampaignRequest("c", AI_AGENT_ID, null,

@@ -156,6 +156,8 @@ public enum ErrorCode {
     AGENT_WIDGET_ORIGIN_FORBIDDEN("Origin %s is not allowed for this widget"),
 
     // validation
+    AI_AGENT_NOT_FOR_CALLS("AI agent %s is a chat agent — it cannot take phone calls; pick a VOICE or OMNICHANNEL agent"),
+    AI_AGENT_NOT_FOR_CHAT("AI agent %s is a voice agent — set its channel to CHAT or OMNICHANNEL to use it in chat"),
     LOGIN_INVALID_CREDENTIALS("username yoki parol noto'g'ri"),
     TOTP_REQUIRED("this account uses two-factor login — send the 6-digit otpCode from the authenticator app"),
     TOTP_CODE_INVALID("two-factor code is wrong, expired or already used"),

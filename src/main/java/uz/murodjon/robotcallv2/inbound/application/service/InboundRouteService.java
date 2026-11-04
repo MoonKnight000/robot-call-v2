@@ -70,7 +70,7 @@ public class InboundRouteService implements InboundRouteUseCase {
         String did = PhoneNumbers.require(request.didNumber());
         requireDidAssignable();
         if (request.aiAgentId() != null) {
-            aiAgentUseCase.requireAgent(companyId, request.aiAgentId());
+            aiAgentUseCase.requireAgentForCalls(companyId, request.aiAgentId());
         }
         if (request.callbackCampaignId() != null) {
             campaignUseCase.requireCampaign(companyId, request.callbackCampaignId());
@@ -98,7 +98,7 @@ public class InboundRouteService implements InboundRouteUseCase {
             requireDidAssignable();
         }
         if (request.aiAgentId() != null) {
-            aiAgentUseCase.requireAgent(companyId, request.aiAgentId());
+            aiAgentUseCase.requireAgentForCalls(companyId, request.aiAgentId());
         }
         if (request.callbackCampaignId() != null) {
             campaignUseCase.requireCampaign(companyId, request.callbackCampaignId());

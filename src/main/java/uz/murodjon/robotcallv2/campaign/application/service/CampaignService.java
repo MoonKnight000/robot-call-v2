@@ -345,7 +345,7 @@ public class CampaignService implements CampaignUseCase {
                     .map(step -> step.conversation().aiAgentId())
                     .filter(Objects::nonNull)
                     .distinct()
-                    .forEach(agentId -> aiAgentUseCase.requireAgent(companyId, agentId));
+                    .forEach(agentId -> aiAgentUseCase.requireAgentForCalls(companyId, agentId));
         }
     }
 
@@ -365,7 +365,7 @@ public class CampaignService implements CampaignUseCase {
         if (callQueueId != null && !callQueueLookupPort.existsByCompanyIdAndId(companyId, callQueueId)) {
             throw new NotFoundException(ErrorCode.CALL_QUEUE_NOT_FOUND, callQueueId);
         }
-        return aiAgentId != null ? aiAgentUseCase.requireAgent(companyId, aiAgentId) : null;
+        return aiAgentId != null ? aiAgentUseCase.requireAgentForCalls(companyId, aiAgentId) : null;
     }
 
     /**

@@ -162,6 +162,7 @@ Yangi marshrut har doim `enabled: true` bilan yaratiladi.
 | `VALIDATION_FAILED` | 400 | `didNumber` bo'sh/format noto'g'ri |
 | `INBOUND_ROUTE_HOURS_IDENTICAL` | 400 | `businessHoursStart == businessHoursEnd` |
 | `PHONE_INVALID` | 400 | `didNumber` normallashtirilmadi |
+| `AI_AGENT_NOT_FOR_CALLS` | 400 | `aiAgentId` — chat agenti (`channel: CHAT`), qo'ng'iroq qabul qila olmaydi |
 | `AI_AGENT_NOT_FOUND` | 404 | `aiAgentId` topilmadi (yoki boshqa kompaniyaniki) |
 | `CAMPAIGN_NOT_FOUND` | 404 | `callbackCampaignId` topilmadi |
 | `BUSINESS_SCHEDULE_NOT_FOUND` | 404 | `scheduleId` topilmadi |
