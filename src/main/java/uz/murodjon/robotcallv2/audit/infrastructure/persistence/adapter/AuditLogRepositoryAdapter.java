@@ -74,7 +74,8 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
         String actor = filter.actor();
         String action = filter.action();
         String entity = filter.entity();
-        String actionPrefix = filter.actionPrefix();
+        List<String> actionPrefixes = filter.actionPrefixes() == null ? List.of()
+                : filter.actionPrefixes().stream().filter(p -> p != null && !p.isBlank()).limit(20).toList();
         String entityId = filter.entityId();
         String q = filter.q() == null ? null : filter.q().trim().toLowerCase();
         return (root, query, cb) -> {
@@ -90,8 +91,10 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
             if (entity != null && !entity.isBlank()) {
                 predicates.add(cb.equal(root.get("entity"), entity));
             }
-            if (actionPrefix != null && !actionPrefix.isBlank()) {
-                predicates.add(cb.like(root.get("action"), escapeLike(actionPrefix) + "%", '\\'));
+            if (!actionPrefixes.isEmpty()) {
+                predicates.add(cb.or(actionPrefixes.stream()
+                        .map(prefix -> cb.like(root.get("action"), escapeLike(prefix) + "%", '\\'))
+                        .toArray(Predicate[]::new)));
             }
             if (entityId != null && !entityId.isBlank()) {
                 predicates.add(cb.equal(root.get("entityId"), entityId.trim()));

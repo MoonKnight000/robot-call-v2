@@ -775,7 +775,7 @@ yozuvlari. Yozuv amal bajarilgan zahoti qo'shiladi (`actor` — tokendagi foydal
   "orders": { "CREATED_AT": "DESC" },
   "actor": "murodjon",
   "action": "CALL_WHISPER",
-  "actionPrefix": "AI_AGENT_",
+  "actionPrefixes": ["AI_AGENT_", "SCENARIO_"],
   "entity": "call",
   "entityId": "1710000000.12",
   "q": "chegirma",
@@ -788,7 +788,7 @@ yozuvlari. Yozuv amal bajarilgan zahoti qo'shiladi (`actor` — tokendagi foydal
 |---|---|
 | `actor` | Aniq foydalanuvchi (login) |
 | `action` | Aniq amal (`USER_ROLE_CHANGE`) |
-| `actionPrefix` | Amallar guruhi prefiks bo'yicha: `AI_AGENT_`, `CALL_`, `CAMPAIGN_`, `USER_`, … (`%`/`_` oddiy belgi) |
+| `actionPrefixes` | Amallar guruhi — shu prefikslardan **istalgani** bilan boshlanadiganlar: `["AI_AGENT_", "SCENARIO_"]`, `["LOGIN_", "PASSWORD_", "TOTP_"]` (ko'pi bilan 20; `%`/`_` oddiy belgi) |
 | `entity` | Obyekt turi (`call`, `ai_agent`, `campaign`, …) |
 | `entityId` | Obyekt id'si (aniq moslik) |
 | `q` | `detail`, `entityId` va `actor` ichidan qidiruv, registrga sezgir emas |
@@ -818,7 +818,7 @@ panel filtrlarini to'ldirish uchun: `{ "actors": [...], "actions": [...], "entit
 
 ### Yozib boriladigan amallar (asosiylari)
 
-| Guruh (`actionPrefix`) | Amallar |
+| Guruh | Amallar |
 |---|---|
 | Kirish va xavfsizlik | `USER_LOGIN`, `LOGIN_FAILED`, `LOGIN_LOCKED`, `PASSWORD_RESET`, `TOTP_ENABLED`/`TOTP_DISABLED`, `REFRESH_REUSE_DETECTED`, `API_KEY_CREATED`/`API_KEY_REVOKED`, `SECRET_*` |
 | Foydalanuvchi va rollar | `USER_INVITE`, `USER_BLOCK`/`USER_UNBLOCK`, `USER_ROLE_CHANGE`, `ROLE_*`, `PROFILE_*` |

@@ -9,11 +9,13 @@ import uz.murodjon.robotcallv2.shared.api.FilterInterface;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 /**
  * Pagination + sort + filter for POST /api/reports/audit/list.
  *
- * @param actionPrefix a group of actions by their prefix ("AI_AGENT_", "CALL_", "USER_")
+ * @param actionPrefixes a group of actions by their prefixes — any of them ("AI_AGENT_", "CALL_"; or
+ *                       "LOGIN_", "PASSWORD_", "TOTP_" for sign-in security)
  * @param q            text searched in the detail, the entity id and the actor, case-insensitive
  * @param dateFrom     entries written at or after this instant
  * @param dateTo       entries written before this instant
@@ -25,7 +27,7 @@ public record AuditFilter(
         String actor,
         String action,
         String entity,
-        String actionPrefix,
+        List<String> actionPrefixes,
         String entityId,
         String q,
         Instant dateFrom,
