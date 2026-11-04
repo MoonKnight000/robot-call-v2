@@ -33,7 +33,11 @@ kechikish bilan), `startedAt` bo'yicha tartiblangan.
       "campaignName": "Iyul qarzdorlik",
       "language": "uz-UZ",
       "startedAt": "2026-07-31T10:15:00Z",
-      "dialogState": "DEBT_NOTICE"
+      "dialogState": "DEBT_NOTICE",
+      "trunk": "uzmobile",
+      "inbound": false,
+      "agentId": 7,
+      "agentName": "Qarzdorlik agenti"
     }
   ],
   "message": null, "messageCode": null, "accept": true, "errors": null
@@ -47,6 +51,9 @@ kechikish bilan), `startedAt` bo'yicha tartiblangan.
 | `campaignId`/`campaignName` | egasi kampaniya; test qo'ng'iroq bo'lsa `null` |
 | `startedAt` | qachon boshlangani — **elapsed davomiylik emas**, chunki panel taymerini har soniyada client-side hisoblaydi (backend javobi kelguncha davomiylik allaqachon eskirgan bo'lardi) |
 | `dialogState` | FSM holati (masalan `DEBT_NOTICE`) |
+| `trunk` | qo'ng'iroq o'tgan SIP trunk; noma'lum bo'lsa `null` |
+| `inbound` | `true` — mijoz o'zi qo'ng'iroq qilgan (kiruvchi marshrut), `false` — tizim terdi |
+| `agentId`/`agentName` | suhbatni olib borayotgan AI agent; agentsiz (eski ssenariy) qo'ng'iroqda `null` |
 
 ---
 

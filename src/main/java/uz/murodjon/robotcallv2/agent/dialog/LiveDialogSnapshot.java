@@ -10,12 +10,18 @@ import java.time.Instant;
  *
  * @param dialogState FSM state name (e.g. {@code DEBT_NOTICE})
  * @param clientName  debtor name from the call's facts, or null (manual/test call)
+ * @param inbound     the caller rang in, rather than being dialled
+ * @param agentId     the AI agent speaking on the call, or null (no agent: legacy scenario call)
+ * @param agentName   that agent's name, or null
  */
 public record LiveDialogSnapshot(
         String channelId,
         Instant startedAt,
         String dialogState,
         String language,
-        String clientName
+        String clientName,
+        boolean inbound,
+        Long agentId,
+        String agentName
 ) {
 }

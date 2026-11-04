@@ -215,7 +215,7 @@ class ActiveCallService {
         CallSession session = callSessionRegistry.find(s.channelId());
         String trunk = session != null ? session.trunk() : null;
         return new LiveCallRow(s.channelId(), phone, s.clientName(), campaignId, campaignName,
-                s.language(), s.startedAt(), s.dialogState(), trunk);
+                s.language(), s.startedAt(), s.dialogState(), trunk, s.inbound(), s.agentId(), s.agentName());
     }
 
     /** Whether {@code channelId} is a live call of {@code companyId}. */

@@ -561,7 +561,10 @@ public class DialogEngine implements CallDialog {
                         s.startedAt(),
                         s.state(),
                         s.language(),
-                        asString(s.context(), "clientName")))
+                        asString(s.context(), "clientName"),
+                        s.isInbound(),
+                        s.agent() != null ? s.agent().id() : null,
+                        s.agent() != null ? s.agent().name() : null))
                 .toList();
     }
 
