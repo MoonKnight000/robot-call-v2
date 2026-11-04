@@ -4,6 +4,7 @@ import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.audit.application.port.output.AuditLogRepository;
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFacets;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.audit.infrastructure.persistence.entity.AuditLogEntity;
@@ -22,6 +23,9 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
     private final AuditLogJpaRepository auditLogJpaRepository;
     private final CompanyJpaRepository companyJpaRepository;
     private final AuditLogEntityMapper mapper;
+
+    /** More distinct values than this is not a dropdown any more. */
+    private static final int FACET_LIMIT = 500;
 
     public AuditLogRepositoryAdapter(AuditLogJpaRepository auditLogJpaRepository,
                                      CompanyJpaRepository companyJpaRepository,
@@ -70,6 +74,9 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
         String actor = filter.actor();
         String action = filter.action();
         String entity = filter.entity();
+        String actionPrefix = filter.actionPrefix();
+        String entityId = filter.entityId();
+        String q = filter.q() == null ? null : filter.q().trim().toLowerCase();
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(cb.equal(root.get("company").get("id"), companyId));
@@ -83,9 +90,41 @@ public class AuditLogRepositoryAdapter implements AuditLogRepository {
             if (entity != null && !entity.isBlank()) {
                 predicates.add(cb.equal(root.get("entity"), entity));
             }
+            if (actionPrefix != null && !actionPrefix.isBlank()) {
+                predicates.add(cb.like(root.get("action"), escapeLike(actionPrefix) + "%", '\\'));
+            }
+            if (entityId != null && !entityId.isBlank()) {
+                predicates.add(cb.equal(root.get("entityId"), entityId.trim()));
+            }
+            if (q != null && !q.isEmpty()) {
+                String pattern = "%" + escapeLike(q) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("detail")), pattern, '\\'),
+                        cb.like(cb.lower(root.get("entityId")), pattern, '\\'),
+                        cb.like(cb.lower(root.get("actor")), pattern, '\\')));
+            }
+            if (filter.dateFrom() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), filter.dateFrom()));
+            }
+            if (filter.dateTo() != null) {
+                predicates.add(cb.lessThan(root.get("createdAt"), filter.dateTo()));
+            }
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    @Override
+    public AuditFacets findFacets(long companyId) {
+        return new AuditFacets(
+                auditLogJpaRepository.findDistinctActors(companyId, FACET_LIMIT),
+                auditLogJpaRepository.findDistinctActions(companyId, FACET_LIMIT),
+                auditLogJpaRepository.findDistinctEntities(companyId, FACET_LIMIT));
+    }
+
+    /** A user's text in a LIKE pattern matches literally: % and _ are not wildcards. */
+    private static String escapeLike(String text) {
+        return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
     }
 
     private static String truncate(String val, int maxLen) {

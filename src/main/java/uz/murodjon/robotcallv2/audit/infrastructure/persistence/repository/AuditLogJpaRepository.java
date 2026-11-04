@@ -23,6 +23,18 @@ public interface AuditLogJpaRepository extends JpaRepository<AuditLogEntity, Lon
     @Query("SELECT count(a) FROM AuditLogEntity a WHERE a.company.id = :companyId")
     long countByCompanyId(@Param("companyId") long companyId);
 
+    @Query(value = "SELECT DISTINCT actor FROM audit_log WHERE company_id = :companyId AND actor IS NOT NULL "
+            + "ORDER BY actor LIMIT :limit", nativeQuery = true)
+    List<String> findDistinctActors(@Param("companyId") long companyId, @Param("limit") int limit);
+
+    @Query(value = "SELECT DISTINCT action FROM audit_log WHERE company_id = :companyId AND action IS NOT NULL "
+            + "ORDER BY action LIMIT :limit", nativeQuery = true)
+    List<String> findDistinctActions(@Param("companyId") long companyId, @Param("limit") int limit);
+
+    @Query(value = "SELECT DISTINCT entity FROM audit_log WHERE company_id = :companyId AND entity IS NOT NULL "
+            + "ORDER BY entity LIMIT :limit", nativeQuery = true)
+    List<String> findDistinctEntities(@Param("companyId") long companyId, @Param("limit") int limit);
+
     /** At most {@code batchSize} rows, across every company, written before {@code cutoff}. */
     @Modifying @Transactional
     @Query(value = "DELETE FROM audit_log WHERE id IN "

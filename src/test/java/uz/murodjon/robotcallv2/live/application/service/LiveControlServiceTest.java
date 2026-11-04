@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.live.application.service;
 
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.dialog.LiveCallControlHub;
 import uz.murodjon.robotcallv2.agent.dialog.MultiAgentRouter;
@@ -42,7 +43,8 @@ class LiveControlServiceTest {
     private final AriService ari = mock(AriService.class);
     private final UserUseCase users = mock(UserUseCase.class);
     private final OperatorAccountUseCase accounts = mock(OperatorAccountUseCase.class);
-    private final LiveControlService service = new LiveControlService(hub, router, scenarios, ari, users, accounts);
+    private final LiveControlService service = new LiveControlService(hub, router, scenarios, ari, users, accounts,
+            mock(AuditUseCase.class));
 
     @Test
     void switchesALiveCallToAnActiveScenarioOfTheCompany() {

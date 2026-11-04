@@ -6,6 +6,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFacets;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.report.application.dto.*;
@@ -77,6 +78,11 @@ public interface ReportController {
     ResponseEntity<ResponseData<PageableData<AuditLog>>> auditLog(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody AuditFilter filter);
+
+    /** The values the audit log holds — actors, actions, entities — for the panel's filter dropdowns. */
+    @PreAuthorize("hasAuthority('AUDIT_READ')")
+    @GetMapping("/audit/facets")
+    ResponseEntity<ResponseData<AuditFacets>> auditFacets(@CurrentCompanyId long companyId);
 
     @PreAuthorize("hasAuthority('DASHBOARD_READ')")
     @GetMapping("/dashboard/summary")

@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.live.application.service;
 
 import org.springframework.stereotype.Service;
+import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.agent.ari.AriService;
 import uz.murodjon.robotcallv2.agent.dialog.LiveCallControlHub;
 import uz.murodjon.robotcallv2.agent.dialog.MultiAgentRouter;
@@ -36,22 +37,26 @@ public class LiveControlService implements LiveControlUseCase {
     private final AriService ari;
     private final UserUseCase userUseCase;
     private final OperatorAccountUseCase operatorAccountUseCase;
+    private final AuditUseCase auditUseCase;
 
     public LiveControlService(LiveCallControlHub liveCallControlHub, MultiAgentRouter multiAgentRouter,
                               ScenarioUseCase scenarioUseCase, AriService ari, UserUseCase userUseCase,
-                              OperatorAccountUseCase operatorAccountUseCase) {
+                              OperatorAccountUseCase operatorAccountUseCase, AuditUseCase auditUseCase) {
         this.liveCallControlHub = liveCallControlHub;
         this.multiAgentRouter = multiAgentRouter;
         this.scenarioUseCase = scenarioUseCase;
         this.ari = ari;
         this.userUseCase = userUseCase;
         this.operatorAccountUseCase = operatorAccountUseCase;
+        this.auditUseCase = auditUseCase;
     }
 
     @Override
     public LiveControlResponse injectWhisper(long companyId, String channelId, WhisperRequest request) {
         ari.requireLiveCallOf(companyId, channelId);
         liveCallControlHub.injectWhisper(channelId, request.instruction());
+        // What the supervisor told the agent mid-call: the audit is where "why did it offer that?" is answered.
+        auditUseCase.record(companyId, "CALL_WHISPER", "call", channelId, request.instruction());
         return LiveControlResponse.whisperInjected(channelId);
     }
 
@@ -62,6 +67,8 @@ public class LiveControlService implements LiveControlUseCase {
         String operatorEndpoint = extension == null || extension.isBlank()
                 ? null : requireOperatorEndpoint(companyId, extension.trim());
         ari.transferToOperator(channelId, operatorEndpoint);
+        auditUseCase.record(companyId, "CALL_TAKEOVER", "call", channelId,
+                operatorEndpoint == null ? "agent queue" : "extension " + extension.trim());
         return LiveControlResponse.takeoverTriggered(channelId);
     }
 
@@ -77,6 +84,8 @@ public class LiveControlService implements LiveControlUseCase {
             throw new ValidationException(ErrorCode.SCENARIO_HAS_NO_STAGES, target.id());
         }
         multiAgentRouter.routeToScenario(channelId, definition);
+        auditUseCase.record(companyId, "CALL_SCENARIO_SWITCH", "call", channelId,
+                "scenario " + target.id() + " (" + target.name() + ")");
         return LiveControlResponse.scenarioSwitched(channelId);
     }
 

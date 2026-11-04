@@ -166,12 +166,14 @@ public class CallService implements CallControlUseCase {
     @Override
     public TransferResponse hold(long companyId, String channelId) {
         operatorCallControl.hold(companyId, channelId);
+        auditUseCase.record(companyId, "CALL_HOLD", "call", channelId, null);
         return new TransferResponse(channelId, "ON_HOLD");
     }
 
     @Override
     public TransferResponse unhold(long companyId, String channelId) {
         operatorCallControl.unhold(companyId, channelId);
+        auditUseCase.record(companyId, "CALL_UNHOLD", "call", channelId, null);
         return new TransferResponse(channelId, "RESUMED");
     }
 

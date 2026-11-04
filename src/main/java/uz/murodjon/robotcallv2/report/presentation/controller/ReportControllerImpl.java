@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.report.presentation.controller;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFacets;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.report.application.dto.*;
@@ -80,6 +81,11 @@ public class ReportControllerImpl implements ReportController {
     @Override
     public ResponseEntity<ResponseData<PageableData<AuditLog>>> auditLog(long companyId, AuditFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(reportUseCase.findAuditLog(companyId, filter)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AuditFacets>> auditFacets(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(reportUseCase.findAuditFacets(companyId)));
     }
 
     @Override

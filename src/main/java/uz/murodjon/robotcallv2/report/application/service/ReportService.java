@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFacets;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
@@ -200,5 +201,10 @@ public class ReportService implements ReportUseCase {
         List<AuditLog> rows = audit.findRecent(companyId, filter);
         long total = audit.count(companyId, filter);
         return PageableData.of(rows, filter.pageOrDefault(), filter.sizeOrDefault(), total);
+    }
+
+    @Override
+    public AuditFacets findAuditFacets(long companyId) {
+        return audit.findFacets(companyId);
     }
 }

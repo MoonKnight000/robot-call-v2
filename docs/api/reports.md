@@ -761,6 +761,75 @@ eng yomon ro'yxat birinchi:
 
 ## 4. Tizim audit jurnali (`POST /api/reports/audit/list`) {#audit-log}
 
+Huquq: **AUDIT_READ**. Kompaniyada kim, qachon, nimani o'zgartirgani yoki ochgani — faqat token kompaniyasining
+yozuvlari. Yozuv amal bajarilgan zahoti qo'shiladi (`actor` — tokendagi foydalanuvchi, tizim ishlarida `system`).
+
+### `POST /api/reports/audit/list`
+
+**Request** (`AuditFilter`, hamma maydon ixtiyoriy):
+
+```json
+{
+  "page": 0,
+  "size": 50,
+  "orders": { "CREATED_AT": "DESC" },
+  "actor": "murodjon",
+  "action": "CALL_WHISPER",
+  "actionPrefix": "AI_AGENT_",
+  "entity": "call",
+  "entityId": "1710000000.12",
+  "q": "chegirma",
+  "dateFrom": "2026-11-01T00:00:00Z",
+  "dateTo": "2026-11-05T00:00:00Z"
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `actor` | Aniq foydalanuvchi (login) |
+| `action` | Aniq amal (`USER_ROLE_CHANGE`) |
+| `actionPrefix` | Amallar guruhi prefiks bo'yicha: `AI_AGENT_`, `CALL_`, `CAMPAIGN_`, `USER_`, … (`%`/`_` oddiy belgi) |
+| `entity` | Obyekt turi (`call`, `ai_agent`, `campaign`, …) |
+| `entityId` | Obyekt id'si (aniq moslik) |
+| `q` | `detail`, `entityId` va `actor` ichidan qidiruv, registrga sezgir emas |
+| `dateFrom` / `dateTo` | ISO instant; `dateFrom ≤ createdAt < dateTo` |
+| `orders` | `ID`, `CREATED_AT`, `ACTION`, `ACTOR`, `ENTITY` (standart — `ID DESC`) |
+
+**Response** — `PageableData<AuditLog>`:
+
+```json
+{
+  "data": {
+    "data": [
+      { "id": 9812, "companyId": 1, "actor": "murodjon", "action": "CALL_WHISPER", "entity": "call",
+        "entityId": "1710000000.12", "detail": "Muddatni 5-iyulgacha uzaytirishni taklif qil",
+        "createdAt": "2026-11-04T09:12:44Z", "ipAddress": "192.168.0.23" }
+    ],
+    "totalPages": 4, "currentPage": 0, "totalElements": 187
+  },
+  "accept": true
+}
+```
+
+### `GET /api/reports/audit/facets` — filtr tanlovlari
+
+Huquq: **AUDIT_READ**. Jurnalda haqiqatda bor qiymatlar (har biri alifbo tartibida, ko'pi bilan 500 ta) —
+panel filtrlarini to'ldirish uchun: `{ "actors": [...], "actions": [...], "entities": [...] }`.
+
+### Yozib boriladigan amallar (asosiylari)
+
+| Guruh (`actionPrefix`) | Amallar |
+|---|---|
+| Kirish va xavfsizlik | `USER_LOGIN`, `LOGIN_FAILED`, `LOGIN_LOCKED`, `PASSWORD_RESET`, `TOTP_ENABLED`/`TOTP_DISABLED`, `REFRESH_REUSE_DETECTED`, `API_KEY_CREATED`/`API_KEY_REVOKED`, `SECRET_*` |
+| Foydalanuvchi va rollar | `USER_INVITE`, `USER_BLOCK`/`USER_UNBLOCK`, `USER_ROLE_CHANGE`, `ROLE_*`, `PROFILE_*` |
+| AI agent | `AI_AGENT_*` (yaratish, o'zgartirish, publish, rollout, rollback, o'chirish), `AGENT_INSIGHT_*`, `SCENARIO_*` |
+| Jonli qo'ng'iroq | `CALL_LISTEN`, `CALL_MONITOR`, `CALL_WHISPER` (detail — ko'rsatma matni), `CALL_TAKEOVER`, `CALL_SCENARIO_SWITCH`, `CALL_HOLD`/`CALL_UNHOLD`, `CALL_TRANSFER*`, `CALL_CONSULT*`, `CALL_HANGUP_MANUAL` |
+| Ma'lumotga kirish | `RECORDING_DOWNLOAD`, `CALL_TRACE_VIEW`, `CHAT_TRACE_VIEW` (agent izi — CRM ma'lumoti bor), `SUBJECT_EXPORTED`/`SUBJECT_ERASED` |
+| Kampaniya va kontaktlar | `CAMPAIGN_*`, `TARGETS_*`, `CONTACT_*`, `CONTACTS_*`, `DNC_REMOVE` |
+| Telefoniya | `SIP_TRUNK_*`, `INBOUND_ROUTE_*`, `CALLER_RULE_*`, `CALL_FLOW_*`, `CALL_QUEUE_*`, `VOICEMAIL_BOX_*` |
+| Integratsiya va chat | `CRM_*`, `INTEGRATION_*`, `TELEGRAM_*`, `CHAT_*`, `WIDGET_*`, `ESKIZ_*`, `SMS_SENT` |
+| Kompaniya va billing | `COMPANY_*`, `AI_MODEL_*`, `BILLING_*`, `NOTIFICATION_SETTINGS_UPDATE` |
+
 ---
 
 ## 5. Kontakt-markaz hisobotlari (navbatlar, operatorlar, qo'ng'iroq timeline'i)

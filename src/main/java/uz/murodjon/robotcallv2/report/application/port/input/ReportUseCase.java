@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.report.application.port.input;
 
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFacets;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.report.application.dto.BulkCallActionRequest;
@@ -35,6 +36,9 @@ public interface ReportUseCase {
     DownloadableFile findRecording(long companyId, long callId);
 
     PageableData<AuditLog> findAuditLog(long companyId, AuditFilter filter);
+
+    /** The actors, actions and entities in the company's audit log — the filter's dropdowns. */
+    AuditFacets findAuditFacets(long companyId);
 
     /** One page of calls without the total count — for a short list such as search results. */
     List<ReportedCall> findRecentCalls(long companyId, CallFilter filter);

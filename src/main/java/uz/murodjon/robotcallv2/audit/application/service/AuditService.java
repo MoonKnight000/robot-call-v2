@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.audit.application.port.output.AuditLogRepository;
+import uz.murodjon.robotcallv2.audit.domain.entity.AuditFacets;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditFilter;
 import uz.murodjon.robotcallv2.audit.domain.entity.AuditLog;
 import uz.murodjon.robotcallv2.security.CurrentUser;
@@ -61,6 +62,16 @@ public class AuditService implements AuditUseCase {
         } catch (Exception e) {
             log.warn("Audit count failed: {}", e.getMessage());
             return 0;
+        }
+    }
+
+    @Override
+    public AuditFacets findFacets(long companyId) {
+        try {
+            return repository.findFacets(companyId);
+        } catch (Exception e) {
+            log.warn("Audit facets read failed: {}", e.getMessage());
+            return new AuditFacets(List.of(), List.of(), List.of());
         }
     }
 
