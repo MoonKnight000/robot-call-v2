@@ -129,6 +129,7 @@ public enum ErrorCode {
     PARTNER_REQUIRED("company %s is not a partner"),
     MCP_AGENT_LIVE_ON_DRAFT("AI agent %s takes calls on its draft (enabled, never published) — only AI_AGENT_EDIT may change it"),
     MCP_CAMPAIGN_NOT_DRAFT("campaign %s is %s — this caller changes only DRAFT campaigns; edit a running one in the panel"),
+    MCP_AGENT_NOT_OFFLINE("AI agent %s takes calls — this caller changes its tools and knowledge only while it is switched off and unpublished"),
     /** @deprecated another company's row answers 404 *_NOT_FOUND instead; kept because the frontend may still translate it. */
     @Deprecated
     CROSS_COMPANY_ACCESS_FORBIDDEN("cross-company access forbidden"),

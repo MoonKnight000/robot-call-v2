@@ -19,4 +19,13 @@ public final class AgentDraftPolicy {
     public static boolean isDraftEditable(boolean enabled, Integer publishedVersion) {
         return !enabled || publishedVersion != null;
     }
+
+    /**
+     * True when the agent takes no calls at all — switched off and never published. Its tool links
+     * and knowledge are read live, not from a published snapshot, so a drafts-only caller changes
+     * them only on such an agent.
+     */
+    public static boolean isOffline(boolean enabled, Integer publishedVersion) {
+        return !enabled && publishedVersion == null;
+    }
 }

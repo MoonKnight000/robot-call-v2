@@ -76,6 +76,23 @@ tool'larni ko'radi.
 | `list_campaign_variants` | `CAMPAIGN_READ`, `CAMPAIGN_EDIT` | A/B variantlar |
 | `get_campaign_ab_report` | `CAMPAIGN_READ`, `CAMPAIGN_EDIT` | A/B natija |
 | `create_campaign_variant` | `CAMPAIGN_EDIT` | `POST /api/campaigns/{id}/variants` maydonlari |
+| `list_scenarios` | `SCENARIO_READ`, `SCENARIO_EDIT` | `POST /api/scenarios/filter` (`builtinOnly`, `page`, `size`) |
+| `get_scenario` | `SCENARIO_READ`, `SCENARIO_EDIT` | `GET /api/scenarios/{id}` |
+| `validate_scenario` | `SCENARIO_READ`, `SCENARIO_EDIT` | `POST /api/scenarios/validate` (`definition`) |
+| `create_scenario` | `SCENARIO_EDIT` | `POST /api/scenarios` |
+| `clone_scenario` | `SCENARIO_EDIT` | `POST /api/scenarios/{id}/clone` (`scenarioId`, `name`) — built-in shablondan ham |
+| `update_scenario` | `SCENARIO_EDIT` | Keyingi versiya: `name`, `description`, `definition` ning berilgan yuqori darajali maydonlari almashadi, qolgani qoladi. Javob — **yangi id** li versiya |
+| `upsert_scenario_stage` | `SCENARIO_EDIT` | Bitta `StageDef` ni `id` bo'yicha birlashtiradi yoki qo'shadi, keyingi versiyani saqlaydi |
+| `upsert_global_node` | `SCENARIO_EDIT` | `GlobalNode` (`question`, `answer`) — shu savol bo'lsa javobi almashadi, bo'lmasa qo'shiladi |
+| `list_voices` | `AI_AGENT_READ` | `GET /api/tts/voices` bilan bir xil (`mode`, `language`) |
+| `list_llm_models` | `AI_AGENT_READ` | LLM katalogi narxlari bilan (`mode`) |
+| `diff_agent_draft` | `AI_AGENT_READ` | Qoralama va e'lon qilingan versiya farqi: `{publishedVersion, changes: {maydon: {published, draft}}}` yoki `{neverPublished: true}` |
+| `list_knowledge` | `KNOWLEDGE_BASE_READ`, `KNOWLEDGE_BASE_EDIT` | `{items, sources}` — savol-javoblar (`agentId`, `search`) va yuklangan manbalar |
+| `add_knowledge_item` | `KNOWLEDGE_BASE_EDIT` | Agentga savol-javob (`agentId` majburiy) |
+| `list_tools` | `AI_AGENT_READ` | Kompaniya REST tool'lari, `agentId` bilan — shu agentga biriktirilganlari |
+| `create_rest_tool` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | `POST /api/tools` maydonlari; hech qaysi agentga biriktirilmaydi |
+| `attach_tool_to_agent` | `AI_AGENT_EDIT`, `AGENT_DRAFT_EDIT` | Tool'ni agentga biriktirish (`agentId`, `toolId`) |
+| `list_inbound_routes` | `INBOUND_ROUTE_READ`, `INBOUND_ROUTE_EDIT` | Kiruvchi raqamlar va ularga javob beradigan agent / call flow |
 
 Har bir tool REST API chaqiradigan o'sha use case'ni chaqiradi, shuning uchun validatsiya, audit
 va xatolar bir xil. Argumentlar **qat'iy** o'qiladi: noma'lum maydon (`systemPromt`) jimgina
@@ -108,6 +125,11 @@ endpoint'lar bu huquqni qabul qilmaydi: u faqat MCP server orqali ishlaydi.
 `create_campaign_variant` boshqa holatda `403 MCP_CAMPAIGN_NOT_DRAFT` — ishlayotgan kampaniyaning sozlamasi,
 kontakti va varianti darhol jonli terishga ta'sir qiladi. Kampaniyani ishga tushirish / to'xtatish / pauza
 qiladigan tool **umuman yo'q** — bu panelda odamning tugmasi.
+
+**Tool bog'lanishi va bilim bazasi** qo'ng'iroqda jonli o'qiladi (e'lon qilingan snapshot'dan emas). Shuning uchun
+faqat-qoralama klient `attach_tool_to_agent` va `add_knowledge_item` ni faqat **hali qo'ng'iroq qabul qilmaydigan**
+agentga (o'chiq va hech qachon e'lon qilinmagan) qo'llaydi, aks holda `403 MCP_AGENT_NOT_OFFLINE`. Ssenariy
+esa xavfsiz: har saqlash yangi id'li versiya, agentlar eski id'da qoladi.
 
 ---
 
