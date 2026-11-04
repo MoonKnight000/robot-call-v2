@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
@@ -295,10 +297,14 @@ public class ClientInputGate {
      * words at all resumes the bot exactly where it stopped.
      */
     public boolean onBargeIn(DialogSession s) {
-        // Someone is talking, so the line is not silent — even if the recognizer never
+        // Someone may be talking, so the line is not silent — even if the recognizer never
         // turns it into a final. Without this the watchdog would prompt over a caller
-        // whose speech simply failed to transcribe.
-        s.touchActivity();
+        // whose speech simply failed to transcribe. Only for so long, though: VAD also
+        // scores breathing and room noise, and that kept a silent caller from ever being asked.
+        if (!s.touchVoiceActivity()) {
+            log.debug("[{}] VAD voice with no transcript since the last idle threshold — "
+                    + "not counted as the caller by the silence watchdog", s.channelId());
+        }
         InterruptionSensitivity sensitivity = sensitivity(s);
         if (sensitivity == InterruptionSensitivity.OFF) {
             log.debug("[{}] barge-in ignored because agent interruption sensitivity is OFF", s.channelId());
@@ -367,6 +373,8 @@ public class ClientInputGate {
         s.endpoint().flushPlayback();
         s.setCancelled(true);
         s.setInterrupted(true);
+        // After the flag: a turn that has not recorded its reply yet now sees the cut itself.
+        holdUnheardReply(s);
         // Any reply written ahead was written for a caller who had not interrupted, and
         // the next turn's annex will say they did. Cancel it rather than answer with it.
         s.discardSpeculation();
@@ -374,6 +382,45 @@ public class ClientInputGate {
         s.recordBargeIn();
         log.info("[{}] barge-in: bot silenced ({})", s.channelId(),
                 playing ? "mid-utterance" : "before its reply was spoken");
+    }
+
+    /**
+     * Keep what the flush threw away, so a false barge-in can say it after all, and make the
+     * history and the transcript say what the caller heard rather than what was queued.
+     *
+     * <p>A turn still running records its reply after this and finds it cut off (TurnRunner).
+     * One that already finished recorded the whole reply — on a real call a line written ahead
+     * of the final went out at once and was flushed 6 ms in, and the transcript showed a line
+     * nobody heard — so its record is corrected here, and since its turn will not arm the
+     * resume any more, it is armed here too.
+     */
+    private void holdUnheardReply(DialogSession s) {
+        String queued = s.queuedText();
+        if (s.holdUnheardAudio() == null) {
+            return;
+        }
+        String heard = s.spokenText();
+        List<Message> history = s.history();
+        int last = history.size() - 1;
+        if (queued != null && last >= 0 && history.get(last) instanceof AssistantMessage recorded
+                && sameLine(recorded.getText(), queued)) {
+            if (heard == null) {
+                history.remove(last);
+            } else {
+                history.set(last, new AssistantMessage(heard));
+                s.setLastAgentText(heard);
+            }
+            transcript.correctAgentLine(s, heard);
+            log.info("[{}] barge-in cut a recorded reply — kept as heard: {}", s.channelId(),
+                    heard == null ? "nothing" : heard.length() + " of " + queued.length() + " chars");
+        }
+        if (!s.busy().get()) {
+            turnRunner.scheduleResume(s);
+        }
+    }
+
+    private static boolean sameLine(String a, String b) {
+        return a != null && a.replaceAll("\\s+", " ").trim().equals(b.replaceAll("\\s+", " ").trim());
     }
 
     private void resumeBot(DialogSession s, String why) {

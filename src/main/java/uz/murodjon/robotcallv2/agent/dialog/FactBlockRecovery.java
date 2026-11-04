@@ -7,7 +7,6 @@ import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.ArrayList;
@@ -64,7 +63,7 @@ class FactBlockRecovery {
         log.error("[{}] fact guard blocked the reply twice in {} — escalating to an operator",
                 s.channelId(), s.state());
         s.end(Disposition.TRANSFERRED);
-        boolean spoken = speech.speakChunk(s, DialogPhrases.transferring(s.language()));
+        boolean spoken = speech.speakChunk(s, DialogLines.transferring(s));
         if (!spoken) {
             speech.speakChunk(s, DialogLines.fallback(s));
         }

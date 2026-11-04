@@ -372,6 +372,21 @@ class SystemPromptFactoryTest {
     }
 
     @Test
+    void aRepeatedAnswerGetsAnApologyAndWaitingLinesAreLeftToTheSystem() {
+        // "aytdimku uch xonali uy qidiryapman deb" was answered "Bir lahza. Tushunarli, uch xonali…".
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
+                .contains("aytdimku")
+                .contains("Kechirasiz, uch xonali dedingiz.")
+                .contains("Never open with a waiting phrase")
+                .contains("Bir lahza")
+                .doesNotContain("я же сказал");
+        assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
+                .contains("я же сказал")
+                .contains("Сейчас проверю")
+                .doesNotContain("aytdimku");
+    }
+
+    @Test
     void requiresEveryReplyToEndOnAQuestion() {
         // A real DEBT_NOTICE turn stated the sum and the missed due date and then stopped.
         // The caller had nothing to answer, said one unintelligible word, and the call
@@ -571,7 +586,7 @@ class SystemPromptFactoryTest {
                 .build();
         String humanPrompt = factory.stablePrefix(humanSession);
         assertThat(humanPrompt).contains("NATURAL FILLERS AND BRIDGES");
-        assertThat(humanPrompt).contains("«Qarang...»");
+        assertThat(humanPrompt).contains("«Xo'sh»");
 
         DialogSession botSession = DialogSession.builder("chan-bot", "uz-UZ")
                 .context(ScenarioFixtures.fullContext())
@@ -582,6 +597,7 @@ class SystemPromptFactoryTest {
                 .build();
         String botPrompt = factory.stablePrefix(botSession);
         assertThat(botPrompt).doesNotContain("NATURAL FILLERS AND BRIDGES");
-        assertThat(botPrompt).doesNotContain("«Qarang...»");
+        assertThat(botPrompt).doesNotContain("«Xo'sh»");
+        assertThat(botPrompt).contains("NO ECHOING");
     }
 }

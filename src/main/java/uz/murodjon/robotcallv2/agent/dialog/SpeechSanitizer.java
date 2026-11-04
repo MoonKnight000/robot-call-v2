@@ -36,6 +36,16 @@ public final class SpeechSanitizer {
     private static final Pattern UNSPEAKABLE_CHAR_PATTERN = Pattern.compile(
             "[^\\p{IsLatin}\\p{IsCyrillic}0-9\\s.,!?:;…\\-—–'ʻʼ’\"«»„“”()\\[\\]{}<>_/%№+]");
 
+    /**
+     * Gemini's bare thinking marker: the English word "thought" glued to the end of a
+     * sentence or arriving as a chunk of its own. A recorded call ended with
+     * "…kelishdikmi, Murodjon aka?thought" and the caller heard the English word read out.
+     * Only at a chunk start or straight after sentence punctuation, so a word that merely
+     * contains it ("thoughtful") is untouched — and spoken Uzbek or Russian never has it.
+     */
+    private static final Pattern THOUGHT_MARKER_PATTERN = Pattern.compile(
+            "(?:^|(?<=[.!?…]))\\s*thought\\b:?", Pattern.CASE_INSENSITIVE);
+
     private static final Set<String> FORBIDDEN_TOKENS = Set.of(
             "dynamic_thought_or_fallback",
             "dynamic_thought",
@@ -133,13 +143,14 @@ public final class SpeechSanitizer {
      * <p>Every other check here is a whole-string verdict, so one stray character makes an
      * otherwise good sentence neither speakable nor droppable: a real call ended with
      * "Xayr, salomat bo'ling!읍", and the Hangul syllable reached both the synthesizer and
-     * the stored transcript. Applied where model text enters ({@code LlmTurnClient.extractText},
+     * the stored transcript. Gemini's bare "thought" marker goes the same way. Applied where model text enters ({@code LlmTurnClient.extractText},
      * {@code DialogTools.recordReply}), so the transcript and the audio see the same line.
      */
     public static String stripUnspeakableCharacters(String text) {
         if (text == null || text.isEmpty()) {
             return text;
         }
-        return UNSPEAKABLE_CHAR_PATTERN.matcher(text).replaceAll("");
+        String speakable = UNSPEAKABLE_CHAR_PATTERN.matcher(text).replaceAll("");
+        return THOUGHT_MARKER_PATTERN.matcher(speakable).replaceAll("");
     }
 }

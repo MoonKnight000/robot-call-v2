@@ -30,6 +30,7 @@ import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The tools a turn may call, and what happens when the model calls them (PROJECT.md
@@ -58,9 +59,15 @@ public class TurnTools {
     private final ClientMemoryUseCase clientMemory;
     private final IntegrationHttpToolFactory integrationHttpToolFactory;
     private final CallTraceLog callTraceLog;
+    /**
+     * How long each company's tool has taken to run, smoothed (the latest weighing half), by
+     * "companyId:toolName". Decides whether a waiting line is worth saying before it runs.
+     */
+    private final Map<String, Double> toolRunMs = new ConcurrentHashMap<>();
+    private final PromptCacheProperties promptCache;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null, null, null, null, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null, null, null, null, null, null);
     }
 
     @Autowired
@@ -73,7 +80,8 @@ public class TurnTools {
             StageScriptRunner stageScriptRunner,
             ClientMemoryUseCase clientMemory,
             IntegrationHttpToolFactory integrationHttpToolFactory,
-            CallTraceLog callTraceLog
+            CallTraceLog callTraceLog,
+            PromptCacheProperties promptCache
     ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
@@ -84,6 +92,7 @@ public class TurnTools {
         this.clientMemory = clientMemory;
         this.integrationHttpToolFactory = integrationHttpToolFactory;
         this.callTraceLog = callTraceLog;
+        this.promptCache = promptCache;
     }
 
     /**
@@ -178,9 +187,24 @@ public class TurnTools {
         callbacks.addAll(catalog);
         List<ToolCallback> integration = integrationTools(s);
         callbacks.addAll(integration);
-        if (!dialogProperties.stateScopedTools()) {
+        if (!dialogProperties.stateScopedTools() || isStableToolset()) {
+            // Stable: every tool on every turn, and the stage's limit is applied in run().
             return callbacks;
         }
+        Set<String> allowed = findStageToolNames(s, mcp, catalog, integration);
+        return callbacks.stream()
+                .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
+                .toList();
+    }
+
+    /** Whether the declarations stay the same across stages ({@link PromptCacheProperties#stableToolset}). */
+    private boolean isStableToolset() {
+        return promptCache != null && promptCache.stableToolset() && dialogProperties.stateScopedTools();
+    }
+
+    /** The names the current stage may call, out of everything the call declares. */
+    private Set<String> findStageToolNames(DialogSession s, List<ToolCallback> mcp, List<ToolCallback> catalog,
+                                           List<ToolCallback> integration) {
         Set<String> allowed = allowedTools(s);
         // A scenario's stages name the tools they allow, and they cannot name a tool that
         // came from a server the company connected afterwards. An MCP tool is therefore
@@ -197,9 +221,25 @@ public class TurnTools {
                 .map(callback -> callback.getToolDefinition().name())
                 .filter(name -> !placed.contains(name))
                 .forEach(allowed::add);
-        return callbacks.stream()
-                .filter(callback -> allowed.contains(callback.getToolDefinition().name()))
-                .toList();
+        return allowed;
+    }
+
+    /**
+     * The line the turn's annex carries when every tool is declared on every turn: which of them
+     * this stage may call. Empty otherwise — the declarations themselves say it then.
+     *
+     * <p>That is the half of the stage limit the model sees; {@link #run} is the half it cannot
+     * get round. Without this line a model offered the whole CRM round in the first question stage
+     * runs it there ({@link #findToolsPlacedByFlow}), and every such call costs a refused round trip.
+     */
+    public String findStageToolNote(DialogSession s) {
+        if (!isStableToolset()) {
+            return "";
+        }
+        List<String> names = new ArrayList<>(findStageToolNames(s, mcpTools(s), catalogTools(s), integrationTools(s)));
+        Collections.sort(names);
+        return "\nTOOLS IN THIS STAGE: you may call only " + String.join(", ", names)
+                + ". Any other declared tool is refused in this stage — do not call it.";
     }
 
     /**
@@ -512,11 +552,17 @@ public class TurnTools {
             return null;
         }
         List<String> results = new ArrayList<>();
+        // With the whole set declared on every turn, what this stage offers is decided here.
+        Set<String> stageTools = isStableToolset()
+                ? findStageToolNames(s, mcpTools(s), catalogTools(s), integrationTools(s)) : null;
         for (AssistantMessage.ToolCall call : calls) {
             ToolCallback callback = tools.stream()
                     .filter(t -> t.getToolDefinition().name().equals(call.name()))
                     .findFirst()
                     .orElse(null);
+            if (callback != null && stageTools != null && !stageTools.contains(call.name())) {
+                callback = null;
+            }
             if (callback == null) {
                 // A tool this stage does not offer (see build) — the model invented the
                 // name, or is reaching for an outcome that is not on the table yet.
@@ -547,7 +593,25 @@ public class TurnTools {
         return results.isEmpty() ? null : String.join(" ", results);
     }
 
+    /**
+     * What the tool {@code toolName} is expected to take, from its runs so far; -1 when it has
+     * not run since the start. A waiting line before a tool that answers in 300 ms announces a
+     * wait the caller never has.
+     */
+    public long findExpectedRunMs(long companyId, String toolName) {
+        Double expected = toolRunMs.get(companyId + ":" + toolName);
+        return expected == null ? -1 : Math.round(expected);
+    }
+
+    private void recordRunMs(long companyId, String toolName, long elapsedNanos) {
+        long ms = elapsedNanos / 1_000_000;
+        toolRunMs.merge(companyId + ":" + toolName, (double) ms, (previous, latest) -> (previous + latest) / 2d);
+    }
+
     private void logCall(DialogSession s, AssistantMessage.ToolCall call, String result, long elapsedNanos) {
+        if (elapsedNanos > 0) {
+            recordRunMs(s.companyId(), call.name(), elapsedNanos);
+        }
         if (callTraceLog != null) {
             callTraceLog.recordToolCall(s.companyId(), s.callAttemptId(), s.agent(), s.startedAt(), s.state(),
                     call.name(), call.arguments(), result, elapsedNanos / 1_000_000);

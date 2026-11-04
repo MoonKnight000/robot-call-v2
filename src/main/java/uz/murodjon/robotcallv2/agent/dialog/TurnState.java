@@ -56,6 +56,10 @@ class TurnState {
      */
     private volatile Instant turnStartedAt;
     private final AtomicBoolean turnaroundRecorded = new AtomicBoolean(true);
+    /** This turn opened with "bir lahza"; taken once by the reply's first sentence. */
+    private final AtomicBoolean fillerSpoken = new AtomicBoolean();
+    /** The fast model's bridge line ("Uch xonali, yaxshi.") played this turn; taken once by the reply's first sentence. */
+    private final AtomicReference<String> bridgeLine = new AtomicReference<>();
 
     /** Where this turn's wait went, stage by stage — the breakdown behind that budget. */
     private final TurnLatency latency = new TurnLatency();
@@ -176,7 +180,27 @@ class TurnState {
     void startTurnClock() {
         turnStartedAt = Instant.now();
         turnaroundRecorded.set(false);
+        fillerSpoken.set(false);
+        bridgeLine.set(null);
         latency.turnStarted();
+    }
+
+    void markFillerSpoken() {
+        fillerSpoken.set(true);
+    }
+
+    void markBridgeSpoken(String line) {
+        bridgeLine.set(line);
+    }
+
+    /** The bridge line this turn played and no sentence has answered for yet, or null; non-null at most once. */
+    String takeBridgeLine() {
+        return bridgeLine.getAndSet(null);
+    }
+
+    /** Whether this turn's filler was played and not yet answered for; true at most once. */
+    boolean takeFillerSpoken() {
+        return fillerSpoken.compareAndSet(true, false);
     }
 
     /**

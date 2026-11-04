@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.aiagent.domain.service;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentPhrases;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentVoice;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PostCallAction;
@@ -42,6 +43,10 @@ public final class AiAgentValidator {
     static final int MAX_DEFAULT_VARIABLE_VALUE_LENGTH = 500;
     static final int MAX_DISABLED_INTEGRATION_TOOLS = 100;
     static final int MAX_INTEGRATION_TOOL_NAME_LENGTH = 100;
+    static final int MAX_PHRASE_CHARS = 300;
+    static final int MAX_PHRASE_POOL_SIZE = 10;
+    static final int MAX_POOL_PHRASE_CHARS = 80;
+    static final int MAX_BACKCHANNEL_WORDS = 3;
     private static final Pattern VARIABLE_NAME = Pattern.compile("[A-Za-z0-9_-]{1,64}");
     private static final int MAX_SYSTEM_PROMPT_CHARS = 12_000;
     private static final int MAX_ENUM_OPTIONS = 20;
@@ -92,6 +97,7 @@ public final class AiAgentValidator {
         }
         validateDefaultVariables(agent.defaultVariables());
         validateDisabledIntegrationTools(agent.disabledIntegrationTools());
+        validatePhrases(agent.phrases());
         AgentFunctionValidator.validate(agent.functions());
         Integer ragTopK = agent.ragTopK();
         if (ragTopK != null && (ragTopK < 1 || ragTopK > MAX_RAG_TOP_K)) {
@@ -259,6 +265,40 @@ public final class AiAgentValidator {
                 throw new ValidationException(ErrorCode.AI_AGENT_DISABLED_INTEGRATION_TOOL_INVALID, name,
                         MAX_INTEGRATION_TOOL_NAME_LENGTH, MAX_DISABLED_INTEGRATION_TOOLS);
             }
+        }
+    }
+
+    /**
+     * The agent's own fixed lines: each short enough to say in one breath, the pools small and
+     * made of short lines, and a backchannel no longer than a listening noise — a longer one is
+     * heard as the bot cutting in.
+     */
+    private static void validatePhrases(AiAgentPhrases phrases) {
+        requireShortPhrase("stillThere", phrases.stillThere());
+        requireShortPhrase("stillThereLastCall", phrases.stillThereLastCall());
+        requireShortPhrase("didNotCatch", phrases.didNotCatch());
+        requireShortPhrase("farewell", phrases.farewell());
+        requireShortPhrase("gratitudeReply", phrases.gratitudeReply());
+        requireShortPhrase("doNotCallReply", phrases.doNotCallReply());
+        requireSmallPool("thinking", phrases.thinking());
+        requireSmallPool("backchannels", phrases.backchannels());
+        for (String line : phrases.backchannels()) {
+            if (line.split("\\s+").length > MAX_BACKCHANNEL_WORDS) {
+                throw new ValidationException(ErrorCode.AI_AGENT_BACKCHANNEL_TOO_LONG, line, MAX_BACKCHANNEL_WORDS);
+            }
+        }
+    }
+
+    private static void requireShortPhrase(String name, String line) {
+        if (line != null && line.length() > MAX_PHRASE_CHARS) {
+            throw new ValidationException(ErrorCode.AI_AGENT_PHRASE_TOO_LONG, name, MAX_PHRASE_CHARS, line.length());
+        }
+    }
+
+    private static void requireSmallPool(String name, List<String> lines) {
+        boolean tooLong = lines.stream().anyMatch(line -> line.length() > MAX_POOL_PHRASE_CHARS);
+        if (lines.size() > MAX_PHRASE_POOL_SIZE || tooLong) {
+            throw new ValidationException(ErrorCode.AI_AGENT_PHRASE_POOL_INVALID, name, MAX_PHRASE_POOL_SIZE, MAX_POOL_PHRASE_CHARS);
         }
     }
 

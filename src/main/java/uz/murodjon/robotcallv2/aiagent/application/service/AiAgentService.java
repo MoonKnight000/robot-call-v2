@@ -433,6 +433,8 @@ public class AiAgentService implements AiAgentUseCase {
                         ? request.disabledIntegrationTools() : existing.disabledIntegrationTools())
                 // A list replaces the whole of it; with one saved, the older per-feature fields no longer drive calls.
                 .functions(functions)
+                // An object replaces all of them; {} puts every line back on the standard one.
+                .phrases(request.phrases() != null ? request.phrases() : existing.phrases())
                 .initiationWebhook(request.initiationWebhook() != null ? request.initiationWebhook() : existing.initiationWebhook())
                 .postCallWebhook(request.postCallWebhook() != null ? request.postCallWebhook() : existing.postCallWebhook())
                 .handbook(request.handbook() != null ? request.handbook() : existing.handbook())

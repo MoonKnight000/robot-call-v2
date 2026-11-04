@@ -30,18 +30,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       inside the &lt;1s budget (§1.3) — waiting for the whole reply
  *                       and then the whole synthesis serializes two full latencies.
  *                       Set false to fall back to a single blocking call.
- * @param fillerDelayMs  how long a turn may leave the caller in silence before a short
- *                       "bir soniya" is played over the gap while the LLM is still
- *                       generating (§1.3). It does not make the reply arrive sooner — it
- *                       stops the wait sounding like a dropped line, which is what a
- *                       caller actually reacts to. Only ever fires when the turn is
- *                       genuinely slow, never on the greeting, and never on consecutive
- *                       turns. 0 disables it, which is where it stands: while the
- *                       framework was running tools in its own loop a turn took 5–11s, so
- *                       five turns in seven crossed 1800 ms and the caller heard "Bir
- *                       soniya." before nearly every reply — a canned line ahead of every
- *                       answer is worse than the silence it hides. Set a value again only
- *                       when the turnaround metric shows a genuinely slow turn
+ * @param fillerWaitThresholdMs the wait for the model's first token, as measured on this call
+ *                       (the warm-up, then every turn not written ahead of the final), at
+ *                       which a turn opens with a short "bir lahza" — said at once, when the
+ *                       wait starts, not after a fixed silence. It does not make the reply
+ *                       arrive sooner; it stops the wait sounding like a dropped line. Past
+ *                       about a second callers start to read silence as a fault. Never on
+ *                       the greeting or a speculated reply; a bare "Tushunarli." opening the
+ *                       reply after it is dropped. 0 disables it
+ * @param fillerBridge   that filler is a few words about what the caller said, written by the
+ *                       fast model ("Uch xonali, yaxshi.", "Kechirasiz, uch xonali dedingiz.")
+ *                       instead of the canned "Bir lahza."; the canned line stays the fallback
  * @param backchannelAfterMs how long a caller may talk before the bot says "aha" under
  *                       them to show it is still listening. A person does this every few
  *                       seconds; a line that stays silent through a long explanation reads
@@ -173,6 +172,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                       emits no final) leaves the call mute until
  *                       {@code maxCallSeconds}. 0 disables the watchdog
  * @param noInputMaxPrompts how many times to ask before ending the call as unanswered
+ * @param noInputContextual every check but the last is worded by the fast model about the
+ *                       conversation ("Aloqadamisiz? Uy necha xonali bo'lsin, deb so'rayotgan
+ *                       edim.") instead of the canned "Alo, eshityapsizmi?" plus the repeated
+ *                       question, which stay the fallback. The last check is always the fixed
+ *                       warning, and an agent's own {@code phrases.stillThere} wins over the model
  * @param fastPath       settle the turns whose meaning is not in doubt ("adashibsiz",
  *                       "boshqa telefon qilmang", "operatorga ulang") from code, without a
  *                       model round trip ({@link FastPathRouter}). The model reaches the
@@ -232,7 +236,8 @@ public record DialogProperties(
         int languageSwitchFinals,
         int maxCallSeconds,
         boolean streaming,
-        int fillerDelayMs,
+        int fillerWaitThresholdMs,
+        boolean fillerBridge,
         int backchannelAfterMs,
         int backchannelVolumePercent,
         int interjectAfterMs,
@@ -250,6 +255,7 @@ public record DialogProperties(
         int historyMaxMessages,
         int noInputSeconds,
         int noInputMaxPrompts,
+        boolean noInputContextual,
         boolean fastPath,
         boolean knowledgeBase,
         float lowConfidenceThreshold,

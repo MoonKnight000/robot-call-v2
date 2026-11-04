@@ -232,7 +232,8 @@ public class SttStreamBridge implements AudioListener, Closeable {
             }
             if (isFinal) {
                 clearReplayBuffer();
-                if (!claimFinal(text)) {
+                text = claimFinal(text);
+                if (text == null) {
                     return; // already answered from the last interim
                 }
             } else {
@@ -268,6 +269,14 @@ public class SttStreamBridge implements AudioListener, Closeable {
             metrics.sttAudioSkipped(seconds(length));
             if (streaming) {
                 streaming = false;
+                if (gate.lastCloseWasNoise()) {
+                    log.info("[{}] VAD heard speech the recognizer did not transcribe for {} ms — gate closed as noise",
+                            channelId, utteranceSamples * 1000 / sourceSampleRate);
+                } else {
+                    // One line per turn end: which wait or model ended it (model-driven turn plan, phase 0).
+                    log.info("[{}] turn closed after {} ms streamed: {}", channelId,
+                            utteranceSamples * 1000 / sourceSampleRate, gate.lastCloseReason());
+                }
                 endUtterance();
                 log.debug("[{}] STT stream gated (silence)", channelId);
             } else if (isNearStreamLimit()) {
@@ -277,6 +286,11 @@ public class SttStreamBridge implements AudioListener, Closeable {
         }
         if (gate != null && !streaming) {
             streaming = true;
+            // The caller is speaking again, so the next final is theirs, not a late part of the
+            // utterance answered from its interim (claimFinal).
+            synchronized (finalLock) {
+                promotedAt = 0;
+            }
             upsampler = upsamplerFor(targetSampleRate);
             log.debug("[{}] STT stream resumed (speech)", channelId);
             short[] preRoll = gate.drainPreRoll();
@@ -449,22 +463,57 @@ public class SttStreamBridge implements AudioListener, Closeable {
      * Whether a final from the provider is still wanted, or was already delivered from
      * the last interim. A dropped one is logged with both texts: the difference between
      * them says whether the grace is too short.
+     *
+     * @return the text to deliver as the final, or {@code null} when it is dropped
      */
-    private boolean claimFinal(String text) {
+    private String claimFinal(String text) {
         synchronized (finalLock) {
+            String interim = lastInterim;
             finalPending = false;
             lastInterim = null;
-            if (promotedAt == 0) {
-                return true;
-            }
-            boolean stale = System.currentTimeMillis() - promotedAt < streamProperties.promotedFinalTtlMs();
-            promotedAt = 0;
+            boolean stale = promotedAt != 0
+                    && System.currentTimeMillis() - promotedAt < streamProperties.promotedFinalTtlMs();
             if (!stale) {
-                return true;
+                String completed = completeWithInterim(text, interim);
+                // The interim's tail may still come as a final of its own — it was said already.
+                promotedAt = completed.equals(text) ? 0 : System.currentTimeMillis();
+                if (!completed.equals(text)) {
+                    log.debug("[{}] final covered only the start of the last interim, kept the interim: '{}' -> '{}'",
+                            channelId, text, completed);
+                }
+                return completed;
             }
+            // Kept, not cleared: the provider may answer one utterance in more than one final.
+            // Clearing on the first let the second through as a new utterance — "vaaleykum
+            // assalom … allo allo" was answered from the interim, then SpeechKit's last segment
+            // came as "алло", and the bot spoke a second reply straight after the first.
+            // New speech ends this instead (onAudio), and so does the TTL.
         }
         log.debug("[{}] late final dropped, already answered from the interim: {}", channelId, text);
-        return false;
+        return null;
+    }
+
+    /**
+     * The final, or the last interim when the final says only its first words. At the EOU
+     * SpeechKit may finalize just the first fragment of a long utterance and send the rest
+     * as an empty final: "мен оны карап кетем да" came as the final of an interim that went
+     * on "… частный сек…". The speculative reply had answered the whole interim, while the
+     * history and the transcript kept only the start.
+     */
+    static String completeWithInterim(String finalText, String interim) {
+        if (interim == null || interim.isBlank()) {
+            return finalText;
+        }
+        String head = normalizeForCompare(finalText);
+        String whole = normalizeForCompare(interim);
+        return !head.isEmpty() && whole.startsWith(head + " ") ? interim.strip() : finalText;
+    }
+
+    private static String normalizeForCompare(String text) {
+        return text.toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}'ʻʼ‘’ ]", " ")
+                .replaceAll("\\s+", " ")
+                .strip();
     }
 
     private void dropStalledStream() {

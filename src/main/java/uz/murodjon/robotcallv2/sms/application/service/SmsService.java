@@ -12,7 +12,6 @@ import uz.murodjon.robotcallv2.sms.application.port.output.SmsSenderPort;
 import uz.murodjon.robotcallv2.sms.domain.entity.SmsMessage;
 import uz.murodjon.robotcallv2.sms.domain.enums.SmsStatus;
 import uz.murodjon.robotcallv2.sms.domain.service.SmsValidator;
-import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsProperties;
 
 /**
  * Dispatches SMS notifications (e.g. payment links, bank card details, address info)
@@ -23,18 +22,15 @@ public class SmsService implements SmsUseCase {
 
     private static final Logger log = LoggerFactory.getLogger(SmsService.class);
 
-    private final boolean enabled;
     private final SmsSenderPort smsSender;
     private final EskizConnectionRepository eskizConnectionRepository;
     private final AuditUseCase auditService;
 
     public SmsService(
-            SmsProperties smsProperties,
             SmsSenderPort smsSender,
             EskizConnectionRepository eskizConnectionRepository,
             AuditUseCase auditService
     ) {
-        this.enabled = smsProperties.enabled();
         this.smsSender = smsSender;
         this.eskizConnectionRepository = eskizConnectionRepository;
         this.auditService = auditService;
@@ -42,7 +38,7 @@ public class SmsService implements SmsUseCase {
 
     @Override
     public boolean isEnabled(long companyId) {
-        return enabled || eskizConnectionRepository.findByCompanyId(companyId).isPresent();
+        return eskizConnectionRepository.findByCompanyId(companyId).isPresent();
     }
 
     /**
@@ -57,7 +53,7 @@ public class SmsService implements SmsUseCase {
         String masked = PhoneMasker.mask(request.phone());
         if (!isEnabled(companyId)) {
             // Not sent, so not "true": the mid-call tool tells the caller what this returns.
-            log.info("[SMS DISABLED] Would send SMS to {} ({} chars)", masked, request.message().length());
+            log.info("[SMS DISABLED] No Eskiz account connected, would send SMS to {} ({} chars)", masked, request.message().length());
             return false;
         }
 

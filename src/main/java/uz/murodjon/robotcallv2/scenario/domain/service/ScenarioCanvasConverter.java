@@ -79,6 +79,7 @@ public final class ScenarioCanvasConverter {
             stageData.put("stageId", stage.id());
             if (stage.purpose() != null) stageData.put("purpose", stage.purpose());
             if (stage.staticLine() != null) stageData.put("staticLine", stage.staticLine());
+            if (stage.fallbackLine() != null) stageData.put("fallbackLine", stage.fallbackLine());
             if (stage.emotion() != null) stageData.put("emotion", stage.emotion());
             if (stage.model() != null) stageData.put("model", stage.model());
             if (stage.allowedTools() != null) stageData.put("allowedTools", stage.allowedTools());
@@ -207,6 +208,7 @@ public final class ScenarioCanvasConverter {
 
             String purpose = asString(data.get("purpose"));
             String staticLine = asString(data.get("staticLine"));
+            String fallbackLine = asString(data.get("fallbackLine"));
             String emotion = asString(data.get("emotion"));
             String model = asString(data.get("model"));
             List<String> allowedTools = asStringList(data.get("allowedTools"));
@@ -286,7 +288,8 @@ public final class ScenarioCanvasConverter {
                     saved != null ? saved.overrides() : null,
                     saved != null ? saved.examples() : null,
                     saved != null ? saved.skipWhenKnown() : null,
-                    saved != null ? saved.knowledgeSourceIds() : null
+                    saved != null ? saved.knowledgeSourceIds() : null,
+                    fallbackLine
             ));
         }
 

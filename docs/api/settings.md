@@ -351,8 +351,8 @@ bu bo'lim umuman yopiladi.
 ### Eskiz SMS — kompaniyaning o'z hisobi
 
 Har kompaniya SMS'ni o'zining Eskiz hisobidan yuboradi (ulanish usuli — `LOGIN_PASSWORD`). Login va parol shifrlanib
-saqlanadi, parol javobda hech qachon qaytmaydi. Kompaniya hisob ulamagan bo'lsa, SMS platformaning o'z Eskiz
-loginidan (`SMS_ESKIZ_*`) ketadi — u ham yo'q bo'lsa yuborilmaydi. Mijozga SMS yuboradigan hamma joy (agentning
+saqlanadi, parol javobda hech qachon qaytmaydi. Kompaniya hisob ulamagan bo'lsa, SMS yuborilmaydi — platformaning
+umumiy Eskiz logini yo'q. Mijozga SMS yuboradigan hamma joy (agentning
 `SEND_SMS` funksiyasi, qo'ng'iroqdan keyingi harakat, kampaniya qoidasi) shu hisobni ishlatadi.
 
 | Endpoint | Huquq | Tavsif |

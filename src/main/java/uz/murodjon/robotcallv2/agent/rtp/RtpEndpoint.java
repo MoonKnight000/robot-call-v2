@@ -40,7 +40,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>Outbound: the room the bot is calling from, and the typing under the pause while a
  * reply is composed, both mixed under the voice by {@link AmbientSoundGenerator}.
  */
-public class RtpEndpoint {
+public class RtpEndpoint implements Closeable {
 
     private static final Logger log = LoggerFactory.getLogger(RtpEndpoint.class);
 

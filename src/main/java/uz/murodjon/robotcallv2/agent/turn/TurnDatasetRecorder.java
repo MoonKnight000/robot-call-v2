@@ -6,6 +6,7 @@ import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.audio.TurnCloseDecision;
 import uz.murodjon.robotcallv2.agent.dialog.PiiRedactor;
 
 import java.io.IOException;
@@ -17,6 +18,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -31,8 +33,12 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>Output is JSON Lines, one file per day in Tashkent time:
  * <pre>
- *   {"at":"2026-10-08","language":"uz-UZ","agent":"Qachon to'lay olasiz?","text":"ertaga to'layman lekin","waitMs":1200,"label":"continue"}
+ *   {"at":"2026-10-08","language":"uz-UZ","agent":"Qachon to'lay olasiz?","text":"ertaga to'layman lekin","waitMs":1200,"label":"continue",
+ *    "llm":"incomplete","decidedBy":"post-roll","baseWaitMs":700,"extension":"llm-unfinished","extensionMs":500,
+ *    "turnModel":"not-asked","words":"incomplete","restarts":0,"vad":"ten"}
  * </pre>
+ * {@code decidedBy} + {@code extension} name the rule or model that ended the turn; read against
+ * {@code label}, they say which signal cuts callers off — the data the turn-signal combination is tuned on.
  * No call id and no phone: the set is for training, not for tracing a caller. Text goes
  * through {@link PiiRedactor} first.
  *
@@ -87,10 +93,12 @@ public class TurnDatasetRecorder {
      *                  after "necha xonali?" and after "nima sababdan?"; blank when there was none
      * @param smartTurn what Smart Turn scored the close in shadow ({@code SmartTurnProperties#shadowLanguages}),
      *                  or null when it was not asked
-     * @param llmCue    what the speculative reply made of the utterance; UNKNOWN (left out) when it had not said
+     * @param decision  what ended the utterance and what each turn signal said — which one decided,
+     *                  read next to the label, is what tunes how the signals are combined
+     * @param vadEngine the voice-activity model that scored the call ({@code silero}, {@code ten})
      */
     public void record(String language, String agentLine, String transcript, int waitMs, boolean callerContinued,
-                       Float smartTurn, TurnCue llmCue) {
+                       Float smartTurn, TurnCloseDecision decision, String vadEngine) {
         if (!running || transcript == null || transcript.isBlank()) {
             return;
         }
@@ -106,8 +114,22 @@ public class TurnDatasetRecorder {
         if (smartTurn != null) {
             row.put("smartTurn", smartTurn);
         }
-        if (llmCue != null && llmCue != TurnCue.UNKNOWN) {
-            row.put("llm", llmCue == TurnCue.COMPLETE ? "complete" : "incomplete");
+        if (decision != null) {
+            if (decision.llm() != null && decision.llm() != TurnCue.UNKNOWN) {
+                row.put("llm", decision.llm().name().toLowerCase(Locale.ROOT));
+            }
+            row.put("decidedBy", decision.waitRule());
+            row.put("baseWaitMs", decision.waitMs());
+            row.put("extension", decision.extensionRule());
+            row.put("extensionMs", decision.extensionMs());
+            row.put("turnModel", decision.turnModel());
+            if (decision.words() != null && decision.words() != TurnCue.UNKNOWN) {
+                row.put("words", decision.words().name().toLowerCase(Locale.ROOT));
+            }
+            row.put("restarts", decision.restarts());
+        }
+        if (vadEngine != null) {
+            row.put("vad", vadEngine);
         }
         queue.offer(row);
     }

@@ -68,6 +68,8 @@ public class TurnLatency {
     private volatile long callStartedAtMillis;
     /** The last finished turn's timing, until {@link #takeTiming()} collects it. */
     private volatile TurnTiming lastTiming;
+    /** What this call's model has taken to its first token, smoothed; -1 until measured. */
+    private volatile double expectedTtftMs = -1;
 
     /**
      * The STT and TTS providers chosen for this call. The choice, not necessarily the one
@@ -127,7 +129,42 @@ public class TurnLatency {
     public void llmFirstToken() {
         if (llmFirstTokenAt == 0) {
             llmFirstTokenAt = System.nanoTime();
+            if (!speculated && llmRequestedAt > 0) {
+                recordTtft(millis(llmRequestedAt, llmFirstTokenAt));
+            }
         }
+    }
+
+    /**
+     * The call's warm-up request came back after {@code ms}: the first estimate of the wait,
+     * before any turn has measured one. A turn's own measurement replaces it.
+     */
+    public void warmupMeasured(long ms) {
+        if (expectedTtftMs < 0 && ms > 0 && ms < MAX_PLAUSIBLE_MS) {
+            expectedTtftMs = ms;
+        }
+    }
+
+    /**
+     * How long this call's model is expected to take to its first token: the turns measured so
+     * far, the latest weighing half; -1 before anything was measured. What decides whether a
+     * turn starts with "bir lahza" — a measured wait, not a fixed timer.
+     */
+    public int expectedTtftMs() {
+        return (int) Math.round(expectedTtftMs);
+    }
+
+    /** Whether the reply in hand was written during the endpointing silence — it needs no filler. */
+    public boolean isSpeculated() {
+        return speculated;
+    }
+
+    private void recordTtft(long ms) {
+        if (ms < 0 || ms >= MAX_PLAUSIBLE_MS) {
+            return;
+        }
+        double previous = expectedTtftMs;
+        expectedTtftMs = previous < 0 ? ms : (previous + ms) / 2d;
     }
 
     /** The turn adopted a reply written during the endpointing silence. */

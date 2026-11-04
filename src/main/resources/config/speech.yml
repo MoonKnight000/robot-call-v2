@@ -79,6 +79,7 @@ voice-agent:
       pre-roll-ms: ${STT_VAD_PRE_ROLL_MS:800}
       post-roll-ms: ${STT_VAD_POST_ROLL_MS:1200}
       min-speech-ms: ${STT_VAD_MIN_SPEECH_MS:80}
+      no-transcript-close-ms: ${STT_VAD_NO_TRANSCRIPT_CLOSE_MS:6000}
     endpointing:
       enabled: ${STT_ENDPOINTING:true}
       short-utterance-ms: ${STT_ENDPOINTING_SHORT_UTTERANCE_MS:1500}
@@ -155,6 +156,20 @@ voice-agent:
     early-wait-ms: ${TEXT_TURN_EARLY_WAIT_MS:0}
     early-threshold: ${TEXT_TURN_EARLY_THRESHOLD:0.9}
     max-tokens: ${TEXT_TURN_MAX_TOKENS:128}
+  # LLM end-of-turn after TEN Turn Detection (LlmTurnProperties). TEN mode: base-url = the vLLM server
+  # serving TEN_Turn_Detection, model TEN_Turn_Detection, max-tokens 1. PROMPT mode: blank model = the agent's
+  # fastLlmModel, so base-url/api-key must be the endpoint serving it (Gemini's OpenAI-compatible one by default).
+  llm-turn:
+    enabled: ${LLM_TURN_DETECTOR:false}
+    mode: ${LLM_TURN_MODE:PROMPT}
+    base-url: ${LLM_TURN_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
+    api-key: ${LLM_TURN_API_KEY:${GEMINI_API_KEY:}}
+    model: ${LLM_TURN_MODEL:}
+    max-tokens: ${LLM_TURN_MAX_TOKENS:8}
+    reasoning-effort: ${LLM_TURN_REASONING_EFFORT:}
+    timeout-ms: ${LLM_TURN_TIMEOUT_MS:5000}
+    unfinished-wait-ms: ${LLM_TURN_UNFINISHED_WAIT_MS:1000}
+    wait-hold-ms: ${LLM_TURN_WAIT_HOLD_MS:6000}
   # End-of-turn dataset collection (TurnDatasetProperties)
   turn-dataset:
     enabled: ${TURN_DATASET_ENABLED:true}
@@ -236,6 +251,16 @@ voice-agent:
         uz-UZ: ${TTS_ELEVENLABS_VOICE_UZ:}
         ru-RU: ${TTS_ELEVENLABS_VOICE_RU:}
       connect-timeout-seconds: ${TTS_ELEVENLABS_TIMEOUT_SECONDS:10}
+
+  # TEN VAD in place of Silero (TenVadProperties); the native library comes from TEN-framework/ten-vad
+  ten-vad:
+    enabled: ${TEN_VAD_ENABLED:true}
+    library-path: ${TEN_VAD_LIBRARY_PATH:models/ten-vad/libten_vad.so}
+    hop-size: ${TEN_VAD_HOP_SIZE:256}
+    # TEN's own thresholds, in place of vad.threshold / vad.listening-threshold on TEN calls.
+    # Starting values, not calibrated: raise them if breathing still counts as the caller.
+    threshold: ${TEN_VAD_THRESHOLD:0.6}
+    listening-threshold: ${TEN_VAD_LISTENING_THRESHOLD:0.5}
 
   # Barge-in and answering-machine detection (VadProperties, AmdProperties)
   vad:

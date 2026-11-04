@@ -372,7 +372,8 @@ class AiAgentServiceTest {
                 null, null, null, null, null, null, null, null, null, postCallWebhook,
                 null, null, null,
                 version,
-                clearFields);
+                clearFields,
+                null);
     }
 
     private static <E extends AppException> void assertRefused(ThrowingCallable call, Class<E> type, ErrorCode code) {

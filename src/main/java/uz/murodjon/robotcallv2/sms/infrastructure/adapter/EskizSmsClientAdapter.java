@@ -11,7 +11,6 @@ import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.sms.application.port.output.EskizConnectionRepository;
 import uz.murodjon.robotcallv2.sms.application.port.output.SmsSenderPort;
-import uz.murodjon.robotcallv2.sms.domain.entity.EskizConnection;
 import uz.murodjon.robotcallv2.sms.domain.entity.SmsMessage;
 import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsEskizProperties;
 import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsProperties;
@@ -77,10 +76,6 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
         this.httpClient = httpClient;
         this.objectMapper = objectMapper;
         this.host = URI.create(eskizProperties.baseUrl()).getHost();
-        if (smsProperties.enabled() && !eskizProperties.hasCredentials()) {
-            log.warn("SMS is enabled but SMS_ESKIZ_EMAIL / SMS_ESKIZ_PASSWORD are not set — "
-                    + "a company without its own Eskiz account will have its SMS reported as not sent");
-        }
     }
 
     @Override
@@ -140,16 +135,12 @@ public class EskizSmsClientAdapter implements SmsSenderPort {
         }
     }
 
-    /** The company's own account, else the platform's; {@code null} when neither is set. */
+    /** The company's own Eskiz account; {@code null} when it has connected none. */
     private Login findLogin(long companyId) {
-        Optional<EskizConnection> own = connectionRepository.findByCompanyId(companyId);
-        if (own.isPresent()) {
-            EskizConnection connection = own.get();
-            return new Login(connection.email(), connection.password(),
-                    connection.sender() != null ? connection.sender() : sender);
-        }
-        return eskizProperties.hasCredentials()
-                ? new Login(eskizProperties.email(), eskizProperties.password(), sender) : null;
+        return connectionRepository.findByCompanyId(companyId)
+                .map(connection -> new Login(connection.email(), connection.password(),
+                        connection.sender() != null ? connection.sender() : sender))
+                .orElse(null);
     }
 
     /** The kept token, logging in first when there is none yet; {@code null} when login fails. */

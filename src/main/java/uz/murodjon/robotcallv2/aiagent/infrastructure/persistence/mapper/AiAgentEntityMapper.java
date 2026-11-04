@@ -38,6 +38,7 @@ public class AiAgentEntityMapper {
     private static final TypeReference<List<String>> STRING_LIST_TYPE = new TypeReference<>() {};
     private static final TypeReference<Map<String, String>> STRING_MAP_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<AgentFunction>> AGENT_FUNCTIONS_TYPE = new TypeReference<>() {};
+    private static final TypeReference<AiAgentPhrases> PHRASES_TYPE = new TypeReference<>() {};
 
     public AiAgentEntityMapper(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -147,6 +148,7 @@ public class AiAgentEntityMapper {
                 .defaultVariables(read(entity.getDefaultVariables(), STRING_MAP_TYPE, Map.of()))
                 .disabledIntegrationTools(read(entity.getDisabledIntegrationTools(), STRING_LIST_TYPE, List.of()))
                 .functions(read(entity.getFunctions(), AGENT_FUNCTIONS_TYPE, null))
+                .phrases(read(entity.getPhrases(), PHRASES_TYPE, null))
                 .initiationWebhook(read(entity.getInitiationWebhook(), WEBHOOK_TYPE, null))
                 .postCallWebhook(read(entity.getPostCallWebhook(), WEBHOOK_TYPE, null))
                 .greeting(read(entity.getGreeting(), GREETING_TYPE, AgentGreeting.DEFAULT))
@@ -200,6 +202,7 @@ public class AiAgentEntityMapper {
         entity.setDefaultVariables(write(agent.defaultVariables(), "{}"));
         entity.setDisabledIntegrationTools(write(agent.disabledIntegrationTools(), "[]"));
         entity.setFunctions(agent.functions() != null ? write(agent.functions(), null) : null);
+        entity.setPhrases(AiAgentPhrases.NONE.equals(agent.phrases()) ? null : write(agent.phrases(), null));
         entity.setInitiationWebhook(agent.initiationWebhook() != null ? write(agent.initiationWebhook(), null) : null);
         entity.setPostCallWebhook(agent.postCallWebhook() != null ? write(agent.postCallWebhook(), null) : null);
         entity.setGreeting(AgentGreeting.DEFAULT.equals(agent.greeting()) ? null : write(agent.greeting(), null));

@@ -8,7 +8,6 @@ import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
-import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Duration;
@@ -45,15 +44,18 @@ public class SilenceWatchdogRunner {
     private final SpeechOutput speech;
     private final DialogExecutors executors;
     private final DialogPolicy dialogPolicy;
+    private final LlmTurnClient llmTurnClient;
 
     public SilenceWatchdogRunner(DialogProperties dialogProperties, DialogMetrics metrics, DialogTranscript transcript,
-                                 SpeechOutput speech, DialogExecutors executors, DialogPolicy dialogPolicy) {
+                                 SpeechOutput speech, DialogExecutors executors, DialogPolicy dialogPolicy,
+                                 LlmTurnClient llmTurnClient) {
         this.dialogProperties = dialogProperties;
         this.metrics = metrics;
         this.transcript = transcript;
         this.speech = speech;
         this.executors = executors;
         this.dialogPolicy = dialogPolicy;
+        this.llmTurnClient = llmTurnClient;
     }
 
     /** A silence watchdog for a new call, or {@code null} when it is switched off. */
@@ -131,8 +133,25 @@ public class SilenceWatchdogRunner {
      * the silence is that they did not catch it. Repeating it verbatim is usually free too:
      * a reply is streamed sentence by sentence, so the question was normally synthesized
      * on its own and comes straight back out of the TTS cache.
+     *
+     * <p>Before the last prompt, and unless the agent has its own wording for it, the fast
+     * model may word the check itself, about the conversation ("Aloqadamisiz? Uy necha xonali
+     * bo'lsin, deb so'rayotgan edim."); the canned line and the repeated question stay the
+     * fallback. The last prompt is always the fixed warning: it must say the call will end.
      */
     private void promptForInput(DialogSession s) {
+        // The last prompt warns instead of asking again, and does not repeat the
+        // question: the first prompt already did, and the point now is that the call
+        // is about to end.
+        boolean lastPrompt = s.watchdog().isLastPrompt();
+        // Written before the session is claimed: a caller who speaks while it is being written
+        // must get their turn at once, not wait behind a check they no longer need.
+        Instant asked = s.watchdog().lastActivity();
+        String contextual = !lastPrompt && dialogProperties.noInputContextual() && !DialogLines.hasOwnStillThere(s)
+                ? llmTurnClient.writeStillThereLine(s) : null;
+        if (contextual != null && !asked.equals(s.watchdog().lastActivity())) {
+            return; // the caller made themselves heard meanwhile — the check is stale
+        }
         if (s.isEnded() || !s.busy().compareAndSet(false, true)) {
             return; // a real turn started in the meantime — it will speak anyway
         }
@@ -142,17 +161,13 @@ public class SilenceWatchdogRunner {
             // and that flag would silently swallow this prompt — the one moment the
             // caller most needs to hear something.
             s.setCancelled(false);
-            // The last prompt warns instead of asking again, and does not repeat the
-            // question: the first prompt already did, and the point now is that the call
-            // is about to end.
-            boolean lastPrompt = s.watchdog().isLastPrompt();
-            String line = lastPrompt
-                    ? DialogPhrases.stillThereLastCall(s.language())
-                    : DialogPhrases.stillThere(s.language());
-            String question = lastPrompt ? null : DialogLines.lastQuestion(s.lastAgentText());
+            String line = contextual != null ? contextual
+                    : lastPrompt ? DialogLines.stillThereLastCall(s) : DialogLines.stillThere(s);
+            String question = lastPrompt || contextual != null ? null : DialogLines.lastQuestion(s.lastAgentText());
             log.info("[{}] no input — prompting ({}/{}){}", s.channelId(),
                     s.watchdog().prompts(), s.watchdog().maxPrompts(),
-                    question != null ? ", repeating the question" : "");
+                    contextual != null ? ", in the conversation's words"
+                            : question != null ? ", repeating the question" : "");
             boolean spoken = speech.speakChunk(s, line);
             // Two chunks rather than one string: each is a cache key of its own, and both
             // have been spoken before.

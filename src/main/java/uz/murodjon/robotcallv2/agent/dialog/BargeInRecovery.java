@@ -139,22 +139,21 @@ class BargeInRecovery {
                 return;
             }
             if (rest == null || rest.isBlank()) {
+                // No return here: a return from the try skips the run below the finally, and
+                // the held words went unanswered — 8 s of silence until the no-input prompt.
                 answerHeld = s.hasUnansweredClientText();
                 if (answerHeld) {
                     log.info("[{}] nothing to resume after the false barge-in — answering the held words",
                             s.channelId());
                 }
-                return;
+            } else if (speech.speakChunk(s, rest)) {
+                s.setUnansweredClientText(null); // the caller has their answer after all
+                String merged = mergeResumedReply(s, rest);
+                s.setLastAgentText(merged);
+                transcript.recordAgentLine(s, rest);
+                log.debug("[{}] AGENT ({}, resumed after a false barge-in): {}",
+                        s.channelId(), s.state(), rest);
             }
-            if (!speech.speakChunk(s, rest)) {
-                return;
-            }
-            s.setUnansweredClientText(null); // the caller has their answer after all
-            String merged = mergeResumedReply(s, rest);
-            s.setLastAgentText(merged);
-            transcript.recordAgentLine(s, rest);
-            log.debug("[{}] AGENT ({}, resumed after a false barge-in): {}",
-                    s.channelId(), s.state(), rest);
         } finally {
             s.busy().set(false);
             MDC.remove("channelId");

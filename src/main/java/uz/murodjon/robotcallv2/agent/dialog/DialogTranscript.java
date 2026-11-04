@@ -38,6 +38,18 @@ public class DialogTranscript {
     }
 
     /**
+     * Make the last line the bot was recorded saying what the caller actually heard of it —
+     * a barge-in flushed the rest — or drop it when they heard none of it.
+     */
+    public void correctAgentLine(DialogSession s, String heard) {
+        if (s.isLineGone()) {
+            return;
+        }
+        callTranscriptUseCase.correctLastAgentLine(s.callAttemptId(),
+                heard == null ? null : PiiRedactor.redact(heard, s.agent()));
+    }
+
+    /**
      * Publish one line the caller said.
      */
     public void publishClientLine(DialogSession s, String text) {

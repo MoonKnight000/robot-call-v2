@@ -4,6 +4,7 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.audio.TurnCloseDecision;
 
 /**
  * Speech-recognition metrics: errors and mid-call failovers, billed and withheld audio,
@@ -81,10 +82,15 @@ public class SttMetrics {
      * the bot may already have answered the first half. Its share of all closes is the
      * error rate any end-of-turn change has to hold or lower.
      */
-    public void gateCloseJudged(boolean continued) {
+    public void gateCloseJudged(boolean continued, TurnCloseDecision decision, String vadEngine) {
+        // decided_by + extension name the rule or model that ended the turn; outcome=continued
+        // among them is a caller cut off mid-thought — which signal does that is what to fix.
         Counter.builder("voice.stt.gate.close")
-                .description("speech gate closes, by whether the caller carried on within the reopen grace")
+                .description("speech gate closes, by what ended them and whether the caller carried on within the reopen grace")
                 .tag("outcome", continued ? "continued" : "ended")
+                .tag("decided_by", decision.waitRule())
+                .tag("extension", decision.extensionRule())
+                .tag("vad", vadEngine)
                 .register(registry)
                 .increment();
     }

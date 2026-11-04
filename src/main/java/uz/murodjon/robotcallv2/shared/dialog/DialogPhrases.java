@@ -82,6 +82,14 @@ public final class DialogPhrases {
                 : "Arzimaydi! Salomat bo'ling, xayr.";
     }
 
+    /** Spoken before hanging up on a caller who asked never to be called again. */
+    public static String doNotCallReply(String language) {
+        if (english(language)) return "Understood, your number will be removed from our list. Sorry for the trouble.";
+        return russian(language)
+                ? "Понятно, ваш номер исключен из базы. Извините за беспокойство."
+                : "Tushundim, raqamingiz ro'yxatdan chiqariladi. Bezovta qilganimiz uchun uzr.";
+    }
+
     /** Spoken when the line has gone quiet. */
     public static String stillThere(String language) {
         if (english(language)) return "Hello, are you still there?";
@@ -109,14 +117,6 @@ public final class DialogPhrases {
                 : "Kechirasiz, aloqada kichik uzilish bo'ldi. Suhbatimizni davom ettiramiz.";
     }
 
-    /** Technical error line. */
-    public static String technicalError(String language) {
-        if (english(language)) return "Sorry, a technical error occurred. We will call you back.";
-        return russian(language)
-                ? "Извините, произошла техническая ошибка. Мы перезвоним вам позже."
-                : "Kechirasiz, texnik nosozlik yuz berdi. Sizga keyinroq qayta aloqaga chiqamiz.";
-    }
-
     /**
      * Short "I heard you, I'm working on it" fillers, spoken over the gap while the LLM
      * is still generating (§1.3).
@@ -126,26 +126,20 @@ public final class DialogPhrases {
      * heard as the bot saying the same thing twice — "Tushunarli, bir lahza." followed a
      * second later by "Aha, tushunarli. Murodjon aka, ...". Keep every line here about the
      * waiting and nothing else.
+     *
+     * <p>No promise of an action either. The filler is armed before the LLM has decided
+     * anything, and most replies behind it are a plain question: "Hozir tekshirib ko'raman."
+     * followed by "Ajoyib! Necha xonali uy qidiryapsiz?" checked nothing. A real lookup
+     * announces itself through {@link PreToolPhrases}. "Bir daqiqa" is out too — a minute
+     * is a promise of a long wait, and scenario guardrails ban it.
      */
     public static List<String> thinking(String language) {
         if (english(language)) {
-            return List.of("One moment.", "Let me check.", "Looking into this.", "Just a second.");
+            return List.of("One moment.", "Just a second.");
         }
         return russian(language)
-                ? List.of("Секунду.", "Сейчас посмотрю.", "Один момент.", "Сейчас скажу.")
-                : List.of("Bir soniya.", "Hozir tekshirib ko'raman.", "Bir daqiqa.", "Hozir aytaman.");
-    }
-
-    /**
-     * Common short opening confirmations pre-warmed into the memory cache.
-     */
-    public static List<String> confirmations(String language) {
-        if (english(language)) {
-            return List.of("Alright.", "Understood.", "Got it.", "Sure.", "Thank you.");
-        }
-        return russian(language)
-                ? List.of("Хорошо.", "Понятно.", "Да, конечно.", "Спасибо.")
-                : List.of("Aha, tushundim.", "Xo'p bo'ladi.", "Yaxshi.", "Tushunarli.", "Rahmat.");
+                ? List.of("Секунду.", "Один момент.")
+                : List.of("Bir soniya.", "Bir lahza.");
     }
 
     /**
@@ -179,14 +173,6 @@ public final class DialogPhrases {
     }
 
     /**
-     * Resumption prefix for natural conversation flow when resuming a cut-off reply.
-     */
-    public static String resumptionPrefix(String language) {
-        if (english(language)) return "Right, so ";
-        return russian(language) ? "Да, так вот, " : "Ha, demak, ";
-    }
-
-    /**
      * Every fixed line in one language — what the TTS warm-up pre-synthesizes.
      */
     public static List<String> forLanguage(String language, String companyName) {
@@ -199,11 +185,10 @@ public final class DialogPhrases {
                 stillThereLastCall(language),
                 transferring(language),
                 gratitudeReply(language),
-                technicalError(language),
+                doNotCallReply(language),
                 reconnected(language)
         ));
         lines.addAll(thinking(language));
-        lines.addAll(confirmations(language));
         lines.addAll(backchannels(language));
         lines.addAll(PreToolPhrases.allPhrases(language));
         lines.add(interjection(language));

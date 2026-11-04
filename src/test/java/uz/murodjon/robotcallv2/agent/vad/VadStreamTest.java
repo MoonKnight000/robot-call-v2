@@ -28,6 +28,7 @@ class VadStreamTest {
         vad = mock(SileroVad.class);
         when(vad.newState()).thenReturn(new float[2][1][128]);
         when(vad.newContext()).thenReturn(new float[64]);
+        when(vad.openStream()).thenCallRealMethod();
 
         properties = new VadProperties(
                 true, "dummy.onnx", RATE, WINDOW,

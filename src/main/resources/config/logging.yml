@@ -1,0 +1,58 @@
+# Log levels, by Spring Boot's own logging.level / logging.group — no LOGGING_LEVEL_* variables.
+#
+# Three ways to turn a part of the app up, from the quickest:
+#   1. On a running app, no restart (lost on restart; PLATFORM_ADMIN token):
+#        POST /actuator/loggers/<group or logger>   {"configuredLevel": "DEBUG"}
+#        POST /actuator/loggers/<group or logger>   {"configuredLevel": null}   — back to this file
+#        GET  /actuator/loggers                                                    — every group and level
+#   2. On this machine, kept across restarts, no rebuild: config-local/logging.yml
+#      (copy config-local/logging.yml.example; imported last, so it wins over this file).
+#   3. For everyone: change the defaults below.
+#
+# A group sets every logger in it at once ("logging.level.stt: DEBUG"); a single class can
+# still be set on its own, and the more specific setting wins.
+logging:
+  group:
+    # Call setup and teardown, ARI/AMI, LiveKit, RTP media.
+    telephony:
+      - uz.murodjon.robotcallv2.agent.ari
+      - uz.murodjon.robotcallv2.agent.ami
+      - uz.murodjon.robotcallv2.agent.telephony
+      - uz.murodjon.robotcallv2.agent.livekit
+      - uz.murodjon.robotcallv2.agent.rtp
+    # Recognizers and the stream bridge (gating, end of utterance, reopen, failover).
+    stt: uz.murodjon.robotcallv2.agent.stt
+    tts: uz.murodjon.robotcallv2.agent.tts
+    # Voice activity, barge-in and the speech gate.
+    vad:
+      - uz.murodjon.robotcallv2.agent.vad
+      - uz.murodjon.robotcallv2.agent.audio
+    # End-of-turn detection (Smart Turn, LLM turn detector, text turn).
+    turn: uz.murodjon.robotcallv2.agent.turn
+    # The cascade dialog: turns, tools, fillers, barge-in recovery, silence watchdog.
+    dialog: uz.murodjon.robotcallv2.agent.dialog
+    # LLM requests and their tokens only — a quieter view than the whole dialog group.
+    llm:
+      - uz.murodjon.robotcallv2.agent.dialog.LlmTurnClient
+      - uz.murodjon.robotcallv2.agent.dialog.TokenUsage
+      - uz.murodjon.robotcallv2.agent.provider
+    realtime: uz.murodjon.robotcallv2.agent.realtime
+    # Inbound call flows and queues.
+    flow:
+      - uz.murodjon.robotcallv2.agent.flow
+      - uz.murodjon.robotcallv2.agent.queue
+    dialer:
+      - uz.murodjon.robotcallv2.dialer
+      - uz.murodjon.robotcallv2.campaign
+    crm:
+      - uz.murodjon.robotcallv2.integration
+      - uz.murodjon.robotcallv2.crm
+    sms: uz.murodjon.robotcallv2.sms
+    # ari4java WARNs on its normal path and buries our own lines — see AriClient#open.
+    ari4java:
+      - ch.loway.oss.ari4java.tools.BaseAriAction
+      - ch.loway.oss.ari4java.generated.AriWSHelper
+
+  level:
+    root: INFO
+    ari4java: ERROR

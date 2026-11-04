@@ -226,8 +226,8 @@ keyingi `SEND_SMS` action ([ai-agents.md](ai-agents.md) §Post-call actions) cha
   etiladi. Yuborilmay qolgan urinish ham hisoblanadi: taymaut bo'lgan SMS yetib borgan
   bo'lishi mumkin, qayta urinish mijozga ikkinchi nusxa bo'ladi.
 - **Ko'pi bilan 480 belgi.** Uzunroq matn rad etiladi; bu urinish hisoblanmaydi.
-- **Yolg'on "yuborildi" yo'q.** Shlyuz qabul qilmasa, SMS o'rnatmada o'chiq bo'lsa
-  (`SMS_ENABLED=false`) yoki agentda `midCallSmsEnabled` o'chiq bo'lsa tool
+- **Yolg'on "yuborildi" yo'q.** Shlyuz qabul qilmasa, kompaniya Eskiz hisobini
+  ulamagan bo'lsa ([settings.md](settings.md)) yoki agentda `midCallSmsEnabled` o'chiq bo'lsa tool
   `XATO: SMS yuborilmadi` qaytaradi va `reply` aytilmaydi. `CASCADE` va `REALTIME`
   qo'ng'iroqlarda bir xil ishlaydi.
 - SMS matni va to'liq raqam logga yozilmaydi — faqat maskalangan raqam va uzunlik.
@@ -254,12 +254,12 @@ shablon sifatida tasdiqlangan bo'lishi kerak. To'lov havolasi uchun: `"midCallSm
 
 ### Eskiz sozlamalari (`config/integrations.yml`)
 
+Login va parol bu yerda yo'q: har kompaniya o'z Eskiz hisobini Integratsiyalar bo'limidan ulaydi
+([settings.md](settings.md)). Ulamagan kompaniyada SMS yuborilmaydi (faqat maskalangan log).
+
 | Kalit | Env | Default | Izoh |
 |---|---|---|---|
-| `voice-agent.sms.enabled` | `SMS_ENABLED` | `false` | `false` bo'lsa SMS faqat logga yoziladi (maskalangan) va **yuborilmadi** deb hisoblanadi — bot mijozga "SMS yubordim" demaydi |
-| `voice-agent.sms.default-sender` | `SMS_DEFAULT_SENDER` | `4546` | Eskiz akkauntida tasdiqlangan jo'natuvchi |
-| `voice-agent.sms.eskiz.email` | `SMS_ESKIZ_EMAIL` | — | bo'sh bo'lsa har bir SMS "yuborilmadi" |
-| `voice-agent.sms.eskiz.password` | `SMS_ESKIZ_PASSWORD` | — | |
+| `voice-agent.sms.default-sender` | `SMS_DEFAULT_SENDER` | `4546` | Kompaniya o'z `sender`ini kiritmagan bo'lsa ishlatiladigan jo'natuvchi |
 | `voice-agent.sms.eskiz.base-url` | `SMS_ESKIZ_BASE_URL` | `https://notify.eskiz.uz/api` | |
 | `voice-agent.sms.eskiz.callback-url` | `SMS_ESKIZ_CALLBACK_URL` | — | Eskiz yetkazish hisobotini yuboradigan manzil |
 

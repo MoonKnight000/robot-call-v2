@@ -31,6 +31,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
@@ -61,6 +62,8 @@ class LlmTurnClient {
             "transitionTo", "endCall", "recordWrongPerson", "recordDoNotCall", "waitForCaller", "switchLanguage", "noteCallerMood"
     );
 
+    /** When this process last sent a turn to any LLM, for the {@code idle} field of the request log. */
+    private final AtomicLong lastLlmRequestNanos = new AtomicLong();
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final DialogProperties dialogProperties;
     private final SystemPromptFactory promptFactory;
@@ -71,6 +74,7 @@ class LlmTurnClient {
     private final LlmTimeoutProperties llmTimeout;
     private final CallTraceLog callTraceLog;
     private final DialogTuningProperties dialogTuning;
+    private final PromptCacheProperties promptCache;
 
     private volatile ChatClient chatClient;
 
@@ -83,7 +87,8 @@ class LlmTurnClient {
                   LlmMetrics metrics,
                   LlmTimeoutProperties llmTimeout,
                   DialogTuningProperties dialogTuning,
-                  CallTraceLog callTraceLog) {
+                  CallTraceLog callTraceLog,
+                  PromptCacheProperties promptCache) {
         this.chatModelProvider = chatModelProvider;
         this.dialogProperties = dialogProperties;
         this.promptFactory = promptFactory;
@@ -94,6 +99,7 @@ class LlmTurnClient {
         this.llmTimeout = llmTimeout;
         this.callTraceLog = callTraceLog;
         this.dialogTuning = dialogTuning;
+        this.promptCache = promptCache;
     }
 
     @PostConstruct
@@ -297,6 +303,238 @@ class LlmTurnClient {
         }
     }
 
+    /** Names, descriptions and schemas in request order — any change here moves the cached prefix. */
+    private static String toolsetHash(List<ToolCallback> tools) {
+        StringBuilder toolset = new StringBuilder();
+        for (ToolCallback tool : tools) {
+            toolset.append(tool.getToolDefinition().name()).append('\u0000')
+                    .append(tool.getToolDefinition().description()).append('\u0000')
+                    .append(tool.getToolDefinition().inputSchema()).append('\u0001');
+        }
+        return Integer.toHexString(toolset.toString().hashCode());
+    }
+
+    /**
+     * Sends the call's prompt once while the greeting plays, so the caller's first turn is not
+     * the call's first request: by then the connection is open and the system prompt and tools
+     * are in the provider's prompt cache (the first turn of a call read "cached 0").
+     *
+     * <p>One output token and nothing kept: the reply is not read, the history is not touched.
+     * Its tokens are billed to the call like any turn's — they are the same tokens the first
+     * turn would otherwise have paid for uncached, so the extra cost is only on calls that end
+     * before the caller says anything.
+     *
+     * <p>The prefix is built here and not stored on the session: a turn builds its own, and if
+     * the call's context changed in between, the warm-up only misses — the turn is unaffected.
+     * Skipped when the greeting comes from the model: that request warms the cache itself.
+     */
+    void warmUp(DialogSession s) {
+        if (!promptCache.warmup() || !isReady() || s.firstMessage() == null || s.firstMessage().isBlank()) {
+            return;
+        }
+        // Off the starting thread: nothing here may delay or break the start of the dialog.
+        executors.submit(() -> {
+            try {
+                String system = promptFactory.stablePrefix(s);
+                List<ToolCallback> tools = turnTools.build(s);
+                String mainModel = turnTools.buildOptions(s, tools, null).getModel();
+                for (String model : warmupModels(mainModel, resolveFastModel(s), promptCache.warmupFastModel())) {
+                    executors.submit(() -> warmUpModel(s, system, tools, model));
+                }
+            } catch (Exception e) {
+                log.info("[{}] llm warmup skipped: {}", s.channelId(), e.getMessage());
+            }
+        });
+    }
+
+    /** Asks the fast model for the words a person says while they think — never the answer. */
+    static final String BRIDGE_PROMPT = """
+            You are on a phone call. The caller has just spoken, and your full reply will take a \
+            couple of seconds. Write only the one to three words a considerate person says at once \
+            while they think, in %s. NEVER repeat or paraphrase the caller's words — a person who \
+            echoes everything back sounds like a robot. Do not answer, do not ask anything, do not \
+            promise to check or do anything, no numbers. If the caller repeats something they \
+            already said or complains that they did, apologise in those few words. If nothing \
+            natural fits, write exactly: -
+            Examples: "Xo'p." · "Mayli." · "Ha, albatta." · "Kechirasiz." · \
+            "Хорошо." · "Да, конечно." · "Извините.\"""";
+
+    /** A bridge longer than this is an answer, not a bridge. */
+    private static final int BRIDGE_MAX_WORDS = 8;
+
+    /**
+     * A short line tied to what the caller just said, for the start of a slow turn — "Uch
+     * xonali, yaxshi." instead of a canned "Bir lahza." that ignores them, and an apology where
+     * they had to repeat themselves. Written by the fast model with no tools, while the main
+     * reply is still being written. {@code null} when it fails, has nothing natural to say, or
+     * says more than a bridge may (a question, a figure, a sentence that answers): the canned
+     * line covers the wait then.
+     */
+    String writeBridgeLine(DialogSession s) {
+        String caller = s.findLastCallerText();
+        if (!isReady() || caller == null || caller.isBlank() || s.isEnded()) {
+            return null;
+        }
+        try {
+            String agentLine = s.lastAgentText();
+            String user = (agentLine == null || agentLine.isBlank() ? "" : "Agent's last line: " + agentLine.strip() + "\n")
+                    + "Caller: " + caller.strip();
+            ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
+                    .system(BRIDGE_PROMPT.formatted(SystemPromptFactory.languageName(s.language())))
+                    .messages(List.of(new UserMessage(user)))
+                    .options(turnTools.buildOptions(s, List.of(), resolveFastModel(s)).mutate().maxTokens(32))
+                    .call()
+                    .chatResponse(), llmTimeout.callTimeoutMs());
+            TokenUsage usage = new TokenUsage();
+            usage.add(response);
+            publishUsage(s, usage);
+            return acceptBridgeLine(extractText(response), caller);
+        } catch (Exception e) {
+            log.debug("[{}] bridge line skipped: {}", s.channelId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * The bridge if it is one and does not parrot the caller, else {@code null}. The bridge is
+     * said on nearly every turn (the model's first token is slower than the filler threshold),
+     * so a recorded call answered every answer with it: "Navoiydan, tushundim." · "Uch xonali,
+     * tushundim." · "Navoiy shahridan, xo'p." — and then the reply said the same words again.
+     */
+    static String acceptBridgeLine(String text, String caller) {
+        String line = acceptBridgeLine(text);
+        if (line == null || caller == null || line.toLowerCase(Locale.ROOT).startsWith("kechirasiz")
+                || line.toLowerCase(Locale.ROOT).startsWith("извините")) {
+            return line; // an apology may name what the caller had to say twice
+        }
+        Set<String> callerWords = new HashSet<>();
+        for (String word : caller.toLowerCase(Locale.ROOT).split("[^\\p{L}'ʻʼ‘’`]+")) {
+            if (word.length() >= 4) {
+                callerWords.add(word);
+            }
+        }
+        for (String word : line.toLowerCase(Locale.ROOT).split("[^\\p{L}'ʻʼ‘’`]+")) {
+            if (word.length() >= 4 && callerWords.stream().anyMatch(c -> c.startsWith(word) || word.startsWith(c))) {
+                return null;
+            }
+        }
+        return line;
+    }
+
+    /** The fast model's bridge if it is one, else {@code null}. */
+    static String acceptBridgeLine(String text) {
+        if (text == null) {
+            return null;
+        }
+        String line = text.strip().replaceAll("^[\"«“]+|[\"»”]+$", "").strip();
+        if (line.isEmpty() || line.equals("-") || line.contains("?") || line.matches(".*\\d.*")
+                || line.split("\\s+").length > BRIDGE_MAX_WORDS || SpeechSanitizer.isUnspeakable(line)) {
+            return null;
+        }
+        return line;
+    }
+
+    /** Asks the fast model to check on a quiet caller in words tied to the conversation. */
+    static final String STILL_THERE_PROMPT = """
+            You are on a phone call, and the caller has said nothing for several seconds after \
+            your last line. Write what a polite person says now to check the caller is still on \
+            the line and to bring them back to the conversation: tied to your last line, in %s, \
+            one or two short sentences, at most 15 words, ending with a question. No numbers, \
+            sums or dates, nothing new, no promises. If nothing natural fits, write exactly: -
+            Examples: "Alo, aka, eshityapsizmi? Qaysi kuni to'lay olasiz, demoqchi edim." · \
+            "Aloqadamisiz? Uy necha xonali bo'lsin, deb so'rayotgan edim." · \
+            "Алло, вы меня слышите? Я спрашивал, когда вам удобно оплатить.\"""";
+
+    /** A still-there check longer than this has stopped being a check. */
+    private static final int STILL_THERE_MAX_WORDS = 20;
+
+    /**
+     * The first "are you still there?" on a quiet line, in words about the conversation —
+     * "Aloqadamisiz? Uy necha xonali bo'lsin, deb so'rayotgan edim." instead of the canned
+     * "Alo, meni eshityapsizmi?". Written by the fast model with no tools. {@code null} when it
+     * fails, has nothing natural to say, or says more than a check may (a figure, no question):
+     * the canned line and the repeated question cover it then.
+     */
+    String writeStillThereLine(DialogSession s) {
+        String agentLine = s.lastAgentText();
+        if (!isReady() || agentLine == null || agentLine.isBlank() || s.isEnded()) {
+            return null;
+        }
+        try {
+            String caller = s.findLastCallerText();
+            String user = (caller == null || caller.isBlank() ? "" : "Caller's last words: " + caller.strip() + "\n")
+                    + "Your last line: " + agentLine.strip();
+            ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
+                    .system(STILL_THERE_PROMPT.formatted(SystemPromptFactory.languageName(s.language())))
+                    .messages(List.of(new UserMessage(user)))
+                    .options(turnTools.buildOptions(s, List.of(), resolveFastModel(s)).mutate().maxTokens(64))
+                    .call()
+                    .chatResponse(), llmTimeout.callTimeoutMs());
+            TokenUsage usage = new TokenUsage();
+            usage.add(response);
+            publishUsage(s, usage);
+            return acceptStillThereLine(extractText(response));
+        } catch (Exception e) {
+            log.debug("[{}] still-there line skipped: {}", s.channelId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** The fast model's still-there check if it is one, else {@code null}. */
+    static String acceptStillThereLine(String text) {
+        if (text == null) {
+            return null;
+        }
+        String line = text.strip().replaceAll("^[\"«“]+|[\"»”]+$", "").strip();
+        if (line.isEmpty() || line.equals("-") || !line.contains("?") || line.matches(".*\\d.*")
+                || line.split("\\s+").length > STILL_THERE_MAX_WORDS || SpeechSanitizer.isUnspeakable(line)) {
+            return null;
+        }
+        return line;
+    }
+
+    /**
+     * The model overrides a warm-up is sent on: {@code null} — the call's own model — and the fast
+     * one when asked for and different, since the provider's cache is per model.
+     */
+    static List<String> warmupModels(String mainModel, String fastModel, boolean includeFastModel) {
+        if (!includeFastModel || fastModel == null || fastModel.isBlank() || fastModel.equals(mainModel)) {
+            return Collections.singletonList(null);
+        }
+        return Arrays.asList(null, fastModel);
+    }
+
+    private void warmUpModel(DialogSession s, String system, List<ToolCallback> tools, String model) {
+        if (s.isEnded()) {
+            return;
+        }
+        long started = System.nanoTime();
+        lastLlmRequestNanos.set(started);
+        try {
+            ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
+                    .system(system)
+                    .messages(List.of(new UserMessage(".")))
+                    .options(turnTools.buildOptions(s, tools, model).mutate().maxTokens(1))
+                    .call()
+                    .chatResponse(), llmTimeout.callTimeoutMs());
+            TokenUsage usage = new TokenUsage();
+            usage.add(response);
+            publishUsage(s, usage);
+            long tookMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
+            if (model == null) {
+                // One token back: the first estimate of this call's wait (SpeechOutput#scheduleFiller).
+                s.latency().warmupMeasured(tookMs);
+            }
+            log.info("[{}] llm warmup: model={}, prefix={}, toolset={}, done in {} ms", s.channelId(),
+                    model != null ? model : "main", Integer.toHexString(system.hashCode()), toolsetHash(tools),
+                    tookMs);
+        } catch (Exception e) {
+            // A warm-up is a head start, never a requirement: the first turn simply starts cold.
+            log.info("[{}] llm warmup failed (model={}): {}", s.channelId(), model != null ? model : "main",
+                    e.getMessage());
+        }
+    }
+
     /** The stable, per-call half of the prompt — built once and then reused verbatim. */
     String resolveSystemPrefix(DialogSession s) {
         String prefix = s.systemPrefix();
@@ -442,19 +680,37 @@ class LlmTurnClient {
         List<AssistantMessage.ToolCall> toolCalls = new ArrayList<>();
         // Read before the tools run: a transitionTo among them resets the step.
         boolean stageActionTurn = s.stageActionStep() > 0;
+        // Read before the tools run too: a transitionTo among them changes the stage.
+        boolean muted = isMutedStageJob(s, stageActionTurn);
         // What the request carries, so a slow or uncached turn can be traced to its size —
         // and to its model: a provider's prompt cache is per model, so a turn that switched
         // (fast model, a stage's own model) starts cold whatever the prefix.
-        log.info("[{}] llm request: model={}, system={} chars, messages={}, tools={} ({} chars)", s.channelId(),
+        // The two hashes say which half broke a cache miss: Gemini matches a request by its
+        // leading bytes, so a turn whose prefix and toolset hashes equal the previous turn's
+        // and still reads "cached 0" was the provider's choice, not ours. `idle` is the gap
+        // since this process last called any LLM — long gaps are where a pooled connection
+        // has been closed and the request pays a fresh TLS handshake.
+        long now = System.nanoTime();
+        long previous = lastLlmRequestNanos.getAndSet(now);
+        log.info("[{}] llm request: model={}, system={} chars, messages={}, tools={} ({} chars), "
+                        + "prefix={}, toolset={}, idle={}", s.channelId(),
                 speculated != null ? "speculated" : turnTools.buildOptions(s, tools, model).getModel(),
                 system.length(), messages.size(), tools.size(), tools.stream()
                         .mapToInt(tool -> Objects.toString(tool.getToolDefinition().description(), "").length()
                                 + Objects.toString(tool.getToolDefinition().inputSchema(), "").length())
-                        .sum());
+                        .sum(),
+                Integer.toHexString(system.hashCode()), toolsetHash(tools),
+                previous == 0 ? "first" : Duration.ofNanos(now - previous).toMillis() + "ms");
 
         StreamedReply reply = consume(s, speculated != null ? speculated
-                : withBackupModel(s, system, messages, tools, model), turnUsage, toolCalls);
+                : withBackupModel(s, system, messages, tools, model), turnUsage, toolCalls, muted);
         publishUsage(s, turnUsage);
+        if (muted) {
+            // Tools still run — the job and the transition are what this turn is for.
+            String toolNote = s.isLineGone() ? null : turnTools.run(s, tools, toolCalls);
+            logMutedStageJob(s, reply.text());
+            return new TurnResult("", false, false, toolNote);
+        }
         maybeSpeakPreToolSpeech(s, toolCalls, reply.spoken());
         // No tool runs for a caller who has hung up — a webhook or an SMS "for" a call
         // that no longer exists.
@@ -483,7 +739,8 @@ class LlmTurnClient {
             return new TurnResult(carried, outcome == SpeechOutcome.SPOKEN,
                     outcome == SpeechOutcome.BLOCKED, toolNote);
         }
-        if (!toolCalls.isEmpty() && isSilentStageStep(s, stageActionTurn)) {
+        if (!toolCalls.isEmpty() && isSilentStageStep(s, stageActionTurn)
+                || isCallersTurnToAnswer(s, stageActionTurn)) {
             return new TurnResult("", false, false, toolNote);
         }
         // Nothing spoken and nothing carried — ask once more for the line alone. A whole
@@ -591,6 +848,12 @@ class LlmTurnClient {
      */
     private StreamedReply consume(DialogSession s, Flux<ChatResponse> responses,
                                   TokenUsage usage, List<AssistantMessage.ToolCall> toolCalls) {
+        return consume(s, responses, usage, toolCalls, false);
+    }
+
+    /** @param muted read the text and collect the tool calls, but speak none of it ({@link #isMutedStageJob}) */
+    private StreamedReply consume(DialogSession s, Flux<ChatResponse> responses,
+                                  TokenUsage usage, List<AssistantMessage.ToolCall> toolCalls, boolean muted) {
         StringBuilder full = new StringBuilder();
         StringBuilder pending = new StringBuilder();
         SentenceQueue sentences = new SentenceQueue(s);
@@ -621,6 +884,9 @@ class LlmTurnClient {
                 continue;
             }
             full.append(chunk);
+            if (muted) {
+                continue;
+            }
             pending.append(chunk);
             if (s.isCancelled()) {
                 // Still accumulating, just no longer speaking: what is left in `pending`
@@ -633,7 +899,9 @@ class LlmTurnClient {
                 sentences.add(sentence);
             }
         }
-        if (s.isCancelled()) {
+        if (muted) {
+            // nothing was queued for the caller
+        } else if (s.isCancelled()) {
             s.setUnspokenText(pending.toString());
         } else if (!pending.isEmpty()) {
             sentences.add(pending.toString().trim());
@@ -759,6 +1027,7 @@ class LlmTurnClient {
     private TurnResult blockingTurn(DialogSession s, String system, List<Message> messages,
                                     List<ToolCallback> tools, String model) {
         boolean stageActionTurn = s.stageActionStep() > 0; // see streamTurn
+        boolean muted = isMutedStageJob(s, stageActionTurn);
         ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
                 .system(system)
                 .messages(messages)
@@ -771,6 +1040,10 @@ class LlmTurnClient {
         List<AssistantMessage.ToolCall> calls = turnTools.extractCalls(response);
         maybeSpeakPreToolSpeech(s, calls, false);
         String toolNote = s.isLineGone() ? null : turnTools.run(s, tools, calls);
+        if (muted) {
+            logMutedStageJob(s, extractText(response));
+            return new TurnResult("", false, false, toolNote);
+        }
 
         if (wantsResultRound(s, calls, toolNote)) {
             TurnResult answered = blockingResultRounds(s, system, messages, tools, extractText(response), calls, toolNote);
@@ -788,7 +1061,8 @@ class LlmTurnClient {
         if ((reply == null || reply.isBlank()) && s.isWaitingForCaller()) {
             return new TurnResult("", false, false, null); // the model chose to keep listening
         }
-        if ((reply == null || reply.isBlank()) && !calls.isEmpty() && isSilentStageStep(s, stageActionTurn)) {
+        if ((reply == null || reply.isBlank())
+                && (!calls.isEmpty() && isSilentStageStep(s, stageActionTurn) || isCallersTurnToAnswer(s, stageActionTurn))) {
             return new TurnResult("", false, false, toolNote);
         }
         if (reply == null || reply.isBlank()) {
@@ -895,6 +1169,38 @@ class LlmTurnClient {
     }
 
     /**
+     * Whether a stage's job turn that wrote nothing is better left silent because the floor is
+     * the caller's: the agent's last line asked them something and the job was run without the
+     * caller saying a word since. Asking the model again for a line here made it ask a second
+     * question on top of the first — "Qaysi turar joy majmuamiz … ma'qul?" and then, with
+     * nobody having spoken, "Qaysi turar joy majmuasini ko'rib chiqayotgan edingiz?".
+     */
+    static boolean isCallersTurnToAnswer(DialogSession s, boolean stageActionTurn) {
+        String last = s.lastAgentText();
+        return stageActionTurn && !s.isEnded() && last != null && last.strip().endsWith("?");
+    }
+
+    /**
+     * Whether this turn is a stage's silent job (a tool to call, values to read) run while the
+     * agent's own question still waits for the caller — so whatever the model writes in it is
+     * not spoken. The job's purpose says "call it without the client hearing", and a recorded
+     * call shows what the model wrote anyway: right after "Tushunarli, Mandarin House
+     * majmuasidan qaraymiz. Necha xonali xonadon ma'qul kelyapti sizga?" came "Mandarin House
+     * majmuamiz bo'yicha ma'lumotlarni qarayapman. O'zi necha xonali xonadon qidiryapsiz?".
+     */
+    private static boolean isMutedStageJob(DialogSession s, boolean stageActionTurn) {
+        return StageEntry.isSilentJob(SystemPromptFactory.stageOf(s.scenario(), s.state()))
+                && isCallersTurnToAnswer(s, stageActionTurn);
+    }
+
+    private static void logMutedStageJob(DialogSession s, String text) {
+        if (text != null && !text.isBlank()) {
+            log.info("[{}] silent stage job in {} wrote a line while the caller owes an answer — not spoken: {}",
+                    s.channelId(), s.state(), text);
+        }
+    }
+
+    /**
      * A scenario's own tool only records an outcome and answers with a confirmation —
      * nothing to answer with, so it is not worth a whole extra round trip.
      */
@@ -977,12 +1283,28 @@ class LlmTurnClient {
                 // the thinking sound covers it. Either speaks only when its own phrase is set.
                 phrase = PreToolPhrases.forTool(call.name(), s.language());
             }
-            if (phrase != null && !phrase.isBlank()) {
+            if (phrase != null && !phrase.isBlank() && !isQuickTool(s, call.name())) {
                 log.info("[{}] pre-tool speech before executing tool '{}': {}", s.channelId(), call.name(), phrase);
                 speech.speakWaitingLine(s, phrase);
                 break;
             }
         }
+    }
+
+    /**
+     * Whether the tool has answered fast enough so far that a waiting line before it would announce
+     * a wait the caller never has — "Hozir tekshirib ko'raman" before a 300 ms lookup. Measured
+     * against the same perception threshold as the thinking filler ({@code filler-wait-threshold-ms});
+     * a tool not run yet still gets its line, and 0 keeps every line.
+     */
+    private boolean isQuickTool(DialogSession s, String toolName) {
+        int threshold = dialogProperties.fillerWaitThresholdMs();
+        long expected = turnTools.findExpectedRunMs(s.companyId(), toolName);
+        if (threshold > 0 && expected >= 0 && expected < threshold) {
+            log.debug("[{}] no pre-tool speech for '{}': it takes about {} ms", s.channelId(), toolName, expected);
+            return true;
+        }
+        return false;
     }
 
     /** Second attempt when a turn produced only tool calls: text, no tools. */

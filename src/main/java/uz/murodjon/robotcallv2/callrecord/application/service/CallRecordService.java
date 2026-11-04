@@ -342,6 +342,22 @@ public class CallRecordService implements CallAttemptUseCase, CallTranscriptUseC
         }
     }
 
+    @Override
+    public void correctLastAgentLine(long callId, String heardText) {
+        if (callId == 0) {
+            return;
+        }
+        try {
+            if (heardText == null || heardText.isBlank()) {
+                callTranscriptRepository.deleteLastLine(callId, "AGENT");
+            } else {
+                callTranscriptRepository.updateLastLineText(callId, "AGENT", heardText);
+            }
+        } catch (Exception e) {
+            log.warn("correctLastAgentLine failed for call {}: {}", callId, e.getMessage());
+        }
+    }
+
     /**
      * Record why a call failed technically, on the attempt row. Without this the
      * {@code error_message} column stays empty and a call that died during media

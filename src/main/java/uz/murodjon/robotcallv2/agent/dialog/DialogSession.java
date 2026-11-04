@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
@@ -206,6 +207,9 @@ public class DialogSession implements DialogOutcomeSink {
     private final Map<String, Integer> stageAttempts = new ConcurrentHashMap<>();
     /** {@link #markBargeInPending}'s token, 0 when no barge-in is waiting to be confirmed. */
     private final AtomicLong bargeInPendingSince = new AtomicLong();
+    /** How many holding fillers and backchannels this call has picked — what rotates their pools. */
+    private final AtomicInteger fillersPicked = new AtomicInteger();
+    private final AtomicInteger backchannelsPicked = new AtomicInteger();
     /** Set by the waitForCaller tool for the turn in progress; cleared when the next turn starts. */
     private volatile boolean waitingForCaller;
     /** Set for the turn that answers a waitForCaller nobody followed up on; cleared once its annex is built. */
@@ -458,6 +462,15 @@ public class DialogSession implements DialogOutcomeSink {
         if (watchdog != null) {
             watchdog.touch(Instant.now());
         }
+    }
+
+    /**
+     * Note voice the VAD heard with no transcript behind it ({@link NoInputWatchdog#touchVoice}).
+     *
+     * @return whether the watchdog counted it; true when there is no watchdog
+     */
+    public boolean touchVoiceActivity() {
+        return watchdog == null || watchdog.touchVoice(Instant.now());
     }
 
     public ScheduledFuture<?> watchdogTask() {
@@ -950,6 +963,20 @@ public class DialogSession implements DialogOutcomeSink {
         return turnState.turnCount();
     }
 
+    /**
+     * The next of this call's holding fillers, from 0. Counted per filler rather than taken
+     * from the turn number: fillers skip the quick turns, and turns 2 and 4 picked the same
+     * line of a two-line pool — the caller heard "Bir soniya." twice running.
+     */
+    public int takeFillerIndex() {
+        return fillersPicked.getAndIncrement();
+    }
+
+    /** The next of this call's backchannels, from 0 — see {@link #takeFillerIndex}. */
+    public int takeBackchannelIndex() {
+        return backchannelsPicked.getAndIncrement();
+    }
+
     public int incrementTurn() {
         return turnState.incrementTurn();
     }
@@ -957,6 +984,26 @@ public class DialogSession implements DialogOutcomeSink {
     /** Start the turnaround clock — the client just stopped speaking. */
     public void startTurnClock() {
         turnState.startTurnClock();
+    }
+
+    /** The thinking filler ("bir lahza") was played this turn. */
+    public void markFillerSpoken() {
+        turnState.markFillerSpoken();
+    }
+
+    /** Whether this turn opened with a filler; answers true once, for the reply's first sentence. */
+    public boolean takeFillerSpoken() {
+        return turnState.takeFillerSpoken();
+    }
+
+    /** The filler this turn played was the fast model's bridge line about the caller's words. */
+    public void markBridgeSpoken(String line) {
+        turnState.markBridgeSpoken(line);
+    }
+
+    /** This turn's bridge line, or null; answers non-null once, for the reply's first sentence. */
+    public String takeBridgeLine() {
+        return turnState.takeBridgeLine();
     }
 
     /** This turn's stage-by-stage stamps (§1.3 breakdown). */
@@ -1139,6 +1186,16 @@ public class DialogSession implements DialogOutcomeSink {
     /** What the caller has heard of this turn, or {@code null} if nothing — see {@link SpokenAudioLedger#spokenText}. */
     public String spokenText() {
         return spokenAudioLedger.spokenText();
+    }
+
+    /** See {@link SpokenAudioLedger#queuedText}. */
+    public String queuedText() {
+        return spokenAudioLedger.queuedText();
+    }
+
+    /** See {@link SpokenAudioLedger#holdUnheardAudio}. */
+    public String holdUnheardAudio() {
+        return spokenAudioLedger.holdUnheardAudio();
     }
 
     /** Hold the tail of a reply a barge-in cut off, in case the interruption was noise. */

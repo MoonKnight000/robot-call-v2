@@ -11,6 +11,12 @@ public interface CallTranscriptRepository {
 
     List<String> findTranscriptLines(long callId);
 
+    /** Replaces the text of the call's last line said by {@code role}; returns the row count. */
+    int updateLastLineText(long callId, String role, String text);
+
+    /** Removes the call's last line said by {@code role}; returns the row count. */
+    int deleteLastLine(long callId, String role);
+
     /** Drops up to {@code batchSize} lines of conversations past their retention; returns the row count. */
     int deleteExpired(ConversationRetention retention, int batchSize);
 }

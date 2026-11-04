@@ -48,11 +48,16 @@ package uz.murodjon.robotcallv2.agent.stt;
  *                    a cough, a door, a voice across the room — from being streamed and
  *                    coming back as a one-word transcript the dialog answers. Must stay
  *                    well under {@code preRollMs}, which is what replays the run-up
+ * @param noTranscriptCloseMs how long the gate may stay open without a single interim before
+ *                    it closes as noise ({@code SpeechGate#setNoTranscriptClose}). The recognizer
+ *                    answers real speech within a second; VAD scoring breathing held the gate
+ *                    open for 25 s at a time. 0 = never
  */
 public record VadGatingProperties(
         boolean enabled,
         int preRollMs,
         int postRollMs,
-        int minSpeechMs
+        int minSpeechMs,
+        int noTranscriptCloseMs
 ) {
 }

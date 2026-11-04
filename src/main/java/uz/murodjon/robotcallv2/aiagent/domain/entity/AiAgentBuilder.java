@@ -63,6 +63,7 @@ public class AiAgentBuilder {
     private String ragInstruction;
     private List<String> disabledIntegrationTools;
     private List<AgentFunction> functions;
+    private AiAgentPhrases phrases;
 
     AiAgentBuilder() {
     }
@@ -113,6 +114,7 @@ public class AiAgentBuilder {
         this.ragInstruction = source.ragInstruction();
         this.disabledIntegrationTools = source.disabledIntegrationTools();
         this.functions = source.functions();
+        this.phrases = source.phrases();
     }
 
     public AiAgentBuilder id(Long id) {
@@ -333,6 +335,11 @@ public class AiAgentBuilder {
         return this;
     }
 
+    public AiAgentBuilder phrases(AiAgentPhrases phrases) {
+        this.phrases = phrases;
+        return this;
+    }
+
     public AiAgentBuilder postCallAnalysis(AgentPostCallAnalysis postCallAnalysis) {
         this.postCallAnalysis = postCallAnalysis;
         return this;
@@ -389,7 +396,8 @@ public class AiAgentBuilder {
                 ragMinScore,
                 ragInstruction,
                 disabledIntegrationTools,
-                functions
+                functions,
+                phrases
         );
     }
 }

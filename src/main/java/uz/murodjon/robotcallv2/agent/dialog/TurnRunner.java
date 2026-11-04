@@ -16,7 +16,6 @@ import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRet
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
-import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Duration;
@@ -218,7 +217,7 @@ public class TurnRunner {
                 log.warn("[{}] FSM infinite loop detected: {} turns stuck in state '{}' - escalating to operator",
                         s.channelId(), stageAttempts, s.state());
                 s.end(Disposition.TRANSFERRED);
-                speech.speakChunk(s, DialogPhrases.transferring(s.language()));
+                speech.speakChunk(s, DialogLines.transferring(s));
                 return;
             }
 
@@ -250,7 +249,7 @@ public class TurnRunner {
             // The state block goes after the history, not into the system message, so
             // the cached prefix stays append-only (see SystemPromptFactory).
             List<Message> messages = new ArrayList<>(s.history());
-            messages.add(new UserMessage(promptFactory.turnAnnex(s)));
+            messages.add(new UserMessage(promptFactory.turnAnnex(s) + turnTools.findStageToolNote(s)));
             s.setInterrupted(false); // the annex has carried the barge-in note now
             boolean quietFollowUp = s.isCallerWentQuiet();
             s.setCallerWentQuiet(false); // and the "caller went quiet" note
@@ -276,7 +275,8 @@ public class TurnRunner {
             String model = llmTurnClient.selectModel(s, clientText, fromClient);
             s.latency().llmRequested();
             Timer.Sample llmSample = metrics.startTimer();
-            ScheduledFuture<?> filler = speech.scheduleFiller(s);
+            ScheduledFuture<?> filler = speech.scheduleFiller(s,
+                    dialogProperties.fillerBridge() ? () -> llmTurnClient.writeBridgeLine(s) : null);
             s.endpoint().startThinking();
             try {
                 result = llmTurnClient.runTurn(s, system, messages, tools, speculated, model);
@@ -308,7 +308,8 @@ public class TurnRunner {
             }
             boolean cutOff = s.isCancelled();
             String reply = cutOff ? s.spokenText() : result.reply();
-            if (SystemPromptFactory.isSystemNote(reply) || SpeechSanitizer.isUnspeakable(reply)) {
+            // No reply at all (a cut before the first word) is not the model's doing — no warning.
+            if (reply != null && (SystemPromptFactory.isSystemNote(reply) || SpeechSanitizer.isUnspeakable(reply))) {
                 // Not spoken (SpeechOutput refused it) and not remembered either: an
                 // assistant turn made of the annex teaches the model that reciting it is
                 // an answer, and the next turn recites it again.
@@ -442,6 +443,14 @@ public class TurnRunner {
     /** See {@link SpeculationManager#speculate}. */
     public void speculate(DialogSession s, String text) {
         speculationManager.speculate(s, text);
+    }
+
+    /**
+     * Arm the false-barge-in resume for a reply cut off after its turn had already ended — the
+     * turn's own end ({@link #advance}) arms it only for a cut that lands while it runs.
+     */
+    public void scheduleResume(DialogSession s) {
+        bargeInRecovery.scheduleResume(s, s.turnCount(), () -> advance(s, "", true));
     }
 
     /** See {@link BargeInRecovery#scheduleFalseInterruptionCheck}. */

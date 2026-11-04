@@ -71,6 +71,7 @@ public class DialogEngine implements CallDialog {
     private final AgentWebhookUseCase agentWebhookUseCase;
     private final CallTraceLog callTraceLog;
     private final OperatorProperties operatorProperties;
+    private final LlmTurnClient llmTurnClient;
 
     private final Map<String, DialogSession> sessions = new ConcurrentHashMap<>();
 
@@ -97,7 +98,8 @@ public class DialogEngine implements CallDialog {
                         AgentHandoffResolver agentHandoffResolver,
                         AgentWebhookUseCase agentWebhookUseCase,
                         OperatorProperties operatorProperties,
-                        CallTraceLog callTraceLog) {
+                        CallTraceLog callTraceLog,
+                        LlmTurnClient llmTurnClient) {
         this.dialogProperties = dialogProperties;
         this.callAttemptUseCase = callAttemptUseCase;
         this.callTranscriptUseCase = callTranscriptUseCase;
@@ -122,6 +124,7 @@ public class DialogEngine implements CallDialog {
         this.agentWebhookUseCase = agentWebhookUseCase;
         this.operatorProperties = operatorProperties;
         this.callTraceLog = callTraceLog;
+        this.llmTurnClient = llmTurnClient;
     }
 
     @Override
@@ -289,6 +292,9 @@ public class DialogEngine implements CallDialog {
         log.info("Dialog started [{}] lang={} voice={} state={}",
                 channelId, language, ttsVoice != null ? ttsVoice : "default", session.state());
         watchdogRunner.start(session);
+        // Alongside the greeting pause and the greeting itself, which are seconds the caller
+        // is not waiting on the model — the first turn then finds the prompt already cached.
+        llmTurnClient.warmUp(session);
         executors.submit(() -> {
             if (!awaitCallerReady(session, agent)) {
                 return;
@@ -408,8 +414,7 @@ public class DialogEngine implements CallDialog {
         if (session.claimBackchannel(dialogProperties.backchannelAfterMs())) {
             // Off the recognizer's thread: synthesis can take a network round trip, and
             // this one is holding the rest of the caller's audio behind it.
-            int turn = session.turnCount();
-            executors.submit(() -> speech.speakBackchannel(session, turn));
+            executors.submit(() -> speech.speakBackchannel(session));
         }
         if (session.claimInterjection(dialogProperties.interjectAfterMs())) {
             executors.submit(() -> speech.interject(session));

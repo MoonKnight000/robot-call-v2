@@ -698,13 +698,25 @@ class SpeechGateTest {
     }
 
     @Test
-    void theModelCannotCallFinishedWhatTheWordsCallUnfinished() {
+    void theModelsVerdictReplacesTheWordRules() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("men pulni bankga"); // the suffix rules: unfinished
+        gate.setLlmTurnCue("men pulni bankga", TurnCue.COMPLETE);
+        feed(gate, false, 700);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void withoutAModelVerdictTheWordRulesStillHold() {
         SpeechGate gate = gate();
         gate.setTranscriptCues(600);
 
         feed(gate, true, 2000);
         gate.onInterimTranscript("men pulni bankga");
-        gate.setLlmTurnCue("men pulni bankga", TurnCue.COMPLETE);
         feed(gate, false, 1200);
 
         assertThat(gate.isOpen()).isTrue();
@@ -741,8 +753,8 @@ class SpeechGateTest {
     void aJudgedCloseReportsTheAgentLineAndTheModelsVerdict() {
         SpeechGate gate = learningGate();
         java.util.List<String> verdicts = new java.util.ArrayList<>();
-        gate.setCloseListener((text, waitMs, continued, agentLine, llmCue) ->
-                verdicts.add(agentLine + "|" + text + "|" + llmCue));
+        gate.setCloseListener((text, waitMs, continued, agentLine, decision) ->
+                verdicts.add(agentLine + "|" + text + "|" + decision.llm()));
         gate.setAgentLine("Shartnoma raqamingizni ayting");
 
         feed(gate, true, 300);
@@ -751,5 +763,99 @@ class SpeechGateTest {
         feed(gate, false, 3000);
 
         assertThat(verdicts).containsExactly("Shartnoma raqamingizni ayting|shartnoma raqami|INCOMPLETE");
+    }
+
+    @Test
+    void closesAsNoiseWhenNothingIsTranscribed() {
+        SpeechGate gate = gate();
+        gate.setNoTranscriptClose(6000);
+
+        // Breathing scored as speech (320 ms), then quiet too short to close the gate (416 ms).
+        int closedAtWindow = -1;
+        for (int w = 0; w < 300 && closedAtWindow < 0; w++) {
+            gate.onVadWindow(w % 23 < 10, WINDOW);
+            if (w > 0 && !gate.isOpen()) {
+                closedAtWindow = w;
+            }
+        }
+
+        assertThat(closedAtWindow * WINDOW * 1000 / RATE).isBetween(5900, 6100);
+        assertThat(gate.lastCloseWasNoise()).isTrue();
+    }
+
+    @Test
+    void staysOpenForSpeechTheRecognizerTranscribes() {
+        SpeechGate gate = gate();
+        gate.setNoTranscriptClose(6000);
+
+        gate.onVadWindow(true, WINDOW);
+        gate.onInterimTranscript("men uch xonali");
+        feed(gate, true, 7000);
+
+        assertThat(gate.isOpen()).isTrue();
+        assertThat(gate.lastCloseWasNoise()).isFalse();
+    }
+
+    @Test
+    void noTranscriptCloseIsOffByDefault() {
+        SpeechGate gate = gate();
+
+        feed(gate, true, 7000);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void closeReasonNamesTheWaitThatEndedTheTurn() {
+        SpeechGate gate = gate();
+
+        feed(gate, true, 2000);
+        feed(gate, false, 1100);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseReason()).isEqualTo(
+                "post-roll 1000ms + none 0ms (turn-model=not-asked, llm=UNKNOWN, words=UNKNOWN, restarts-after-verdict=0)");
+    }
+
+    @Test
+    void closeReasonNamesTheTurnModelsExtension() {
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> false, 500);
+
+        feed(gate, true, 2000);
+        feed(gate, false, 1600);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseReason()).startsWith("post-roll 1000ms + turn-model-unfinished 500ms (turn-model=unfinished");
+    }
+
+    @Test
+    void closeReasonCountsVadSpeechThatRestartedAJudgedPause() {
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> false, 500);
+
+        feed(gate, true, 2000);
+        feed(gate, false, 1100); // judged at 1000 ms, extension pending
+        feed(gate, true, 100);   // a background voice
+        feed(gate, false, 1600);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseReason()).endsWith("restarts-after-verdict=1)");
+    }
+
+    @Test
+    void aJudgedCloseCarriesWhatDecidedIt() {
+        SpeechGate gate = learningGate();
+        java.util.List<TurnCloseDecision> decisions = new java.util.ArrayList<>();
+        gate.setCloseListener((text, waitMs, continued, agentLine, decision) -> decisions.add(decision));
+        gate.setTurnDetector(() -> false, 500);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("ertaga to'layman");
+        feed(gate, false, 3000);
+
+        assertThat(decisions).hasSize(1);
+        assertThat(decisions.getFirst().extensionRule()).isEqualTo("turn-model-unfinished");
+        assertThat(decisions.getFirst().turnModel()).isEqualTo("unfinished");
     }
 }

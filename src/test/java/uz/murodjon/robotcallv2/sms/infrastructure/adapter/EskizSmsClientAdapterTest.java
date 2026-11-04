@@ -5,18 +5,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import uz.murodjon.robotcallv2.sms.application.port.output.EskizConnectionRepository;
+import uz.murodjon.robotcallv2.sms.domain.entity.EskizConnection;
 import uz.murodjon.robotcallv2.sms.domain.entity.SmsMessage;
-import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsEskizProperties;
 import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsProperties;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,14 +32,14 @@ import static org.mockito.Mockito.when;
  */
 class EskizSmsClientAdapterTest {
 
-    private static final SmsProperties CONFIGURED = new SmsProperties(true,
-            new SmsEskizProperties("ops@example.uz", "secret", null, null), null);
+    private static final SmsProperties CONFIGURED = new SmsProperties(null, null);
     private static final String LOGIN_PATH = "/api/auth/login";
     private static final String SEND_PATH = "/api/message/sms/send";
 
     private final Deque<HttpResponse<String>> responses = new ArrayDeque<>();
     private final List<HttpRequest> requests = new ArrayList<>();
     private HttpClient httpClient;
+    private EskizConnectionRepository connections;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -46,6 +48,9 @@ class EskizSmsClientAdapterTest {
             requests.add(invocation.getArgument(0));
             return responses.removeFirst();
         });
+        connections = mock(EskizConnectionRepository.class);
+        when(connections.findByCompanyId(1L)).thenReturn(Optional.of(
+                new EskizConnection("ops@example.uz", "secret", null, Instant.EPOCH)));
     }
 
     @Test
@@ -53,7 +58,7 @@ class EskizSmsClientAdapterTest {
         answer(200, "{\"message\":\"token_generated\",\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"id\":\"a\",\"status\":\"waiting\"}");
         answer(200, "{\"id\":\"b\",\"status\":\"waiting\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), connections);
 
         assertThat(adapter.send(1L, sms())).isTrue();
         assertThat(adapter.send(1L, sms())).isTrue();
@@ -69,7 +74,7 @@ class EskizSmsClientAdapterTest {
         answer(401, "{\"status\":\"token-invalid\"}");
         answer(200, "{\"data\":{\"token\":\"t2\"}}");
         answer(200, "{\"id\":\"a\",\"status\":\"success\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), connections);
 
         assertThat(adapter.send(1L, sms())).isTrue();
 
@@ -84,7 +89,7 @@ class EskizSmsClientAdapterTest {
         answer(401, "{\"status\":\"token-invalid\"}");
         answer(200, "{\"data\":{\"token\":\"t2\"}}");
         answer(401, "{\"status\":\"token-invalid\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), connections);
 
         assertThat(adapter.send(1L, sms())).isFalse();
 
@@ -96,7 +101,7 @@ class EskizSmsClientAdapterTest {
     void doesNotCountAnUnacceptedStatusAsSent() {
         answer(200, "{\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"status\":\"error\",\"message\":\"Invalid template\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), connections);
 
         assertThat(adapter.send(1L, sms())).isFalse();
     }
@@ -105,7 +110,7 @@ class EskizSmsClientAdapterTest {
     void sendsToTheDigitsOnlyNumberFromTheConfiguredSender() {
         answer(200, "{\"data\":{\"token\":\"t1\"}}");
         answer(200, "{\"status\":\"waiting\"}");
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), connections);
 
         adapter.send(1L, new SmsMessage("+998 90 123-45-67", "Salom"));
 
@@ -115,8 +120,9 @@ class EskizSmsClientAdapterTest {
     }
 
     @Test
-    void sendsNothingWithoutCredentials() {
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(new SmsProperties(true, null, null), httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
+    void sendsNothingWithoutAnEskizAccount() {
+        when(connections.findByCompanyId(1L)).thenReturn(Optional.empty());
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), connections);
 
         assertThat(adapter.send(1L, sms())).isFalse();
         assertThat(requests).isEmpty();
@@ -124,7 +130,7 @@ class EskizSmsClientAdapterTest {
 
     @Test
     void sendsNothingToANumberOutsideUzbekistan() {
-        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), mock(EskizConnectionRepository.class));
+        EskizSmsClientAdapter adapter = new EskizSmsClientAdapter(CONFIGURED, httpClient, new ObjectMapper(), connections);
 
         assertThat(adapter.send(1L, new SmsMessage("+79161234567", "Salom"))).isFalse();
         assertThat(requests).isEmpty();

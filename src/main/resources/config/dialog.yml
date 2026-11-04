@@ -58,7 +58,7 @@ voice-agent:
   intent:
     enabled: ${INTENT_DETECTION_ENABLED:true}
 
-  # Dialog engine (DialogProperties, LlmTimeoutProperties, DialogTuningProperties, TestContextProperties)
+  # Dialog engine (DialogProperties, LlmTimeoutProperties, PromptCacheProperties, DialogTuningProperties, TestContextProperties)
   dialog:
     enabled: ${DIALOG_ENABLED:true}
     auto-start: ${DIALOG_AUTO_START:true}
@@ -69,12 +69,19 @@ voice-agent:
     language-switch-finals: ${DIALOG_LANGUAGE_SWITCH_FINALS:2}
     max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
     streaming: ${DIALOG_STREAMING:true}
-    filler-delay-ms: ${DIALOG_FILLER_DELAY_MS:1400}
+    # "bir lahza" only when this call's measured first-token wait reaches this; said at once, not after a timer.
+    filler-wait-threshold-ms: ${DIALOG_FILLER_WAIT_THRESHOLD_MS:1000}
+    # That filler is a few words about what the caller said, from the fast model; "Bir lahza" is the fallback.
+    filler-bridge: ${DIALOG_FILLER_BRIDGE:true}
     backchannel-after-ms: ${DIALOG_BACKCHANNEL_AFTER_MS:4000}
     backchannel-volume-percent: ${DIALOG_BACKCHANNEL_VOLUME_PERCENT:35}
     interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:25000}
     false-interruption-timeout-ms: ${DIALOG_FALSE_INTERRUPTION_TIMEOUT_MS:1500}
     wait-for-caller-timeout-ms: ${DIALOG_WAIT_FOR_CALLER_TIMEOUT_MS:3000}
+    prompt-cache:
+      warmup: ${DIALOG_LLM_WARMUP:true}
+      warmup-fast-model: ${DIALOG_LLM_WARMUP_FAST_MODEL:true}
+      stable-toolset: ${DIALOG_STABLE_TOOLSET:false}
     llm-timeout:
       token-gap-ms: ${DIALOG_LLM_TOKEN_GAP_TIMEOUT_MS:5000}
       queue-drain-ms: ${DIALOG_LLM_QUEUE_DRAIN_TIMEOUT_MS:30000}
@@ -100,6 +107,8 @@ voice-agent:
     history-max-messages: ${DIALOG_HISTORY_MAX_MESSAGES:40}
     no-input-seconds: ${DIALOG_NO_INPUT_SECONDS:9}
     no-input-max-prompts: ${DIALOG_NO_INPUT_MAX_PROMPTS:2}
+    # The first check(s) on a quiet line are worded by the fast model about the conversation; the last stays fixed.
+    no-input-contextual: ${DIALOG_NO_INPUT_CONTEXTUAL:true}
     fast-path: ${DIALOG_FAST_PATH:true}
     knowledge-base: ${DIALOG_KNOWLEDGE_BASE:true}
     low-confidence-threshold: ${DIALOG_LOW_CONFIDENCE_THRESHOLD:0.5}

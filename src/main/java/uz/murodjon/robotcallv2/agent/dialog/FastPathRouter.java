@@ -3,7 +3,7 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
+import uz.murodjon.robotcallv2.scenario.domain.entity.GlobalNode;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.Locale;
@@ -109,6 +109,14 @@ public class FastPathRouter {
             "кто это", "кто говорит", "вы робот", "вы человек", "с кем я говорю", "это бот", "вы бот"
     );
 
+    /** The identity questions that ask whether a machine is talking, not who is calling. */
+    private static final Set<String> ROBOT_CHECK_UZ = Set.of(
+            "robotmisiz", "odammisiz", "sun'iy intellektmisiz", "suniy intellektmisiz", "botmisiz",
+            "avtooperator", "avtojavobgich"
+    );
+
+    private static final Set<String> ROBOT_CHECK_RU = Set.of("вы робот", "вы человек", "это бот", "вы бот");
+
     private static final Set<String> PURPOSE_UZ = Set.of(
             "nima maqsadda telefon qilyapsiz", "nima maqsadda qo'ng'iroq qilyapsiz", "nima maqsadda",
             "nega telefon qildingiz", "nega telefon qilyapsiz", "nega qildingiz", "nima uchun telefon qilyapsiz",
@@ -140,23 +148,21 @@ public class FastPathRouter {
 
         // 2. Do Not Call / Opt-out
         if (matchesAny(normalized, isRu ? DO_NOT_CALL_RU : DO_NOT_CALL_UZ)) {
-            String reply = isRu
-                    ? "Понятно, ваш номер исключен из базы. Извините за беспокойство."
-                    : "Tushundim, raqamingiz ro'yxatdan chiqariladi. Bezovta qilganimiz uchun uzr.";
+            String reply = DialogLines.doNotCallReply(s);
             log.info("[{}] Fast-path matched: DO_NOT_CALL", s.channelId());
             return FastPathResult.endWithDisposition(reply, Disposition.DO_NOT_CALL);
         }
 
         // 3. Human Transfer Request
         if (matchesAny(normalized, isRu ? TRANSFER_RU : TRANSFER_UZ)) {
-            String reply = DialogPhrases.transferring(s.language());
+            String reply = DialogLines.transferring(s);
             log.info("[{}] Fast-path matched: TRANSFER", s.channelId());
             return FastPathResult.endWithDisposition(reply, Disposition.TRANSFERRED);
         }
 
         // 4. Closing Gratitude / Polite Farewell
         if (isClosingGratitude(normalized, isRu, s)) {
-            String reply = DialogPhrases.gratitudeReply(s.language());
+            String reply = DialogLines.gratitudeReply(s);
             log.info("[{}] Fast-path matched: GRATITUDE_CLOSE", s.channelId());
             Disposition disp = s.disposition() != null ? s.disposition() : Disposition.COMPLETED;
             return FastPathResult.endWithDisposition(reply, disp);
@@ -175,17 +181,22 @@ public class FastPathRouter {
 
         // 6. Identity / Robot Check
         if (words.length <= 6 && matchesAny(normalized, isRu ? IDENTITY_RU : IDENTITY_UZ)) {
-            String company = s.companyName();
-            boolean hasCompany = company != null && !company.isBlank();
-            String identityReply;
-            if (isRu) {
-                identityReply = hasCompany
-                        ? "Я голосовой ассистент компании " + company.trim() + "."
-                        : "Я голосовой ассистент.";
-            } else {
-                identityReply = hasCompany
-                        ? "Men " + company.trim() + " kompaniyasining sun'iy intellekt ovozli yordamchisiman."
-                        : "Men sun'iy intellekt ovozli yordamchisiman.";
+            // "Are you a robot?" is answered by what the agent is, never by the company's
+            // "who's calling" line, which would dodge it.
+            boolean robotCheck = matchesAny(normalized, isRu ? ROBOT_CHECK_RU : ROBOT_CHECK_UZ);
+            String identityReply = robotCheck ? null : scenarioIdentityAnswer(s, isRu);
+            if (identityReply == null) {
+                String company = s.companyName();
+                boolean hasCompany = company != null && !company.isBlank();
+                if (isRu) {
+                    identityReply = hasCompany
+                            ? "Я голосовой ассистент компании " + company.trim() + "."
+                            : "Я голосовой ассистент.";
+                } else {
+                    identityReply = hasCompany
+                            ? "Men " + company.trim() + " kompaniyasining sun'iy intellekt ovozli yordamchisiman."
+                            : "Men sun'iy intellekt ovozli yordamchisiman.";
+                }
             }
             String lastQ = DialogLines.lastQuestion(s.lastAgentText());
             String reply = lastQ != null ? identityReply + " " + lastQ : identityReply;
@@ -223,6 +234,26 @@ public class FastPathRouter {
             }
         }
         return false;
+    }
+
+    /**
+     * The scenario's answer to "who are you?" ({@link GlobalNode}), facts filled in, or
+     * {@code null} when it has none. A node counts when its own example question is an identity
+     * question in the call's language — so the company's wording ("Uysot kompaniyasining to'lovlar
+     * bo'limidan...") wins over the generic one, and a node written in another language is not
+     * read out on this call.
+     */
+    private static String scenarioIdentityAnswer(DialogSession s, boolean isRu) {
+        if (s.scenario() == null || s.scenario().globalNodes() == null) {
+            return null;
+        }
+        for (GlobalNode node : s.scenario().globalNodes()) {
+            if (node.question() != null && node.answer() != null && !node.answer().isBlank()
+                    && matchesAny(normalize(node.question()), isRu ? IDENTITY_RU : IDENTITY_UZ)) {
+                return PromptTemplateEngine.render(node.answer().strip(), StageEntry.variables(s));
+            }
+        }
+        return null;
     }
 
     /** Whether one of {@code phrases} occurs in {@code input} as whole words, never as part of a word. */

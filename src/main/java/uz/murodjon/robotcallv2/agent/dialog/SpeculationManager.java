@@ -230,7 +230,7 @@ class SpeculationManager {
                 return;
             }
             messages.add(new UserMessage(text));
-            messages.add(new UserMessage(promptFactory.turnAnnex(s)));
+            messages.add(new UserMessage(promptFactory.turnAnnex(s) + turnTools.findStageToolNote(s)));
             // Replayed and eagerly connected — see LlmTurnClient#openSpeculativeStream.
             AtomicReference<Disposable> upstream = new AtomicReference<>();
             Flux<ChatResponse> responses = llmTurnClient.openSpeculativeStream(s,

@@ -67,4 +67,12 @@ class SpeechSanitizerTest {
         assertThat(SpeechSanitizer.stripUnspeakableCharacters("Xayr, salomat bo'ling!읍"))
                 .isEqualTo("Xayr, salomat bo'ling!");
     }
+
+    @Test
+    void stripsGeminiThoughtMarkerGluedToSentenceOrAlone() {
+        assertThat(SpeechSanitizer.stripUnspeakableCharacters("kelishdikmi, Murodjon aka?thought"))
+                .isEqualTo("kelishdikmi, Murodjon aka?");
+        assertThat(SpeechSanitizer.stripUnspeakableCharacters("thought")).isEmpty();
+        assertThat(SpeechSanitizer.stripUnspeakableCharacters("a thoughtful reply")).isEqualTo("a thoughtful reply");
+    }
 }

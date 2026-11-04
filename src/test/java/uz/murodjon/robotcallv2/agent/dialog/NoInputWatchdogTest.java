@@ -147,4 +147,31 @@ class NoInputWatchdogTest {
         assertThat(w.isCallerSilentFor(T0.plusSeconds(34), false, false, limit)).isFalse();
         assertThat(w.isCallerSilentFor(T0.plusSeconds(35), false, false, limit)).isTrue();
     }
+
+    @Test
+    void voiceWithNoTranscriptHoldsThePromptOffForOneThresholdOnly() {
+        NoInputWatchdog w = watchdog(2);
+        // Breathing the VAD scores as speech, every few seconds, and not a word transcribed.
+        assertThat(w.touchVoice(T0.plusSeconds(4))).isTrue();
+        assertThat(w.touchVoice(T0.plusSeconds(8))).isTrue();
+        assertThat(w.touchVoice(T0.plusSeconds(12))).isFalse();
+        assertThat(w.check(T0.plusSeconds(16), false, false)).isEqualTo(NONE);
+        assertThat(w.check(T0.plusSeconds(17), false, false)).isEqualTo(PROMPT);
+    }
+
+    @Test
+    void aTranscriptRenewsTheAllowanceForVoice() {
+        NoInputWatchdog w = watchdog(2);
+        w.touch(T0.plusSeconds(10));
+        assertThat(w.touchVoice(T0.plusSeconds(18))).isTrue();
+        assertThat(w.check(T0.plusSeconds(26), false, false)).isEqualTo(NONE);
+        assertThat(w.check(T0.plusSeconds(27), false, false)).isEqualTo(PROMPT);
+    }
+
+    @Test
+    void theBotSpeakingRenewsTheAllowanceForVoice() {
+        NoInputWatchdog w = watchdog(2);
+        assertThat(w.check(T0.plusSeconds(20), true, false)).isEqualTo(NONE);
+        assertThat(w.touchVoice(T0.plusSeconds(25))).isTrue();
+    }
 }

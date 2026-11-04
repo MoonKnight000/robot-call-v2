@@ -108,8 +108,8 @@ public class TokenUsage {
         s.addTokenBreakdown(prompt, completion, cached);
         // Info, not debug: next to "turn latency" it says what a slow first token was spent on —
         // thinking before the first word, or a prompt the cache did not cover.
-        log.info("[{}] tokens: prompt={} (cached {}), completion={} (thinking {})",
-                s.channelId(), prompt, cached, completion, thinking);
+        log.info("[{}] tokens: prompt={} (cached {}, {}%), completion={} (thinking {})",
+                s.channelId(), prompt, cached, prompt > 0 ? cached * 100 / prompt : 0, completion, thinking);
     }
 
     /** The share of the prompt Gemini billed at the cached rate. */

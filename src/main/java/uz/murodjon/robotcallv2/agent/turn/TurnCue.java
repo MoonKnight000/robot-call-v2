@@ -9,6 +9,11 @@ public enum TurnCue {
     COMPLETE,
     /** Reads as mid-sentence: a conjunction, a case-marked noun, a bare number. */
     INCOMPLETE,
+    /**
+     * The caller asked the agent to hold on ("bir daqiqa", "подождите") — TEN Turn Detection's
+     * third class. Only {@link LlmTurnDetector} gives it.
+     */
+    WAIT,
     /** The words do not say either way; the timer decides alone. */
     UNKNOWN
 }

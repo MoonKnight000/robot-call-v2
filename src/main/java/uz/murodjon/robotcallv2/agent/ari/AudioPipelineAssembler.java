@@ -18,10 +18,12 @@ import uz.murodjon.robotcallv2.agent.stt.*;
 import uz.murodjon.robotcallv2.agent.turn.*;
 import uz.murodjon.robotcallv2.agent.telephony.TelephonyGatewayResolver;
 import uz.murodjon.robotcallv2.agent.vad.AmdProperties;
-import uz.murodjon.robotcallv2.agent.vad.SileroVad;
+import uz.murodjon.robotcallv2.agent.vad.VadScorerFactory;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
+import uz.murodjon.robotcallv2.agent.vad.VadScorer;
 import uz.murodjon.robotcallv2.agent.vad.VadStream;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 import uz.murodjon.robotcallv2.live.application.port.input.LiveUseCase;
@@ -49,7 +51,9 @@ class AudioPipelineAssembler {
     private static final Logger log = LoggerFactory.getLogger(AudioPipelineAssembler.class);
 
     private final VadProperties vadProperties;
-    private final ObjectProvider<SileroVad> vadProvider;
+    private final VadScorerFactory vadScorerFactory;
+    private final ObjectProvider<LlmTurnDetector> llmTurnDetectorProvider;
+    private final LlmTurnProperties llmTurnProperties;
     private final SttProperties sttProperties;
     private final SttProviderSelector sttProviderSelector;
     private final SmartTurnProperties smartTurnProperties;
@@ -75,7 +79,9 @@ class AudioPipelineAssembler {
     private final RealtimeVoicemailDrop realtimeVoicemailDrop;
 
     AudioPipelineAssembler(VadProperties vadProperties,
-                           ObjectProvider<SileroVad> vadProvider,
+                           VadScorerFactory vadScorerFactory,
+                           ObjectProvider<LlmTurnDetector> llmTurnDetectorProvider,
+                           LlmTurnProperties llmTurnProperties,
                            SttProperties sttProperties,
                            SttProviderSelector sttProviderSelector,
                            SmartTurnProperties smartTurnProperties,
@@ -99,7 +105,9 @@ class AudioPipelineAssembler {
                            ObjectProvider<NeuralDenoiser> neuralDenoiserProvider,
                            RealtimeVoicemailDrop realtimeVoicemailDrop) {
         this.vadProperties = vadProperties;
-        this.vadProvider = vadProvider;
+        this.vadScorerFactory = vadScorerFactory;
+        this.llmTurnDetectorProvider = llmTurnDetectorProvider;
+        this.llmTurnProperties = llmTurnProperties;
         this.sttProperties = sttProperties;
         this.sttProviderSelector = sttProviderSelector;
         this.smartTurnProperties = smartTurnProperties;
@@ -147,6 +155,10 @@ class AudioPipelineAssembler {
         }
         if (textTurnProperties.enabled()) {
             log.warn("voice-agent.text-turn.enabled is on but no speech gate is installed — the text "
+                    + "turn detector will not run. It needs voice-agent.stt.vad-gating.enabled=true.");
+        }
+        if (llmTurnProperties.enabled()) {
+            log.warn("voice-agent.llm-turn.enabled is on but no speech gate is installed — the LLM "
                     + "turn detector will not run. It needs voice-agent.stt.vad-gating.enabled=true.");
         }
         EndpointingProperties endpointing = sttProperties.endpointing();
@@ -201,8 +213,9 @@ class AudioPipelineAssembler {
 
         SpeechGate speechGate = null;
         if (vadProperties.enabled()) {
-            SileroVad vad = vadProvider.getIfAvailable();
-            if (vad != null && vad.available()) {
+            VadScorer vadScorer = vadScorerFactory.open(channelId);
+            if (vadScorer != null) {
+                log.debug("[{}] voice activity scored by {}", channelId, vadScorer.engine());
                 VadGatingProperties gating = sttProperties.vadGating();
                 if (!realtime && gating != null && gating.enabled() && sttProperties.enabled()) {
                     EndpointingProperties endpointing = sttProperties.endpointing();
@@ -217,21 +230,23 @@ class AudioPipelineAssembler {
                             learning ? dynamic.emaAlpha() : 0d,
                             learning ? dynamic.reopenGraceMs() : 0);
                     speechGate.setTranscriptCues(adaptive ? endpointing.completeSilenceMs() : 0);
-                    // The agent's own wait from the first utterance; a stage may change it later
+                    speechGate.setNoTranscriptClose(gating.noTranscriptCloseMs());                    // The agent's own wait from the first utterance; a stage may change it later
                     // (StageSpeechTuner).
                     speechGate.setResponseWaitMs(agent != null ? agent.callBehaviour().responseWaitMs() : null);
                     // The shadow score of the close being judged; the next one is only taken
                     // after the caller speaks again, by which time this close is judged.
                     AtomicReference<Float> shadowScore = new AtomicReference<>();
-                    speechGate.setCloseListener((text, waitMs, continued, agentLine, llmCue) -> {
-                        sttMetrics.gateCloseJudged(continued);
+                    String vadEngine = vadScorer.engine();
+                    speechGate.setCloseListener((text, waitMs, continued, agentLine, decision) -> {
+                        sttMetrics.gateCloseJudged(continued, decision, vadEngine);
                         turnDatasetRecorder.record(language, agentLine, text, waitMs, continued,
-                                shadowScore.getAndSet(null), llmCue);
+                                shadowScore.getAndSet(null), decision, vadEngine);
                     });
                     if (!installTurnDetector(listeners, speechGate, language)
                             && !installTextTurnDetector(speechGate, language)) {
                         installShadowTurnDetector(listeners, speechGate, language, shadowScore);
                     }
+                    installLlmTurnDetector(speechGate, channelId, agent);
                 }
                 // Who knows the caller stopped talking. With a gate installed it is the
                 // gate's close, and SttStreamBridge reports that. Without one — the
@@ -246,7 +261,7 @@ class AudioPipelineAssembler {
                         ? waitMs -> realtimeDialogEngine.notifyUtteranceEnd(channelId, waitMs)
                         : speechGate != null ? null
                         : waitMs -> dialogEngine.notifyUtteranceEnd(channelId, waitMs);
-                listeners.add(new VadStream(vad, vadProperties, channelId,
+                listeners.add(new VadStream(vadScorer, vadProperties, channelId,
                         realtime ? () -> realtimeDialogEngine.notifyCallerSpeaking(channelId)
                                 : () -> dialogEngine.notifyBargeIn(channelId), speechGate,
                         buildAmd(channelId, realtime), onSpeechEnd, botLevelSupplier,
@@ -369,6 +384,24 @@ class AudioPipelineAssembler {
                 sttProperties.endpointing(), sttProperties.responseTimeoutMs(), onUtteranceEnd,
                 SttHints.of(context, agent != null ? agent.pronunciationRules() : List.of()), keywords,
                 sttProviderSelector, agentSttModel, sttProperties.stream());
+    }
+
+    /**
+     * TEN-style LLM turn detection ({@link LlmTurnDetector}): every new interim is judged,
+     * and the verdict moves the gate's wait. Asked on the agent's fast model unless one is
+     * configured.
+     */
+    private void installLlmTurnDetector(SpeechGate gate, String channelId, AiAgent agent) {
+        LlmTurnDetector detector = llmTurnDetectorProvider.getIfAvailable();
+        if (detector == null) {
+            return;
+        }
+        String fastModel = agent != null ? agent.fastLlmModel() : null;
+        if (fastModel == null || fastModel.isBlank() || AiModel.isRealtimeModel(fastModel)) {
+            fastModel = dialogProperties.fastModel();
+        }
+        gate.setLlmTurnDetector(detector.openCall(channelId, fastModel, gate::setLlmTurnCue),
+                llmTurnProperties.unfinishedWaitMs(), llmTurnProperties.waitHoldMs());
     }
 
     /** @return whether Smart Turn now decides this call's turn ends */

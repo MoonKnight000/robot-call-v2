@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.dialog.DialogProperties;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentPhrases;
 import uz.murodjon.robotcallv2.campaign.domain.entity.Campaign;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
@@ -23,8 +24,8 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Pre-synthesizes the lines the agent always says (§11.1 disclosure, greetings, confirmations,
- * the goodbye, the fallback phrases) into the Redis/Memory TTS cache.
+ * Pre-synthesizes the lines the agent always says (§11.1 disclosure, greetings, the goodbye,
+ * the fallback phrases, the agent's own phrases) into the Redis/Memory TTS cache.
  *
  * <p>At startup only the default voice of each configured language is warmed. Every other
  * catalog voice is warmed by {@link #warmUpForCampaign(Campaign, AiAgent)} when a campaign that
@@ -103,8 +104,8 @@ public class TtsWarmup {
     }
 
     /**
-     * Synthesizes and caches all static phrases (confirmations, disclosures, fallback phrases)
-     * for a given campaign.
+     * Synthesizes and caches all fixed lines (disclosures, fallback phrases, the agent's own
+     * phrases) for a given campaign.
      */
     public void warmUpForCampaign(Campaign campaign, AiAgent agent) {
         if (campaign == null || agent == null || !ttsProperties.enabled() || !cache.prewarmEnabled()) {
@@ -138,7 +139,11 @@ public class TtsWarmup {
         int count = 0;
         for (String lang : languages) {
             String voiceId = agent.voiceFor(lang);
-            List<String> lines = linesFor(companyName, lang, scenarios);
+            List<String> lines = new ArrayList<>(linesFor(companyName, lang, scenarios));
+            if (lang.equals(agent.language())) {
+                // The agent's own wording is spoken only in its own language (DialogLines).
+                lines.addAll(agentLines(agent.phrases()));
+            }
 
             for (String line : lines) {
                 try {
@@ -201,6 +206,19 @@ public class TtsWarmup {
                 addIfPresent(lines, Disclosure.resolve(scenario.definition().disclosureText(), language, companyName));
             }
         }
+        return lines;
+    }
+
+    private static List<String> agentLines(AiAgentPhrases phrases) {
+        List<String> lines = new ArrayList<>();
+        addIfPresent(lines, phrases.stillThere());
+        addIfPresent(lines, phrases.stillThereLastCall());
+        addIfPresent(lines, phrases.didNotCatch());
+        addIfPresent(lines, phrases.farewell());
+        addIfPresent(lines, phrases.gratitudeReply());
+        addIfPresent(lines, phrases.doNotCallReply());
+        lines.addAll(phrases.thinking());
+        lines.addAll(phrases.backchannels());
         return lines;
     }
 

@@ -212,8 +212,12 @@ funksiyalari va ssenariy bosqichlari (`LOAD_COMPLEXES`) o'sha nom bilan ishlayve
 - Kod qilgan qo'shimcha ishlar endi vositaning o'z sozlamasi ([tools.md](tools.md) `result.argumentVariables`,
   `result.memoryFacts`): xona soni va byudjet lid izohiga, taklif qilingan xonadonlar mijoz xotirasiga tushadi.
 - Farq: majmua endi nom bilan emas, `houseIds` bilan tanlanadi — model avval `listResidentialComplexes` dan id
-  oladi. `listResidentialComplexes` sotuvda bo'lmagan majmuani ham qaytaradi (`isSale=false`); ta'rif modelga
-  faqat `isSale=true` larini taklif qilishni aytadi. `flatSearch` xotira fakti endi yozilmaydi.
+  oladi. `listResidentialComplexes` sotuvda bo'lmagan majmuani ham qaytaradi (`sale=false`); ta'rif modelga
+  faqat `sale=true` larini taklif qilishni aytadi. `flatSearch` xotira fakti endi yozilmaydi.
+- **`V31`:** Uysot belgini `sale` deb yuboradi (`HouseListDTO`), `isSale` emas — xarita shunga tuzatildi.
+  Uysot open API'da majmua yoki xonadonni viloyat bo'yicha filtrlash yo'q (`cityIds`/`districtIds` faqat
+  `client/filter` da); majmuaning joyi faqat erkin matnli `address` da. Shu sabab "Navoiyda qanaqa majmualar
+  bor?" savoliga model `address` bo'yicha javob beradi — buni ta'rif aytadi.
 
 ## `GET_CONTRACT_BALANCE` va `GET_PAYMENT_SCHEDULE` — endi HTTP (migratsiya `V24`)
 

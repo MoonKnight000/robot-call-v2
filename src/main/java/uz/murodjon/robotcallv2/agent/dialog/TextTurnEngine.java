@@ -61,7 +61,7 @@ public class TextTurnEngine {
     public TextTurn reply(ChatClient chatClient, DialogSession session, String clientText) {
         session.history().add(new UserMessage(clientText));
         List<Message> messages = new ArrayList<>(session.history());
-        messages.add(new UserMessage(promptFactory.turnAnnex(session)));
+        messages.add(new UserMessage(promptFactory.turnAnnex(session) + turnTools.findStageToolNote(session)));
         session.clearToolReplies();
 
         List<ToolCallback> tools = turnTools.build(session);

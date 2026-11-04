@@ -14,11 +14,16 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.time.Duration;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 /**
  * The speech end of the pipeline: everything between a line of text and the caller
@@ -44,6 +49,19 @@ import java.util.concurrent.atomic.AtomicLong;
 public class SpeechOutput {
 
     private static final Logger log = LoggerFactory.getLogger(SpeechOutput.class);
+
+    /** A sentence that only acknowledges: "Tushunarli.", "Xo'p!", "Понятно." — a comma means it goes on about something. */
+    private static final Pattern BARE_ACKNOWLEDGEMENT = Pattern.compile(
+            "\\s*(tushunarli|tushundim|xo['ʻʼ‘’`]?p|yaxshi|aha|понятно|хорошо|ясно|ага|got it|i see|okay|ok)\\s*[.!]\\s*",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+
+    /** A sentence that opens with an acknowledgement and goes on: "Tushunarli, Mandarin House …". */
+    private static final Pattern ACKNOWLEDGEMENT_OPENING = Pattern.compile(
+            "\\s*(tushunarli|tushundim|xo['ʻʼ‘’`]?p|yaxshi|aha|понятно|хорошо|ясно|ага)\\b",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE | Pattern.UNICODE_CHARACTER_CLASS);
+    private static final Pattern DIGIT = Pattern.compile("\\d");
+    /** Splits a line into words; the Uzbek apostrophes stay inside them. */
+    private static final Pattern WORD_SPLIT = Pattern.compile("[^\\p{L}'ʻʼ‘’`]+");
 
     private final DialogProperties dialogProperties;
     private final TtsProperties ttsProperties;
@@ -73,6 +91,8 @@ public class SpeechOutput {
      * Failures are logged, never thrown: a lost sentence is better than an aborted turn.
      */
     public SpeechOutcome speak(DialogSession s, String text) {
+        text = withoutBridgeEcho(s, text);
+        text = withoutBareAcknowledgement(s, text);
         SpeechOutcome refused = refusal(s, text);
         if (refused != null) {
             return refused;
@@ -115,6 +135,8 @@ public class SpeechOutput {
      * {@code speak} would have refused — the fact guard included.
      */
     public PreparedLine prepare(DialogSession s, String text) {
+        text = withoutBridgeEcho(s, text);
+        text = withoutBareAcknowledgement(s, text);
         SpeechOutcome refused = refusal(s, text);
         if (refused != null) {
             return PreparedLine.refused(text, refused);
@@ -146,6 +168,63 @@ public class SpeechOutput {
         s.endpoint().enqueuePcm(line.pcm());
         s.appendSpokenAudio(line.text(), startSample, line.pcm().length);
         return SpeechOutcome.SPOKEN;
+    }
+
+    /**
+     * Nothing, when the reply's first sentence only says again what this turn's bridge line
+     * already said. The bridge and the reply are written at the same time, so the main model
+     * cannot know the caller has just heard "Mandarin House, tushunarli." — and on a recorded
+     * call opened with "Tushunarli, Mandarin House majmuasidan qaraymiz." right after it.
+     *
+     * <p>Only a whole sentence (ending in "." or "!") that asks nothing and holds no figure, and
+     * only when it opens with an acknowledgement or repeats a word of the bridge: a question,
+     * a sum, a date or a clause cut at a comma carries the turn's real content and stays.
+     */
+    static String withoutBridgeEcho(DialogSession s, String text) {
+        if (text == null || s.spokenText() != null) {
+            return text;
+        }
+        String sentence = text.strip();
+        if (sentence.isEmpty() || !(sentence.endsWith(".") || sentence.endsWith("!"))
+                || sentence.contains("?") || DIGIT.matcher(sentence).find()) {
+            return text;
+        }
+        String bridge = s.takeBridgeLine();
+        if (bridge == null || !(ACKNOWLEDGEMENT_OPENING.matcher(sentence).lookingAt() || sharesWord(bridge, sentence))) {
+            return text;
+        }
+        log.info("[{}] reply opening dropped — it repeats the bridge line '{}': {}", s.channelId(), bridge, sentence);
+        return "";
+    }
+
+    /** Whether the two lines share a word of four letters or more ("Mandarin", "xonali"). */
+    private static boolean sharesWord(String bridge, String sentence) {
+        Set<String> bridgeWords = new HashSet<>();
+        for (String word : WORD_SPLIT.split(bridge.toLowerCase(Locale.ROOT))) {
+            if (word.length() >= 4) {
+                bridgeWords.add(word);
+            }
+        }
+        for (String word : WORD_SPLIT.split(sentence.toLowerCase(Locale.ROOT))) {
+            if (word.length() >= 4 && bridgeWords.contains(word)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The reply without its opening "Tushunarli." when the turn already opened with "bir lahza":
+     * the two back to back ("Bir lahza. Tushunarli, …") were heard as the bot talking to itself.
+     * Only a bare one, a sentence of its own, at the very start of what reaches the caller;
+     * "Tushunarli, uch xonali." is about what was said and stays.
+     */
+    static String withoutBareAcknowledgement(DialogSession s, String text) {
+        if (text == null || s.spokenText() != null || !BARE_ACKNOWLEDGEMENT.matcher(text).lookingAt()
+                || !s.takeFillerSpoken()) {
+            return text;
+        }
+        return BARE_ACKNOWLEDGEMENT.matcher(text).replaceFirst("");
     }
 
     /** Why {@code text} must not be spoken, or {@code null} when it may be. */
@@ -322,16 +401,16 @@ public class SpeechOutput {
      * backchannel and starts being the bot talking over the caller, which is precisely the
      * behaviour {@link Backchannels} exists to keep the caller from doing to us.
      *
-     * @param turn which of this call's turns the caller is in the middle of — also what
-     *             picks the phrase, so the same one is not repeated twice running
+     * <p>The phrase rotates through the pool by how many this call has had
+     * ({@link DialogSession#takeBackchannelIndex}), so two in a row are never the same words.
      */
-    public void speakBackchannel(DialogSession s, int turn) {
+    public void speakBackchannel(DialogSession s) {
         if (dialogProperties.backchannelAfterMs() <= 0 || !ttsProperties.enabled() || !backchannelStillWanted(s)) {
             return;
         }
         try {
-            List<String> options = DialogPhrases.backchannels(s.language());
-            String line = options.get(Math.floorMod(turn, options.size()));
+            List<String> options = DialogLines.backchannels(s);
+            String line = options.get(Math.floorMod(s.takeBackchannelIndex(), options.size()));
             s.addTtsChars(line);
             short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), emotionResolver.resolve(s), s.pronunciationRules());
             if (!backchannelStillWanted(s)) {
@@ -406,31 +485,38 @@ public class SpeechOutput {
      * line reads as a dropped call, and people say "alo?" into it or hang up. A person
      * who needs a moment says so out loud.
      *
-     * <p>Deliberately not free of charge to the clock, so it is rationed: only after
-     * {@code filler-delay-ms} of actual silence, and only on a turn a caller is waiting on
-     * (never the greeting — {@link DialogSession#isFirstAudioPending()} is false there).
+     * <p>Deliberately not free of charge to the clock, so it is rationed: only when this
+     * call's measured wait for the model's first token ({@code TurnLatency#expectedTtftMs},
+     * seeded by the warm-up) reaches {@code filler-wait-threshold-ms}, never on a reply that
+     * was written ahead of the final, and only on a turn a caller is waiting on (never the
+     * greeting — {@link DialogSession#isFirstAudioPending()} is false there). It is said at
+     * once, when the wait starts: after a fixed 1400 ms it landed a moment before the answer
+     * ("Bir lahza." and 0.8 s later "Tushunarli, …"), and on a fast turn it was never needed.
      *
      * <p>Consecutive turns are no longer ruled out. They were, and that is what left the
      * middle of a four-turn call in three and a half seconds of silence: the wait is that
      * long on <em>every</em> turn here, so a turn's right to cover it cannot depend on what
      * the previous turn happened to need. Repetition is handled where it actually lives —
-     * {@link #speakFiller} indexes the phrase by turn number, so consecutive fillers are
-     * never the same words.
+     * {@link #speakFiller} indexes the phrase by how many fillers this call has had
+     * ({@link DialogSession#takeFillerIndex}), so consecutive fillers are never the same words,
+     * however many quick turns lie between them.
      */
-    public ScheduledFuture<?> scheduleFiller(DialogSession s) {
-        int turn = s.turnCount();
-        if (dialogProperties.fillerDelayMs() <= 0 || !ttsProperties.enabled() || !s.isFirstAudioPending()) {
+    public ScheduledFuture<?> scheduleFiller(DialogSession s, Supplier<String> bridgeLine) {
+        int threshold = dialogProperties.fillerWaitThresholdMs();
+        if (threshold <= 0 || !ttsProperties.enabled() || !s.isFirstAudioPending()
+                || s.latency().isSpeculated() || s.latency().expectedTtftMs() < threshold) {
             return null;
         }
-        return executors.scheduleOnWorker(() -> speakFiller(s, turn), dialogProperties.fillerDelayMs());
+        return executors.scheduleOnWorker(() -> speakFiller(s, bridgeLine), 0);
     }
 
     /**
      * Play one short filler, if the turn is still silent by the time we get here.
      *
      * <p>Bypasses {@link #speak} on purpose. The fact guard has nothing to check (these
-     * are fixed lines with no figures in them), and — more importantly — the turnaround
-     * clock must not be stopped here. {@code voice.turnaround.latency} is meant to say
+     * are fixed lines with no figures in them) — a bridge line from the fast model is
+     * refused outright when it holds a figure ({@link LlmTurnClient#acceptBridgeLine}) —
+     * and, more importantly, the turnaround clock must not be stopped here. {@code voice.turnaround.latency} is meant to say
      * how long the caller waited for a real answer, and a filler that "recorded" it would
      * turn the §1.3 metric into a measure of how fast we can say "bir soniya".
      * {@code voice.dialog.filler.played} is where this shows up instead.
@@ -440,13 +526,18 @@ public class SpeechOutput {
      * started in that window. Queuing it then would put "bir soniya" in the middle of the
      * answer.
      */
-    private void speakFiller(DialogSession s, int turn) {
+    private void speakFiller(DialogSession s, Supplier<String> bridgeLine) {
         if (!fillerStillWanted(s)) {
             return;
         }
         try {
-            List<String> options = DialogPhrases.thinking(s.language());
-            String line = options.get(Math.floorMod(turn, options.size()));
+            // Words about what the caller said, when the fast model has some; the canned line otherwise.
+            String bridge = bridgeLine != null ? bridgeLine.get() : null;
+            String line = bridge;
+            if (line == null) {
+                List<String> options = DialogLines.thinking(s);
+                line = options.get(Math.floorMod(s.takeFillerIndex(), options.size()));
+            }
             EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
             s.addTtsChars(line);
             short[] pcm = ttsRouter.synthesize(line, s.language(), s.ttsVoice(), dynamicSettings, s.pronunciationRules());
@@ -456,8 +547,12 @@ public class SpeechOutput {
             s.endpoint().enqueuePcm(pcm);
             transcript.recordAgentLine(s, line);
             metrics.fillerPlayed();
-            log.debug("[{}] filler played after {} ms of silence: {}",
-                    s.channelId(), dialogProperties.fillerDelayMs(), line);
+            s.markFillerSpoken();
+            if (bridge != null) {
+                s.markBridgeSpoken(bridge);
+            }
+            log.debug("[{}] filler played, the model is expected to take {} ms: {}",
+                    s.channelId(), s.latency().expectedTtftMs(), line);
         } catch (Exception e) {
             // A filler is a comfort, never a requirement — losing one costs nothing.
             log.debug("[{}] filler skipped: {}", s.channelId(), e.getMessage());

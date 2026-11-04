@@ -562,15 +562,27 @@ public class SystemPromptFactory {
                 + "to the client. Once you state a fact, go straight to the next question you need. "
                 + "Exceptions: confirming the agreement once at the end, and saying goodbye with "
                 + "endCall.");
-        rules.add("When the client says something meaningful (a reason, objection, date, question), open your reply "
-                + "with a brief reaction "
+        // A reaction only acknowledges NEW information; waiting lines belong to the system. The old
+        // rule ("open with a reaction") collided with agents' own guardrail ("do not open with
+        // 'Tushunarli'"), and a caller who said "aytdimku uch xonali…" heard "Bir lahza. Tushunarli…".
+        rules.add("When the client gives you NEW information (an answer to your question, a reason, an objection, "
+                + "a date, a question of their own), you may open your reply with a brief reaction "
                 // No "Aha" among the uz examples: the synthesized voice draws it out into a
                 // long "Aaa…", heard on calls as the bot stalling before every answer.
                 + (russian ? "(\"Хорошо\", \"Понятно\", \"Да, конечно\")" : "(\"Xo'p\", \"Tushunarli\", \"Yaxshi\")")
-                + ", but never the same one in two replies in a row. If the client simply confirms "
+                + ", tied to what they said when you can ("
+                + (russian ? "\"Трёхкомнатная, хорошо.\"" : "\"Uch xonali, yaxshi.\"")
+                + ") rather than a bare word, and never the same one in two replies in a row. If the client simply confirms "
                 + (russian ? "(\"да\", \"ага\", \"хорошо\")" : "(\"ha\", \"aha\", \"xo'p\", \"shunday\")")
                 + " — do not react, go straight to the task: confirming a confirmation sounds "
-                + "robotic. " + reactionSize(warmth, russian) + " Staged sympathy is forbidden "
+                + "robotic. If the client repeats something they already told you or says they already did "
+                + (russian ? "(\"я же сказал\", \"опять спрашиваете\")" : "(\"aytdimku\", \"yana so'rayapsizmi\")")
+                + ", give no reaction: apologise in a few words and show you have it ("
+                + (russian ? "\"Извините, вы сказали трёхкомнатную.\"" : "\"Kechirasiz, uch xonali dedingiz.\"")
+                + "), then go on. Never open with a waiting phrase "
+                + (russian ? "(\"Секунду\", \"Один момент\", \"Сейчас проверю\")" : "(\"Bir lahza\", \"Bir soniya\", \"Hozir tekshiraman\")")
+                + " — the system says those itself when there really is a wait. "
+                + reactionSize(warmth, russian) + " Staged sympathy is forbidden "
                 + (russian ? "(\"я вас прекрасно понимаю\", \"мне очень жаль\")" : "(\"vaziyatni to'g'ri tushunaman\", \"sizni juda yaxshi tushunib turibman\", \"juda afsusdaman\")")
                 + ": performed sympathy is not sincere, it sounds artificial.");
         rules.add("Do not restate a fact you have already said (number, amount, date) and do not "
@@ -627,8 +639,8 @@ public class SystemPromptFactory {
                     + "a reply that takes the name without objecting already confirms it. "
                     + "If the name is unknown, do not probe oddly for who they are — go straight to the purpose.");
             if (persona == AgentPersona.HUMAN_LIKE) {
-                rules.add("Natural conversation: use spoken connectors («Qarang...», «Xo'sh...», «Kelishdik») "
-                        + "and understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
+                rules.add("Natural conversation: an occasional spoken connector («Xo'sh», «Kelishdik»), never the same one twice "
+                        + "in a call, and understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
             } else {
                 rules.add("Understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
             }

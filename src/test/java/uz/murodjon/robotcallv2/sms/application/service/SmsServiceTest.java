@@ -8,8 +8,11 @@ import uz.murodjon.robotcallv2.shared.util.PhoneMasker;
 import uz.murodjon.robotcallv2.sms.application.dto.SmsSendRequest;
 import uz.murodjon.robotcallv2.sms.application.port.output.EskizConnectionRepository;
 import uz.murodjon.robotcallv2.sms.application.port.output.SmsSenderPort;
+import uz.murodjon.robotcallv2.sms.domain.entity.EskizConnection;
 import uz.murodjon.robotcallv2.sms.domain.entity.SmsMessage;
-import uz.murodjon.robotcallv2.sms.infrastructure.config.SmsProperties;
+
+import java.time.Instant;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -27,11 +30,13 @@ class SmsServiceTest {
         externalSmsClient = mock(SmsSenderPort.class);
         eskizConnections = mock(EskizConnectionRepository.class);
         auditService = mock(AuditService.class);
+        when(eskizConnections.findByCompanyId(1L)).thenReturn(Optional.of(
+                new EskizConnection("ops@example.uz", "secret", null, Instant.EPOCH)));
     }
 
     @Test
-    void sendsSmsSuccessfullyWhenEnabled() {
-        SmsService service = new SmsService(new SmsProperties(true, null, null), externalSmsClient, eskizConnections, auditService);
+    void sendsSmsSuccessfullyWithTheCompanysEskizAccount() {
+        SmsService service = new SmsService(externalSmsClient, eskizConnections, auditService);
         SmsSendRequest req = new SmsSendRequest("+998901234567", "To'lov linki: https://pay.uz/123");
 
         when(externalSmsClient.send(eq(1L), any(SmsMessage.class))).thenReturn(true);
@@ -47,8 +52,9 @@ class SmsServiceTest {
     }
 
     @Test
-    void reportsNotSentWithoutCallingClientWhenDisabled() {
-        SmsService service = new SmsService(new SmsProperties(false, null, null), externalSmsClient, eskizConnections, auditService);
+    void reportsNotSentWithoutCallingClientWithoutAnEskizAccount() {
+        when(eskizConnections.findByCompanyId(1L)).thenReturn(Optional.empty());
+        SmsService service = new SmsService(externalSmsClient, eskizConnections, auditService);
         SmsSendRequest req = new SmsSendRequest("+998901234567", "Test message");
 
         boolean result = service.sendSms(1L, req);
@@ -61,7 +67,7 @@ class SmsServiceTest {
 
     @Test
     void returnsFalseWhenExternalClientFails() {
-        SmsService service = new SmsService(new SmsProperties(true, null, null), externalSmsClient, eskizConnections, auditService);
+        SmsService service = new SmsService(externalSmsClient, eskizConnections, auditService);
         SmsSendRequest req = new SmsSendRequest("+998901234567", "Test message");
 
         when(externalSmsClient.send(eq(1L), any(SmsMessage.class))).thenThrow(new RuntimeException("SMS Gateway Timeout"));
@@ -74,7 +80,7 @@ class SmsServiceTest {
 
     @Test
     void returnsFalseWhenTheGatewayRefuses() {
-        SmsService service = new SmsService(new SmsProperties(true, null, null), externalSmsClient, eskizConnections, auditService);
+        SmsService service = new SmsService(externalSmsClient, eskizConnections, auditService);
         SmsSendRequest req = new SmsSendRequest("+998901234567", "Test message");
 
         when(externalSmsClient.send(eq(1L), any(SmsMessage.class))).thenReturn(false);
@@ -85,7 +91,7 @@ class SmsServiceTest {
 
     @Test
     void throwsValidationExceptionWhenRequestHasBlankFields() {
-        SmsService service = new SmsService(new SmsProperties(true, null, null), externalSmsClient, eskizConnections, auditService);
+        SmsService service = new SmsService(externalSmsClient, eskizConnections, auditService);
         SmsSendRequest req = new SmsSendRequest("", "Test message");
 
         assertThatThrownBy(() -> service.sendSms(1L, req))

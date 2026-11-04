@@ -52,6 +52,10 @@ import java.util.Set;
  *                 the agent's own; a stage with them searches even when the agent's {@code useRag}
  *                 is off, unless {@code overrides.knowledgeRetrieval} switches it off. Sources of
  *                 another company are never read; null or empty = the agent's only
+ * @param fallbackLine what is said in this stage when the model produced nothing speakable — usually
+ *                 the stage's own question again ("Qaysi sanada to'lov qila olasiz?"), with
+ *                 {@code {{fact}}} templates filled in by the code; null = the standard "could you
+ *                 repeat that" line
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record StageDef(
@@ -73,7 +77,8 @@ public record StageDef(
         StageOverrides overrides,
         List<StyleExample> examples,
         Boolean skipWhenKnown,
-        List<Long> knowledgeSourceIds
+        List<Long> knowledgeSourceIds,
+        String fallbackLine
 ) {
     public StageDef {
         if (type == null) {
@@ -100,11 +105,11 @@ public record StageDef(
 
     /**
      * A plain conversation stage: no emotion, model override, branches, conditions, fixed line,
-     * required outcomes, canvas position, global condition, action, title, overrides, examples or
-     * knowledge sources of its own.
+     * required outcomes, canvas position, global condition, action, title, overrides, examples,
+     * knowledge sources or fallback line of its own.
      */
     public StageDef(String id, String purpose, List<String> allowedTransitions, List<String> allowedTools) {
         this(id, purpose, allowedTransitions, allowedTools, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null);
+                null, null, null, null, null);
     }
 }

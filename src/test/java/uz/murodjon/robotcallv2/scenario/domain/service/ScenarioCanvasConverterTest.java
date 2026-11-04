@@ -28,7 +28,7 @@ class ScenarioCanvasConverterTest {
                 List.of(new StageBranch("debtAmount", BranchOperator.LESS_OR_EQUAL, "0", "OFFER")),
                 Map.of("OFFER", "Mijoz ha dedi", "WRONG_PERSON", "Mijoz adashibsiz dedi"),
                 "Assalomu alaykum {{clientName}}, siz bilan gaplashyapmanmi?",
-                List.of("identified"), null, null, null, null, null, null, null, null, null
+                List.of("identified"), null, null, null, null, null, null, null, null, null, null
         );
 
         StageDef offer = new StageDef(
@@ -41,7 +41,8 @@ class ScenarioCanvasConverterTest {
                 null,
                 Map.of("END", "Rozilik bildirdi"),
                 "Siz uchun 15% chegirma mavjud!",
-                null, null, null, null, null, null, null, null, null, null
+                null, null, null, null, null, null, null, null, null, null,
+                "Taklif sizga ma'qulmi?"
         );
 
         StageDef end = new StageDef("END", "Yakunlash", List.of(), List.of());
@@ -117,6 +118,8 @@ class ScenarioCanvasConverterTest {
         assertThat(recGreeting.emotion()).isEqualTo("FRIENDLY");
         assertThat(recGreeting.branches()).hasSize(1);
         assertThat(recGreeting.branches().get(0).fact()).isEqualTo("debtAmount");
+        assertThat(recGreeting.fallbackLine()).isNull();
+        assertThat(reconstructed.findStage("OFFER").fallbackLine()).isEqualTo("Taklif sizga ma'qulmi?");
 
         assertThat(reconstructed.globalNodes()).hasSize(1);
         assertThat(reconstructed.globalNodes().get(0).question()).isEqualTo("Siz kimsiz?");

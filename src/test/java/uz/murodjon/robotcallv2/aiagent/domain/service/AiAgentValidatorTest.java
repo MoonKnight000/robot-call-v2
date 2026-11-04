@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.aiagent.domain.service;
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.aiagent.AiAgentFixtures;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentPhrases;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PostCallAction;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.PostCallCondition;
@@ -114,6 +115,48 @@ class AiAgentValidatorTest {
 
     private static AiAgent agentWithActions(PostCallAction... actions) {
         return AiAgentFixtures.agent(1, 1, 1, "uz-UZ", "test").toBuilder().postCallActions(List.of(actions)).build();
+    }
+
+    @Test
+    void acceptsShortOwnPhrases() {
+        var agent = agentWithPhrases(new AiAgentPhrases("Alo, Murod aka, eshityapsizmi?", null, null,
+                "Rahmat, xayr!", null, null, List.of("Bir lahza."), List.of("Aha.", "Ha-ha.")));
+
+        assertThatCode(() -> AiAgentValidator.validate(agent, null)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void refusesABackchannelThatIsASentence() {
+        var agent = agentWithPhrases(new AiAgentPhrases(null, null, null, null, null, null,
+                List.of(), List.of("Ha, men sizni diqqat bilan eshityapman")));
+
+        assertThatThrownBy(() -> AiAgentValidator.validate(agent, null))
+                .isInstanceOfSatisfying(ValidationException.class, e ->
+                        assertThat(e.code()).isEqualTo(ErrorCode.AI_AGENT_BACKCHANNEL_TOO_LONG));
+    }
+
+    @Test
+    void refusesAnOverlongPhrase() {
+        var agent = agentWithPhrases(new AiAgentPhrases(null, null, null, "x".repeat(301), null, null,
+                null, null));
+
+        assertThatThrownBy(() -> AiAgentValidator.validate(agent, null))
+                .isInstanceOfSatisfying(ValidationException.class, e ->
+                        assertThat(e.code()).isEqualTo(ErrorCode.AI_AGENT_PHRASE_TOO_LONG));
+    }
+
+    @Test
+    void refusesAnOversizedThinkingPool() {
+        var agent = agentWithPhrases(new AiAgentPhrases(null, null, null, null, null, null,
+                java.util.Collections.nCopies(11, "Bir lahza."), null));
+
+        assertThatThrownBy(() -> AiAgentValidator.validate(agent, null))
+                .isInstanceOfSatisfying(ValidationException.class, e ->
+                        assertThat(e.code()).isEqualTo(ErrorCode.AI_AGENT_PHRASE_POOL_INVALID));
+    }
+
+    private static AiAgent agentWithPhrases(AiAgentPhrases phrases) {
+        return AiAgentFixtures.agent(1, 1, 1, "uz-UZ", "test").toBuilder().phrases(phrases).build();
     }
 
     private static AiAgent agentWith(DataExtractionField... fields) {

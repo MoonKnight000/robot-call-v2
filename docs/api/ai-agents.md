@@ -262,6 +262,16 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     "responseWaitMs": 600,
     "llmTurnDetection": null
   },
+  "phrases": {
+    "stillThere": null,
+    "stillThereLastCall": null,
+    "didNotCatch": null,
+    "farewell": null,
+    "gratitudeReply": null,
+    "doNotCallReply": null,
+    "thinking": [],
+    "backchannels": []
+  },
   "limits": {
     "concurrentCallsLimit": 15,
     "dailyCallsLimit": 500,
@@ -542,6 +552,12 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > redakt qilinadi. Caller transkripti event payload'iga kiritilmaydi. `INTENT_DETECTED`
 > faqat intent aniqlagich mavjud va yoqilgan bo'lsa yuboriladi.
 
+> **`transferMessage`** (string, ixtiyoriy) — operatorga ulashdan oldin mijoz eshitadigan gap. U
+> transfer qayerdan boshlanganidan qat'i nazar aytiladi: model `requestHumanTransfer` ni gapsiz
+> chaqirganda, mijoz "operatorga ulang" deganda (fast path) va kod o'zi operatorga oshirganda
+> (bosqichda tiqilib qolish, `FactGuard` javobni ikki marta rad etishi). `null` — standart
+> "Bir daqiqa, sizni operatorga ulab beraman." (qo'ng'iroq tilida). Gap agent tilida yoziladi.
+
 > **`transferQueueId`** (long, ixtiyoriy) — [operatorlar navbati](call-queues.md) ID si.
 > Berilgan bo'lsa, agent qo'ng'iroqni odamga uzatganda mijoz shu **navbatga** tushadi:
 > kutish musiqasi, "Sizning navbatingiz — ...", operatorga whisper va screen pop, navbat
@@ -687,6 +703,9 @@ birlashtiriladi; `clearFields` yuborilmasa — hech narsa o'zgarmaydi (eski klie
 | `AI_MODEL_UNKNOWN` | `llmModel`, `fastLlmModel`, `fallbackLlmModel` yoki `postCallAnalysis.model` katalogda yo'q (yoki shu rejimda tanlab bo'lmaydi) |
 | `AI_AGENT_FALLBACK_MODE_WITHOUT_MODEL` | `fallbackLlmMode` berilgan, lekin agentda ham, so'rovda ham `fallbackLlmModel` yo'q |
 | `AI_AGENT_TRANSFER_PHONE_INVALID` | `transferPhoneNumber` telefon raqami emas |
+| `AI_AGENT_PHRASE_TOO_LONG` | `phrases` dagi bitta gap 300 belgidan uzun |
+| `AI_AGENT_PHRASE_POOL_INVALID` | `phrases.thinking` / `phrases.backchannels` 10 tadan ko'p yoki biri 80 belgidan uzun |
+| `AI_AGENT_BACKCHANNEL_TOO_LONG` | `phrases.backchannels` elementi 3 so'zdan uzun |
 | `AI_AGENT_RESPONSE_WAIT_OUT_OF_RANGE` | `callBehaviour.responseWaitMs` 100..3000 dan tashqarida |
 | `AI_AGENT_CALL_TUNING_OUT_OF_RANGE` | `reminderAfterSeconds` (1–300), `reminderMaxCount` (0–10), `dtmfTimeoutMs` (500–10000), `dtmfDigitLimit` (1–50) yoki `ringDurationSeconds` (5–300) chegaradan tashqarida; xabar maydon nomini aytadi |
 | `AI_AGENT_DTMF_KEY_INVALID` | `callBehaviour.dtmfTerminationKey` `0-9`, `#`, `*` dan boshqa |
@@ -968,6 +987,28 @@ Agent qo'ng'iroqda qaysi tool'larni **ko'rishi** shu yerda aniq belgilanadi. **Y
 - **Qo'ng'iroq ichidagi SMS (`sendMidCallSms`)** *(legacy; `functions` saqlangan bo'lsa `SEND_SMS` funksiyasi)* — `callBehaviour.midCallSmsEnabled` (+ `midCallSmsTemplate`), o'zgarmagan.
 - **Integratsiya tool'lari** *(legacy; `functions` saqlangan bo'lsa `INTEGRATION` funksiyalari ro'yxati ruxsat ro'yxati bo'ladi va `disabledIntegrationTools` e'tiborsiz)* — `disabledIntegrationTools` (`PUT /api/ai-agents/{id}`, `GET` javobida `AiAgentRow.disabledIntegrationTools`, standart `[]`). Kompaniya yoqqan Uysot tool'lari (integratsiyaning HTTP tool'lari, jumladan `createLead`, `moveLeadStage` kabi yozuvchilar) ilgari kompaniyaning **barcha** agentlariga berilardi; endi agent o'zi keraklisini o'chira oladi. Bo'sh ro'yxat — kompaniya sozlamasiga ergashadi. Element: tool'ning modelga ko'rinadigan nomi (`toolName`, masalan `createLead`); katalog kaliti (`CREATE_LEAD`) endi mos kelmaydi — V28 saqlangan kalitlarni nomga almashtirgan. Frontend ro'yxatni mavjud `GET /api/settings/integrations/tools` ([settings.md](settings.md), `INTEGRATION_READ`) dan oladi: har qator uchun `toolName` ni yuboring; `enabled && granted` qatorlargina agentga yetadi. Agent faqat **kompaniya yoqqan** tool'ni o'chira oladi, yoqmagan tool'ni agent yoqa olmaydi. `PUT` da berilsa **butun ro'yxat almashadi**, `[]` tozalaydi, berilmasa o'zgarmaydi. Cheklov: ko'pi bilan 100 ta, element bo'sh bo'lmasligi va 100 belgidan oshmasligi kerak, aks holda `400 AI_AGENT_DISABLED_INTEGRATION_TOOL_INVALID`. Katalogda yo'q (o'zgargan/o'chirilgan) nom xato bermaydi — e'tiborsiz qoldiriladi. O'zgarish **yangi qo'ng'iroqlardan** boshlab amal qiladi.
 
+#### `phrases` — agentning o'z tayyor gaplari
+
+Kod (model emas) aytadigan gaplarning agentga xos matni. `AiAgentRow.phrases` (har doim to'ldirilgan), `PUT /api/ai-agents/{id}` da
+`phrases` (`null` — o'zgartirma; berilsa **butun obyekt almashadi**, `{}` — hammasi standartga qaytadi). Qoralamaga
+yoziladi va versiyalanadi. Har bir maydon `null` / bo'sh bo'lsa standart gap aytiladi.
+
+| Maydon | Qachon aytiladi |
+|---|---|
+| `stillThere` | Mijoz jim qolganda (undan keyin javobsiz qolgan savol takrorlanadi). Bo'sh bo'lsa oxirgisidan oldingi eslatmalarni fast model suhbatga moslab yozadi ("Aloqadamisiz? Uy necha xonali bo'lsin, deb so'rayotgan edim."); server sozlamasi `DIALOG_NO_INPUT_CONTEXTUAL` (standart `true`). Berilgan bo'lsa, aynan shu gap aytiladi |
+| `stillThereLastCall` | Oxirgi jimlik eslatmasi — qo'ng'iroq tugashini ogohlantiradi |
+| `didNotCatch` | Model bo'sh javob berdi va bosqichda `fallbackLine` yo'q ([scenarios.md](scenarios.md)) |
+| `farewell` | Limit (turn, davomiylik, jimlik) qo'ng'iroqni tugatganda |
+| `gratitudeReply` | Mijoz "rahmat, xayr" deb yakunlaganda |
+| `doNotCallReply` | Mijoz "boshqa qo'ng'iroq qilmang" deganda, go'shak qo'yishdan oldin |
+| `thinking` | Uzoq kutishdagi to'ldiruvchi gaplar ("Bir lahza.") — faqat kutish haqida, tasdiq yoki va'da emas |
+| `backchannels` | Mijoz uzoq gapirganda tinglash ovozlari ("Aha.") |
+
+Gaplar **agentning asosiy tilida** (`language`) yoziladi va faqat shu tildagi qo'ng'iroqda aytiladi; qo'ng'iroq
+agentning boshqa tiliga o'tsa, o'sha tilning standart gaplari ishlatiladi. Kampaniya boshlanganda TTS keshiga
+oldindan sintez qilinadi. Realtime (speech-to-speech) qo'ng'iroqda ishlatilmaydi. Cheklov: bitta gap ≤ 300
+belgi; `thinking` va `backchannels` ≤ 10 ta, har biri ≤ 80 belgi; backchannel ≤ 3 so'z.
+
 #### `functions` — agentning funksiyalar ro'yxati (Retell "Functions")
 
 Agentning qo'ng'iroqdagi **barcha** tool'lari bitta ro'yxat: `AiAgentRow.functions` (har doim to'ldirilgan),
@@ -1059,6 +1100,9 @@ formasi). Katalog tool'iga ta'sir qiladi (`GET /api/settings/integrations/tools`
 (yoki bo'sh bo'lsa standart filler) aytiladi, `dialog.pre-tool-speech` o'chiq bo'lsa ham. `false` — funksiyaga xos filler qo'shilmaydi,
 lekin umumiy filler siyosati (`dialog.pre-tool-speech`, tool'ning o'z `speech.preToolSpeech`) avvalgidek ishlaydi. REALTIME'da filler
 mexanizmi yo'q — bu ikki maydon e'tiborsiz.
+Kutish gapi faqat sekin tool oldidan aytiladi: shu kompaniyada tool'ning o'lchangan bajarilish vaqti
+`dialog.filler-wait-threshold-ms` (standart 1000 ms) dan kam bo'lsa, gap aytilmaydi; hali bir marta ham ishlamagan tool'da
+aytiladi. Majburan aytish kerak bo'lsa — tool'ning `speech.forcePreToolSpeech` (bu tekshiruvdan o'tmaydi).
 
 **Eski agent uchun standart ro'yxat.** `functions` hech qachon saqlanmagan agentda `GET` quyidagini yasab qaytaradi (qo'ng'iroq xatti-harakati
 o'zgarmaydi): `END_CALL`; `transferPhoneNumber`/`transferQueueId` yoki umumiy operator bo'lsa `TRANSFER_CALL` (manzilsiz); `pressDigitEnabled`

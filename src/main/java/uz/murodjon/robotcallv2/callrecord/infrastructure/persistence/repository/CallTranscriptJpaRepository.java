@@ -42,6 +42,18 @@ public interface CallTranscriptJpaRepository extends JpaRepository<CallTranscrip
 
     List<CallTranscriptEntity> findByCall_IdOrderBySeq(long callId);
 
+    /** The call's last line said by {@code role} gets {@code text}. */
+    @Modifying @Transactional
+    @Query(value = "UPDATE call_transcript SET text = :text WHERE id = (SELECT max(t.id) FROM call_transcript t "
+            + "WHERE t.call_id = :callId AND t.role = :role)", nativeQuery = true)
+    int updateLastLineText(@Param("callId") long callId, @Param("role") String role, @Param("text") String text);
+
+    /** The call's last line said by {@code role} is removed. */
+    @Modifying @Transactional
+    @Query(value = "DELETE FROM call_transcript WHERE id = (SELECT max(t.id) FROM call_transcript t "
+            + "WHERE t.call_id = :callId AND t.role = :role)", nativeQuery = true)
+    int deleteLastLine(@Param("callId") long callId, @Param("role") String role);
+
     /** At most {@code batchSize} lines of conversations past their retention; the summary in call_result stays. */
     @Modifying @Transactional
     @Query(value = "DELETE FROM call_transcript WHERE id IN (SELECT t.id FROM call_transcript t "

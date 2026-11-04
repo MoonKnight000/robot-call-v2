@@ -448,7 +448,6 @@ services:
       STT_AISHA_API_KEY: ${STT_AISHA_API_KEY:-}
       TTS_AISHA_API_KEY: ${TTS_AISHA_API_KEY:-}
       TTS_AISHA_SPEAKER: ${TTS_AISHA_SPEAKER:-neutral}
-      ARI_LOG_LEVEL: ${ARI_LOG_LEVEL:-ERROR}
       # Barge-in + answering-machine detection (§7.2, §8.6).
       VAD_MODEL_PATH: ${VAD_MODEL_PATH:-/app/silero_vad.onnx}
       VAD_THRESHOLD: ${VAD_THRESHOLD:-0.5}
@@ -474,6 +473,8 @@ services:
       # baked into the image and does not need this. Point TURN_MODEL_PATH /
       # TEXT_TURN_MODEL_PATH / TEXT_TURN_TOKENIZER_PATH at /app/models/... to use the others.
       - ./models:/app/models:ro
+      # This machine's own log levels (config-local/logging.yml), read without a rebuild; optional.
+      - ./config-local:/app/config-local:ro
       # Rolling app log (logback-spring.xml) — the per-turn "turn latency:" lines live here
       # after `docker compose logs` has scrolled past them.
       - ./logs:/app/logs

@@ -93,7 +93,7 @@ Tezlashtirgichlar (hammasi default yoqilgan):
 | Preemptive TTS | taxminiy javobning sintezini ham oldindan boshlaydi; tegsa `tts_ttfb ≈ 0` | `DIALOG_PREEMPTIVE_TTS` |
 | Dinamik endpointing | qisqa javob ("ha", "yo'q") tez yopiladi, uzun gap kutiladi | `STT_ENDPOINTING_*` |
 | Final grace | EOU'dan keyin final kechiksa, oxirgi interim final deb olinadi | `STT_ENDPOINTING_FINAL_GRACE_MS=250` |
-| Filler | javob kechiksa "hozir…" kabi to'ldiruvchi | `DIALOG_FILLER_DELAY_MS=1400` |
+| Filler | shu qo'ng'iroqda o'lchangan LLM kechikishi chegaradan oshsa, turn boshida tez model yozgan qisqa gap ("Uch xonali, yaxshi."), bo'lmasa "bir lahza" | `DIALOG_FILLER_WAIT_THRESHOLD_MS=1000`, `DIALOG_FILLER_BRIDGE=true` |
 | Fast path | ma'lum savollarga LLM'siz tayyor javob (`TurnShortcuts`, KB item) | — |
 
 ## 4. Dialog: REALTIME va HALF_CASCADE (speech-to-speech)

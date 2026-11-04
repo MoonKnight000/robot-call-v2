@@ -1,0 +1,14 @@
+# This machine's own log levels. Copy to config-local/logging.yml (not committed) and restart:
+# no rebuild, the app reads it from disk (IntelliJ: project root; Docker: mounted at /app/config-local).
+# Groups and defaults: src/main/resources/config/logging.yml. Without a restart: POST /actuator/loggers/<name>.
+logging:
+  level:
+    # A whole group...
+    # stt: DEBUG
+    # vad: DEBUG
+    # turn: DEBUG
+    # dialog: DEBUG
+    # llm: DEBUG
+    # telephony: DEBUG
+    # ...or one class.
+    # uz.murodjon.robotcallv2.agent.dialog.SilenceWatchdogRunner: DEBUG

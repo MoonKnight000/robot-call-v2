@@ -50,9 +50,10 @@ RUN --mount=type=cache,target=/gradle-home,sharing=locked \
 
 FROM eclipse-temurin:21-jre
 # ffmpeg decodes browser recordings (WebM/Opus, MP4/AAC) for the STT preview endpoint
-# (AudioTranscoder) — nothing in the JVM reads those containers.
+# (AudioTranscoder) — nothing in the JVM reads those containers. libc++1 is what TEN VAD's
+# native library links against (voice-agent.ten-vad, read from the ./models mount).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg libc++1 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/app.jar /app/app.jar

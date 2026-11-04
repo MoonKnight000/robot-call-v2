@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.agent.audio.AnsweringMachineDetector;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
 
+import java.io.Closeable;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.IntConsumer;
@@ -24,7 +25,7 @@ import java.util.function.IntConsumer;
  *
  * <p>Runs on the RTP consumer thread; Silero inference on a 32ms window is cheap.
  */
-public class VadStream implements AudioListener {
+public class VadStream implements AudioListener, Closeable {
 
     private static final Logger log = LoggerFactory.getLogger(VadStream.class);
 
@@ -43,7 +44,7 @@ public class VadStream implements AudioListener {
     /** Weight when it is getting quieter — faster, so the threshold follows a call that goes indoors. */
     private static final double FLOOR_FALL = 0.05;
 
-    private final SileroVad model;
+    private final VadScorer scorer;
     private final String channelId;
     private final float threshold;
     private final float listeningThreshold;
@@ -76,9 +77,6 @@ public class VadStream implements AudioListener {
     private int bargeInRunWindows;
 
     private final float[] window;
-    private final float[][][] state;
-    /** The tail of the window before this one — see {@link SileroVad#run}. */
-    private final float[] context;
     private int filled;
     private int speechWindows;
     private int silenceWindows;
@@ -120,10 +118,23 @@ public class VadStream implements AudioListener {
     public VadStream(SileroVad model, VadProperties vadProperties, String channelId, BooleanSupplier onBargeIn,
                      SpeechGate gate, AnsweringMachineDetector amd, IntConsumer onSpeechEnd,
                      DoubleSupplier botLevel, Runnable onSustainedSpeech) {
-        this.model = model;
+        this(model.openStream(), vadProperties, channelId, onBargeIn, gate, amd, onSpeechEnd, botLevel,
+                onSustainedSpeech);
+    }
+
+    /**
+     * @param scorer this stream's own voice-activity model ({@link SileroVad#openStream},
+     *               {@link TenVad#openStream}); closed with the stream
+     */
+    public VadStream(VadScorer scorer, VadProperties vadProperties, String channelId, BooleanSupplier onBargeIn,
+                     SpeechGate gate, AnsweringMachineDetector amd, IntConsumer onSpeechEnd,
+                     DoubleSupplier botLevel, Runnable onSustainedSpeech) {
+        this.scorer = scorer;
         this.channelId = channelId;
-        this.threshold = vadProperties.threshold();
-        this.listeningThreshold = vadProperties.listeningThreshold() > 0f ? vadProperties.listeningThreshold() : 0.35f;
+        // A model whose scores sit elsewhere (TEN VAD) brings its own thresholds.
+        this.threshold = !Float.isNaN(scorer.bargeInThreshold()) ? scorer.bargeInThreshold() : vadProperties.threshold();
+        this.listeningThreshold = !Float.isNaN(scorer.listeningThreshold()) ? scorer.listeningThreshold()
+                : vadProperties.listeningThreshold() > 0f ? vadProperties.listeningThreshold() : 0.35f;
         this.minEnergyRms = vadProperties.minEnergyRms() > 0 ? vadProperties.minEnergyRms() : 150.0;
         this.noiseFloorMargin = vadProperties.noiseFloorMargin() > 0 ? vadProperties.noiseFloorMargin() : DEFAULT_NOISE_FLOOR_MARGIN;
         this.noiseFloorRms = this.minEnergyRms;
@@ -135,8 +146,6 @@ public class VadStream implements AudioListener {
         this.amd = amd;
         this.onSpeechEnd = onSpeechEnd != null ? onSpeechEnd : ms -> { };
         this.window = new float[vadProperties.windowSamples()];
-        this.state = model.newState();
-        this.context = model.newContext();
         int frameMs = Math.max(1, vadProperties.windowSamples() * 1000 / vadProperties.sampleRate());
         this.minSpeechWindows = Math.max(1, vadProperties.minSpeechMs() / frameMs);
         this.silenceResetWindows = Math.max(1, vadProperties.silenceResetMs() / frameMs);
@@ -161,7 +170,7 @@ public class VadStream implements AudioListener {
     }
 
     private void process() {
-        float prob = model.run(window, state, context);
+        float prob = scorer.score(window);
         if (prob < 0f) {
             // Inference error — stop scoring this stream (barge-in off, call continues).
             disabled = true;
@@ -258,6 +267,13 @@ public class VadStream implements AudioListener {
                 countBargeInRun(); // a gap between words, not the end of the run
             }
         }
+    }
+
+    /** Releases the scorer's per-stream state (TEN VAD's native handle); the call's audio has stopped. */
+    @Override
+    public void close() {
+        disabled = true;
+        scorer.close();
     }
 
     /** One more window of the caller talking over the bot since the barge-in fired. */

@@ -85,6 +85,9 @@ spring:
       - classpath:config/integrations.yml
       - classpath:config/misc.yml
       - classpath:config/billing.yml
+      - classpath:config/logging.yml
+      # This machine's own overrides (log levels): not committed, read without a rebuild, last so it wins.
+      - optional:file:./config-local/logging.yml
 
 server:
   port: 8080
@@ -95,7 +98,8 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        # loggers: read and change log levels on the running app (config/logging.yml); PLATFORM_ADMIN only.
+        include: health,info,metrics,prometheus,loggers
   endpoint:
     health:
       # Reachable without a token for orchestrator probes, but the component breakdown
@@ -104,12 +108,6 @@ management:
   metrics:
     tags:
       application: robot-call-v2
-
-logging:
-  level:
-    # ari4java WARNs on its normal path and buries our own lines — see AriClient#open.
-    ch.loway.oss.ari4java.tools.BaseAriAction: ${ARI_LOG_LEVEL:ERROR}
-    ch.loway.oss.ari4java.generated.AriWSHelper: ${ARI_LOG_LEVEL:ERROR}
 
 springdoc:
   api-docs:

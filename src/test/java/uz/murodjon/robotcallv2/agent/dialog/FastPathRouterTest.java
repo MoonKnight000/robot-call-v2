@@ -4,6 +4,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentCallBehaviour;
+import uz.murodjon.robotcallv2.scenario.domain.entity.GlobalNode;
+import uz.murodjon.robotcallv2.shared.dialog.DialogPhrases;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -120,6 +124,22 @@ class FastPathRouterTest {
 
         assertThat(result.handled()).isTrue();
         assertThat(result.disposition()).isEqualTo(Disposition.TRANSFERRED);
+        assertThat(result.reply()).isEqualTo(DialogPhrases.transferring("uz-UZ"));
+    }
+
+    @Test
+    void transferSaysTheAgentsOwnTransferMessage() {
+        when(session.language()).thenReturn("uz-UZ");
+        AiAgent agent = mock(AiAgent.class);
+        AiAgentCallBehaviour behaviour = mock(AiAgentCallBehaviour.class);
+        when(behaviour.transferMessage()).thenReturn("  Hozir mutaxassisimizga ulayman.  ");
+        when(agent.callBehaviour()).thenReturn(behaviour);
+        when(session.agent()).thenReturn(agent);
+
+        FastPathResult result = router.evaluate(session, "operatorga ulang");
+
+        assertThat(result.disposition()).isEqualTo(Disposition.TRANSFERRED);
+        assertThat(result.reply()).isEqualTo("Hozir mutaxassisimizga ulayman.");
     }
 
     @ParameterizedTest
@@ -239,6 +259,52 @@ class FastPathRouterTest {
         assertThat(result.endCall()).isFalse();
         assertThat(result.reply()).contains("Uysot Bank kompaniyasining sun'iy intellekt ovozli yordamchisiman.");
         assertThat(result.reply()).endsWith("To'lovni ertaga qila olasizmi?");
+    }
+
+    @Test
+    void identitySaysTheScenariosOwnAnswer() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.companyName()).thenReturn("Uysot");
+        when(session.lastAgentText()).thenReturn("Qaysi kuni to'lay olasiz?");
+        when(session.outcome()).thenReturn(java.util.Map.of("clientName", "Murod"));
+        uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition def = mock(uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition.class);
+        when(def.globalNodes()).thenReturn(java.util.List.of(
+                new GlobalNode("Qayerga to'lasam bo'ladi?", "Click yoki Payme orqali."),
+                new GlobalNode("Siz kimsiz? Qayerdan qo'ng'iroq qilyapsiz?",
+                        " {{clientName}} aka, Uysot kompaniyasining to'lovlar bo'limidan qo'ng'iroq qilyapman. ")));
+        when(session.scenario()).thenReturn(def);
+
+        FastPathResult result = router.evaluate(session, "kim bu?");
+
+        assertThat(result.reply()).isEqualTo(
+                "Murod aka, Uysot kompaniyasining to'lovlar bo'limidan qo'ng'iroq qilyapman. Qaysi kuni to'lay olasiz?");
+    }
+
+    @Test
+    void aRobotCheckIsAnsweredHonestlyEvenWithAScenarioAnswer() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.companyName()).thenReturn("Uysot");
+        uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition def = mock(uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition.class);
+        when(def.globalNodes()).thenReturn(java.util.List.of(
+                new GlobalNode("Siz kimsiz?", "Uysot kompaniyasidan qo'ng'iroq qilyapman.")));
+        when(session.scenario()).thenReturn(def);
+
+        FastPathResult result = router.evaluate(session, "robotmisiz?");
+
+        assertThat(result.reply()).contains("sun'iy intellekt ovozli yordamchisiman");
+    }
+
+    @Test
+    void identityKeepsTheGenericAnswerWhenTheScenarioAnswersInAnotherLanguage() {
+        when(session.language()).thenReturn("ru-RU");
+        uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition def = mock(uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition.class);
+        when(def.globalNodes()).thenReturn(java.util.List.of(
+                new GlobalNode("Siz kimsiz?", "Uysot kompaniyasidan qo'ng'iroq qilyapman.")));
+        when(session.scenario()).thenReturn(def);
+
+        FastPathResult result = router.evaluate(session, "кто это?");
+
+        assertThat(result.reply()).startsWith("Я голосовой ассистент");
     }
 
     @Test

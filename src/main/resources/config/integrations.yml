@@ -40,7 +40,7 @@ voice-agent:
       max-debtors: ${CRM_DEBTOR_MAX:200}
       page-size: ${CRM_DEBTOR_PAGE_SIZE:100}
       max-pages: ${CRM_DEBTOR_MAX_PAGES:20}
-    call-history-employee-id: ${CRM_CALL_HISTORY_EMPLOYEE_ID:}
+    call-history-employee-id: ${CRM_CALL_HISTORY_EMPLOYEE_ID:253}
     # CRM catalog reads (UysotCatalogProperties)
     catalog:
       houses-path: ${CRM_HOUSES_PATH:v1/open-api/house/all}
@@ -70,11 +70,8 @@ voice-agent:
 
   # SMS gateway (SmsProperties)
   sms:
-    enabled: ${SMS_ENABLED:false}
     default-sender: ${SMS_DEFAULT_SENDER:4546}
     eskiz:
-      email: ${SMS_ESKIZ_EMAIL:}
-      password: ${SMS_ESKIZ_PASSWORD:}
       base-url: ${SMS_ESKIZ_BASE_URL:https://notify.eskiz.uz/api}
       callback-url: ${SMS_ESKIZ_CALLBACK_URL:}
 

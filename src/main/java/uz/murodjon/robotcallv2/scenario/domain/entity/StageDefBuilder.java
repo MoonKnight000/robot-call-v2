@@ -31,6 +31,7 @@ public class StageDefBuilder {
     private List<StyleExample> examples;
     private Boolean skipWhenKnown;
     private List<Long> knowledgeSourceIds;
+    private String fallbackLine;
 
     StageDefBuilder() {
     }
@@ -55,6 +56,7 @@ public class StageDefBuilder {
         this.examples = source.examples();
         this.skipWhenKnown = source.skipWhenKnown();
         this.knowledgeSourceIds = source.knowledgeSourceIds();
+        this.fallbackLine = source.fallbackLine();
     }
 
     public StageDefBuilder id(String id) {
@@ -152,9 +154,14 @@ public class StageDefBuilder {
         return this;
     }
 
+    public StageDefBuilder fallbackLine(String fallbackLine) {
+        this.fallbackLine = fallbackLine;
+        return this;
+    }
+
     public StageDef build() {
         return new StageDef(id, purpose, allowedTransitions, allowedTools, emotion, model, branches,
                 transitionConditions, staticLine, requiredOutcomes, type, position, globalCondition, action, title,
-                overrides, examples, skipWhenKnown, knowledgeSourceIds);
+                overrides, examples, skipWhenKnown, knowledgeSourceIds, fallbackLine);
     }
 }

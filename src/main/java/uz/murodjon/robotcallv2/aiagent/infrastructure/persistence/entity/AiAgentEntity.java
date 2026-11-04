@@ -183,6 +183,10 @@ public class AiAgentEntity {
     private String functions;
 
     @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "phrases", columnDefinition = "jsonb")
+    private String phrases;
+
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "initiation_webhook", columnDefinition = "jsonb")
     private String initiationWebhook;
 
@@ -455,6 +459,14 @@ public class AiAgentEntity {
 
     public void setFunctions(String functions) {
         this.functions = functions;
+    }
+
+    public String getPhrases() {
+        return phrases;
+    }
+
+    public void setPhrases(String phrases) {
+        this.phrases = phrases;
     }
 
     public String getDisabledIntegrationTools() {

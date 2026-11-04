@@ -44,6 +44,16 @@ public class CallTranscriptRepositoryAdapter implements CallTranscriptRepository
     }
 
     @Override
+    public int updateLastLineText(long callId, String role, String text) {
+        return callTranscriptJpaRepository.updateLastLineText(callId, role, text);
+    }
+
+    @Override
+    public int deleteLastLine(long callId, String role) {
+        return callTranscriptJpaRepository.deleteLastLine(callId, role);
+    }
+
+    @Override
     public int deleteExpired(ConversationRetention retention, int batchSize) {
         return callTranscriptJpaRepository.deleteExpired(retention.now(), retention.defaultCutoff(),
                 retention.zeroPiiCutoff(), batchSize);

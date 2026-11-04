@@ -110,6 +110,8 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime:1.31.1")
     // Tokenizer for the text end-of-turn model (NAMO, voice-agent.text-turn); reads its tokenizer.json.
     implementation("ai.djl.huggingface:tokenizers:0.39.0")
+    // TEN VAD (voice-agent.ten-vad) is a native library; JNA binds its C API (agent/vad/TenVadLibrary).
+    implementation("net.java.dev.jna:jna:5.17.0")
 
     // CODE stage of a scenario flow — the company's own JavaScript, run in a constrained
     // GraalJS sandbox (no host, file or network access) by agent/dialog/StageScriptRunner.

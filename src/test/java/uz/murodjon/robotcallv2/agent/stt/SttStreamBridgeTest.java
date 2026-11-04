@@ -188,4 +188,20 @@ class SttStreamBridgeTest {
 
         assertThat(bridge.retune("someone-else", "stage-model", null)).isFalse();
     }
+
+    @Test
+    void finalThatIsOnlyTheStartOfTheInterimKeepsTheInterim() {
+        assertThat(SttStreamBridge.completeWithInterim("мен оны карап кетем да",
+                "мен оны карап кетем да частный сектор"))
+                .isEqualTo("мен оны карап кетем да частный сектор");
+    }
+
+    @Test
+    void finalThatRevisesTheInterimWins() {
+        assertThat(SttStreamBridge.completeWithInterim("ertaga to'layman", "ertaga to'lay olaman"))
+                .isEqualTo("ertaga to'layman");
+        assertThat(SttStreamBridge.completeWithInterim("ha", "hali emas")).isEqualTo("ha");
+        assertThat(SttStreamBridge.completeWithInterim("Ha, bo'ladi.", "ha bo'ladi")).isEqualTo("Ha, bo'ladi.");
+        assertThat(SttStreamBridge.completeWithInterim("ha", null)).isEqualTo("ha");
+    }
 }

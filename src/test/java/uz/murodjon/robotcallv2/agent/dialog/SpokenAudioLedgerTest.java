@@ -103,4 +103,65 @@ class SpokenAudioLedgerTest {
         assertThat(ledger.hasUnspokenText()).isFalse();
         assertThat(ledger.takeUnspokenText()).isNull();
     }
+
+    @Test
+    void aReplyFlushedBeforeAWordWentOutIsHeldWholeAndNothingCountsAsHeard() {
+        // The recorded call: a reply written ahead went out at once and was flushed 6 ms in.
+        ledger.appendSpokenAudio("Alo, eshitayapman, Murodjon aka.", 0, 16000);
+        ledger.appendSpokenAudio("Hozir gaplashishga qulaymi?", 16000, 12000);
+        when(endpoint.playedSamples()).thenReturn(48L);
+
+        assertThat(ledger.queuedText()).isEqualTo("Alo, eshitayapman, Murodjon aka. Hozir gaplashishga qulaymi?");
+        assertThat(ledger.holdUnheardAudio()).isEqualTo("Alo, eshitayapman, Murodjon aka. Hozir gaplashishga qulaymi?");
+        assertThat(ledger.spokenText()).isNull();
+        assertThat(ledger.takeUnspokenText()).isEqualTo("Alo, eshitayapman, Murodjon aka. Hozir gaplashishga qulaymi?");
+    }
+
+    @Test
+    void aCutMidLineHoldsTheRestOfItAndEverythingBehindIt() {
+        ledger.appendSpokenAudio("bir ikki uch", 0, 300);
+        ledger.appendSpokenAudio("to'rt besh", 300, 200);
+        when(endpoint.playedSamples()).thenReturn(150L);
+
+        assertThat(ledger.holdUnheardAudio()).isEqualTo("ikki uch to'rt besh");
+        assertThat(ledger.spokenText()).isEqualTo("bir");
+    }
+
+    @Test
+    void whatWasHeardStaysFixedOnceTheNextAudioMovesThePlaybackOn() {
+        ledger.appendSpokenAudio("bir ikki uch", 0, 300);
+        when(endpoint.playedSamples()).thenReturn(150L);
+        ledger.holdUnheardAudio();
+
+        when(endpoint.playedSamples()).thenReturn(10_000L); // the resumed tail played after the flush
+
+        assertThat(ledger.spokenText()).isEqualTo("bir");
+    }
+
+    @Test
+    void aFullyHeardReplyHoldsNothing() {
+        ledger.appendSpokenAudio("bir ikki uch", 0, 300);
+        when(endpoint.playedSamples()).thenReturn(300L);
+
+        assertThat(ledger.holdUnheardAudio()).isNull();
+        assertThat(ledger.hasUnspokenText()).isFalse();
+    }
+
+    @Test
+    void textNeverSynthesizedIsHeldAfterTheFlushedAudio() {
+        ledger.appendSpokenAudio("bir ikki uch", 0, 300);
+        when(endpoint.playedSamples()).thenReturn(150L);
+        ledger.holdUnheardAudio();
+        ledger.setUnspokenText(" besh olti ");
+
+        assertThat(ledger.takeUnspokenText()).isEqualTo("ikki uch besh olti");
+    }
+
+    @Test
+    void settingNoTailDropsWhatIsHeld() {
+        ledger.setUnspokenText("qolgan qismi");
+        ledger.setUnspokenText(null);
+
+        assertThat(ledger.hasUnspokenText()).isFalse();
+    }
 }

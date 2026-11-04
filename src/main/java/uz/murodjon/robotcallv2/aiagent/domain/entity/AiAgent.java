@@ -28,7 +28,7 @@ import java.util.concurrent.ThreadLocalRandom;
  *
  * <p>Most of what an agent is arrives in groups — {@link AiAgentVoice}, {@link
  * AiAgentSpeechEngine}, {@link AiAgentAmbience}, {@link AiAgentCallBehaviour}, {@link
- * AiAgentLimits}, {@link AiAgentDataPolicy}, {@link AiAgentScript}. Each of those owns its
+ * AiAgentLimits}, {@link AiAgentDataPolicy}, {@link AiAgentScript}, {@link AiAgentPhrases}. Each of those owns its
  * own defaults, so an agent read from a half-filled row still comes out usable, and each
  * groups settings that are only meaningful together. What stays here is what identifies
  * the agent, what every part of it needs (the language, the persona), and the model.
@@ -89,7 +89,8 @@ public record AiAgent(
         Double ragMinScore,
         String ragInstruction,
         List<String> disabledIntegrationTools,
-        List<AgentFunction> functions
+        List<AgentFunction> functions,
+        AiAgentPhrases phrases
 ) {
 
     public AiAgent {
@@ -147,6 +148,9 @@ public record AiAgent(
         }
         if (limits == null) {
             limits = AiAgentLimits.NONE;
+        }
+        if (phrases == null) {
+            phrases = AiAgentPhrases.NONE;
         }
         if (dataPolicy == null) {
             dataPolicy = new AiAgentDataPolicy(false, true, null, null);

@@ -133,6 +133,23 @@ public class SileroVad {
         return new float[vadProperties.sampleRate() == 16000 ? 64 : 32];
     }
 
+    /** A scorer for one stream, carrying its own recurrent state and context. */
+    public VadScorer openStream() {
+        float[][][] state = newState();
+        float[] context = newContext();
+        return new VadScorer() {
+            @Override
+            public float score(float[] window) {
+                return run(window, state, context);
+            }
+
+            @Override
+            public String engine() {
+                return "silero";
+            }
+        };
+    }
+
     /**
      * Run one window through the model.
      *

@@ -27,6 +27,13 @@ public class NoInputWatchdog {
 
     private Instant lastActivity;
     /**
+     * The last sign of life that can only be the caller or the bot — a transcript, a key, the bot
+     * speaking, a prompt. What {@link #touchVoice} measures its allowance from.
+     */
+    private Instant lastConfirmedActivity;
+    /** The idle threshold of the last {@link #check}, which may be a stage's own. */
+    private Duration lastIdleThreshold;
+    /**
      * How long the caller has kept the agent waiting since their last sign of life, not counting
      * the stretch since {@link #waitingSince}. Time the agent spends speaking or composing a reply
      * is not the caller's silence; unlike {@link #lastActivity}, a prompt does not reset it either.
@@ -51,11 +58,38 @@ public class NoInputWatchdog {
         this.maxPrompts = Math.max(0, maxPrompts);
         this.lastMaxPrompts = this.maxPrompts;
         this.lastActivity = now;
+        this.lastConfirmedActivity = now;
+        this.lastIdleThreshold = idleThreshold;
         this.waitingSince = now;
     }
 
     /** Record activity on the line — anything that means the call is alive. */
     public synchronized void touch(Instant now) {
+        lastConfirmedActivity = now;
+        markAlive(now);
+    }
+
+    /**
+     * Record voice the VAD heard that nothing has transcribed — maybe a caller whose words the
+     * recognizer missed, maybe breathing or a noisy room.
+     *
+     * <p>It keeps the line alive for one idle threshold past the last confirmed activity, and no
+     * longer. Counted in full, a VAD that scored breathing as speech held the prompt off for the
+     * rest of the call: on a recorded call the caller sat silent for 50 s and was never asked
+     * "Alo, eshityapsizmi?". A real caller the recognizer cannot hear is asked after two
+     * thresholds instead of one.
+     *
+     * @return whether it counted
+     */
+    public synchronized boolean touchVoice(Instant now) {
+        if (now.isAfter(lastConfirmedActivity.plus(lastIdleThreshold))) {
+            return false;
+        }
+        markAlive(now);
+        return true;
+    }
+
+    private void markAlive(Instant now) {
         lastActivity = now;
         callerSilence = Duration.ZERO;
         waitingSince = now;
@@ -82,6 +116,7 @@ public class NoInputWatchdog {
     public synchronized NoInputAction check(Instant now, boolean botSpeaking, boolean turnInFlight,
                                             Duration idleThreshold, int maxPrompts) {
         lastMaxPrompts = Math.max(0, maxPrompts);
+        lastIdleThreshold = idleThreshold;
         trackCallerSilence(now, botSpeaking || turnInFlight);
         if (finished) {
             return NoInputAction.NONE;
@@ -90,6 +125,7 @@ public class NoInputWatchdog {
             // Not silence — and the idle clock has to restart from here, or the call
             // would be judged idle the moment a long reply finishes playing.
             lastActivity = now;
+            lastConfirmedActivity = now;
             return NoInputAction.NONE;
         }
         if (Duration.between(lastActivity, now).compareTo(idleThreshold) < 0) {
@@ -101,6 +137,7 @@ public class NoInputWatchdog {
         }
         prompts++;
         lastActivity = now; // the prompt itself resets the clock
+        lastConfirmedActivity = now;
         return NoInputAction.PROMPT;
     }
 
@@ -128,6 +165,11 @@ public class NoInputWatchdog {
         } else if (!agentBusy && waitingSince == null) {
             waitingSince = now;
         }
+    }
+
+    /** When the line was last heard alive — moves whenever the caller (or the VAD) is heard. */
+    public synchronized Instant lastActivity() {
+        return lastActivity;
     }
 
     /** How many prompts the last check allowed — the stage's own limit when it sets one. */

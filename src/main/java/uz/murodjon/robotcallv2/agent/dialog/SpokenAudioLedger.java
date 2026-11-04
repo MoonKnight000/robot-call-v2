@@ -107,9 +107,71 @@ class SpokenAudioLedger {
         return heard.isEmpty() ? null : heard.toString();
     }
 
-    /** Hold the tail of a reply a barge-in cut off, in case the interruption was noise. */
+    /**
+     * Everything this turn put out for the caller, heard or not, or {@code null} if nothing —
+     * what the turn recorded as its reply when it finished before a barge-in cut the audio.
+     */
+    synchronized String queuedText() {
+        StringBuilder queued = new StringBuilder(spokenText);
+        for (SpokenAudio line : spokenAudio) {
+            if (!queued.isEmpty()) {
+                queued.append(' ');
+            }
+            queued.append(line.text());
+        }
+        return queued.isEmpty() ? null : queued.toString();
+    }
+
+    /**
+     * At a barge-in that flushed the playback queue: fix this turn's lines at what the caller
+     * heard, and hold the rest as the unspoken tail — ahead of any text the turn had not even
+     * synthesized yet, which is held after it ({@link #setUnspokenText}).
+     *
+     * <p>Queued audio used to count as spoken. A reply written ahead of the final went out
+     * whole at once, a barge-in 6 ms into it flushed all of it, and the false-barge-in check
+     * found nothing to resume: the caller heard nothing, while the transcript said the bot
+     * spoke. Frozen here, too, because the flush leaves the playback counter where it stopped
+     * and the next line's audio moves it on — measured later, the cut line would count as heard.
+     *
+     * @return the part that was flushed unheard, or {@code null} when the caller heard it all
+     */
+    synchronized String holdUnheardAudio() {
+        long played = endpoint != null ? endpoint.playedSamples() : Long.MAX_VALUE;
+        StringBuilder unheard = new StringBuilder();
+        boolean cut = false;
+        for (SpokenAudio line : spokenAudio) {
+            String heard = cut ? null : line.heardPart(played);
+            appendSpokenText(heard);
+            String rest = heard == null ? line.text() : line.text().substring(heard.length()).trim();
+            if (!rest.isEmpty()) {
+                if (!unheard.isEmpty()) {
+                    unheard.append(' ');
+                }
+                unheard.append(rest);
+                cut = true;
+            }
+        }
+        spokenAudio.clear();
+        if (unheard.isEmpty()) {
+            return null;
+        }
+        String tail = unheard.toString();
+        unspokenText.updateAndGet(held -> held == null ? tail : tail + " " + held);
+        return tail;
+    }
+
+    /**
+     * Hold the tail of a reply a barge-in cut off, in case the interruption was noise — after
+     * anything {@link #holdUnheardAudio} already held, since it comes later in the reply.
+     * {@code null} drops the whole held tail.
+     */
     void setUnspokenText(String text) {
-        unspokenText.set(text == null || text.isBlank() ? null : text.trim());
+        if (text == null) {
+            unspokenText.set(null);
+        } else if (!text.isBlank()) {
+            String tail = text.trim();
+            unspokenText.updateAndGet(held -> held == null ? tail : held + " " + tail);
+        }
     }
 
     /** Take the interrupted reply's unspoken tail, or {@code null} if there is none. */

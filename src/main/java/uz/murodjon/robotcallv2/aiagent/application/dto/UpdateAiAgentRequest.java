@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Size;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentPostCallAnalysis;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgentPhrases;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataEvaluationCriterion;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.DataExtractionField;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentClearableField;
@@ -79,6 +80,7 @@ public record UpdateAiAgentRequest(
         @Size(max = 64) String timezone,
         Boolean enabled,
         Long version,
-        Set<AgentClearableField> clearFields
+        Set<AgentClearableField> clearFields,
+        AiAgentPhrases phrases
 ) {
 }

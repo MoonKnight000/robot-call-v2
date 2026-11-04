@@ -1,6 +1,8 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -26,6 +28,8 @@ import java.util.function.Supplier;
 @Component
 public class DialogExecutors {
 
+    private static final Logger log = LoggerFactory.getLogger(DialogExecutors.class);
+
     private final ExecutorService worker = Executors.newVirtualThreadPerTaskExecutor();
 
     private final ScheduledExecutorService scheduler =
@@ -37,7 +41,7 @@ public class DialogExecutors {
 
     /** Run {@code task} on the virtual-thread worker — where blocking calls belong. */
     public void submit(Runnable task) {
-        worker.submit(task);
+        worker.execute(logged(task));
     }
 
     /** As {@link #submit}, for a task whose result is wanted back. */
@@ -52,7 +56,22 @@ public class DialogExecutors {
      * @return the scheduled handle, so a caller that no longer wants the task can cancel it
      */
     public ScheduledFuture<?> scheduleOnWorker(Runnable task, long delayMs) {
-        return scheduler.schedule(() -> worker.submit(task), delayMs, TimeUnit.MILLISECONDS);
+        return scheduler.schedule(() -> worker.execute(logged(task)), delayMs, TimeUnit.MILLISECONDS);
+    }
+
+    /**
+     * A task that logs what it threw. {@code worker.submit} kept the exception in a future nobody
+     * reads: a turn started by the barge-in recovery died without a line in the log, and the
+     * caller heard 15 s of silence nobody could explain.
+     */
+    private static Runnable logged(Runnable task) {
+        return () -> {
+            try {
+                task.run();
+            } catch (RuntimeException e) {
+                log.error("Dialog task failed", e);
+            }
+        };
     }
 
     /**
