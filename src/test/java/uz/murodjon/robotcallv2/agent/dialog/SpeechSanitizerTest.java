@@ -75,4 +75,15 @@ class SpeechSanitizerTest {
         assertThat(SpeechSanitizer.stripUnspeakableCharacters("thought")).isEmpty();
         assertThat(SpeechSanitizer.stripUnspeakableCharacters("a thoughtful reply")).isEqualTo("a thoughtful reply");
     }
+
+    /** The tag a real call had synthesized in front of the line. */
+    @Test
+    void stripsAStageTagInFrontOfTheLine() {
+        assertThat(SpeechSanitizer.stripUnspeakableCharacters("[SEARCH] Navoiy majmuasidan ko'rsataman."))
+                .isEqualTo("Navoiy majmuasidan ko'rsataman.");
+        assertThat(SpeechSanitizer.stripUnspeakableCharacters("Xo'p. [OFFER] Ertaga bog'lanamiz."))
+                .isEqualTo("Xo'p. Ertaga bog'lanamiz.");
+        assertThat(SpeechSanitizer.stripUnspeakableCharacters("2 xonali [taxminan] uy"))
+                .isEqualTo("2 xonali [taxminan] uy");
+    }
 }

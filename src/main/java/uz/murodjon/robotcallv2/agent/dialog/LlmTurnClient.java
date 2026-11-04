@@ -16,6 +16,8 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.LlmFallback;
@@ -377,8 +379,12 @@ class LlmTurnClient {
         }
         try {
             String agentLine = s.lastAgentText();
+            List<String> said = s.findBridgesSaid();
             String user = (agentLine == null || agentLine.isBlank() ? "" : "Agent's last line: " + agentLine.strip() + "\n")
-                    + "Caller: " + caller.strip();
+                    + "Caller: " + caller.strip()
+                    // Left to itself the fast model writes "Xo'p." on nearly every turn.
+                    + (said.isEmpty() ? "" : "\nAlready said on this call — use different words: "
+                            + String.join(" · ", said));
             ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
                     .system(BRIDGE_PROMPT.formatted(SystemPromptFactory.languageName(s.language())))
                     .messages(List.of(new UserMessage(user)))
@@ -784,16 +790,32 @@ class LlmTurnClient {
         if (llmTimeout.backupAfterMs() <= 0 || model != null || backup == null || backup.isBlank()) {
             return primary;
         }
-        Flux<ChatResponse> backupStream = clientFor(s).prompt()
+        Flux<ChatResponse> backupCall = clientFor(s).prompt()
                 .system(system)
                 .messages(messages)
                 .options(turnTools.buildOptions(s, tools, backup).mutate())
                 .stream()
-                .chatResponse()
-                .doOnSubscribe(subscription -> log.info("[{}] no first token in {} ms — racing backup model '{}'",
+                .chatResponse();
+        // Logged when the wait runs out, not on the stream's subscribe: the Gemini client only
+        // signals that once its blocking request returns — on a lost race, when it is
+        // cancelled — so the line used to land with the primary's answer, ~2 s late.
+        // The backup's first chunk only gets through when it won: the loser is cancelled first.
+        AtomicBoolean backupAnswered = new AtomicBoolean();
+        Flux<ChatResponse> backupStream = Mono.delay(Duration.ofMillis(llmTimeout.backupAfterMs()))
+                .doOnNext(tick -> log.info("[{}] no first token in {} ms — racing backup model '{}'",
                         s.channelId(), llmTimeout.backupAfterMs(), backup))
-                .delaySubscription(Duration.ofMillis(llmTimeout.backupAfterMs()));
-        return Flux.firstWithSignal(primary, backupStream);
+                .thenMany(backupCall.subscribeOn(Schedulers.boundedElastic()))
+                .doOnNext(response -> {
+                    if (backupAnswered.compareAndSet(false, true)) {
+                        log.info("[{}] backup model '{}' answered first", s.channelId(), backup);
+                    }
+                });
+        // The Gemini client sends the request inside subscribe() and blocks there until the
+        // response starts, so firstWithSignal — which subscribes its sources one by one — sat
+        // in the primary for the whole stall and never reached the backup: no recorded call
+        // ever logged the race, and a 5 s stall cost the caller 12.7 s of silence. Each
+        // request subscribes on its own thread so the backup starts on time.
+        return Flux.firstWithSignal(primary.subscribeOn(Schedulers.boundedElastic()), backupStream);
     }
 
     /**

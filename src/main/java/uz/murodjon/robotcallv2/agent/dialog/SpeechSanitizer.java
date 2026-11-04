@@ -46,6 +46,15 @@ public final class SpeechSanitizer {
     private static final Pattern THOUGHT_MARKER_PATTERN = Pattern.compile(
             "(?:^|(?<=[.!?…]))\\s*thought\\b:?", Pattern.CASE_INSENSITIVE);
 
+    /**
+     * A stage tag the model put in front of its line, copying the bracketed
+     * {@code [SYSTEM: …]} notes it is sent: a recorded call had "[SEARCH] Navoiy turar joy
+     * majmuasidan …" synthesized and stored. Upper-case Latin only and only at a chunk start
+     * or after sentence punctuation, so a bracket in ordinary speech is left alone.
+     */
+    private static final Pattern STAGE_TAG_PATTERN = Pattern.compile(
+            "(?:^\\s*|(?<=[.!?…]\\s{0,3}))\\[[A-Z][A-Z0-9_]*]\\s*");
+
     private static final Set<String> FORBIDDEN_TOKENS = Set.of(
             "dynamic_thought_or_fallback",
             "dynamic_thought",
@@ -151,6 +160,7 @@ public final class SpeechSanitizer {
             return text;
         }
         String speakable = UNSPEAKABLE_CHAR_PATTERN.matcher(text).replaceAll("");
-        return THOUGHT_MARKER_PATTERN.matcher(speakable).replaceAll("");
+        String withoutThought = THOUGHT_MARKER_PATTERN.matcher(speakable).replaceAll("");
+        return STAGE_TAG_PATTERN.matcher(withoutThought).replaceAll("");
     }
 }

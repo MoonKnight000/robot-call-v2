@@ -18,9 +18,10 @@ import uz.murodjon.robotcallv2.agent.turn.TurnCue;
  * @param llm           the LLM's verdict (speculative reply or LLM turn detector)
  * @param words         what the word rules ({@code TranscriptTurnCues}) read in the last interim
  * @param restarts      pauses the turn model had judged that VAD speech then started over
+ * @param policy        the {@code TurnPolicy} that combined the verdicts ({@code auto}, {@code mixed}, …)
  */
 public record TurnCloseDecision(String waitRule, int waitMs, String extensionRule, int extensionMs,
-                                String turnModel, TurnCue llm, TurnCue words, int restarts) {
+                                String turnModel, TurnCue llm, TurnCue words, int restarts, String policy) {
 
     /** The log form: {@code "post-roll 1200ms + words-unfinished 500ms (turn-model=complete, …)"}. */
     public String describe() {

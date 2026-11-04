@@ -57,9 +57,9 @@ class AudioPipelineAssembler {
     private final SttProperties sttProperties;
     private final SttProviderSelector sttProviderSelector;
     private final SmartTurnProperties smartTurnProperties;
-    private final ObjectProvider<SmartTurnDetector> turnDetectorProvider;
     private final TextTurnProperties textTurnProperties;
-    private final ObjectProvider<TextTurnDetector> textTurnDetectorProvider;
+    private final TurnSignalFactory turnSignalFactory;
+    private final TurnPolicyFactory turnPolicyFactory;
     private final LiveProperties liveProperties;
     private final LiveUseCase liveUseCase;
     private final DialogProperties dialogProperties;
@@ -85,9 +85,9 @@ class AudioPipelineAssembler {
                            SttProperties sttProperties,
                            SttProviderSelector sttProviderSelector,
                            SmartTurnProperties smartTurnProperties,
-                           ObjectProvider<SmartTurnDetector> turnDetectorProvider,
                            TextTurnProperties textTurnProperties,
-                           ObjectProvider<TextTurnDetector> textTurnDetectorProvider,
+                           TurnSignalFactory turnSignalFactory,
+                           TurnPolicyFactory turnPolicyFactory,
                            LiveProperties liveProperties,
                            LiveUseCase liveUseCase,
                            DialogProperties dialogProperties,
@@ -111,9 +111,9 @@ class AudioPipelineAssembler {
         this.sttProperties = sttProperties;
         this.sttProviderSelector = sttProviderSelector;
         this.smartTurnProperties = smartTurnProperties;
-        this.turnDetectorProvider = turnDetectorProvider;
         this.textTurnProperties = textTurnProperties;
-        this.textTurnDetectorProvider = textTurnDetectorProvider;
+        this.turnSignalFactory = turnSignalFactory;
+        this.turnPolicyFactory = turnPolicyFactory;
         this.liveProperties = liveProperties;
         this.liveUseCase = liveUseCase;
         this.dialogProperties = dialogProperties;
@@ -242,10 +242,7 @@ class AudioPipelineAssembler {
                         turnDatasetRecorder.record(language, agentLine, text, waitMs, continued,
                                 shadowScore.getAndSet(null), decision, vadEngine);
                     });
-                    if (!installTurnDetector(listeners, speechGate, language)
-                            && !installTextTurnDetector(speechGate, language)) {
-                        installShadowTurnDetector(listeners, speechGate, language, shadowScore);
-                    }
+                    installTurnSignals(listeners, speechGate, language, shadowScore);
                     installLlmTurnDetector(speechGate, channelId, agent);
                 }
                 // Who knows the caller stopped talking. With a gate installed it is the
@@ -404,101 +401,54 @@ class AudioPipelineAssembler {
                 llmTurnProperties.unfinishedWaitMs(), llmTurnProperties.waitHoldMs());
     }
 
-    /** @return whether Smart Turn now decides this call's turn ends */
-    private boolean installTurnDetector(List<AudioListener> listeners, SpeechGate gate, String language) {
-        if (!smartTurnProperties.enabled()) {
-            return false;
-        }
-        SmartTurnDetector detector = turnDetectorProvider.getIfAvailable();
-        if (detector == null || !detector.available()) {
-            return false;
-        }
+    /**
+     * The call's turn signal ({@link TurnSignalFactory}): Smart Turn or the text model decides
+     * when a pause is the end of the turn — extending a pause it calls unfinished, closing early
+     * one it is sure of. With neither, Smart Turn may still score in shadow
+     * ({@link SmartTurnProperties#shadowLanguages()}): its score goes to the turn dataset next to
+     * what the caller then did, and the gate is always told "finished" — the wait stays the timer's.
+     */
+    private void installTurnSignals(List<AudioListener> listeners, SpeechGate gate, String language,
+                                    AtomicReference<Float> shadowScore) {
         String callLanguage = (language == null || language.isBlank())
                 ? sttProperties.defaultLanguage() : language;
-        if (!smartTurnProperties.supports(callLanguage)) {
-            log.debug("Smart Turn skipped for {} — not a language the model was trained for", callLanguage);
-            return false;
-        }
-        UtteranceBuffer buffer = new UtteranceBuffer(detector.samples());
-        listeners.add(buffer);
-        gate.setTurnDetector(() -> {
-            boolean complete = detector.isComplete(buffer.recent(), buffer.length());
-            sttMetrics.turnScored(complete);
-            return complete;
-        }, smartTurnProperties.maxExtendMs());
-        if (smartTurnProperties.earlyWaitMs() > 0) {
-            gate.setEarlyClose(() -> {
-                boolean confident = detector.isConfidentlyComplete(buffer.recent(), buffer.length());
-                if (confident) {
-                    sttMetrics.turnClosedEarly();
-                }
-                return confident;
-            }, smartTurnProperties.earlyWaitMs());
-        }
-        return true;
-    }
-
-    /**
-     * The same two hooks as Smart Turn, judged from the words instead of the audio
-     * ({@link TextTurnDetector}): the recognizer's latest interim is what gets scored.
-     *
-     * @return whether it was installed
-     */
-    private boolean installTextTurnDetector(SpeechGate gate, String language) {
-        if (!textTurnProperties.enabled()) {
-            return false;
-        }
-        TextTurnDetector detector = textTurnDetectorProvider.getIfAvailable();
-        if (detector == null || !detector.available()) {
-            return false;
-        }
-        String callLanguage = (language == null || language.isBlank())
-                ? sttProperties.defaultLanguage() : language;
-        if (!textTurnProperties.supports(callLanguage)) {
-            log.debug("Text turn skipped for {} — not a language the model is trusted for", callLanguage);
-            return false;
-        }
-        gate.setTurnDetector(() -> {
-            boolean complete = detector.isComplete(gate.lastInterimTranscript());
-            sttMetrics.turnScored(complete);
-            return complete;
-        }, textTurnProperties.maxExtendMs());
-        if (textTurnProperties.earlyWaitMs() > 0) {
-            gate.setEarlyClose(() -> {
-                boolean confident = detector.isConfidentlyComplete(gate.lastInterimTranscript());
-                if (confident) {
-                    sttMetrics.turnClosedEarly();
-                }
-                return confident;
-            }, textTurnProperties.earlyWaitMs());
-        }
-        return true;
-    }
-
-    /**
-     * Smart Turn for a language it is only being evaluated in
-     * ({@link SmartTurnProperties#shadowLanguages()}): asked at the moment the timer would
-     * close, its score is handed to the turn dataset next to what the caller then did, and
-     * the answer given to the gate is always "finished" — the wait stays exactly the timer's.
-     */
-    private void installShadowTurnDetector(List<AudioListener> listeners, SpeechGate gate, String language,
-                                           AtomicReference<Float> score) {
-        if (!smartTurnProperties.enabled()) {
+        gate.setTurnPolicy(turnPolicyFactory.findForLanguage(callLanguage));
+        ActiveTurnSignal active = turnSignalFactory.openActive(callLanguage);
+        if (active != null) {
+            TurnSignal signal = active.signal();
+            if (signal.audioListener() != null) {
+                listeners.add(signal.audioListener());
+            }
+            gate.setTurnDetector(() -> {
+                boolean complete = signal.judge(momentOf(gate)).allowsClose();
+                sttMetrics.turnScored(complete);
+                return complete;
+            }, active.maxExtendMs());
+            if (active.earlyWaitMs() > 0) {
+                gate.setEarlyClose(() -> {
+                    boolean confident = signal.judge(momentOf(gate)).confident();
+                    if (confident) {
+                        sttMetrics.turnClosedEarly();
+                    }
+                    return confident;
+                }, active.earlyWaitMs());
+            }
             return;
         }
-        SmartTurnDetector detector = turnDetectorProvider.getIfAvailable();
-        String callLanguage = (language == null || language.isBlank())
-                ? sttProperties.defaultLanguage() : language;
-        if (detector == null || !detector.available() || !smartTurnProperties.shadows(callLanguage)) {
+        TurnSignal shadow = turnSignalFactory.openShadow(callLanguage);
+        if (shadow == null) {
             return;
         }
-        UtteranceBuffer buffer = new UtteranceBuffer(detector.samples());
-        listeners.add(buffer);
+        listeners.add(shadow.audioListener());
         gate.setTurnDetector(() -> {
-            float probability = detector.scoreCompletion(buffer.recent(), buffer.length());
-            score.set(probability < 0 ? null : probability);
+            float probability = shadow.judge(momentOf(gate)).probability();
+            shadowScore.set(probability < 0 ? null : probability);
             return true;
         }, 0);
+    }
+
+    private static TurnMoment momentOf(SpeechGate gate) {
+        return new TurnMoment(gate.lastInterimTranscript(), gate.agentLine());
     }
 
     private AnsweringMachineDetector buildAmd(String channelId, boolean realtime) {

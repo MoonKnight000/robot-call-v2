@@ -211,6 +211,8 @@ public class DialogSession implements DialogOutcomeSink {
     /** How many holding fillers and backchannels this call has picked — what rotates their pools. */
     private final AtomicInteger fillersPicked = new AtomicInteger();
     private final AtomicInteger backchannelsPicked = new AtomicInteger();
+    /** The bridge lines this call has said, as {@link #bridgeKey} — the fast model writes "Xo'p." on nearly every turn. */
+    private final Map<String, String> bridgesSaid = new ConcurrentHashMap<>();
     /** Set by the waitForCaller tool for the turn in progress; cleared when the next turn starts. */
     private volatile boolean waitingForCaller;
     /** Set for the turn that answers a waitForCaller nobody followed up on; cleared once its annex is built. */
@@ -1006,6 +1008,27 @@ public class DialogSession implements DialogOutcomeSink {
     /** The filler this turn played was the fast model's bridge line about the caller's words. */
     public void markBridgeSpoken(String line) {
         turnState.markBridgeSpoken(line);
+        if (line != null) {
+            bridgesSaid.putIfAbsent(bridgeKey(line), line.strip());
+        }
+    }
+
+    /**
+     * Whether this call has already said this bridge line. Recorded calls opened four replies
+     * out of six with the same "Xo'p.", which the caller hears as a script, not a person.
+     */
+    public boolean wasBridgeSaid(String line) {
+        return bridgesSaid.containsKey(bridgeKey(line));
+    }
+
+    /** The bridge lines this call has said, as said — for the fast model to write different words. */
+    public List<String> findBridgesSaid() {
+        return List.copyOf(bridgesSaid.values());
+    }
+
+    /** Case and punctuation aside: "Xo'p." and "xo'p" are the same bridge. */
+    private static String bridgeKey(String line) {
+        return line == null ? "" : line.replaceAll("[^\\p{L}\\p{N}'ʻʼ’ ]", "").trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     /** This turn's bridge line, or null; answers non-null once, for the reply's first sentence. */

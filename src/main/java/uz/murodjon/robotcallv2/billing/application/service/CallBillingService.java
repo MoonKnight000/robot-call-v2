@@ -273,7 +273,7 @@ public class CallBillingService implements CallBillingUseCase {
     }
 
     @Override
-    public long findUsageCostUzs)(CallUsage usage) {
+    public long findUsageCostUzs(CallUsage usage) {
         return CallCostCalculator.calculate(usage, billingRateProperties.rates()).totalUzs();
     }
 

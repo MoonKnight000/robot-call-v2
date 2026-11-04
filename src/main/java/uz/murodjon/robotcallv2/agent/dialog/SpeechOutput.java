@@ -533,6 +533,11 @@ public class SpeechOutput {
         try {
             // Words about what the caller said, when the fast model has some; the canned line otherwise.
             String bridge = bridgeLine != null ? bridgeLine.get() : null;
+            if (bridge != null && s.wasBridgeSaid(bridge)) {
+                // Said already this call: the rotating canned line is at least different words.
+                log.debug("[{}] bridge line already said this call, not repeated: {}", s.channelId(), bridge);
+                bridge = null;
+            }
             String line = bridge;
             if (line == null) {
                 List<String> options = DialogLines.thinking(s);

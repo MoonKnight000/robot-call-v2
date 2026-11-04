@@ -127,6 +127,7 @@ public class TurnDatasetRecorder {
                 row.put("words", decision.words().name().toLowerCase(Locale.ROOT));
             }
             row.put("restarts", decision.restarts());
+            row.put("policy", decision.policy());
         }
         if (vadEngine != null) {
             row.put("vad", vadEngine);

@@ -37,7 +37,10 @@ public class CallQualityRepositoryAdapter implements CallQualityRepository {
         this.mapper = mapper;
     }
 
+    // One session for the reference and the save: the finalizer runs outside any transaction, so
+    // the call-attempt proxy's session was already closed when the save and the mapping reached it.
     @Override
+    @Transactional
     public CallQuality save(CallQuality quality) {
         CallQualityEntity entity = mapper.toCallQualityEntity(quality);
         if (quality.callAttemptId() > 0) {

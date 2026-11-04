@@ -1,8 +1,12 @@
 package uz.murodjon.robotcallv2.agent.audio;
 
 import uz.murodjon.robotcallv2.agent.turn.AgentQuestion;
+import uz.murodjon.robotcallv2.agent.turn.AutoTurnPolicy;
 import uz.murodjon.robotcallv2.agent.turn.TranscriptTurnCues;
+import uz.murodjon.robotcallv2.agent.turn.TurnCall;
 import uz.murodjon.robotcallv2.agent.turn.TurnCue;
+import uz.murodjon.robotcallv2.agent.turn.TurnPolicy;
+import uz.murodjon.robotcallv2.agent.turn.TurnSource;
 
 import java.util.Locale;
 import java.util.function.BiConsumer;
@@ -151,6 +155,9 @@ public class SpeechGate {
     /** The wait a WAIT verdict earns: the caller asked for time. */
     private int llmWaitSamples;
 
+    /** How the verdicts below are combined; see {@link #setTurnPolicy}. */
+    private volatile TurnPolicy turnPolicy = AutoTurnPolicy.INSTANCE;
+
     /** Told how each close turned out; null when nobody is listening. */
     private GateCloseListener closeListener;
     /** The last interim when the gate last shut — what the close being judged was made on. */
@@ -178,7 +185,8 @@ public class SpeechGate {
 
     /**
      * Let the words move the wait: once {@code completeSilenceMs} of silence have passed,
-     * an utterance whose last interim reads as a finished sentence closes there instead of
+     * an utterance the policy reads as a finished sentence — the language model's verdict,
+     * not the word rules alone ({@link TurnPolicy#allowsShortWait}) — closes there instead of
      * waiting out the full hangover. 0 keeps the words from ever shortening the wait — an
      * unfinished-sounding one is still extended regardless.
      *
@@ -238,9 +246,10 @@ public class SpeechGate {
 
     /**
      * Ask a language model about every new interim (TEN Turn Detection); its answers come
-     * back through {@link #setLlmTurnCue}. An unfinished verdict waits {@code unfinishedWaitMs}
-     * of silence and a "wait" verdict {@code waitHoldMs}, instead of the turn detector's
-     * extension. The judge must not block: it runs on the recognizer's callback thread.
+     * back through {@link #setLlmTurnCue}. An unfinished verdict holds the pause for at most
+     * {@code unfinishedWaitMs} of silence and a "wait" verdict at most {@code waitHoldMs},
+     * instead of the turn detector's extension — less when the verdict changes mid-pause.
+     * The judge must not block: it runs on the recognizer's callback thread.
      */
     public void setLlmTurnDetector(BiConsumer<String, String> judge, int unfinishedWaitMs, int waitHoldMs) {
         this.llmUnfinishedSamples = Math.max(0, unfinishedWaitMs) * sampleRate / 1000;
@@ -289,6 +298,11 @@ public class SpeechGate {
     /** The agent's latest line itself, handed to the close listener. Safe to call from any thread. */
     public void setAgentLine(String agentLine) {
         this.agentLine = agentLine == null ? "" : agentLine;
+    }
+
+    /** The agent's latest line — what the caller is answering; empty before the agent has spoken. */
+    public String agentLine() {
+        return agentLine;
     }
 
     /** The recognizer's latest hypothesis for the utterance in progress; empty before the first. */
@@ -353,39 +367,60 @@ public class SpeechGate {
             }
             // Scored finished beyond doubt: the rest of the hangover is silence the caller
             // spends waiting for a verdict that is already in.
-            wait = silenceSamples;
             extensionDecided = true;
             extensionSamples = 0;
+            extensionRule = "none";
             waitRule = "turn-model-early";
             turnModelComplete = true;
-        }
-        if (!extensionDecided) {
-            // Asked once, at the moment the timer would have closed the utterance: the
-            // model costs a few milliseconds and the answer cannot change while the line
-            // stays silent, so scoring every window afterwards would buy nothing.
-            extensionDecided = true;
-            boolean complete = turnComplete == null || turnComplete.getAsBoolean();
-            turnModelComplete = turnComplete == null ? null : complete;
-            TurnCue llm = llmCue();
-            if (llm == TurnCue.WAIT && llmWaitSamples > 0) {
-                extensionSamples = llmWaitSamples;
-                extensionRule = "llm-wait";
-            } else if (llm == TurnCue.INCOMPLETE && llmUnfinishedSamples > 0) {
-                extensionSamples = llmUnfinishedSamples;
-                extensionRule = "llm-unfinished";
-            } else if (!complete || readsUnfinished()) {
-                extensionSamples = maxExtendSamples > 0 ? maxExtendSamples : (400 * sampleRate / 1000);
-                extensionRule = !complete ? "turn-model-unfinished"
-                        : llm != TurnCue.UNKNOWN ? "llm-unfinished" : "words-unfinished";
-            } else {
-                extensionSamples = 0;
-                extensionRule = "none";
-            }
-        }
-        if (silenceSamples < wait + extensionSamples) {
+            close(silenceSamples, false);
             return;
         }
-        close(wait + extensionSamples, false);
+        if (!extensionDecided) {
+            // The turn model is asked once, at the moment the wait runs out: its score cannot
+            // change while the line stays silent.
+            extensionDecided = true;
+            turnModelComplete = turnComplete == null ? null : turnComplete.getAsBoolean();
+        }
+        // The pause past the wait is judged again on every silent window: the language
+        // model's verdict arrives when it arrives, often after the wait has run out. Decided
+        // once, a turn model's "unfinished" made the caller sit out its whole extension after
+        // the LLM had already said finished, and an LLM "unfinished" that landed mid-pause was
+        // never heard. The fixed figures are only ceilings now — a held pause closes the window
+        // no source holds it any longer.
+        int held = silenceSamples - wait;
+        TurnCue model = turnModelComplete == null ? TurnCue.UNKNOWN
+                : turnModelComplete ? TurnCue.COMPLETE : TurnCue.INCOMPLETE;
+        TurnCall call = turnPolicy.judgePause(llmCue(), model, wordsCue());
+        int cap;
+        String rule;
+        if (call.cue() == TurnCue.WAIT && call.source() == TurnSource.LLM && llmWaitSamples > 0) {
+            cap = llmWaitSamples;
+            rule = "llm-wait";
+        } else if (call.cue() == TurnCue.INCOMPLETE && call.source() == TurnSource.LLM && llmUnfinishedSamples > 0) {
+            cap = llmUnfinishedSamples;
+            rule = "llm-unfinished";
+        } else if (call.holdsOpen()) {
+            cap = maxExtendSamples > 0 ? maxExtendSamples : (400 * sampleRate / 1000);
+            rule = call.source().label() + "-unfinished";
+        } else {
+            // Nothing holds the pause: closed on this window, with what was held so far
+            // reported under the rule that held it.
+            if ("none".equals(extensionRule)) {
+                held = 0;
+            }
+            extensionSamples = held;
+            close(wait + held, false);
+            return;
+        }
+        if (held < cap) {
+            extensionSamples = held;
+            extensionRule = rule;
+            return;
+        }
+        // Held to its ceiling with the source still saying unfinished: a safety stop, not a verdict.
+        extensionSamples = cap;
+        extensionRule = rule + "-cap";
+        close(wait + cap, false);
     }
 
     /**
@@ -427,8 +462,8 @@ public class SpeechGate {
 
     /**
      * Let something decide, when the wait runs out, whether the caller has actually
-     * finished a thought — and give an utterance it calls unfinished {@code maxExtendMs}
-     * more silence (see {@code SmartTurnDetector}).
+     * finished a thought — and give an utterance it calls unfinished up to {@code maxExtendMs}
+     * more silence, ended early once the policy no longer holds the pause (see {@code SmartTurnDetector}).
      *
      * <p>Only ever extends. The timer's wait is the floor whatever the model says, because
      * a model asked to shorten it is a model deciding when a caller gets interrupted, and
@@ -480,14 +515,21 @@ public class SpeechGate {
      * and the caller waited 12 s while background voices kept restarting the extension.
      */
     private boolean readsUnfinished() {
-        TurnCue llm = llmCue();
-        return llm == TurnCue.UNKNOWN ? continuationClause : llm == TurnCue.INCOMPLETE || llm == TurnCue.WAIT;
+        TurnCue words = turnPolicy.readWords(llmCue(), wordsCue());
+        return words == TurnCue.INCOMPLETE || words == TurnCue.WAIT;
     }
 
-    /** The words read as a finished sentence, by the same precedence as {@link #readsUnfinished}. */
-    private boolean readsFinished() {
-        TurnCue llm = llmCue();
-        return llm == TurnCue.UNKNOWN ? completeCue : llm == TurnCue.COMPLETE;
+    /** What the word rules ({@link TranscriptTurnCues}) read in the last interim. */
+    private TurnCue wordsCue() {
+        return continuationClause ? TurnCue.INCOMPLETE : completeCue ? TurnCue.COMPLETE : TurnCue.UNKNOWN;
+    }
+
+    /**
+     * How this call's verdicts are combined ({@link TurnPolicy}); {@link AutoTurnPolicy} — every
+     * installed source, as the gate always weighed them — until told otherwise.
+     */
+    public void setTurnPolicy(TurnPolicy turnPolicy) {
+        this.turnPolicy = turnPolicy == null ? AutoTurnPolicy.INSTANCE : turnPolicy;
     }
 
     /**
@@ -566,14 +608,16 @@ public class SpeechGate {
             waitRule = "quick-answer";
             return shortWait;
         }
-        // The model's verdict on these words replaces the word rules' (setLlmTurnCue).
-        boolean unfinished = readsUnfinished();
-        boolean finished = readsFinished();
+        // The short waits below need a positive "finished" from the policy — the language
+        // model's, as a rule (TurnPolicy#allowsShortWait). Until it has said so the utterance
+        // waits on the full hangover, and this is asked again every silent window, so a
+        // verdict that lands mid-pause closes the turn on the window it arrives.
+        boolean shortWaitAllowed = turnPolicy.allowsShortWait(llmCue(), wordsCue());
         AgentQuestion question = agentQuestion;
         int words = interimWords;
         // "ha, vaqtim bor" after "vaqtingiz bormi?" is the whole answer however slowly it
         // was said; the recognizer has to have heard it, and it must not lead on.
-        if (question == AgentQuestion.CLOSED && shortHangoverSamples > 0 && !unfinished
+        if (question == AgentQuestion.CLOSED && shortHangoverSamples > 0 && shortWaitAllowed
                 && words > 0 && words <= CLOSED_ANSWER_WORDS) {
             waitRule = "closed-answer";
             return shortWait;
@@ -582,7 +626,7 @@ public class SpeechGate {
         // the short wait answered half a sentence instead of the caller. After an open
         // question any short run is that start.
         boolean shortAnswer = shortHangoverSamples > 0 && speechSamples <= shortUtteranceSamples
-                && !unfinished && question != AgentQuestion.OPEN;
+                && shortWaitAllowed && question != AgentQuestion.OPEN;
         if (shortAnswer) {
             waitRule = "short-run";
             return shortWait;
@@ -590,8 +634,8 @@ public class SpeechGate {
         int wait = requested >= 0 ? requested
                 : dynamic ? (int) Math.round(emaHangoverSamples) : hangoverSamples;
         // A finished-sounding sentence does not wait out a budget sized for the caller who
-        // might still be mid-thought — the words already said they are not.
-        if (finished && completeHangoverSamples > 0) {
+        // might still be mid-thought — the model already said they are not.
+        if (shortWaitAllowed && completeHangoverSamples > 0) {
             waitRule = "complete-words";
             return Math.min(completeHangoverSamples, wait);
         }
@@ -622,9 +666,9 @@ public class SpeechGate {
     private TurnCloseDecision closeDecision(int waitSamples) {
         int extensionMs = (int) Math.round(extensionSamples * 1000d / sampleRate);
         int baseMs = (int) Math.round(waitSamples * 1000d / sampleRate) - extensionMs;
-        TurnCue words = continuationClause ? TurnCue.INCOMPLETE : completeCue ? TurnCue.COMPLETE : TurnCue.UNKNOWN;
         String turnModel = turnModelComplete == null ? "not-asked" : turnModelComplete ? "complete" : "unfinished";
-        return new TurnCloseDecision(waitRule, baseMs, extensionRule, extensionMs, turnModel, llmCue(), words, pauseRestarts);
+        return new TurnCloseDecision(waitRule, baseMs, extensionRule, extensionMs, turnModel, llmCue(), wordsCue(),
+                pauseRestarts, turnPolicy.name());
     }
 
     /**

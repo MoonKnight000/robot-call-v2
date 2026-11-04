@@ -91,6 +91,7 @@ public class SttMetrics {
                 .tag("decided_by", decision.waitRule())
                 .tag("extension", decision.extensionRule())
                 .tag("vad", vadEngine)
+                .tag("policy", decision.policy())
                 .register(registry)
                 .increment();
     }

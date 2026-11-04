@@ -145,6 +145,17 @@ voice-agent:
     mels: ${TURN_MELS:80}
     frames: ${TURN_FRAMES:800}
 
+  # How end-of-turn verdicts are combined (TurnTakingProperties, TurnPolicyFactory).
+  # AUTO = every installed source as before (LLM verdict replaces the word rules; an unfinished turn
+  # model or unfinished words extend the pause). LLM | TURN_MODEL | WORDS = only that source counts.
+  # MIXED = the sources in a trusted order, the first with a verdict decides; per language below.
+  turn-taking:
+    engine: ${TURN_ENGINE:AUTO}
+    mixed-order: ${TURN_MIXED_ORDER:llm,turn-model,words}
+    mixed-languages:
+      "[uz-UZ]": llm,words,turn-model     # no Uzbek turn model yet: Smart Turn only in shadow
+      "[ru-RU]": turn-model,llm,words
+
   # Text-based end-of-turn (TextTurnProperties)
   text-turn:
     enabled: ${TEXT_TURN_DETECTOR:false}
@@ -265,6 +276,10 @@ voice-agent:
   # Barge-in and answering-machine detection (VadProperties, AmdProperties)
   vad:
     enabled: ${VAD_ENABLED:true}
+    # Which model scores a call (VadEngine, VadScorerFactory): AUTO = TEN when loaded, else Silero;
+    # SILERO | TEN = that one (falls back to the other with a warning); MIXED = both on every window —
+    # speech starts only when both hear it, continues while either does (MixedVadScorer).
+    engine: ${VAD_ENGINE:AUTO}
     model-path: ${VAD_MODEL_PATH:models/silero_vad.onnx}
     sample-rate: 8000
     window-samples: 256

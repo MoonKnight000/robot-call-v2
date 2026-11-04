@@ -619,7 +619,9 @@ public class SystemPromptFactory {
                 + "(e.g. "
                 + (russian ? "\"ага, поменяй\"" : "\"aha o'zgartir\"")
                 + ") the same way: do not interpret it to fit your question and do not invent "
-                + "the answer.");
+                + "the answer. An answer with a few garbled words whose meaning is still clear "
+                + "(a reason, a date, yes or no) is NOT unintelligible: act on what is clear and "
+                + "never tell the client the line was bad.");
         rules.add("Answer a short question briefly — do not explain everything in one reply. Every "
                 + "reply continues the conversation; it does not start it over.");
         if (russian) {

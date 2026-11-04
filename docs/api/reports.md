@@ -1043,7 +1043,7 @@ Farqlar:
 - `callAttemptId` — `0`, `chatSessionId` — chat id'si.
 - Chat sessiyasi har bir xabarda qayta tiklanadi, shuning uchun `offsetMs` **o'sha xabardan** hisoblanadi — tartib va
   vaqt uchun `at` ni o'qing; xabarlar bilan `at` bo'yicha joylashtiriladi (`ChatMessage.createdAt`).
-- Hodisalar shu o'zgarishdan (V10 migratsiya) keyin boshlangan suhbatlarda bor; avvalgilarida ro'yxat bo'sh.
+- Hodisalar shu o'zgarishdan (V36 migratsiya) keyin boshlangan suhbatlarda bor; avvalgilarida ro'yxat bo'sh.
 
 **Xato:** `404 CHAT_SESSION_NOT_FOUND` (suhbat yo'q yoki boshqa kompaniyaniki), `403` — huquq yo'q.
 

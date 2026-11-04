@@ -2,7 +2,9 @@ package uz.murodjon.robotcallv2.agent.audio;
 
 import org.junit.jupiter.api.Test;
 import uz.murodjon.robotcallv2.agent.turn.AgentQuestion;
+import uz.murodjon.robotcallv2.agent.turn.PriorityTurnPolicy;
 import uz.murodjon.robotcallv2.agent.turn.TurnCue;
+import uz.murodjon.robotcallv2.agent.turn.TurnSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -228,6 +230,8 @@ class SpeechGateTest {
         SpeechGate gate = adaptiveGate();
 
         feed(gate, true, 300);   // "ha"
+        gate.onInterimTranscript("ha");
+        gate.setLlmTurnCue("ha", TurnCue.COMPLETE);
         feed(gate, false, 400);
 
         assertThat(gate.isOpen()).isFalse();
@@ -257,6 +261,8 @@ class SpeechGateTest {
         assertThat(gate.isOpen()).isFalse();
 
         feed(gate, true, 300);
+        gate.onInterimTranscript("ha");
+        gate.setLlmTurnCue("ha", TurnCue.COMPLETE);
         feed(gate, false, 400);
 
         assertThat(gate.isOpen()).isFalse();
@@ -431,6 +437,8 @@ class SpeechGateTest {
         cleanTurn(gate);
 
         feed(gate, true, 300);   // "ha"
+        gate.onInterimTranscript("ha");
+        gate.setLlmTurnCue("ha", TurnCue.COMPLETE);
         feed(gate, false, 400);
 
         assertThat(gate.isOpen()).isFalse();
@@ -445,6 +453,7 @@ class SpeechGateTest {
 
         feed(gate, true, 2000);                         // a long answer, not a short one
         gate.onInterimTranscript("keyingi oyning beshinchisida to'layman");
+        gate.setLlmTurnCue("keyingi oyning beshinchisida to'layman", TurnCue.COMPLETE);
         feed(gate, false, 700);
 
         assertThat(gate.isOpen()).isFalse();
@@ -627,6 +636,7 @@ class SpeechGateTest {
 
         feed(gate, true, 1500);                         // longer than the 600ms short-utterance bar
         gate.onInterimTranscript("ha vaqtim bor a");
+        gate.setLlmTurnCue("ha vaqtim bor a", TurnCue.COMPLETE);
         feed(gate, false, 350);
 
         assertThat(gate.isOpen()).isFalse();
@@ -826,7 +836,7 @@ class SpeechGateTest {
         feed(gate, false, 1600);
 
         assertThat(gate.isOpen()).isFalse();
-        assertThat(gate.lastCloseReason()).startsWith("post-roll 1000ms + turn-model-unfinished 500ms (turn-model=unfinished");
+        assertThat(gate.lastCloseReason()).startsWith("post-roll 1000ms + turn-model-unfinished-cap 500ms (turn-model=unfinished");
     }
 
     @Test
@@ -843,6 +853,78 @@ class SpeechGateTest {
         assertThat(gate.lastCloseReason()).endsWith("restarts-after-verdict=1)");
     }
 
+    // A short wait needs the model's "finished" (TurnPolicy#allowsShortWait): on recorded uz-UZ
+    // calls the 350–400 ms waits given on "nobody objected" cut the caller off in 45% of closes.
+
+    @Test
+    void aShortRunWithoutAModelVerdictWaitsTheFullHangover() {
+        SpeechGate gate = adaptiveGate();
+
+        feed(gate, true, 300);
+        feed(gate, false, 400);
+
+        assertThat(gate.isOpen()).isTrue();
+
+        feed(gate, false, 700);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void theWordRulesAloneNoLongerShortenAFinishedSoundingSentence() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("uch xonali uy bo'lsa yaxshi bo'lardi"); // cut off at 400 ms on a real call
+        feed(gate, false, 700);
+
+        assertThat(gate.isOpen()).isTrue();
+    }
+
+    @Test
+    void aVerdictThatLandsMidPauseClosesOnTheWindowItArrives() {
+        SpeechGate gate = adaptiveGate();
+        gate.setAgentQuestion(AgentQuestion.CLOSED);
+
+        feed(gate, true, 1500);
+        gate.onInterimTranscript("ha vaqtim bor a");
+        feed(gate, false, 600);                         // past the 300 ms short wait, no verdict yet
+        assertThat(gate.isOpen()).isTrue();
+
+        gate.setLlmTurnCue("ha vaqtim bor a", TurnCue.COMPLETE);
+        feed(gate, false, 64);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseReason()).startsWith("closed-answer");
+    }
+
+    @Test
+    void theWordsEngineStillTrustsTheWordRules() {
+        SpeechGate gate = gate();
+        gate.setTranscriptCues(600);
+        gate.setTurnPolicy(new PriorityTurnPolicy("words", java.util.List.of(TurnSource.WORDS)));
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("keyingi oyning beshinchisida to'layman");
+        feed(gate, false, 700);
+
+        assertThat(gate.isOpen()).isFalse();
+    }
+
+    @Test
+    void aPolicyThatDoesNotTrustTheTurnModelClosesOnTheWait() {
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> false, 500);
+        gate.setTurnPolicy(new PriorityTurnPolicy("words", java.util.List.of(TurnSource.WORDS)));
+
+        feed(gate, true, 2000);
+        feed(gate, false, 1100);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseReason()).startsWith("post-roll 1000ms + none 0ms (turn-model=unfinished");
+    }
+
     @Test
     void aJudgedCloseCarriesWhatDecidedIt() {
         SpeechGate gate = learningGate();
@@ -855,7 +937,63 @@ class SpeechGateTest {
         feed(gate, false, 3000);
 
         assertThat(decisions).hasSize(1);
-        assertThat(decisions.getFirst().extensionRule()).isEqualTo("turn-model-unfinished");
+        assertThat(decisions.getFirst().extensionRule()).isEqualTo("turn-model-unfinished-cap");
         assertThat(decisions.getFirst().turnModel()).isEqualTo("unfinished");
+    }
+
+    // A held pause is judged again on every silent window; the fixed figures are only ceilings.
+
+    private static final PriorityTurnPolicy MIXED = new PriorityTurnPolicy("mixed",
+            java.util.List.of(TurnSource.LLM, TurnSource.WORDS, TurnSource.TURN_MODEL));
+
+    @Test
+    void aLateFinishedVerdictEndsTheTurnModelsExtension() {
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> false, 500);
+        gate.setTurnPolicy(MIXED);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("ertaga to'layman");
+        feed(gate, false, 1100);                        // the turn model holds the pause
+        assertThat(gate.isOpen()).isTrue();
+
+        gate.setLlmTurnCue("ertaga to'layman", TurnCue.COMPLETE);
+        feed(gate, false, 64);
+
+        assertThat(gate.isOpen()).isFalse();            // not at the 1500 ms the extension allowed
+        assertThat(gate.lastCloseWaitMs()).isBetween(1100, 1200);
+        assertThat(gate.lastCloseReason()).startsWith("post-roll 1000ms + turn-model-unfinished ");
+    }
+
+    @Test
+    void anUnfinishedVerdictThatLandsMidPauseKeepsItOpen() {
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> false, 500);
+        gate.setLlmTurnDetector((transcript, agentLine) -> { }, 1000, 6000);
+        gate.setTurnPolicy(MIXED);
+
+        feed(gate, true, 2000);
+        gate.onInterimTranscript("shartnoma raqami");
+        feed(gate, false, 1300);                        // held by the turn model
+        gate.setLlmTurnCue("shartnoma raqami", TurnCue.INCOMPLETE);
+        feed(gate, false, 400);
+        assertThat(gate.isOpen()).isTrue();             // past the turn model's 500 ms ceiling
+
+        feed(gate, false, 400);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseReason()).startsWith("post-roll 1000ms + llm-unfinished-cap 1000ms");
+    }
+
+    @Test
+    void aPauseNothingHoldsClosesOnTheWaitWithNoExtension() {
+        SpeechGate gate = gate();
+        gate.setTurnDetector(() -> true, 500);
+
+        feed(gate, true, 2000);
+        feed(gate, false, 1100);
+
+        assertThat(gate.isOpen()).isFalse();
+        assertThat(gate.lastCloseReason()).startsWith("post-roll 1000ms + none 0ms");
     }
 }
