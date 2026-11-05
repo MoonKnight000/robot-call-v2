@@ -564,7 +564,44 @@ public class TurnTools {
         if (!isGemini3OrLater(selectedModel) && aiModel.temperature() != null) {
             builder.temperature(aiModel.temperature());
         }
+        GoogleGenAiChatOptions.ToolChoice toolChoice = findToolChoice(s, tools, selectedModel);
+        if (toolChoice != null) {
+            builder.toolChoice(toolChoice);
+        }
         return builder.build();
+    }
+
+    /**
+     * Which of the declared tools Gemini may call on this turn — the stage's, enforced in decoding
+     * ({@link PromptCacheProperties#restrictToolCalls}). Declaring every tool keeps the prompt cache, and the
+     * annex line alone did not hold a weak model: gemini-3.5-flash-lite called recordPaymentPromise in
+     * DEBT_NOTICE three times on call 14 and the CRM-task turn of call 15 called it again.
+     *
+     * <p>Null leaves the model free: no stable toolset, a non-Gemini model, nothing declared, nothing to
+     * take away, or a list of one — a job the caller has already narrowed the turn to (a FUNCTION stage's
+     * job step, a job run off the call after the call has left its stage).
+     */
+    GoogleGenAiChatOptions.ToolChoice findToolChoice(DialogSession s, List<ToolCallback> tools, String model) {
+        if (!isStableToolset() || !promptCache.restrictToolCalls() || tools == null || tools.size() < 2
+                || model == null || !model.toLowerCase(Locale.ROOT).startsWith("gemini")) {
+            return null;
+        }
+        Set<String> stageTools = findStageToolNames(s, mcpTools(s), catalogTools(s), integrationTools(s));
+        List<String> allowed = tools.stream()
+                .map(tool -> tool.getToolDefinition().name())
+                .filter(stageTools::contains)
+                .distinct()
+                .sorted()
+                .toList();
+        if (allowed.size() == tools.size()) {
+            return null;
+        }
+        return allowed.isEmpty()
+                ? GoogleGenAiChatOptions.ToolChoice.builder().mode(GoogleGenAiChatOptions.ToolChoice.Mode.NONE).build()
+                : GoogleGenAiChatOptions.ToolChoice.builder()
+                        .mode(GoogleGenAiChatOptions.ToolChoice.Mode.VALIDATED)
+                        .allowedFunctionNames(allowed)
+                        .build();
     }
 
     /**
@@ -641,7 +678,12 @@ public class TurnTools {
                 // name, or is reaching for an outcome that is not on the table yet.
                 log.warn("[{}] model called unavailable tool {} in {}",
                         s.channelId(), call.name(), s.state());
-                String refused = "ERROR: " + call.name() + " is not available in the current stage";
+                // What it may do instead, so the round that reads this can act rather than repeat itself.
+                String refused = "ERROR: " + call.name() + UNAVAILABLE + " (" + s.state() + ")"
+                        + (stageTools == null || stageTools.isEmpty() ? ""
+                        : ". Here you may call only " + String.join(", ", new TreeSet<>(stageTools)))
+                        + ". If this stage is done, move on with transitionTo; otherwise answer the client."
+                        + " Do not repeat a question you have already asked.";
                 logCall(s, call, refused, 0);
                 results.add(refused);
                 continue;
@@ -674,6 +716,14 @@ public class TurnTools {
             }
         }
         return results.isEmpty() ? null : String.join(" ", results);
+    }
+
+    /** What {@link #run} answers a tool the current stage does not offer with. */
+    static final String UNAVAILABLE = " is not available in the current stage";
+
+    /** Whether {@code toolNote} carries a refusal of a tool this stage does not offer. */
+    static boolean isRefusal(String toolNote) {
+        return toolNote != null && toolNote.contains(UNAVAILABLE);
     }
 
     /**

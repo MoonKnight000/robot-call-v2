@@ -43,8 +43,8 @@ public final class CopilotToolSelector {
 
     private static final Set<String> ANALYTICS_CALL_TOOLS = Set.of(
             "get_call_stats", "compare_periods", "get_call_timeseries", "get_stage_funnel",
-            "get_call_topics", "get_hourly_heatmap", "get_call_trace", "list_agent_insights",
-            "ask_calls", "list_calls", "get_call", "list_agents", "get_agent", "list_campaigns"
+            "get_call_topics", "get_hourly_heatmap", "get_call_trace", "analyze_call",
+            "list_agent_insights", "ask_calls", "list_calls", "get_call", "list_agents", "get_agent", "list_campaigns"
     );
 
     private static final Set<String> EVALUATION_TOOLS = Set.of(
@@ -124,6 +124,7 @@ public final class CopilotToolSelector {
             if (context.callId() != null) {
                 matchedToolNames.add("get_call");
                 matchedToolNames.add("get_call_trace");
+                matchedToolNames.add("analyze_call");
                 matchedToolNames.add("list_calls");
             }
             if (context.scenarioId() != null) {
@@ -139,7 +140,8 @@ public final class CopilotToolSelector {
 
             if (containsAny(text, "qo'ng'iroq", "qo'ngiroq", "qongiroq", "call", "звонок", "tahlil", "analiz",
                     "statistika", "transfer", "funnel", "topic", "shikoyat", "heatmap", "vaqt", "davomiylik",
-                    "trend", "konversiya", "natija", "o'sdi", "tushdi", "kamaydi", "nega", "pochemu", "why")) {
+                    "trend", "konversiya", "natija", "o'sdi", "tushdi", "kamaydi", "nega", "pochemu", "why",
+                    "xato", "kechikish", "inson", "insondek", "insonnikidek", "latency")) {
                 matchedToolNames.addAll(ANALYTICS_CALL_TOOLS);
             }
             if (containsAny(text, "kampaniya", "campaign", "kontakt", "contact", "dial", "target", "baza",
@@ -163,6 +165,7 @@ public final class CopilotToolSelector {
             matchedToolNames.add("update_agent_draft");
             matchedToolNames.add("list_calls");
             matchedToolNames.add("get_call");
+            matchedToolNames.add("analyze_call");
             matchedToolNames.add("create_campaign_draft");
             matchedToolNames.add("list_knowledge");
         } else {

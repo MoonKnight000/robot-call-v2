@@ -36,4 +36,20 @@ class TurnToolsRunTimeTest {
         assertThat(turnTools.findExpectedRunMs(1L, "searchApartments")).isBetween(0L, 500L);
         assertThat(turnTools.findExpectedRunMs(2L, "searchApartments")).isEqualTo(-1);
     }
+
+    /** Call 14: the refusal is what lets LlmTurnClient give the model one more round instead of a blind retry. */
+    @Test
+    void aToolThisTurnDoesNotOfferIsRefusedAndTheRefusalIsRecognised() {
+        TurnTools turnTools = new TurnTools(mock(DialogProperties.class), null);
+        DialogSession s = mock(DialogSession.class);
+        when(s.state()).thenReturn("DEBT_NOTICE");
+
+        String note = turnTools.run(s, List.of(),
+                List.of(new AssistantMessage.ToolCall("1", "function", "recordPaymentPromise", "{}")));
+
+        assertThat(note).startsWith("ERROR: recordPaymentPromise").contains("DEBT_NOTICE").contains("transitionTo");
+        assertThat(TurnTools.isRefusal(note)).isTrue();
+        assertThat(TurnTools.isRefusal("{\"status\":200}")).isFalse();
+        assertThat(TurnTools.isRefusal(null)).isFalse();
+    }
 }

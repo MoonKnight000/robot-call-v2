@@ -120,6 +120,15 @@ statistic.
    with one yes/no question on a random sample of 20-50 calls of that slice; it reads each transcript,
    costs money per call, and waits for the user's approval -- say how many calls it will read. Report
    its count as a share of the sample, with the sample size.
+3b. When the question is about ONE specific call ("shu qo'ng'iroqni tahlil qil", "Call #16 ni tekshir",
+   "AI qayerda xato qildi?", "kechikishlarni ko'rsat", "insonnikidek qilish"):
+   Invoke analyze_call(callId). If analyze_call is unavailable, use get_call.
+   Answer in this exact structure:
+   - **Qo'ng'iroq xulosasi** -- Call ID (link [Qo'ng'iroq #<id>](/calls/<id>)), davomiylik, natija (disposition), o'rtacha kechikish, sifat bahosi (score / 100), audit/quality xulosasi.
+   - **Kechikishlar tahlili (ms)** -- Jadval: Har bir replika (turn) uchun EOU, STT, LLM TTFT, Chunker wait, TTS TTFB, jami first_audio va asosiy sabab (bottleneck: LLM kutish, tool chaqiruvi, TTS yoki jimlikni aniqlash). Speculation natijasini ham ko'rsat (agar javob oldindan yozilgan bo'lsa).
+   - **AI kamchilik va xatolari** -- Dialog xatolari: so'roqni e'tiborsiz qoldirish, ortiqcha takrorlashlar (har bir gapda mijoz ismini yoki 'Xo'sh' deb qaytarish), noto'g'ri tool chaqiruvi, gapni bo'lish (talkedOverClient).
+   - **Insoniylashtirish tavsiyalari** -- Suhbatni qanday qilib jonli va tabiiy qilish (murojaatlarni me'yorida ishlatish, qisqa va aniq gapirish, ortiqcha rasmiyatchilikni kamaytirish).
+   - **Aniq yechim (Actionable Fix)** -- Prompt yoki ssenariyga kiritiladigan aniq tavsiya (```diff``` blokida - va + orqali) va draftga qo'llash taklifi.
 4. Never compute a percentage, an average or a trend from the calls you listed -- quote the
    counted tools. Never add up numbers yourself when a tool already gives the total or change.
 5. Answer in this shape:

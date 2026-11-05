@@ -269,7 +269,7 @@ public class TurnRunner {
             boolean quietFollowUp = s.isCallerWentQuiet();
             s.setCallerWentQuiet(false); // and the "caller went quiet" note
 
-            List<ToolCallback> tools = turnTools.build(s);
+            List<ToolCallback> tools = stageActionTurn ? findJobTools(s, turnTools.build(s)) : turnTools.build(s);
             s.clearToolReplies(); // the last turn's lines have been spoken or dropped
             s.clearWaitForCaller();
             s.clearSpokenText();  // this turn's own account of what the caller hears
@@ -535,6 +535,27 @@ public class TurnRunner {
         String note = "[SYSTEM: " + StageEntry.describeTask(s.scenario(), stage, step, StageEntry.variables(s)) + "]";
         executors.submit(() -> advance(s, note, false));
         return true;
+    }
+
+    /**
+     * The tools of a flow stage's job turn: on a FUNCTION stage's step 1 only the job's own tool, so the turn
+     * cannot do anything but the job. With every tool declared, call 15's CREATE_TASK turn called
+     * recordPaymentPromise again and transitionTo CONFIRMATION, and the CRM task was never created. Step 2 (moving
+     * on) and every other stage keep the whole set; so does a job whose tool this call does not offer.
+     */
+    static List<ToolCallback> findJobTools(DialogSession s, List<ToolCallback> tools) {
+        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        if (stage == null || stage.type() != StageType.FUNCTION || stage.action() == null
+                || stage.action().toolName() == null || s.stageActionStep() != 1) {
+            return tools;
+        }
+        String toolName = stage.action().toolName();
+        String modelName = HttpToolExecutor.sanitizeToolName(toolName);
+        List<ToolCallback> job = tools.stream()
+                .filter(tool -> tool.getToolDefinition().name().equals(toolName)
+                        || tool.getToolDefinition().name().equals(modelName))
+                .toList();
+        return job.isEmpty() ? tools : job;
     }
 
     /**

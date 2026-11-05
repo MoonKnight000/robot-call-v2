@@ -82,6 +82,8 @@ voice-agent:
       warmup: ${DIALOG_LLM_WARMUP:true}
       warmup-fast-model: ${DIALOG_LLM_WARMUP_FAST_MODEL:true}
       stable-toolset: ${DIALOG_STABLE_TOOLSET:true}
+      # Gemini only: limit the calls to the stage's tools in decoding (VALIDATED + allowed names).
+      restrict-tool-calls: ${DIALOG_RESTRICT_TOOL_CALLS:true}
     # Output cap of a turn when the company/agent sets none (ReplyLimitProperties); 0 = vendor default.
     # A thinking model gets the reserve on top: its reasoning counts against the same cap.
     reply-limit:

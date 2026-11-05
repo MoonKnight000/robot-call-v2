@@ -772,8 +772,11 @@ class LlmTurnClient {
         // that no longer exists.
         String toolNote = s.isLineGone() ? null : turnTools.run(s, tools, toolCalls);
 
-        if (wantsResultRound(s, toolCalls, toolNote)) {
-            TurnResult answered = streamResultRounds(s, system, messages, tools, reply, toolCalls, toolNote);
+        boolean refusedInSilence = !reply.spoken() && SpeechSanitizer.isUnspeakable(reply.text())
+                && isRefusalToAnswer(s, toolNote);
+        if (refusedInSilence || wantsResultRound(s, toolCalls, toolNote)) {
+            TurnResult answered = streamResultRounds(s, system, messages, tools, reply, toolCalls, toolNote,
+                    refusedInSilence);
             if (answered != null) {
                 return answered;
             }
@@ -889,14 +892,15 @@ class LlmTurnClient {
      */
     private TurnResult streamResultRounds(DialogSession s, String system, List<Message> messages,
                                           List<ToolCallback> tools, StreamedReply first,
-                                          List<AssistantMessage.ToolCall> calls, String toolNote) {
+                                          List<AssistantMessage.ToolCall> calls, String toolNote, boolean refused) {
         String text = SpeechSanitizer.isUnspeakable(first.text()) ? "" : first.text();
         boolean spoken = first.spoken();
         boolean blocked = first.blocked();
         String stepText = text;
         List<Message> thread = messages;
         int maxRounds = dialogProperties.toolResultRounds();
-        for (int round = 1; round <= maxRounds && wantsResultRound(s, calls, toolNote); round++) {
+        for (int round = 1; round <= maxRounds
+                && (round == 1 && refused || wantsResultRound(s, calls, toolNote)); round++) {
             log.info("[{}] tool result round {}: {}", s.channelId(), round, toolNames(calls));
             thread = withToolResult(thread, stepText, toolNote);
             List<ToolCallback> roundTools = round < maxRounds ? tools : List.of();
@@ -1141,8 +1145,10 @@ class LlmTurnClient {
             return new TurnResult("", false, false, toolNote);
         }
 
-        if (wantsResultRound(s, calls, toolNote)) {
-            TurnResult answered = blockingResultRounds(s, system, messages, tools, extractText(response), calls, toolNote);
+        boolean refusedInSilence = SpeechSanitizer.isUnspeakable(extractText(response)) && isRefusalToAnswer(s, toolNote);
+        if (refusedInSilence || wantsResultRound(s, calls, toolNote)) {
+            TurnResult answered = blockingResultRounds(s, system, messages, tools, extractText(response), calls, toolNote,
+                    refusedInSilence);
             if (answered != null) {
                 return answered;
             }
@@ -1187,7 +1193,7 @@ class LlmTurnClient {
      */
     private TurnResult blockingResultRounds(DialogSession s, String system, List<Message> messages,
                                             List<ToolCallback> tools, String firstText,
-                                            List<AssistantMessage.ToolCall> calls, String toolNote) {
+                                            List<AssistantMessage.ToolCall> calls, String toolNote, boolean refused) {
         String text = "";
         boolean spoken = false;
         boolean blocked = false;
@@ -1200,7 +1206,8 @@ class LlmTurnClient {
         }
         List<Message> thread = messages;
         int maxRounds = dialogProperties.toolResultRounds();
-        for (int round = 1; round <= maxRounds && wantsResultRound(s, calls, toolNote); round++) {
+        for (int round = 1; round <= maxRounds
+                && (round == 1 && refused || wantsResultRound(s, calls, toolNote)); round++) {
             log.info("[{}] tool result round {}: {}", s.channelId(), round, toolNames(calls));
             thread = withToolResult(thread, stepText, toolNote);
             List<Message> roundMessages = thread;
@@ -1243,6 +1250,19 @@ class LlmTurnClient {
      * Whether the tools just run call for another model round: a data tool answered, and the
      * model has not yet been shown what it said.
      */
+    /**
+     * Whether a turn that wrote nothing was left with only a refused tool (TurnTools#isRefusal). The
+     * refusal is read back to the model, with its tools, in one round: it can still move on or answer.
+     * Before, a scenario tool got no round, the empty reply was asked again of the fast model with no
+     * tools, and that model could only repeat its question — call 14 asked for the date three times
+     * and never left DEBT_NOTICE. A flow stage's own job turn keeps its silence (TurnRunner).
+     */
+    private boolean isRefusalToAnswer(DialogSession s, String toolNote) {
+        return dialogProperties.toolResultRounds() > 0 && TurnTools.isRefusal(toolNote)
+                && !s.isLineGone() && !s.isEnded() && !s.isCancelled() && !s.isWaitingForCaller()
+                && s.stageActionStep() <= 0 && !s.isFarewellSaid();
+    }
+
     private boolean wantsResultRound(DialogSession s, List<AssistantMessage.ToolCall> calls, String toolNote) {
         // A flow stage's tool result is read by the next stage (TurnRunner), not answered here.
         return dialogProperties.toolResultRounds() > 0 && toolNote != null && calls != null
@@ -1287,8 +1307,10 @@ class LlmTurnClient {
      * majmuamiz bo'yicha ma'lumotlarni qarayapman. O'zi necha xonali xonadon qidiryapsiz?".
      */
     private static boolean isMutedStageJob(DialogSession s, boolean stageActionTurn) {
+        // After a goodbye the jobs still run but nothing more is said: call 15 said "Yozib qo'ydim … salomat
+        // bo'ling!" and then, from the CRM-task turn's retry, "Xo'p bo'ladi … yozib qo'ydim. Salomat bo'ling!".
         return StageEntry.isSilentJob(SystemPromptFactory.stageOf(s.scenario(), s.state()))
-                && isCallersTurnToAnswer(s, stageActionTurn);
+                && (isCallersTurnToAnswer(s, stageActionTurn) || stageActionTurn && s.isFarewellSaid());
     }
 
     private static void logMutedStageJob(DialogSession s, String text) {

@@ -4,16 +4,24 @@ import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Validator;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
+import uz.murodjon.robotcallv2.callrecord.domain.entity.CallEvent;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallEventType;
 import uz.murodjon.robotcallv2.insight.application.port.input.AgentInsightUseCase;
 import uz.murodjon.robotcallv2.insight.domain.entity.AgentInsightFilter;
 import uz.murodjon.robotcallv2.mcp.domain.entity.CallPeriodComparison;
+import uz.murodjon.robotcallv2.quality.application.port.input.CallReviewUseCase;
+import uz.murodjon.robotcallv2.quality.domain.entity.CallQuality;
+import uz.murodjon.robotcallv2.report.application.dto.CallDetail;
 import uz.murodjon.robotcallv2.report.application.port.input.ContactCenterReportUseCase;
 import uz.murodjon.robotcallv2.report.application.port.input.DashboardReportUseCase;
+import uz.murodjon.robotcallv2.report.application.port.input.ReportUseCase;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportSummary;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -39,14 +47,24 @@ public class CallAnalyticsMcpToolSet implements McpToolSet {
     private final DashboardReportUseCase dashboardReportUseCase;
     private final ContactCenterReportUseCase contactCenterReportUseCase;
     private final AgentInsightUseCase agentInsightUseCase;
+    private final ReportUseCase reportUseCase;
+    private final CallEventUseCase callEventUseCase;
+    private final CallReviewUseCase callReviewUseCase;
     private final McpToolArguments arguments;
 
     public CallAnalyticsMcpToolSet(DashboardReportUseCase dashboardReportUseCase,
                                    ContactCenterReportUseCase contactCenterReportUseCase,
-                                   AgentInsightUseCase agentInsightUseCase, Validator validator) {
+                                   AgentInsightUseCase agentInsightUseCase,
+                                   ReportUseCase reportUseCase,
+                                   CallEventUseCase callEventUseCase,
+                                   CallReviewUseCase callReviewUseCase,
+                                   Validator validator) {
         this.dashboardReportUseCase = dashboardReportUseCase;
         this.contactCenterReportUseCase = contactCenterReportUseCase;
         this.agentInsightUseCase = agentInsightUseCase;
+        this.reportUseCase = reportUseCase;
+        this.callEventUseCase = callEventUseCase;
+        this.callReviewUseCase = callReviewUseCase;
         this.arguments = new McpToolArguments(validator);
     }
 
@@ -127,6 +145,14 @@ public class CallAnalyticsMcpToolSet implements McpToolSet {
                         (companyId, tool, args, draftOnly) -> contactCenterReportUseCase.findCallTrace(companyId,
                                 arguments.requireId(tool, args, "callId"))),
 
+                new McpToolDefinition("analyze_call", """
+                        Deeply inspect one AI voice call: millisecond latency breakdown per turn \
+                        (EOU, STT, LLM TTFT, chunk wait, TTS TTFB, total first_audio, speculation hits), \
+                        dialogue flaws and quality verdict (guardrails, tool misuse, unanswered questions), \
+                        tool calls, stage transitions, full transcript, and actionable critique.""", CALL_READ, """
+                        {"type": "object", "required": ["callId"], "properties": {"callId": {"type": "integer"}}}""",
+                        this::analyzeCall),
+
                 new McpToolDefinition("list_agent_insights", """
                         The improvement proposals the daily job found in an agent's calls (with the calls \
                         behind them), and whether they were accepted or rejected.""", AGENT_READ, """
@@ -164,5 +190,79 @@ public class CallAnalyticsMcpToolSet implements McpToolSet {
         }
         ReportSummary previous = dashboardReportUseCase.findSummary(companyId, compareFrom, compareTo, campaignId);
         return CallPeriodComparison.of(current, previous);
+    }
+
+    private Object analyzeCall(long companyId, String tool, JsonNode args, boolean draftOnly) {
+        long callId = arguments.requireId(tool, args, "callId");
+        CallDetail detail = reportUseCase.findCallDetail(companyId, callId);
+
+        CallQuality quality = null;
+        try {
+            quality = callReviewUseCase.findReview(companyId, callId);
+        } catch (Exception ignored) {
+            // Quality review may not be scored yet
+        }
+
+        List<CallEvent> events = callEventUseCase.findByCallAttemptId(companyId, callId);
+
+        List<Map<String, Object>> turns = new ArrayList<>();
+        List<Map<String, Object>> toolCalls = new ArrayList<>();
+        List<Map<String, Object>> stageTransitions = new ArrayList<>();
+
+        int turnIdx = 1;
+        for (CallEvent event : events) {
+            if (event.type() == CallEventType.TURN) {
+                Map<String, Object> p = event.payload();
+                Long utteranceEndMs = getLong(p, "utteranceEndMs");
+                Long eouWaitMs = getLong(p, "eouWaitMs");
+                Long sttFinalMs = getLong(p, "sttFinalMs");
+                Long llmRequestMs = getLong(p, "llmRequestMs");
+                Long llmFirstTokenMs = getLong(p, "llmFirstTokenMs");
+                Long ttsRequestMs = getLong(p, "ttsRequestMs");
+                Long firstAudioMs = getLong(p, "firstAudioMs");
+                Boolean speculated = (Boolean) p.get("speculated");
+
+                Long sttLatency = (sttFinalMs != null && utteranceEndMs != null) ? Math.max(0, sttFinalMs - utteranceEndMs) : null;
+                Long llmTtft = (llmFirstTokenMs != null && llmRequestMs != null) ? Math.max(0, llmFirstTokenMs - llmRequestMs) : null;
+                Long chunkWait = (ttsRequestMs != null && llmFirstTokenMs != null) ? Math.max(0, ttsRequestMs - llmFirstTokenMs) : null;
+                Long ttsTtfb = (firstAudioMs != null && ttsRequestMs != null) ? Math.max(0, firstAudioMs - ttsRequestMs) : null;
+                Long totalTurnLatency = (firstAudioMs != null && utteranceEndMs != null) ? Math.max(0, firstAudioMs - utteranceEndMs) : null;
+
+                Map<String, Object> turnMap = new LinkedHashMap<>();
+                turnMap.put("turn", turnIdx++);
+                turnMap.put("speculated", Boolean.TRUE.equals(speculated));
+                turnMap.put("eouWaitMs", eouWaitMs);
+                turnMap.put("sttLatencyMs", sttLatency);
+                turnMap.put("llmTtftMs", llmTtft);
+                turnMap.put("chunkWaitMs", chunkWait);
+                turnMap.put("ttsTtfbMs", ttsTtfb);
+                turnMap.put("totalTurnLatencyMs", totalTurnLatency);
+                turns.add(turnMap);
+            } else if (event.type() == CallEventType.TOOL_CALLED) {
+                toolCalls.add(event.payload());
+            } else if (event.type() == CallEventType.STAGE_ENTERED) {
+                stageTransitions.add(event.payload());
+            }
+        }
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("callId", callId);
+        result.put("call", detail.call());
+        result.put("technical", detail.technical());
+        result.put("talk", detail.talk());
+        result.put("quality", quality);
+        result.put("turnLatencies", turns);
+        result.put("toolCalls", toolCalls);
+        result.put("stageTransitions", stageTransitions);
+        result.put("transcript", detail.transcript());
+        return result;
+    }
+
+    private Long getLong(Map<String, Object> map, String key) {
+        Object val = map.get(key);
+        if (val instanceof Number n) {
+            return n.longValue();
+        }
+        return null;
     }
 }
