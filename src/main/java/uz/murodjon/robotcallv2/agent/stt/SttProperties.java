@@ -11,7 +11,8 @@ import java.util.Map;
  * Speech-to-text settings. Bound from {@code voice-agent.stt.*} (PROJECT.md §12).
  *
  * @param enabled           when false, no STT session is opened (e.g. no credentials)
- * @param provider          active provider id: {@code gemini}, {@code yandex}, {@code aisha}, or {@code deepgram}
+ * @param provider          active provider id: {@code gemini}, {@code yandex}, {@code aisha}, {@code deepgram},
+ *                          {@code openai} or {@code elevenlabs}
  * @param defaultLanguage   BCP-47 language used until per-call language selection exists
  * @param detectLanguages   every language a caller may answer in, whichever language the
  *                          call was dialled in — a SpeechKit whitelist. More than one
@@ -39,10 +40,11 @@ import java.util.Map;
  * @param aisha             Aisha-specific settings
  * @param deepgram          Deepgram-specific settings
  * @param openAi            OpenAI-specific settings
+ * @param elevenLabs        ElevenLabs Scribe realtime settings
  * @param transcriptionModes the model each provider (keyed by its {@link SttProvider#name()})
  *                          uses for an agent's or stage's {@code transcriptionMode}; a provider
  *                          or mode missing here leaves the call on its usual model. Keys are
- *                          provider names (yandex, deepgram, openai, gemini, aisha), modes are
+ *                          provider names (yandex, deepgram, openai, gemini, aisha, elevenlabs), modes are
  *                          {@code fast} / {@code accurate}; empty by default, as there are no
  *                          verified pairs yet. Example in YAML:
  *                          {@code deepgram: {fast: nova-3, accurate: nova-3}}
@@ -63,6 +65,7 @@ public record SttProperties(
         AishaSttProperties aisha,
         DeepgramSttProperties deepgram,
         OpenAiSttProperties openAi,
+        ElevenLabsSttProperties elevenLabs,
         Map<String, SttTranscriptionModels> transcriptionModes
 ) {
 

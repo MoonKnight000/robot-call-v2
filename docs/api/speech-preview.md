@@ -79,7 +79,7 @@ uni qo'ng'iroqdagidek tinglaydi va nima "eshitganini" qaytaradi.
 | Maydon | Majburiy | Izoh |
 |---|---|---|
 | `file` | ha | Audio fayl. Brauzer `MediaRecorder` beradigan `audio/webm;codecs=opus` (Chrome, Firefox, Edge) va `audio/mp4` (Safari) **to'g'ridan-to'g'ri yuboriladi**, frontendda konvert qilish shart emas. WAV, MP3, OGG ham bo'ladi. Sample rate istalgan, stereo bo'lsa mono'ga yig'iladi. **30 soniyagacha, 5 MB gacha** |
-| `provider` | yo'q | STT provayder id: `GET /api/ai-agents/engine-options` javobidagi `stt` ro'yxatidan (`yandex`, `aisha`, `gemini`, `deepgram`). Berilmasa — `voice-agent.stt.provider` (YAML) qiymati; kompaniya darajasidagi STT sozlamasi endi yo'q, u agentniki |
+| `provider` | yo'q | STT provayder id: `GET /api/ai-agents/engine-options` javobidagi `stt` ro'yxatidan (`yandex`, `aisha`, `gemini`, `deepgram`, `elevenlabs`). Berilmasa — `voice-agent.stt.provider` (YAML) qiymati; kompaniya darajasidagi STT sozlamasi endi yo'q, u agentniki |
 | `language` | yo'q | BCP-47: `uz-UZ`, `ru-RU`. Berilmasa — serverdagi standart (`uz-UZ`) |
 | `alternativeLanguages` | yo'q | Shu yozuvda eshitilishi mumkin bo'lgan boshqa tillar, takrorlanadigan maydon (`alternativeLanguages=ru-RU`). Berilmasa — `voice-agent.stt.detect-languages`. **O'zbek-rus aralash nutqni sinash uchun:** bitta yozuvni avval `alternativeLanguages` siz, keyin `ru-RU` bilan yuborib, transkriptlarni solishtiring |
 
@@ -156,7 +156,7 @@ async function stopAndTranscribe(provider, language) {
 | 409 | `STT_PROVIDER_UNAVAILABLE` | serverda birorta STT provayder yoqilmagan | "STT sozlanmagan" |
 | 413 | — | 5 MB dan katta fayl (Spring multipart limiti) | |
 | 502 | `AUDIO_TRANSCODER_UNAVAILABLE`, `AUDIO_TRANSCODER_FAILED` | server tomonidagi dekoder muammosi | "Server xatosi, administratorga murojaat qiling" |
-| 502 | `STT_YANDEX_*`, `STT_GEMINI_*`, `STT_AISHA_*`, `STT_DEEPGRAM_*`, `STT_PREVIEW_INTERRUPTED` | provayder ulanmadi yoki stream uzildi | "Provayder javob bermadi, qayta urinib ko'ring" |
+| 502 | `STT_YANDEX_*`, `STT_GEMINI_*`, `STT_AISHA_*`, `STT_DEEPGRAM_*`, `STT_ELEVENLABS_*`, `STT_PREVIEW_INTERRUPTED` | provayder ulanmadi yoki stream uzildi | "Provayder javob bermadi, qayta urinib ko'ring" |
 
 ---
 

@@ -195,6 +195,7 @@ INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
     ('general',                     'STT', 'yandex',          'CASCADE',  'Yandex SpeechKit general'),
     ('gpt-live-transcribe',         'STT', 'openai',          'CASCADE',  'OpenAI Live Transcribe — past kechikish, oraliq natijalar bilan'),
     ('gpt-transcribe',              'STT', 'openai',          'CASCADE',  'OpenAI Transcribe — aniqroq, lekin faqat gap tugagach javob beradi'),
+    ('scribe_v2_realtime',          'STT', 'elevenlabs',      'CASCADE',  'ElevenLabs Scribe v2 Realtime — ~150 ms, oraliq natijalar bilan'),
     ('gemini-3.8-flash-tts',        'TTS', 'gemini',          'CASCADE',  'Gemini 3.8 Flash TTS — standart, 30 ta ovoz'),
     ('gemini-3.1-flash-tts-preview','TTS', 'gemini',          'CASCADE',  'Gemini 3.1 Flash TTS — oldingi avlod, preview'),
     ('sonic-multilingual',          'TTS', 'cartesia',        'CASCADE',  'Cartesia Sonic Multilingual'),

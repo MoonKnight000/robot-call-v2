@@ -17,7 +17,7 @@ Ushbu modul kompaniya darajasidagi barcha global texnik parametrlarni boshqaradi
 > **Arxitektura o'zgarishi:** Speech Engine sozlamalari (`pipelineMode`, `sttProvider`, `ttsProvider`, `realtimeProvider`, `pipecat*`) kompaniya darajasidan to'liq **AI Agent darajasiga** ko'chirildi. Har bir agent mustaqil ravishda o'zining `CASCADE` yoki `REALTIME` rejimiga va shaxsiy provayderlariga ega bo'ladi. Batafsil: [ai-agents.md](ai-agents.md).
 
 ### Pipeline Rejimlari (`PipelineMode`):
-- `CASCADE`: STT (Deepgram / Yandex / Aisha / Whisper) ➔ LLM (Gemini / Claude / OpenAI) ➔ TTS (ElevenLabs / Yandex / Aisha / Google).
+- `CASCADE`: STT (Deepgram / Yandex / Aisha / ElevenLabs / Whisper) ➔ LLM (Gemini / Claude / OpenAI) ➔ TTS (ElevenLabs / Yandex / Aisha / Google).
 - `REALTIME`: Speech-to-speech to'g'ridan-to'g'ri multimodal oqim (Gemini Live, OpenAI Realtime, Qwen-Omni, Pipecat). Minimal kechikish (<500ms).
 
 ### `GET /api/ai-agents/engine-options` — Mavjud variantlar katalogi
@@ -28,7 +28,7 @@ Platformada joriy vaqtda API kalitlari ulangan va ishlatish mumkin bo'lgan prova
 {
   "accept": true,
   "data": {
-    "stt": ["aisha", "deepgram", "gemini", "yandex"],
+    "stt": ["aisha", "deepgram", "elevenlabs", "gemini", "yandex"],
     "tts": ["aisha", "cartesia", "elevenlabs", "gemini", "yandex"],
     "realtime": ["gemini-live", "moshi", "openai-realtime", "pipecat", "qwen-omni"],
     "pipecatStt": ["deepgram", "gemini", "soniox", "speechmatics", "yandex", "whisper"],

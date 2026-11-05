@@ -31,7 +31,7 @@ Server faqat **yoqilgan** provayderlarga chiqishi kerak. Qolgan hamma chiquvchi 
 | Yandex SpeechKit | `STT_PROVIDER=yandex` / Yandex TTS | `stt.api.cloud.yandex.net`, `tts.api.cloud.yandex.net` |
 | OpenAI | LLM (`LLM_CHAT_PROVIDER=openai`), OpenAI STT/TTS, Realtime | `api.openai.com` (yoki `OPENAI_BASE_URL`) |
 | Deepgram | STT | `api.deepgram.com` |
-| ElevenLabs / Cartesia | TTS | `api.elevenlabs.io` / `api.cartesia.ai` |
+| ElevenLabs / Cartesia | TTS (ElevenLabs — STT ham, Scribe) | `api.elevenlabs.io` / `api.cartesia.ai` |
 | Uysot CRM | `CRM_ENABLED=true` | `api.service.app.uysot.uz`, `service.app.uysot.uz` |
 | Eskiz SMS | SMS | `notify.eskiz.uz` |
 

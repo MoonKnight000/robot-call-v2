@@ -23,7 +23,7 @@ Tizimda AI Agentlar **QuickVoice** arxitekturasi asosida to'liq yangilandi. Endi
 │                                                             │
 │  2. SPEECH & VOICE (Agent darajasida)                       │
 │     • sttProvider, sttModel (yandex/gemini/aisha/           │
-│       deepgram/openai)                                      │
+│       deepgram/openai/elevenlabs)                           │
 │     • ttsProvider, ttsModel, ttsVoice                       │
 │     • voiceSpeed                                            │
 │     • languageVoices (ko'p tilli moslashuv)                 │
