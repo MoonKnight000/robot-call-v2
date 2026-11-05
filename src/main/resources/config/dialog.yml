@@ -58,7 +58,7 @@ voice-agent:
   intent:
     enabled: ${INTENT_DETECTION_ENABLED:true}
 
-  # Dialog engine (DialogProperties, LlmTimeoutProperties, PromptCacheProperties, DialogTuningProperties, TestContextProperties)
+  # Dialog engine (DialogProperties, LlmTimeoutProperties, PromptCacheProperties, ReplyLimitProperties, ChunkerProperties, DialogTuningProperties, TestContextProperties)
   dialog:
     enabled: ${DIALOG_ENABLED:true}
     auto-start: ${DIALOG_AUTO_START:true}
@@ -81,7 +81,20 @@ voice-agent:
     prompt-cache:
       warmup: ${DIALOG_LLM_WARMUP:true}
       warmup-fast-model: ${DIALOG_LLM_WARMUP_FAST_MODEL:true}
-      stable-toolset: ${DIALOG_STABLE_TOOLSET:false}
+      stable-toolset: ${DIALOG_STABLE_TOOLSET:true}
+    # Output cap of a turn when the company/agent sets none (ReplyLimitProperties); 0 = vendor default.
+    # A thinking model gets the reserve on top: its reasoning counts against the same cap.
+    reply-limit:
+      max-tokens: ${DIALOG_REPLY_MAX_TOKENS:70}
+      thinking-reserve-tokens: ${DIALOG_REPLY_THINKING_RESERVE_TOKENS:768}
+    # Where a streamed reply is cut for synthesis (ChunkerProperties). Only the opening piece is on the
+    # caller's clock, so it is cut at a comma after a few words; later pieces keep whole sentences.
+    # The effect shows as the chunk_wait stage of voice.turn.stage.latency.
+    chunker:
+      opening-min-chars: ${DIALOG_CHUNKER_OPENING_MIN_CHARS:14}
+      opening-clause-words: ${DIALOG_CHUNKER_OPENING_CLAUSE_WORDS:4}
+      min-chunk-chars: ${DIALOG_CHUNKER_MIN_CHUNK_CHARS:20}
+      long-clause-chars: ${DIALOG_CHUNKER_LONG_CLAUSE_CHARS:90}
     llm-timeout:
       token-gap-ms: ${DIALOG_LLM_TOKEN_GAP_TIMEOUT_MS:5000}
       queue-drain-ms: ${DIALOG_LLM_QUEUE_DRAIN_TIMEOUT_MS:30000}
@@ -113,6 +126,8 @@ voice-agent:
     knowledge-base: ${DIALOG_KNOWLEDGE_BASE:true}
     low-confidence-threshold: ${DIALOG_LOW_CONFIDENCE_THRESHOLD:0.5}
     fact-guard: ${DIALOG_FACT_GUARD:true}
+    # noteClientFact: the model notes what the caller said that no outcome tool records; carried in every turn's annex.
+    client-facts: ${DIALOG_CLIENT_FACTS:true}
     fact-violation-escalate-after: ${DIALOG_FACT_VIOLATION_ESCALATE_AFTER:2}
     pre-tool-speech: ${DIALOG_PRE_TOOL_SPEECH:true}
     knowledge-passages: ${DIALOG_KNOWLEDGE_PASSAGES:3}

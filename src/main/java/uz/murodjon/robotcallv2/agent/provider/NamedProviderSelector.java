@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * Resolves the provider of one kind (STT, TTS) a call uses. Provider choice lives on the
@@ -94,12 +95,24 @@ public abstract class NamedProviderSelector<T extends NamedProvider> {
      *
      * <p>Any registered provider will do: a provider is only a bean when its API key is
      * configured ({@code @ConditionalOnExpression} on each), so what is here is what this
-     * deployment actually paid for. Language is not checked — a recognizer or voice with a
-     * worse accent is still better than a deaf or mute call.
+     * deployment actually paid for. Language is not checked here — a recognizer or voice with
+     * a worse accent is still better than a deaf or mute call; a caller that knows a provider
+     * does not speak the language at all uses {@link #findFallback(NamedProvider, Predicate)}.
      */
     public T findFallback(T failed) {
+        return findFallback(failed, provider -> true);
+    }
+
+    /**
+     * As {@link #findFallback(NamedProvider)}, but only a provider {@code usable} accepts —
+     * what a call passes to keep a vendor that cannot speak or hear its language from being
+     * the substitute (a recognizer with no Uzbek returns nonsense, which is worse than a
+     * worse accent). {@code null} when no other provider qualifies.
+     */
+    public T findFallback(T failed, Predicate<T> usable) {
         for (T provider : byName.values()) {
-            if (provider != failed && (failed == null || !provider.name().equalsIgnoreCase(failed.name()))) {
+            if (provider != failed && (failed == null || !provider.name().equalsIgnoreCase(failed.name()))
+                    && usable.test(provider)) {
                 return provider;
             }
         }

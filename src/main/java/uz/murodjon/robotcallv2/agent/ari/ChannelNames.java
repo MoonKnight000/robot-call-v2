@@ -42,6 +42,11 @@ final class ChannelNames {
         return managed == null || !managed.matches() || Long.parseLong(managed.group(1)) == companyId;
     }
 
+    /** Whether the channel is a browser's — test or widget — on pjsip.conf's {@code [webtest]} endpoint. */
+    static boolean isWebTest(String channelName) {
+        return "webtest".equals(extractTrunk(channelName));
+    }
+
     static String extractTrunk(String channelName) {
         if (channelName == null) {
             return null;

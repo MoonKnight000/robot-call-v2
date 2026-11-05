@@ -12,13 +12,16 @@ import java.time.Instant;
  * transcript</em>, which means the endpointing silence in front of it — the largest single
  * block of the wait on most turns — is not in that number at all.
  *
- * <p>Five stamps, taken where each moment is actually known:
+ * <p>Six stages, stamped where each moment is actually known:
  *
  * <ul>
  *   <li><b>eou</b> — silence the gate waited out before declaring the utterance over
  *       ({@code SpeechGate}); the caller was already finished for all of it
  *   <li><b>stt_final</b> — end of utterance → the recognizer's final text
  *   <li><b>llm_ttft</b> — request sent → first token back
+ *   <li><b>chunk_wait</b> — first token → first sentence handed to synthesis: how long the
+ *       sentence splitter held the reply back ({@code ChunkerProperties}); not reported for a
+ *       speculated reply, whose first token was a replay
  *   <li><b>tts_ttfb</b> — first sentence handed to synthesis → first PCM chunk
  *   <li><b>first_audio</b> — end of utterance → audio on the wire, i.e. the whole silence
  *       from the caller's side
@@ -41,7 +44,7 @@ public class TurnLatency {
 
     private static final String UNKNOWN_PROVIDER = "unknown";
 
-    private static final String[] STAGES = {"eou", "stt_final", "llm_ttft", "tts_ttfb", "first_audio"};
+    private static final String[] STAGES = {"eou", "stt_final", "llm_ttft", "chunk_wait", "tts_ttfb", "first_audio"};
 
     /**
      * The same stages when nothing stamped the end of the utterance, so the total is
@@ -50,7 +53,7 @@ public class TurnLatency {
      * hide the endpointing silence this class exists to expose.
      */
     private static final String[] STAGES_AFTER_FINAL =
-            {"eou", "stt_final", "llm_ttft", "tts_ttfb", "reply_wait"};
+            {"eou", "stt_final", "llm_ttft", "chunk_wait", "tts_ttfb", "reply_wait"};
 
     private volatile long utteranceEndedAt;
     private volatile int eouWaitMs = -1;
@@ -64,6 +67,8 @@ public class TurnLatency {
     /** The providers the call was set up with, so stages can be compared across vendors. */
     private volatile String sttProvider = UNKNOWN_PROVIDER;
     private volatile String ttsProvider = UNKNOWN_PROVIDER;
+    /** The call's language, so the same stage can be read per language. */
+    private volatile String language = UNKNOWN_PROVIDER;
     /** The call's start, the zero of {@link TurnTiming}'s offsets; 0 = no timing kept. */
     private volatile long callStartedAtMillis;
     /** The last finished turn's timing, until {@link #takeTiming()} collects it. */
@@ -79,6 +84,11 @@ public class TurnLatency {
     public void providers(String stt, String tts) {
         this.sttProvider = stt == null || stt.isBlank() ? UNKNOWN_PROVIDER : stt;
         this.ttsProvider = tts == null || tts.isBlank() ? UNKNOWN_PROVIDER : tts;
+    }
+
+    /** The language the call is held in (BCP-47, e.g. {@code uz-UZ}) — a tag on every stage. */
+    public void language(String language) {
+        this.language = language == null || language.isBlank() ? UNKNOWN_PROVIDER : language;
     }
 
     /** The start of the call, which every {@link TurnTiming} offset is counted from. */
@@ -198,6 +208,7 @@ public class TurnLatency {
                 eouWaitMs,
                 millis(utteranceEndedAt, finalAt),
                 speculated ? 0 : millis(llmRequestedAt, llmFirstTokenAt),
+                speculated ? -1 : millis(llmFirstTokenAt, ttsRequestedAt),
                 millis(ttsRequestedAt, firstAudioAt),
                 fromUtterance ? millis(utteranceEndedAt, firstAudioAt) : millis(finalAt, firstAudioAt)
         };
@@ -208,7 +219,7 @@ public class TurnLatency {
                 continue;
             }
             any = true;
-            metrics.recordTurnStage(stages[i], sttProvider, ttsProvider, values[i]);
+            metrics.recordTurnStage(stages[i], sttProvider, ttsProvider, language, values[i]);
             line.append(' ').append(stages[i]).append('=').append(values[i]).append("ms");
         }
         if (!any) {

@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.metrics.TtsMetrics;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
@@ -40,12 +41,20 @@ public class ElevenLabsTtsProvider implements TtsProvider {
     /** About 40 ms of 8 kHz audio per read. */
     private static final int READ_BUFFER_BYTES = 640;
 
+    /** The tail of the previous sentence worth sending as context; more adds nothing to the prosody. */
+    private static final int PREVIOUS_TEXT_MAX_CHARS = 300;
+
     private final TtsProperties ttsProperties;
+    private final TtsStreamProperties streamProperties;
+    private final TtsMetrics metrics;
     private volatile HttpClient client;
 
-    public ElevenLabsTtsProvider(TtsProperties ttsProperties, ObjectMapper objectMapper) {
+    public ElevenLabsTtsProvider(TtsProperties ttsProperties, ObjectMapper objectMapper,
+                                 TtsStreamProperties streamProperties, TtsMetrics metrics) {
         this.objectMapper = objectMapper;
         this.ttsProperties = ttsProperties;
+        this.streamProperties = streamProperties;
+        this.metrics = metrics;
     }
 
     @PostConstruct
@@ -78,8 +87,15 @@ public class ElevenLabsTtsProvider implements TtsProvider {
 
     @Override
     public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
+        return synthesize(text, language, voice, style, null);
+    }
+
+    /** With {@code previousText}, the sentence before this one — when {@code eleven-labs-previous-text} is on. */
+    @Override
+    public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style,
+                              String previousText) {
         List<short[]> chunks = new ArrayList<>();
-        synthesizeStreaming(text, language, voice, style, chunks::add);
+        stream(text, language, voice, previousText, chunks::add);
 
         int total = 0;
         for (short[] chunk : chunks) {
@@ -97,6 +113,11 @@ public class ElevenLabsTtsProvider implements TtsProvider {
     @Override
     public void synthesizeStreaming(String text, String language, String requestedVoice,
                                     EffectiveVoiceSettings style, PcmChunkListener onChunk) {
+        stream(text, language, requestedVoice, null, onChunk);
+    }
+
+    private void stream(String text, String language, String requestedVoice, String previousText,
+                        PcmChunkListener onChunk) {
         if (text == null || text.isBlank()) {
             return;
         }
@@ -116,7 +137,7 @@ public class ElevenLabsTtsProvider implements TtsProvider {
                 .uri(URI.create(base + "/" + voice + "/stream?output_format=pcm_8000"))
                 .header("Content-Type", "application/json")
                 .header("xi-api-key", apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody(text, language, settings)))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody(text, language, settings, previousText)))
                 .timeout(Duration.ofSeconds(settings.connectTimeoutSeconds()))
                 .build();
 
@@ -127,6 +148,9 @@ public class ElevenLabsTtsProvider implements TtsProvider {
                 throw new ExternalServiceException(ErrorCode.TTS_ELEVENLABS_HTTP_STATUS, "elevenlabs-tts",
                         response.statusCode());
             }
+            // Which backend served this line (USA, Netherlands, Singapore): the number behind
+            // a slow region is otherwise invisible from this side.
+            response.headers().firstValue("x-region").ifPresent(region -> metrics.ttsRegion(name(), region));
             streamPcm(response.body(), onChunk);
         } catch (ExternalServiceException e) {
             throw e;
@@ -237,10 +261,16 @@ public class ElevenLabsTtsProvider implements TtsProvider {
     }
 
     /** {@code language_code} is ISO 639-1, so {@code uz-UZ} goes out as {@code uz}. */
-    private String requestBody(String text, String language, ElevenLabsTtsProperties settings) {
+    private String requestBody(String text, String language, ElevenLabsTtsProperties settings,
+                               String previousText) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("text", text);
         root.put("model_id", settings.model());
+        if (streamProperties.elevenLabsPreviousText() && previousText != null && !previousText.isBlank()) {
+            String tail = previousText.trim();
+            root.put("previous_text", tail.length() > PREVIOUS_TEXT_MAX_CHARS
+                    ? tail.substring(tail.length() - PREVIOUS_TEXT_MAX_CHARS) : tail);
+        }
         if (language != null && !language.isBlank()) {
             root.put("language_code", language.split("-")[0].toLowerCase(Locale.ROOT));
         }

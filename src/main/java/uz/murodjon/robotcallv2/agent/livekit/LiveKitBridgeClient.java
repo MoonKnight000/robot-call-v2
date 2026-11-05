@@ -41,13 +41,16 @@ public class LiveKitBridgeClient {
     /**
      * Puts the bridge in {@code roomName}, streaming to {@code rtpHost:rtpPort}.
      *
+     * @param wideband whether the leg is 16 kHz slin16 ({@code SLIN16} on the bridge) instead of
+     *                 {@code codec} — a browser room on a wideband endpoint ({@code RtpEndpoint})
      * @return the bridge's own RTP address — where our endpoint sends the agent's voice
      */
-    public InetSocketAddress startMedia(String roomName, String rtpHost, int rtpPort, RtpCodec codec) {
+    public InetSocketAddress startMedia(String roomName, String rtpHost, int rtpPort, RtpCodec codec, boolean wideband) {
         byte[] body;
         try {
             body = objectMapper.writeValueAsBytes(Map.of(
-                    "room", roomName, "rtpHost", rtpHost, "rtpPort", rtpPort, "codec", codec.name()));
+                    "room", roomName, "rtpHost", rtpHost, "rtpPort", rtpPort,
+                    "codec", wideband ? "SLIN16" : codec.name()));
         } catch (IOException e) {
             throw new IllegalStateException("could not serialise a bridge request", e);
         }

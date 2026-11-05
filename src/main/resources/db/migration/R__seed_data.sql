@@ -198,7 +198,7 @@ INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
     ('scribe_v2_realtime',          'STT', 'elevenlabs',      'CASCADE',  'ElevenLabs Scribe v2 Realtime — ~150 ms, oraliq natijalar bilan'),
     ('gemini-3.8-flash-tts',        'TTS', 'gemini',          'CASCADE',  'Gemini 3.8 Flash TTS — standart, 30 ta ovoz'),
     ('gemini-3.1-flash-tts-preview','TTS', 'gemini',          'CASCADE',  'Gemini 3.1 Flash TTS — oldingi avlod, preview'),
-    ('sonic-multilingual',          'TTS', 'cartesia',        'CASCADE',  'Cartesia Sonic Multilingual'),
+    ('sonic-3.6',                   'TTS', 'cartesia',        'CASCADE',  'Cartesia Sonic 3.6 — 44 til, rus tili bor, o''zbek tili yo''q'),
     ('gpt-4o-mini-tts',             'TTS', 'openai',          'CASCADE',  'OpenAI TTS — 13 ta ovoz, uslub ko''rsatmasi bilan'),
     ('eleven_v4_turbo',             'TTS', 'elevenlabs',      'CASCADE',  'ElevenLabs v4 Turbo — o''zbek tili, ~100 ms')
 ON CONFLICT (id) DO UPDATE SET kind     = EXCLUDED.kind,
@@ -232,9 +232,13 @@ UPDATE ai_agent SET llm_model = NULL
 UPDATE ai_model_config SET model = NULL
  WHERE model IN ('llama-3.3-70b-versatile', 'llama-3.1-8b-instant');
 
+-- Cartesia retired sonic-multilingual on 2026-06-01; an agent that picked it moves to sonic-3.6.
+UPDATE ai_agent SET tts_model = 'sonic-3.6' WHERE tts_model = 'sonic-multilingual';
+
 DELETE FROM ai_model
  WHERE id IN ('llama-3.3-70b-versatile', 'llama-3.1-8b-instant',
-              'gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview');
+              'gpt-4o-realtime-preview', 'gpt-4o-mini-realtime-preview',
+              'sonic-multilingual');
 
 -- Built-in scenario templates. They are read-only through the API
 -- (SCENARIO_BUILTIN_READONLY), so this file owns their text: an already-seeded row has

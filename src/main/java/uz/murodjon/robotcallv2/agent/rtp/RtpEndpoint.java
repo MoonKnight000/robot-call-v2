@@ -13,7 +13,10 @@ import org.slf4j.LoggerFactory;
 import uz.murodjon.robotcallv2.agent.audio.AmbientSoundGenerator;
 import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.NeuralDenoiseStream;
+import uz.murodjon.robotcallv2.agent.audio.StreamingDownsampler;
+import uz.murodjon.robotcallv2.agent.audio.StreamingUpsampler;
 import uz.murodjon.robotcallv2.agent.audio.TelephonyNoiseCanceller;
+import uz.murodjon.robotcallv2.agent.audio.WidebandAudioListener;
 import uz.murodjon.robotcallv2.agent.codec.G711Codec;
 import uz.murodjon.robotcallv2.agent.session.CallMdc;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AmbientSound;
@@ -46,9 +49,20 @@ public class RtpEndpoint implements Closeable {
 
     private static final int PT_PCMU = 0; // µ-law
     private static final int PT_PCMA = 8; // A-law
+    /** Asterisk's static payload type for slin16 (main/rtp_engine.c); externalMedia sends and expects it. */
+    private static final int PT_SLIN16 = 118;
 
-    /** RTP clock of G.711 telephony audio — the unit sequence/timestamp arithmetic uses. */
+    /** ARI {@code externalMedia} format of a wideband leg: 16 kHz signed linear, big-endian on the wire. */
+    public static final String WIDEBAND_ASTERISK_FORMAT = "slin16";
+
+    /**
+     * Rate of the pipeline behind this endpoint — every listener's 8 kHz, the playback queue
+     * and the ambient beds. Also the RTP clock of a G.711 leg; a wideband leg's clock is
+     * {@link #WIDEBAND_RATE}, and its audio is converted at this edge only.
+     */
     private static final int CLOCK_RATE = 8000;
+    private static final int WIDEBAND_RATE = 16000;
+    private static final int WIDEBAND_FACTOR = WIDEBAND_RATE / CLOCK_RATE;
 
     private static final int SAMPLES_PER_FRAME = 160; // 20 ms @ 8 kHz
     private static final int FRAME_MS = 20;
@@ -102,7 +116,19 @@ public class RtpEndpoint implements Closeable {
     private final BlockingQueue<ReceivedPacket> queue;
     /** The most playback audio held unsent, in samples — {@code rtp.max-queued-playback-seconds}. */
     private final long maxQueuedSamples;
-    private final RtpStats stats = new RtpStats(CLOCK_RATE);
+    /**
+     * Whether the leg carries slin16 instead of G.711 — a browser call ({@code rtp.wideband-web-test}).
+     * Inbound, {@link WidebandAudioListener}s get the 16 kHz frame and everything else an 8 kHz copy;
+     * outbound, the 8 kHz playback is upsampled on the way out.
+     */
+    private final boolean wideband;
+    /** 16 → 8 kHz for the listeners that stay narrowband; consumer thread only. Null on a G.711 leg. */
+    private final StreamingDownsampler inboundDownsampler;
+    /** 8 → 16 kHz for what the bot says; pacer only. Null on a G.711 leg. */
+    private final StreamingUpsampler outboundUpsampler;
+    /** Consumer thread only. */
+    private boolean foreignPayloadTypeLogged;
+    private final RtpStats stats;
     private final long ssrc = Integer.toUnsignedLong(new Random().nextInt());
 
     /** Pending playback audio, oldest first. Guarded by {@link #playLock}. */
@@ -183,6 +209,21 @@ public class RtpEndpoint implements Closeable {
     public RtpEndpoint(String channelId, int port, RtpCodec codec, WavRecorder recorder,
                        List<AudioListener> listeners, AudioListener outboundTap, int receiveQueueCapacity,
                        int maxQueuedPlaybackSeconds) {
+        this(channelId, port, codec, recorder, listeners, outboundTap, receiveQueueCapacity,
+                maxQueuedPlaybackSeconds, false);
+    }
+
+    /**
+     * @param wideband whether Asterisk's externalMedia for this leg was opened with
+     *                 {@link #WIDEBAND_ASTERISK_FORMAT}; {@code codec} is then unused on the wire
+     */
+    public RtpEndpoint(String channelId, int port, RtpCodec codec, WavRecorder recorder,
+                       List<AudioListener> listeners, AudioListener outboundTap, int receiveQueueCapacity,
+                       int maxQueuedPlaybackSeconds, boolean wideband) {
+        this.wideband = wideband;
+        this.inboundDownsampler = wideband ? StreamingDownsampler.from16kTo8k() : null;
+        this.outboundUpsampler = wideband ? StreamingUpsampler.from8kTo16k() : null;
+        this.stats = new RtpStats(wideband ? WIDEBAND_RATE : CLOCK_RATE);
         this.queue = new LinkedBlockingQueue<>(receiveQueueCapacity);
         this.maxQueuedSamples = (long) maxQueuedPlaybackSeconds * CLOCK_RATE;
         this.channelId = channelId;
@@ -594,7 +635,10 @@ public class RtpEndpoint implements Closeable {
         }
         first = sendSeq == 0;
         try {
-            byte[] rtp = RtpPacket.toBytes(codec.payloadType(), sendSeq & 0xFFFF, sendTimestamp, ssrc, first, payload);
+            byte[] rtp = wideband
+                    ? RtpPacket.toBytes(PT_SLIN16, sendSeq & 0xFFFF, sendTimestamp * WIDEBAND_FACTOR, ssrc, first,
+                            toWidebandPayload(pcmFrame))
+                    : RtpPacket.toBytes(codec.payloadType(), sendSeq & 0xFFFF, sendTimestamp, ssrc, first, payload);
             channel.writeAndFlush(new DatagramPacket(Unpooled.wrappedBuffer(rtp), remote));
             sendSeq++;
             sendTimestamp += SAMPLES_PER_FRAME;
@@ -606,9 +650,28 @@ public class RtpEndpoint implements Closeable {
         }
     }
 
+    /**
+     * One 20 ms frame of the bot at 16 kHz, big-endian. Every frame — silence included — goes
+     * through the one upsampler, so its filter delay (~2 ms) stays constant and never clicks;
+     * the very first frame comes out that much short and is padded with silence in front.
+     */
+    private byte[] toWidebandPayload(short[] frame8k) {
+        short[] up = outboundUpsampler.push(frame8k, SAMPLES_PER_FRAME);
+        int samples = SAMPLES_PER_FRAME * WIDEBAND_FACTOR;
+        byte[] out = new byte[samples * 2];
+        int start = samples - up.length;
+        for (int i = 0; i < up.length; i++) {
+            int at = (start + i) * 2;
+            out[at] = (byte) (up[i] >> 8);
+            out[at + 1] = (byte) up[i];
+        }
+        return out;
+    }
+
     private void consume() {
         short[] pcm = new short[512];
         short[] lastGoodFrame = new short[SAMPLES_PER_FRAME];
+        short[] lastGoodWide = wideband ? new short[SAMPLES_PER_FRAME * WIDEBAND_FACTOR] : null;
         int lastSeq = -1;
 
         while (running || !queue.isEmpty()) {
@@ -659,7 +722,18 @@ public class RtpEndpoint implements Closeable {
                 }
 
                 // Packet Loss Concealment (PLC): interpolate missing 1-2 frames using decaying energy
-                if (lastSeq >= 0 && gap > 1 && gap <= 3) {
+                if (lastSeq >= 0 && gap > 1 && gap <= 3 && wideband) {
+                    // Concealed at 16 kHz and narrowed like any other frame, so the 8 kHz
+                    // listeners' copy keeps one continuous filter history.
+                    for (int k = 0; k < gap - 1; k++) {
+                        float decay = (float) Math.pow(0.65, k + 1);
+                        short[] plcWide = new short[lastGoodWide.length];
+                        for (int i = 0; i < plcWide.length; i++) {
+                            plcWide[i] = (short) Math.round(lastGoodWide[i] * decay);
+                        }
+                        deliverWideband(plcWide);
+                    }
+                } else if (lastSeq >= 0 && gap > 1 && gap <= 3) {
                     int lostCount = gap - 1;
                     short[] plcFrame = new short[SAMPLES_PER_FRAME];
                     for (int k = 0; k < lostCount; k++) {
@@ -677,6 +751,19 @@ public class RtpEndpoint implements Closeable {
                 lastSeq = seq;
 
                 byte[] payload = p.payload();
+                if (wideband) {
+                    // The leg carries nothing but slin16, so the payload is decoded whatever its
+                    // number; a number other than ours means Asterisk would not take what we send.
+                    if (p.payloadType() != PT_SLIN16 && !foreignPayloadTypeLogged) {
+                        foreignPayloadTypeLogged = true;
+                        log.warn("Wideband leg on port {} receives payload type {}, sends {} — the bot may be unheard",
+                                port, p.payloadType(), PT_SLIN16);
+                    }
+                    short[] wide = decodeSlin16(payload);
+                    System.arraycopy(wide, 0, lastGoodWide, 0, Math.min(wide.length, lastGoodWide.length));
+                    deliverWideband(wide);
+                    continue;
+                }
                 if (payload.length > pcm.length) {
                     pcm = new short[payload.length];
                 }
@@ -701,6 +788,37 @@ public class RtpEndpoint implements Closeable {
                 }
             } catch (Exception e) {
                 log.warn("RTP processing error on port {}: {}", port, e.getMessage());
+            }
+        }
+    }
+
+    /** slin16 on the wire is network byte order (RFC 3551 L16). */
+    private static short[] decodeSlin16(byte[] payload) {
+        short[] out = new short[payload.length / 2];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (short) ((payload[2 * i] << 8) | (payload[2 * i + 1] & 0xFF));
+        }
+        return out;
+    }
+
+    /**
+     * One frame of a wideband leg: {@link WidebandAudioListener}s (the recognizer) get it as
+     * it came, everyone else — VAD, AMD, the live monitor — and the recording get the 8 kHz
+     * copy the rest of the pipeline is built on. Only that copy is noise-cancelled: the
+     * cancellers are 8 kHz models, and a browser has already run its own noise suppression.
+     */
+    private void deliverWideband(short[] wide) {
+        short[] narrow = inboundDownsampler.push(wide, wide.length);
+        short[] cleanNarrow = null;
+        if (narrow.length > 0) {
+            recordCaller(narrow, narrow.length);
+            cleanNarrow = clean(narrow, narrow.length);
+        }
+        for (AudioListener listener : listeners) {
+            if (listener instanceof WidebandAudioListener widebandListener) {
+                widebandListener.onWidebandAudio(wide, wide.length);
+            } else if (cleanNarrow != null) {
+                listener.onAudio(cleanNarrow, narrow.length);
             }
         }
     }

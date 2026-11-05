@@ -9,6 +9,8 @@ import java.util.Deque;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -83,7 +85,7 @@ class SttStreamBridgeTest {
         FakeSession backupSession = new FakeSession(true);
         backup.script.add(backupSession);
         SttProviderSelector selector = mock(SttProviderSelector.class);
-        when(selector.findFallback(primary)).thenReturn(backup);
+        when(selector.findFallback(eq(primary), any())).thenReturn(backup);
 
         SttStreamBridge bridge = new SttStreamBridge(primary, 8000, 8000, "test-channel", "uz-UZ", List.of(),
                 (text, isFinal, confidence) -> { }, null, mock(SttMetrics.class), null, 0, null, List.of(),

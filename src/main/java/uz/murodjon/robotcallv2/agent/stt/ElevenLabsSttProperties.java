@@ -10,13 +10,18 @@ package uz.murodjon.robotcallv2.agent.stt;
  * @param sampleRate            Sample rate in Hz the audio is sent at — 8000 or 16000, the two rates
  *                              the call pipeline produces (default: 16000)
  * @param connectTimeoutSeconds how long to wait for the WebSocket and its {@code session_started}
+ * @param secondaryLanguages    send the call's other expected languages ({@code detect-languages}) as
+ *                              {@code secondary_languages}. Off by default: the API reference lists the
+ *                              parameter but not how a list is written in the URL, so it is tried on
+ *                              purpose, not by surprise
  */
 public record ElevenLabsSttProperties(
         String apiKey,
         String url,
         String model,
         int sampleRate,
-        int connectTimeoutSeconds
+        int connectTimeoutSeconds,
+        boolean secondaryLanguages
 ) {
     public ElevenLabsSttProperties {
         if (url == null || url.isBlank()) {

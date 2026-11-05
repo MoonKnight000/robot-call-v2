@@ -95,6 +95,20 @@ public class FastPathRouter {
 
     private static final Set<String> REPEAT_ALONE_RU = Set.of("что", "а");
 
+    /**
+     * A line check — the caller asking whether anyone is there — only when it is the whole
+     * utterance: "alo, ha men Murodjonman" is an answer, and the model has to hear it.
+     */
+    private static final Set<String> LINE_CHECK_UZ = Set.of(
+            "alo", "allo", "alyo", "eshityapsizmi", "eshitayapsizmi", "eshityapsanmi", "eshitilyaptimi",
+            "eshitib turibsizmi", "alo eshityapsizmi", "allo eshityapsizmi", "alo alo", "allo allo"
+    );
+
+    private static final Set<String> LINE_CHECK_RU = Set.of(
+            "алло", "алё", "ало", "вы меня слышите", "слышите меня", "слышите", "алло вы меня слышите",
+            "алло слышите", "алло алло"
+    );
+
     private static final String REPEAT_PREFIX_UZ = "Takrorlayman: ";
 
     private static final String REPEAT_PREFIX_RU = "Повторяю: ";
@@ -175,6 +189,18 @@ public class FastPathRouter {
             if (lastText != null && !lastText.isBlank()) {
                 String reply = (isRu ? REPEAT_PREFIX_RU : REPEAT_PREFIX_UZ) + lastText;
                 log.info("[{}] Fast-path matched: REPEAT", s.channelId());
+                return FastPathResult.replyOnly(reply);
+            }
+        }
+
+        // 5b. Line check ("Alo?", "Eshityapsizmi?"): yes, and the question the caller is to answer.
+        // Nothing to say before the agent has spoken — the greeting answers that one.
+        if ((isRu ? LINE_CHECK_RU : LINE_CHECK_UZ).contains(normalized)) {
+            String lastText = withoutRepeatPrefix(s.lastAgentText());
+            if (lastText != null && !lastText.isBlank()) {
+                String lastQ = DialogLines.lastQuestion(lastText);
+                String reply = DialogLines.lineCheckReply(s) + " " + (lastQ != null ? lastQ : lastText);
+                log.info("[{}] Fast-path matched: LINE_CHECK", s.channelId());
                 return FastPathResult.replyOnly(reply);
             }
         }

@@ -61,7 +61,8 @@ class LlmTurnClient {
     private static final long BARGE_IN_DECISION_MS = 1500;
 
     private static final Set<String> SILENT_CONTROL_TOOLS = Set.of(
-            "transitionTo", "endCall", "recordWrongPerson", "recordDoNotCall", "waitForCaller", "switchLanguage", "noteCallerMood"
+            "transitionTo", "endCall", "recordWrongPerson", "recordDoNotCall", "waitForCaller", "switchLanguage", "noteCallerMood",
+            "noteClientFact"
     );
 
     /** When this process last sent a turn to any LLM, for the {@code idle} field of the request log. */
@@ -77,6 +78,7 @@ class LlmTurnClient {
     private final CallTraceLog callTraceLog;
     private final DialogTuningProperties dialogTuning;
     private final PromptCacheProperties promptCache;
+    private final ChunkerProperties chunkerProperties;
 
     private volatile ChatClient chatClient;
 
@@ -90,7 +92,8 @@ class LlmTurnClient {
                   LlmTimeoutProperties llmTimeout,
                   DialogTuningProperties dialogTuning,
                   CallTraceLog callTraceLog,
-                  PromptCacheProperties promptCache) {
+                  PromptCacheProperties promptCache,
+                  ChunkerProperties chunkerProperties) {
         this.chatModelProvider = chatModelProvider;
         this.dialogProperties = dialogProperties;
         this.promptFactory = promptFactory;
@@ -102,6 +105,7 @@ class LlmTurnClient {
         this.callTraceLog = callTraceLog;
         this.dialogTuning = dialogTuning;
         this.promptCache = promptCache;
+        this.chunkerProperties = chunkerProperties;
     }
 
     @PostConstruct
@@ -920,8 +924,9 @@ class LlmTurnClient {
                 // that is what a false interruption resumes from.
                 continue;
             }
-            for (String sentence = SentenceSplitter.takeSentence(pending, sentences.isOpening()); sentence != null;
-                 sentence = SentenceSplitter.takeSentence(pending, sentences.isOpening())) {
+            for (String sentence = SentenceSplitter.takeSentence(pending, sentences.isOpening(), chunkerProperties);
+                 sentence != null;
+                 sentence = SentenceSplitter.takeSentence(pending, sentences.isOpening(), chunkerProperties)) {
                 sentences.add(sentence);
             }
         }
@@ -957,6 +962,8 @@ class LlmTurnClient {
         private final AtomicBoolean blocked = new AtomicBoolean();
         /** Whether the streamed first sentence is still to come. */
         private boolean opening = true;
+        /** The sentence added just before, as written — what a synthesizer may continue from. */
+        private String previousSentence;
 
         private SentenceQueue(DialogSession s) {
             this.s = s;
@@ -967,6 +974,8 @@ class LlmTurnClient {
         }
 
         void add(String sentence) {
+            String previous = previousSentence;
+            previousSentence = sentence;
             if (opening) {
                 SpeechOutcome outcome = speech.speak(s, sentence);
                 // A refused opening line leaves the next one on the clock, and on the
@@ -975,7 +984,7 @@ class LlmTurnClient {
                 note(outcome);
                 return;
             }
-            CompletableFuture<PreparedLine> prepared = executors.supply(() -> speech.prepare(s, sentence));
+            CompletableFuture<PreparedLine> prepared = executors.supply(() -> speech.prepare(s, sentence, previous));
             chain = chain.thenCombine(prepared, (done, line) -> {
                 note(speech.deliver(s, line));
                 return null;

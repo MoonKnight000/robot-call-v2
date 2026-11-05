@@ -11,6 +11,24 @@ import java.util.List;
 public interface SttProvider extends NamedProvider {
 
     /**
+     * Whether this provider can recognize the given BCP-47 language at all. Default is yes:
+     * only a provider known to lack a language says otherwise, so that a mid-call failover
+     * never lands on a recognizer that returns nonsense for it.
+     */
+    default boolean supports(String language) {
+        return true;
+    }
+
+    /**
+     * Whether a stream of this provider may sit open, with no audio sent, for the seconds a
+     * line rings ({@link SttPrewarmRegistry}). Default is no: a provider that closes an idle
+     * stream (Yandex does within seconds) would hand the call a dead one.
+     */
+    default boolean supportsPrewarm() {
+        return false;
+    }
+
+    /**
      * Open a streaming recognition session for the given BCP-47 language
      * (e.g. {@code uz-UZ}, {@code ru-RU}). Transcripts are delivered to
      * {@code listener}.

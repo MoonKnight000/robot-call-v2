@@ -73,6 +73,12 @@ voice-agent:
       replay-buffer-samples: ${STT_REPLAY_BUFFER_SAMPLES:16000}
       promoted-final-ttl-ms: ${STT_PROMOTED_FINAL_TTL_MS:2500}
       failover-after-failures: ${STT_FAILOVER_AFTER_FAILURES:2}
+    # Open the recognizer's stream while an outbound line rings (SttPrewarmProperties).
+    # Experiment, off by default; only providers that keep an idle stream alive take part.
+    prewarm:
+      enabled: ${STT_PREWARM_ENABLED:false}
+      max-pending: ${STT_PREWARM_MAX_PENDING:50}
+      ttl-slack-ms: ${STT_PREWARM_TTL_SLACK_MS:10000}
     transcription-modes: {}
     vad-gating:
       enabled: ${STT_VAD_GATING:true}
@@ -123,18 +129,24 @@ voice-agent:
       sample-rate: 8000
       interim-results: ${STT_DEEPGRAM_INTERIM:true}
       connect-timeout-seconds: ${STT_DEEPGRAM_TIMEOUT_SECONDS:5}
+      smart-format: ${STT_DEEPGRAM_SMART_FORMAT:true}
+      # endpointing sent under external endpointing: ms, or 0 = endpointing=false. 300 = as before.
+      external-endpointing-ms: ${STT_DEEPGRAM_EXTERNAL_ENDPOINTING_MS:300}
     open-ai:
       api-key: ${OPENAI_API_KEY:}
       url: ${STT_OPENAI_URL:wss://api.openai.com/v1/realtime?intent=transcription}
       model: ${STT_OPENAI_MODEL:gpt-live-transcribe}
       sample-rate: ${STT_OPENAI_SAMPLE_RATE:24000}
       connect-timeout-seconds: ${STT_OPENAI_TIMEOUT_SECONDS:10}
+      # gpt-live-transcribe only: minimal | low | medium | high | xhigh. Blank = OpenAI's default.
+      delay: ${STT_OPENAI_DELAY:}
     eleven-labs:
       api-key: ${STT_ELEVENLABS_API_KEY:${ELEVENLABS_API_KEY:}}
       url: ${STT_ELEVENLABS_URL:wss://api.elevenlabs.io/v1/speech-to-text/realtime}
       model: ${STT_ELEVENLABS_MODEL:scribe_v2_realtime}
       sample-rate: ${STT_ELEVENLABS_SAMPLE_RATE:16000}
       connect-timeout-seconds: ${STT_ELEVENLABS_TIMEOUT_SECONDS:5}
+      secondary-languages: ${STT_ELEVENLABS_SECONDARY_LANGUAGES:false}
 
   # Semantic end-of-turn, Smart Turn (SmartTurnProperties)
   turn:
@@ -201,6 +213,15 @@ voice-agent:
     enabled: ${TTS_ENABLED:true}
     provider: ${TTS_PROVIDER:yandex}
     default-language: ${TTS_DEFAULT_LANGUAGE:uz-UZ}
+    # Supervision of streamed lines (TtsStreamProperties). 0 = off. Set it from the voice.tts.ttfa
+    # p95 with headroom: a provider silent this long is failed over to the next one.
+    stream:
+      first-chunk-timeout-ms: ${TTS_FIRST_CHUNK_TIMEOUT_MS:0}
+      # Experiments, all off: judge each by voice.tts.ttfa{provider=...} before turning it on for real calls.
+      yandex-stream-synthesis: ${TTS_YANDEX_STREAM_SYNTHESIS:false}
+      cartesia-web-socket: ${TTS_CARTESIA_WEBSOCKET:false}
+      eleven-labs-previous-text: ${TTS_ELEVENLABS_PREVIOUS_TEXT:false}
+      gemini-mulaw: ${TTS_GEMINI_MULAW:false}
     cache:
       size: ${TTS_CACHE_SIZE:200}
       max-chars: ${TTS_CACHE_MAX_CHARS:200}
@@ -244,14 +265,16 @@ voice-agent:
     cartesia:
       api-key: ${TTS_CARTESIA_API_KEY:}
       url: ${TTS_CARTESIA_URL:https://api.cartesia.ai/tts/bytes}
-      model: ${TTS_CARTESIA_MODEL:sonic-multilingual}
+      model: ${TTS_CARTESIA_MODEL:sonic-3.6}
       voice: ${TTS_CARTESIA_VOICE:79a125e8-cd45-4c13-8a67-188112f4dd22}
       sample-rate: 8000
       connect-timeout-seconds: ${TTS_CARTESIA_TIMEOUT_SECONDS:5}
     open-ai:
       api-key: ${OPENAI_API_KEY:}
       url: ${TTS_OPENAI_URL:https://api.openai.com/v1/audio/speech}
-      model: ${TTS_OPENAI_MODEL:gpt-4o-mini-tts}
+      # Dated snapshot, not the alias: the alias has changed behaviour under us before. OpenAI shuts
+      # this model down on 2027-01-06 (replacement: Realtime API gpt-realtime-2.1-mini).
+      model: ${TTS_OPENAI_MODEL:gpt-4o-mini-tts-2025-12-15}
       voice: ${TTS_OPENAI_VOICE:alloy}
       voices:
         uz-UZ: ${TTS_OPENAI_VOICE_UZ:alloy}

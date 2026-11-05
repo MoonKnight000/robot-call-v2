@@ -107,6 +107,15 @@ public interface DialogOutcomeSink {
      */
     void noteCallerMood(CustomerSentiment mood);
 
+    /**
+     * Something the caller said that matters later in the call and that no outcome tool
+     * records ("in hospital", "salary comes on the 15th"). Kept in the turn's annex, so it
+     * outlives the history being trimmed ({@link DialogSession#trimHistory}).
+     *
+     * @return whether it was kept — {@code false} once the call holds as many as it may
+     */
+    boolean noteClientFact(String name, String value);
+
     /** The agent behind this call; {@code null} when none is (a manual test line, a dry run from the panel). */
     AiAgent agent();
 

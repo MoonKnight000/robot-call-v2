@@ -22,6 +22,8 @@ import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotSessionFilter;
 import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotMessageRole;
 import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotProposalStatus;
 import uz.murodjon.robotcallv2.copilot.domain.service.CopilotInstructions;
+import uz.murodjon.robotcallv2.copilot.domain.service.CopilotToolResultMinifier;
+import uz.murodjon.robotcallv2.copilot.domain.service.CopilotToolSelector;
 import uz.murodjon.robotcallv2.copilot.infrastructure.config.CopilotProperties;
 import uz.murodjon.robotcallv2.mcp.application.port.input.McpServerUseCase;
 import uz.murodjon.robotcallv2.mcp.domain.entity.McpTool;
@@ -52,7 +54,7 @@ public class CopilotService implements CopilotUseCase {
     private static final Logger log = LoggerFactory.getLogger(CopilotService.class);
 
     /** A tool answer longer than this is cut before the model reads it, and before it is stored. */
-    static final int MAX_TOOL_ANSWER_CHARS = 12_000;
+    static final int MAX_TOOL_ANSWER_CHARS = CopilotToolResultMinifier.MAX_MINIFIED_CHARS;
 
     private final CopilotRepository repository;
     private final CopilotModelPort modelPort;
@@ -91,7 +93,8 @@ public class CopilotService implements CopilotUseCase {
         CopilotMessage question = repository.createMessage(companyId, CopilotMessage.user(session.id(), request.message()));
         history.add(question);
 
-        List<McpTool> tools = mcpServerUseCase.findServerTools();
+        List<McpTool> availableTools = mcpServerUseCase.findServerTools();
+        List<McpTool> tools = CopilotToolSelector.selectTools(request.context(), request.message(), availableTools);
         RecordingToolInvoker invoker = new RecordingToolInvoker(companyId, session.id(),
                 ToolRun.of(tools, request.applyChangesOrDefault()));
         CopilotModelReply reply = modelPort.generateReply(
@@ -121,11 +124,13 @@ public class CopilotService implements CopilotUseCase {
 
         try {
             sink.send("session", session);
+            sink.send("status", Map.of("step", "THINKING", "message", "Savolingiz o'rganilmoqda..."));
         } catch (IOException e) {
             log.warn("Failed to send initial session event for copilot session {}", session.id(), e);
         }
 
-        List<McpTool> tools = mcpServerUseCase.findServerTools();
+        List<McpTool> availableTools = mcpServerUseCase.findServerTools();
+        List<McpTool> tools = CopilotToolSelector.selectTools(request.context(), request.message(), availableTools);
 
         AtomicBoolean cancelled = new AtomicBoolean(false);
         Thread task = Thread.ofVirtual().name("copilot-ask-" + session.id())
@@ -148,6 +153,10 @@ public class CopilotService implements CopilotUseCase {
 
                 CopilotMessage finalAnswer = answer.withCharge(chargedUzs);
 
+                try {
+                    sink.send("status", Map.of("step", "GENERATING", "message", "Javob shakllantirilmoqda..."));
+                } catch (IOException ignored) {
+                }
                 streamTextDeltas(reply.text(), sink, cancelled);
 
                 if (!cancelled.get()) {
@@ -275,7 +284,32 @@ public class CopilotService implements CopilotUseCase {
                 .filter(message -> message.role() != CopilotMessageRole.TOOL)
                 .toList();
         int keep = copilotProperties.maxHistory();
-        return said.size() > keep ? said.subList(said.size() - keep, said.size()) : said;
+        List<CopilotMessage> trimmed = said.size() > keep ? said.subList(said.size() - keep, said.size()) : said;
+        return pruneOlderMessages(trimmed);
+    }
+
+    /**
+     * Prevents long conversations from bloating the context window with older multi-paragraph replies.
+     * Keeps the most recent 2 turns (4 messages) verbatim, while capping earlier assistant answers.
+     */
+    private static List<CopilotMessage> pruneOlderMessages(List<CopilotMessage> messages) {
+        if (messages.size() <= 4) {
+            return messages;
+        }
+        List<CopilotMessage> result = new ArrayList<>(messages.size());
+        int recentThreshold = messages.size() - 4;
+        for (int i = 0; i < messages.size(); i++) {
+            CopilotMessage m = messages.get(i);
+            if (i < recentThreshold && m.role() == CopilotMessageRole.ASSISTANT && m.content() != null && m.content().length() > 800) {
+                String compact = m.content().substring(0, 800) + "… [oldingi javob qisqartirildi]";
+                result.add(new CopilotMessage(m.id(), m.sessionId(), m.role(), compact, m.toolName(),
+                        m.toolArguments(), m.toolError(), m.promptTokens(), m.completionTokens(), m.chargedUzs(),
+                        m.createdAt(), m.proposalStatus()));
+            } else {
+                result.add(m);
+            }
+        }
+        return result;
     }
 
     private LocalDate today(long companyId) {
@@ -321,6 +355,7 @@ public class CopilotService implements CopilotUseCase {
         boolean error = false;
         try {
             answer = mcpServerUseCase.callServerToolAsDraftOnly(companyId, name, argumentsJson);
+            answer = CopilotToolResultMinifier.minify(name, answer);
         } catch (AppException e) {
             answer = e.code().name() + ": " + e.getMessage();
             error = true;
@@ -404,17 +439,49 @@ public class CopilotService implements CopilotUseCase {
             if (calls.size() >= copilotProperties.maxToolCalls()) {
                 return "TOOL_BUDGET_EXHAUSTED: answer the user now with what you already have.";
             }
+            String toolTitle = resolveToolHumanTitle(name);
             try {
+                sink.send("status", Map.of("step", "TOOL_RUNNING", "toolName", name, "message", toolTitle + "..."));
                 sink.send("tool_call", Map.of("toolName", name, "arguments", argumentsJson));
             } catch (IOException ignored) {
             }
             CopilotMessage call = runTool(companyId, sessionId, run, name, argumentsJson);
             calls.add(call);
             try {
+                sink.send("status", Map.of("step", "TOOL_DONE", "toolName", name, "message", toolTitle + " yakunlandi"));
                 sink.send(call.isPendingProposal() ? "proposal" : "tool_result", call);
             } catch (IOException ignored) {
             }
             return call.content();
         }
+    }
+
+    private static String resolveToolHumanTitle(String toolName) {
+        if (toolName == null || toolName.isBlank()) {
+            return "Ma'lumotlar tahlil qilinmoqda";
+        }
+        return switch (toolName) {
+            case "list_ai_agents" -> "AI agentlar ro'yxati olinmoqda";
+            case "get_ai_agent" -> "AI agent ma'lumotlari yuklanmoqda";
+            case "update_ai_agent", "update_ai_agent_prompt" -> "AI agent sozlamalari yangilanmoqda";
+            case "list_campaigns" -> "Kampaniyalar ro'yxati tekshirilmoqda";
+            case "get_campaign_status" -> "Kampaniya holati tahlil qilinmoqda";
+            case "pause_campaign" -> "Kampaniya to'xtatilmoqda";
+            case "resume_campaign" -> "Kampaniya ishga tushirilmoqda";
+            case "list_calls" -> "Qo'ng'iroqlar tarixi yuklanmoqda";
+            case "get_call_details" -> "Qo'ng'iroq tafsilotlari o'rganilmoqda";
+            case "get_call_transcript" -> "Qo'ng'iroq dialogi tahlil qilinmoqda";
+            case "get_analytics_summary" -> "Umumiy analitika hisoblanmoqda";
+            case "get_hourly_call_metrics" -> "Soatlik qo'ng'iroq statistikasi olinmoqda";
+            case "get_agent_performance_metrics" -> "Agent samaradorligi baholanmoqda";
+            case "get_billing_balance", "get_billing_transactions" -> "Balans va to'lovlar tekshirilmoqda";
+            case "list_scenarios", "get_scenario_details" -> "Ssenariy ma'lumotlari ko'rilmoqda";
+            case "list_knowledge_bases", "query_knowledge_base" -> "Bilimlar bazasi qidirilmoqda";
+            case "list_sip_trunks", "get_sip_trunk_status" -> "SIP trunk holati tekshirilmoqda";
+            default -> {
+                String formatted = toolName.replace('_', ' ').strip();
+                yield (formatted.isEmpty() ? "Amal" : Character.toUpperCase(formatted.charAt(0)) + formatted.substring(1)) + " bajarilmoqda";
+            }
+        };
     }
 }

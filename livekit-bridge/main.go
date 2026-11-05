@@ -75,7 +75,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	codec, ok := parseCodec(req.Codec)
 	if !ok {
-		http.Error(w, "codec must be ULAW or ALAW", http.StatusBadRequest)
+		http.Error(w, "codec must be ULAW, ALAW or SLIN16", http.StatusBadRequest)
 		return
 	}
 	s.mu.Lock()

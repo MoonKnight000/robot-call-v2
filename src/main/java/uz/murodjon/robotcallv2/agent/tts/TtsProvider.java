@@ -55,6 +55,16 @@ public interface TtsProvider extends NamedProvider {
     }
 
     /**
+     * As {@link #synthesize(String, String, String, EffectiveVoiceSettings)}, for a line that
+     * follows another in the same reply. {@code previousText} is the sentence just before it,
+     * for a provider that can continue its prosody from it; the default ignores it.
+     */
+    default short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style,
+                               String previousText) {
+        return synthesize(text, language, voice, style);
+    }
+
+    /**
      * As {@link #synthesize(String, String, String, EffectiveVoiceSettings)}, but delivers
      * PCM to {@code onChunk} as it becomes available instead of returning the whole
      * utterance at once. Providers whose wire protocol streams audio (Yandex v3 gRPC)

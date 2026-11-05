@@ -17,6 +17,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
@@ -75,9 +76,12 @@ public class TurnTools {
      */
     private final Map<String, Double> toolRunMs = new ConcurrentHashMap<>();
     private final PromptCacheProperties promptCache;
+    private final ReplyLimitProperties replyLimitProperties;
+    /** Whether the model may note the caller's free-form facts ({@link DialogTools#noteClientFact}). */
+    private final boolean clientFactsEnabled;
 
     public TurnTools(DialogProperties dialogProperties, ObjectProvider<ChatModel> chatModelProvider) {
-        this(dialogProperties, chatModelProvider, null, null, null, null, null, null, null, null);
+        this(dialogProperties, chatModelProvider, null, null, null, null, null, null, null, null, null, true);
     }
 
     @Autowired
@@ -91,7 +95,9 @@ public class TurnTools {
             ClientMemoryUseCase clientMemory,
             IntegrationHttpToolFactory integrationHttpToolFactory,
             CallTraceLog callTraceLog,
-            PromptCacheProperties promptCache
+            PromptCacheProperties promptCache,
+            ReplyLimitProperties replyLimitProperties,
+            @Value("${voice-agent.dialog.client-facts:true}") boolean clientFactsEnabled
     ) {
         this.dialogProperties = dialogProperties;
         this.chatModelProvider = chatModelProvider;
@@ -103,6 +109,8 @@ public class TurnTools {
         this.integrationHttpToolFactory = integrationHttpToolFactory;
         this.callTraceLog = callTraceLog;
         this.promptCache = promptCache;
+        this.replyLimitProperties = replyLimitProperties;
+        this.clientFactsEnabled = clientFactsEnabled;
     }
 
     /**
@@ -124,6 +132,9 @@ public class TurnTools {
 
     private List<ToolCallback> buildCallbacks(DialogSession s) {
         Set<String> declared = declaredToolNames(s.scenario());
+        // Stable: nothing below may depend on the stage, or a transition moves the cached prefix;
+        // what the stage itself offers is then decided in findStageToolNames and run().
+        boolean stable = isStableToolset();
         List<ToolCallback> callbacks = new ArrayList<>();
         for (ToolCallback fixed : MethodToolCallbackProvider.builder()
                 .toolObjects(new DialogTools(s, stageScriptRunner)).build().getToolCallbacks()) {
@@ -147,9 +158,13 @@ public class TurnTools {
                 callbacks.add(fixed); // the agent presses keys itself, whatever its scenario declares
                 continue;
             }
-            if ("requestHumanTransfer".equals(name)
-                    && !TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())) {
+            if ("requestHumanTransfer".equals(name) && !(stable
+                    ? TransferTargets.isOfferedAnywhere(s.agent(), s.isTransferTargetAvailable(), s.scenario())
+                    : TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state()))) {
                 continue; // nowhere to hand the caller to: the transfer would only hang up
+            }
+            if ("noteClientFact".equals(name) && !clientFactsEnabled) {
+                continue;
             }
             if ("switchLanguage".equals(name) && s.detectLanguages().size() < 2) {
                 continue; // a single-language company has nothing to switch to
@@ -185,7 +200,10 @@ public class TurnTools {
             }
         }
         // An EXTRACT_VARIABLE stage's one tool: a parameter per outcome field it reads (StageEntry).
-        ToolDef extraction = StageEntry.findExtractionTool(s.scenario(), SystemPromptFactory.stageOf(s.scenario(), s.state()));
+        // Stable: one tool covering every such stage's fields, declared all call long (as for a realtime engine).
+        ToolDef extraction = stable
+                ? StageEntry.findExtractionToolForFlow(s.scenario())
+                : StageEntry.findExtractionTool(s.scenario(), SystemPromptFactory.stageOf(s.scenario(), s.state()));
         if (extraction != null) {
             callbacks.add(ScenarioToolCallbackFactory.build(extraction, s));
         }
@@ -197,7 +215,7 @@ public class TurnTools {
         callbacks.addAll(catalog);
         List<ToolCallback> integration = integrationTools(s);
         callbacks.addAll(integration);
-        if (!dialogProperties.stateScopedTools() || isStableToolset()) {
+        if (!dialogProperties.stateScopedTools() || stable) {
             // Stable: every tool on every turn, and the stage's limit is applied in run().
             return callbacks;
         }
@@ -216,6 +234,10 @@ public class TurnTools {
     private Set<String> findStageToolNames(DialogSession s, List<ToolCallback> mcp, List<ToolCallback> catalog,
                                            List<ToolCallback> integration) {
         Set<String> allowed = allowedTools(s);
+        // Declared all call long when any stage offers it (buildCallbacks); usable only where this one does.
+        if (!TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())) {
+            allowed.remove("requestHumanTransfer");
+        }
         // A scenario's stages name the tools they allow, and they cannot name a tool that
         // came from a server the company connected afterwards. An MCP tool is therefore
         // available wherever the call is: what it may do was already decided by
@@ -508,8 +530,9 @@ public class TurnTools {
             var builder = OpenAiChatOptions.builder()
                     .toolCallbacks(tools)
                     .model(selectedModel);
-            if (aiModel.maxOutputTokens() != null) {
-                builder.maxTokens(aiModel.maxOutputTokens());
+            Integer maxOutputTokens = findMaxOutputTokens(aiModel, isOpenAiReasoningModel(selectedModel));
+            if (maxOutputTokens != null) {
+                builder.maxTokens(maxOutputTokens);
             }
             if (aiModel.temperature() != null) {
                 builder.temperature(aiModel.temperature());
@@ -528,7 +551,8 @@ public class TurnTools {
                 // framework was moving the FSM and recording payment promises from a guess
                 // at what the caller was still in the middle of saying.
                 .model(selectedModel)
-                .maxOutputTokens(aiModel.maxOutputTokens())
+                // Always asked to think (LOW below), so the cap carries the thinking reserve.
+                .maxOutputTokens(findMaxOutputTokens(aiModel, true))
                 .thinkingLevel(GoogleGenAiThinkingLevel.LOW);
 
         // Gemini 3.8 Flash (and Gemini 3+) deprecates sampling parameters (temperature, top_p, top_k).
@@ -537,6 +561,26 @@ public class TurnTools {
             builder.temperature(aiModel.temperature());
         }
         return builder.build();
+    }
+
+    /**
+     * The company's or agent's own output cap when one is set; otherwise the reply limit
+     * ({@link ReplyLimitProperties}), with the thinking reserve for a model that thinks.
+     */
+    private Integer findMaxOutputTokens(EffectiveAiModelConfig aiModel, boolean thinkingModel) {
+        if (aiModel.maxOutputTokens() != null) {
+            return aiModel.maxOutputTokens();
+        }
+        return replyLimitProperties != null ? replyLimitProperties.findCap(thinkingModel) : null;
+    }
+
+    /** OpenAI's reasoning families (gpt-5*, o1/o3/o4…) spend reasoning tokens out of the same cap. */
+    private static boolean isOpenAiReasoningModel(String model) {
+        if (model == null) {
+            return false;
+        }
+        String id = model.toLowerCase();
+        return id.startsWith("gpt-5") || id.matches("o\\d.*");
     }
 
     private static boolean isGemini3OrLater(String model) {

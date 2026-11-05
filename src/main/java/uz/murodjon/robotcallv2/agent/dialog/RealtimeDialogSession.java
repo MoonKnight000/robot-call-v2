@@ -375,6 +375,12 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
     public void rememberCatalogResult(String result) {
     }
 
+    /** Never offered here (cascade only, {@link DialogTools#CASCADE_ONLY_TOOL_NAMES}): the engine keeps its whole context. */
+    @Override
+    public boolean noteClientFact(String name, String value) {
+        return false;
+    }
+
     /*
      * The four below serve only the write-tool confirmation in HttpToolExecutor, and a tool that
      * needs it is offered on cascade calls only (RealtimeToolRunner leaves it out). Failing loudly here is the

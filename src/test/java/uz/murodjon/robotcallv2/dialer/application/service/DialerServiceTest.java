@@ -59,7 +59,7 @@ class DialerServiceTest {
 
     /** 51 even ports — well clear of the limits under test, so only those are exercised. */
     private static final RtpProperties RTP_PROPS =
-            new RtpProperties("127.0.0.1", 10000, 10100, "recordings", "", 2, RecordingMode.SPATIAL_STEREO, null, 0, 0);
+            new RtpProperties("127.0.0.1", 10000, 10100, "recordings", "", 2, RecordingMode.SPATIAL_STEREO, null, 0, 0, false);
 
     private CampaignUseCase campaignUseCase;
     private CampaignTargetUseCase campaignTargetUseCase;

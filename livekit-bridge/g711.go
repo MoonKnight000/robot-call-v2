@@ -1,20 +1,67 @@
 package main
 
-// g711Codec is the app's media codec (RtpCodec on the Java side): ULAW or ALAW, 8 kHz.
-type g711Codec struct {
+// mediaCodec is the codec of the leg to the app: ULAW or ALAW at 8 kHz (RtpCodec on the Java
+// side), or SLIN16 — 16 kHz linear PCM, big-endian, payload type 118 — for a browser room, which
+// carries wideband audio the app's recognizer can use (RtpEndpoint's wideband mode).
+type mediaCodec struct {
 	payloadType uint8
-	encode      func(int16) byte
-	decode      func(byte) int16
+	sampleRate  int
+	encode      func([]int16) []byte
+	decode      func([]byte) []int16
 }
 
-func parseCodec(name string) (g711Codec, bool) {
+// frameSamples is one 20 ms frame at the codec's rate.
+func (c mediaCodec) frameSamples() int {
+	return c.sampleRate / 50
+}
+
+func parseCodec(name string) (mediaCodec, bool) {
 	switch name {
 	case "", "ULAW":
-		return g711Codec{payloadType: 0, encode: ulawEncode, decode: ulawDecode}, true
+		return mediaCodec{payloadType: 0, sampleRate: 8000, encode: perByte(ulawEncode), decode: fromBytes(ulawDecode)}, true
 	case "ALAW":
-		return g711Codec{payloadType: 8, encode: alawEncode, decode: alawDecode}, true
+		return mediaCodec{payloadType: 8, sampleRate: 8000, encode: perByte(alawEncode), decode: fromBytes(alawDecode)}, true
+	case "SLIN16":
+		return mediaCodec{payloadType: 118, sampleRate: 16000, encode: slinEncode, decode: slinDecode}, true
 	}
-	return g711Codec{}, false
+	return mediaCodec{}, false
+}
+
+func perByte(encode func(int16) byte) func([]int16) []byte {
+	return func(samples []int16) []byte {
+		out := make([]byte, len(samples))
+		for i, s := range samples {
+			out[i] = encode(s)
+		}
+		return out
+	}
+}
+
+func fromBytes(decode func(byte) int16) func([]byte) []int16 {
+	return func(payload []byte) []int16 {
+		out := make([]int16, len(payload))
+		for i, b := range payload {
+			out[i] = decode(b)
+		}
+		return out
+	}
+}
+
+func slinEncode(samples []int16) []byte {
+	out := make([]byte, len(samples)*2)
+	for i, s := range samples {
+		out[2*i] = byte(uint16(s) >> 8)
+		out[2*i+1] = byte(s)
+	}
+	return out
+}
+
+func slinDecode(payload []byte) []int16 {
+	out := make([]int16, len(payload)/2)
+	for i := range out {
+		out[i] = int16(uint16(payload[2*i])<<8 | uint16(payload[2*i+1]))
+	}
+	return out
 }
 
 const (

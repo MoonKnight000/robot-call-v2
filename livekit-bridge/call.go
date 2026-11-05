@@ -18,14 +18,10 @@ import (
 )
 
 const (
-	// The app's media leg is G.711 at 8 kHz; libopus decodes to and encodes from that rate
-	// directly, so nothing is resampled here.
-	sampleRate    = 8000
-	frameSamples  = 160 // 20 ms
+	// The app's media leg runs at the codec's rate — 8 kHz G.711, or 16 kHz SLIN16 for a browser
+	// room; libopus decodes to and encodes from that rate directly, so nothing is resampled here.
 	frameDuration = 20 * time.Millisecond
-	// The longest Opus frame, 120 ms.
-	maxOpusFrameSamples = sampleRate * 120 / 1000
-	agentIdentity       = "robot-call-agent"
+	agentIdentity = "robot-call-agent"
 )
 
 // call is one room's bridge: the phone leg's audio to the app as RTP, and the app's RTP back
@@ -35,7 +31,7 @@ type call struct {
 	room     atomic.Pointer[lksdk.Room]
 	conn     *net.UDPConn
 	peer     *net.UDPAddr
-	codec    g711Codec
+	codec    mediaCodec
 	track    *lksdk.LocalSampleTrack
 	onClose  func()
 	closed   atomic.Bool
@@ -52,7 +48,7 @@ type call struct {
 	pending []int16
 }
 
-func startCall(cfg config, roomName, rtpHost string, rtpPort int, codec g711Codec, onClose func()) (*call, error) {
+func startCall(cfg config, roomName, rtpHost string, rtpPort int, codec mediaCodec, onClose func()) (*call, error) {
 	peer, err := net.ResolveUDPAddr("udp", net.JoinHostPort(rtpHost, strconv.Itoa(rtpPort)))
 	if err != nil {
 		return nil, fmt.Errorf("resolve %s:%d: %w", rtpHost, rtpPort, err)
@@ -135,14 +131,14 @@ func (c *call) onTrackSubscribed(track *webrtc.TrackRemote, _ *lksdk.RemoteTrack
 	go c.forwardToApp(track)
 }
 
-// forwardToApp decodes the room's Opus and sends it to the app as 20 ms G.711 RTP packets.
+// forwardToApp decodes the room's Opus and sends it to the app as 20 ms RTP packets in the leg's codec.
 func (c *call) forwardToApp(track *webrtc.TrackRemote) {
-	dec, err := opus.NewDecoder(sampleRate, 1)
+	dec, err := opus.NewDecoder(c.codec.sampleRate, 1)
 	if err != nil {
 		slog.Error("opus decoder", "room", c.roomName, "err", err)
 		return
 	}
-	pcm := make([]int16, maxOpusFrameSamples)
+	pcm := make([]int16, c.codec.sampleRate*120/1000) // the longest Opus frame, 120 ms
 	for {
 		pkt, _, err := track.ReadRTP()
 		if err != nil {
@@ -164,11 +160,9 @@ func (c *call) sendToApp(samples []int16) {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
 	c.pending = append(c.pending, samples...)
+	frameSamples := c.codec.frameSamples()
 	for len(c.pending) >= frameSamples {
-		payload := make([]byte, frameSamples)
-		for i, s := range c.pending[:frameSamples] {
-			payload[i] = c.codec.encode(s)
-		}
+		payload := c.codec.encode(c.pending[:frameSamples])
 		c.pending = c.pending[frameSamples:]
 		pkt := rtp.Packet{
 			Header: rtp.Header{
@@ -181,7 +175,7 @@ func (c *call) sendToApp(samples []int16) {
 			Payload: payload,
 		}
 		c.seq++
-		c.ts += frameSamples
+		c.ts += uint32(frameSamples)
 		buf, err := pkt.Marshal()
 		if err != nil {
 			continue
@@ -192,10 +186,11 @@ func (c *call) sendToApp(samples []int16) {
 	}
 }
 
-// forwardToRoom reads the app's G.711 RTP (the agent's voice, already paced at 20 ms by the
-// app's endpoint) and publishes it into the room as Opus.
+// forwardToRoom reads the app's RTP (the agent's voice, already paced at 20 ms by the app's
+// endpoint) and publishes it into the room as Opus.
 func (c *call) forwardToRoom() {
-	enc, err := opus.NewEncoder(sampleRate, 1, opus.AppVoIP)
+	frameSamples := c.codec.frameSamples()
+	enc, err := opus.NewEncoder(c.codec.sampleRate, 1, opus.AppVoIP)
 	if err != nil {
 		slog.Error("opus encoder", "room", c.roomName, "err", err)
 		c.close()
@@ -213,9 +208,7 @@ func (c *call) forwardToRoom() {
 		if err := pkt.Unmarshal(buf[:n]); err != nil {
 			continue
 		}
-		for _, b := range pkt.Payload {
-			frame = append(frame, c.codec.decode(b))
-		}
+		frame = append(frame, c.codec.decode(pkt.Payload)...)
 		for len(frame) >= frameSamples {
 			m, err := enc.Encode(frame[:frameSamples], out)
 			frame = frame[frameSamples:]

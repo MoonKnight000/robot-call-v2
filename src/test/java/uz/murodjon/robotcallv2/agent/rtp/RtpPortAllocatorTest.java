@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class RtpPortAllocatorTest {
 
     private static RtpPortAllocator allocator(int start, int end) {
-        return new RtpPortAllocator(new RtpProperties("127.0.0.1", start, end, "recordings", null, 1, null, null, 0, 0));
+        return new RtpPortAllocator(new RtpProperties("127.0.0.1", start, end, "recordings", null, 1, null, null, 0, 0, false));
     }
 
     /** The previous call's externalMedia leg may still be sending to a port it just gave back. */

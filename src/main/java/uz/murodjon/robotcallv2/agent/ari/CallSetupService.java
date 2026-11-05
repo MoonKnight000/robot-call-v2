@@ -51,6 +51,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
@@ -300,13 +301,15 @@ class CallSetupService {
             // told where to send audio before anyone can speak; the listener chain that
             // needs the database is swapped in afterwards (RtpEndpoint#replaceListeners).
             LiveAudioMonitor audioMonitor = new LiveAudioMonitor(rtpEventLoopGroup);
+            boolean wideband = isWidebandBrowserCall(current, channelId, channelName);
             endpoint = new RtpEndpoint(channelId, port, rtpProperties.codec(), recorder,
                     List.<AudioListener>of(audioMonitor), audioMonitor::onBotAudio, rtpProperties.receiveQueueCapacity(),
-                rtpProperties.maxQueuedPlaybackSeconds());
+                rtpProperties.maxQueuedPlaybackSeconds(), wideband);
             endpoint.bind(rtpEventLoopGroup);
 
             Channel extMedia = current.channels()
-                    .externalMedia(asteriskProperties.appName(), rtpProperties.localIp() + ":" + port, rtpProperties.codec().asteriskFormat())
+                    .externalMedia(asteriskProperties.appName(), rtpProperties.localIp() + ":" + port,
+                            wideband ? RtpEndpoint.WIDEBAND_ASTERISK_FORMAT : rtpProperties.codec().asteriskFormat())
                     .setEncapsulation("rtp")
                     .setTransport("udp")
                     .execute();
@@ -602,6 +605,29 @@ class CallSetupService {
      * stream at all), so the endpoint's listeners are replaced, not added to. {@code start}
      * already carries the company default voice ({@link CallStart#withDefaultVoice}).
      */
+    /**
+     * Whether this call's externalMedia should be slin16 ({@code rtp.wideband-web-test}): a
+     * browser on {@code [webtest]} whose leg Asterisk actually negotiated as G.722. A browser
+     * that fell back to G.711 brings nothing above 4 kHz, and a 16 kHz leg would only have
+     * Asterisk upsample it — so it keeps the narrowband leg. Any doubt keeps it too.
+     */
+    private boolean isWidebandBrowserCall(ARI current, String channelId, String channelName) {
+        if (!rtpProperties.widebandWebTest() || !ChannelNames.isWebTest(channelName)) {
+            return false;
+        }
+        try {
+            String format = current.channels().getChannelVar(channelId, "CHANNEL(audionativeformat)")
+                    .execute().getValue();
+            boolean g722 = format != null && format.toLowerCase(Locale.ROOT).contains("g722");
+            log.info("[{}] browser leg negotiated {} — {} media leg", channelId, format,
+                    g722 ? "wideband (slin16)" : "narrowband");
+            return g722;
+        } catch (Exception e) {
+            log.warn("[{}] could not read the browser leg's codec, staying narrowband: {}", channelId, e.getMessage());
+            return false;
+        }
+    }
+
     private void continueOnCascade(CallStart start, Instant startedAt, LiveAudioMonitor audioMonitor) {
         String channelId = start.channelId();
         RtpEndpoint endpoint = start.endpoint();

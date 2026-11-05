@@ -5,7 +5,7 @@ package uz.murodjon.robotcallv2.agent.tts;
  *
  * @param apiKey               Cartesia API key
  * @param url                  REST endpoint (default: https://api.cartesia.ai/tts/bytes)
- * @param model                Model name (e.g. sonic, sonic-multilingual)
+ * @param model                Model name (default sonic-3.6; sonic-multilingual was retired by Cartesia on 2026-06-01)
  * @param voice                Default voice ID
  * @param sampleRate           Sample rate in Hz (default: 8000 for telephony)
  * @param connectTimeoutSeconds Connect timeout
@@ -23,7 +23,7 @@ public record CartesiaTtsProperties(
             url = "https://api.cartesia.ai/tts/bytes";
         }
         if (model == null || model.isBlank()) {
-            model = "sonic-multilingual";
+            model = "sonic-3.6";
         }
         if (sampleRate <= 0) {
             sampleRate = 8000;

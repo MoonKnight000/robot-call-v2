@@ -27,7 +27,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                         Asterisk passes frames through instead of transcoding. Wideband
  *                         (G.722 / slin16) is deliberately not offered — the caller arrives
  *                         over a PSTN trunk at 8 kHz, so a 16 kHz leg here would only
- *                         upsample the same audio for STT and charge a transcode per call
+ *                         upsample the same audio for STT and charge a transcode per call.
+ *                         A browser call is the exception — see {@code widebandWebTest}
  * @param receiveQueueCapacity inbound RTP packets one call may hold between the Netty thread
  *                         and its worker before new ones are dropped; 2000 is 40 s of
  *                         20 ms frames. 0 means that default
@@ -35,6 +36,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                         newest audio is dropped. A caller is never that far behind a live
  *                         reply, so reaching it means a producer ran away (an engine
  *                         streaming into a dead call). 0 means 60
+ * @param widebandWebTest  carry a browser call's leg as 16 kHz {@code slin16} instead of
+ *                         {@code codec}, so the recognizer hears it wideband: on Asterisk when the
+ *                         browser negotiated G.722 ({@code pjsip.conf [webtest]}), on LiveKit for a
+ *                         browser room ({@code livekit-bridge} codec {@code SLIN16}). Only that leg
+ *                         changes: trunk, softphone and LiveKit phone calls stay on {@code codec}, and
+ *                         the pipeline behind the endpoint stays 8 kHz ({@code RtpEndpoint}
+ *                         converts at its edge). Off by default
  */
 @ConfigurationProperties(prefix = "voice-agent.rtp")
 public record RtpProperties(
@@ -47,7 +55,8 @@ public record RtpProperties(
         RecordingMode recordingMode,
         RtpCodec codec,
         int receiveQueueCapacity,
-        int maxQueuedPlaybackSeconds
+        int maxQueuedPlaybackSeconds,
+        boolean widebandWebTest
 ) {
 
     public RtpProperties {

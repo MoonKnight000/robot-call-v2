@@ -66,6 +66,18 @@ public class DeepgramSttProvider implements SttProvider {
         return "deepgram";
     }
 
+    /** Nova-3, Nova-2 and Flux do not list Uzbek — it must never be the failover for an Uzbek call. */
+    @Override
+    public boolean supports(String language) {
+        return language == null || !language.toLowerCase(java.util.Locale.ROOT).startsWith("uz");
+    }
+
+    /** The session sends a KeepAlive every few seconds, so it outlives the ringing. */
+    @Override
+    public boolean supportsPrewarm() {
+        return true;
+    }
+
     @Override
     public int sampleRate() {
         DeepgramSttProperties d = sttProperties.deepgram();
@@ -92,18 +104,24 @@ public class DeepgramSttProvider implements SttProvider {
         String chosenModel = (model != null && !model.isBlank()) ? model.trim() : d.model();
         // utterance_end_ms is Deepgram's backstop for speech_final, which it may never send
         // when the caller's audio stays noisy after they stop; it needs interim results.
-        String wsUrl = String.format("%s?model=%s&language=%s&encoding=linear16&sample_rate=%d&channels=1&interim_results=%s&smart_format=true&endpointing=300%s",
-                d.url(), chosenModel, lang, d.sampleRate(), d.interimResults(),
+        // With external endpointing the gate's Finalize is the signal; Deepgram's own silence
+        // detector only competes with it, so how long it waits (or whether it does) is a setting.
+        String endpointing = !externalEndpointing ? "300"
+                : d.externalEndpointingMs() == 0 ? "false" : String.valueOf(d.externalEndpointingMs());
+        String wsUrl = String.format("%s?model=%s&language=%s&encoding=linear16&sample_rate=%d&channels=1&interim_results=%s&smart_format=%s&endpointing=%s%s",
+                d.url(), chosenModel, lang, d.sampleRate(), d.interimResults(), d.smartFormat(), endpointing,
                 d.interimResults() ? "&utterance_end_ms=1000" : "");
 
         AtomicBoolean alive = new AtomicBoolean(true);
         CountDownLatch connected = new CountDownLatch(1);
+        EouLatencyTracker eouLatency = new EouLatencyTracker();
 
         try {
             WebSocket webSocket = current.newWebSocketBuilder()
                     .header("Authorization", "Token " + d.apiKey())
                     .connectTimeout(Duration.ofSeconds(d.connectTimeoutSeconds()))
-                    .buildAsync(URI.create(wsUrl), new DeepgramResponseHandler(listener, alive, connected, metrics, d.interimResults()))
+                    .buildAsync(URI.create(wsUrl),
+                            new DeepgramResponseHandler(listener, alive, connected, metrics, d.interimResults(), eouLatency))
                     .get(d.connectTimeoutSeconds(), TimeUnit.SECONDS);
 
             if (!connected.await(d.connectTimeoutSeconds(), TimeUnit.SECONDS)) {
@@ -113,7 +131,7 @@ public class DeepgramSttProvider implements SttProvider {
             }
 
             log.info("Opened Deepgram STT stream for lang={} (model={})", lang, chosenModel);
-            return new DeepgramSttSession(webSocket, alive, externalEndpointing);
+            return new DeepgramSttSession(webSocket, alive, externalEndpointing, eouLatency);
         } catch (ExternalServiceException e) {
             throw e;
         } catch (Exception e) {
@@ -136,17 +154,20 @@ public class DeepgramSttProvider implements SttProvider {
         private final CountDownLatch connected;
         private final SttMetrics metrics;
         private final boolean interimResults;
+        private final EouLatencyTracker eouLatency;
         /** Finalized stretches of the utterance in progress. Only touched from onMessage, which is sequential. */
         private final StringBuilder utterance = new StringBuilder();
         private float utteranceConfidence = 1.0f;
 
         private DeepgramResponseHandler(TranscriptListener listener, AtomicBoolean alive,
-                                        CountDownLatch connected, SttMetrics metrics, boolean interimResults) {
+                                        CountDownLatch connected, SttMetrics metrics, boolean interimResults,
+                                        EouLatencyTracker eouLatency) {
             this.listener = listener;
             this.alive = alive;
             this.connected = connected;
             this.metrics = metrics;
             this.interimResults = interimResults;
+            this.eouLatency = eouLatency;
         }
 
         @Override
@@ -201,6 +222,7 @@ public class DeepgramSttProvider implements SttProvider {
             if (utterance.isEmpty()) {
                 return;
             }
+            eouLatency.finalReceived(metrics, DeepgramSttProvider.this.name());
             listener.onTranscript(utterance.toString(), true, utteranceConfidence);
             utterance.setLength(0);
             utteranceConfidence = 1.0f;
@@ -236,15 +258,18 @@ public class DeepgramSttProvider implements SttProvider {
         private final WebSocket webSocket;
         private final AtomicBoolean alive;
         private final boolean externalEndpointing;
+        private final EouLatencyTracker eouLatency;
         private final AtomicInteger pendingSends = new AtomicInteger();
         private final Object sendLock = new Object();
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private volatile long lastSentNanos = System.nanoTime();
 
-        private DeepgramSttSession(WebSocket webSocket, AtomicBoolean alive, boolean externalEndpointing) {
+        private DeepgramSttSession(WebSocket webSocket, AtomicBoolean alive, boolean externalEndpointing,
+                                   EouLatencyTracker eouLatency) {
             this.webSocket = webSocket;
             this.alive = alive;
             this.externalEndpointing = externalEndpointing;
+            this.eouLatency = eouLatency;
             // Audio stops reaching the recognizer while the VAD gate holds it back during
             // silence, which is exactly when Deepgram would time the stream out.
             Thread.ofVirtual().name("deepgram-keepalive").start(this::keepAlive);
@@ -266,6 +291,7 @@ public class DeepgramSttProvider implements SttProvider {
         @Override
         public void endUtterance() {
             if (externalEndpointing && alive.get()) {
+                eouLatency.eouSent();
                 enqueue(socket -> socket.sendText("{\"type\":\"Finalize\"}", true));
             }
         }

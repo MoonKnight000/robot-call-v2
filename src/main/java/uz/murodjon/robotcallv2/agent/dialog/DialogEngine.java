@@ -283,6 +283,7 @@ public class DialogEngine implements CallDialog {
         session.latency().providers(
                 agentSttProvider != null && !agentSttProvider.isBlank() ? agentSttProvider.trim() : sttProperties.provider(),
                 voiceSettings.provider() != null ? voiceSettings.provider() : ttsProperties.provider());
+        session.latency().language(language);
         session.latency().callStartedAt(session.startedAt());
         // The start stage's listening settings, then every later stage's (StageSpeechTuner).
         session.setStageListener(s -> StageSpeechTuner.apply(s, sttProperties));

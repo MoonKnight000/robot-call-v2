@@ -60,7 +60,8 @@ public class SpeechGate {
     private final int shortHangoverSamples;
     private final int shortUtteranceSamples;
     private final int openSamples;
-    private final short[] preRoll;
+    /** Not final: a recognizer fed 16 kHz widens it once, before its first frame ({@link #widenPreRoll}). */
+    private short[] preRoll;
 
     // Adaptive long-utterance hangover (DynamicEndpointingProperties).
     private final boolean dynamic;
@@ -695,6 +696,18 @@ public class SpeechGate {
 
     public boolean isOpen() {
         return open;
+    }
+
+    /**
+     * Size the pre-roll for audio {@code factor} times the gate's own rate. The gate times
+     * speech from the VAD's 8 kHz windows, but the ring holds what the recognizer is fed —
+     * 16 kHz on a wideband leg, where the same {@code preRollMs} needs twice the samples.
+     * Empties the ring; called by the recognizer before it buffers anything.
+     */
+    public void widenPreRoll(int factor) {
+        preRoll = new short[Math.max(1, preRoll.length * Math.max(1, factor))];
+        writePos = 0;
+        filled = 0;
     }
 
     /** Hold audio that arrived while the gate was shut, oldest samples dropped first. */

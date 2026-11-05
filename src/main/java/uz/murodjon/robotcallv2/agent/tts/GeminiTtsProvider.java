@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.audio.StreamingDownsampler;
+import uz.murodjon.robotcallv2.agent.codec.G711Codec;
 import uz.murodjon.robotcallv2.agent.rtp.WavAudio;
 import uz.murodjon.robotcallv2.agent.rtp.WavReader;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -56,11 +57,14 @@ public class GeminiTtsProvider implements TtsProvider {
     );
 
     private final TtsProperties ttsProperties;
+    private final TtsStreamProperties streamProperties;
     private volatile HttpClient client;
 
-    public GeminiTtsProvider(TtsProperties ttsProperties, ObjectMapper objectMapper) {
+    public GeminiTtsProvider(TtsProperties ttsProperties, ObjectMapper objectMapper,
+                             TtsStreamProperties streamProperties) {
         this.objectMapper = objectMapper;
         this.ttsProperties = ttsProperties;
+        this.streamProperties = streamProperties;
     }
 
     @PostConstruct
@@ -155,6 +159,8 @@ public class GeminiTtsProvider implements TtsProvider {
             // A chunk may end halfway through a 16-bit sample; the odd byte belongs to the next one.
             byte[] carry = new byte[1];
             boolean[] carried = {false};
+            boolean[] mimeLogged = {false};
+            boolean[] resampled = {false};
             try (Stream<String> lines = response.body()) {
                 lines.forEach(line -> {
                     if (line == null || !line.contains("data:")) {
@@ -180,6 +186,20 @@ public class GeminiTtsProvider implements TtsProvider {
                                 continue;
                             }
                             byte[] audioData = Base64.getDecoder().decode(inline.get("data").asText());
+                            String mimeType = inline.path("mimeType").asText("");
+                            if (streamProperties.geminiMulaw() && !mimeLogged[0]) {
+                                mimeLogged[0] = true;
+                                log.info("Gemini TTS answered mu-law request with mimeType={}", mimeType);
+                            }
+                            if (isMulaw(mimeType)) {
+                                // Already 8 kHz telephone audio: expand and play, no resampling.
+                                if (audioData.length > 0 && onChunk != null) {
+                                    short[] pcm = new short[audioData.length];
+                                    G711Codec.ulawToPcm(audioData, audioData.length, pcm);
+                                    onChunk.onChunk(pcm);
+                                }
+                                continue;
+                            }
                             if (carried[0]) {
                                 byte[] joined = new byte[audioData.length + 1];
                                 joined[0] = carry[0];
@@ -192,6 +212,7 @@ public class GeminiTtsProvider implements TtsProvider {
                                 carried[0] = true;
                             }
                             short[] source = toSourceSamples(audioData);
+                            resampled[0] = true;
                             short[] pcm8k = sourceRate == 8000 ? source : downsampler.push(source, source.length);
                             if (pcm8k.length > 0 && onChunk != null) {
                                 onChunk.onChunk(pcm8k);
@@ -202,7 +223,7 @@ public class GeminiTtsProvider implements TtsProvider {
                     }
                 });
             }
-            short[] tail = sourceRate == 8000 ? new short[0] : downsampler.flush();
+            short[] tail = sourceRate == 8000 || !resampled[0] ? new short[0] : downsampler.flush();
             if (tail.length > 0 && onChunk != null) {
                 onChunk.onChunk(tail);
             }
@@ -376,8 +397,19 @@ public class GeminiTtsProvider implements TtsProvider {
                 .putObject("voiceConfig")
                 .putObject("prebuiltVoiceConfig")
                 .put("voiceName", voiceName);
+        if (streamProperties.geminiMulaw()) {
+            ObjectNode audio = genConfig.putObject("responseFormat").putObject("audio");
+            audio.put("mimeType", "AUDIO_MULAW");
+            audio.put("sampleRate", 8000);
+        }
 
         return root.toString();
+    }
+
+    /** Whether a chunk's {@code inlineData.mimeType} says G.711 mu-law (e.g. {@code audio/mulaw}). */
+    private static boolean isMulaw(String mimeType) {
+        String lower = mimeType.toLowerCase(Locale.ROOT);
+        return lower.contains("mulaw") || lower.contains("pcmu");
     }
 
     /**

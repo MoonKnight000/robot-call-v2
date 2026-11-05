@@ -110,7 +110,8 @@ public class OpenAiSttProvider implements SttProvider {
         int timeoutSeconds = settings.connectTimeoutSeconds();
         AtomicBoolean alive = new AtomicBoolean(false);
         CountDownLatch ready = new CountDownLatch(1);
-        ResponseHandler handler = new ResponseHandler(listener, alive, ready);
+        EouLatencyTracker eouLatency = new EouLatencyTracker();
+        ResponseHandler handler = new ResponseHandler(listener, alive, ready, eouLatency);
 
         try {
             WebSocket webSocket = current.newWebSocketBuilder()
@@ -133,7 +134,7 @@ public class OpenAiSttProvider implements SttProvider {
 
             log.info("OpenAI STT streaming session open (lang={}, model={}, endpointing={})",
                     languageCode, resolveModel(model, settings), externalEndpointing ? "external" : "openai");
-            return new OpenAiSttSession(webSocket, alive, metrics, externalEndpointing);
+            return new OpenAiSttSession(webSocket, alive, metrics, externalEndpointing, eouLatency);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             metrics.sttError();
@@ -170,6 +171,10 @@ public class OpenAiSttProvider implements SttProvider {
 
         ObjectNode transcription = input.putObject("transcription");
         transcription.put("model", model);
+        // Only gpt-live-transcribe documents a delay; another model may reject the whole session.
+        if (settings.delay() != null && model.startsWith("gpt-live-transcribe")) {
+            transcription.put("delay", settings.delay());
+        }
         if (languageCode != null && !languageCode.isBlank()) {
             ArrayNode languages = transcription.putArray("languages");
             String trimmed = languageCode.trim();
@@ -222,7 +227,7 @@ public class OpenAiSttProvider implements SttProvider {
 
     private OpenAiSttProperties settings() {
         OpenAiSttProperties configured = sttProperties.openAi();
-        return configured != null ? configured : new OpenAiSttProperties(null, null, null, 0, 0);
+        return configured != null ? configured : new OpenAiSttProperties(null, null, null, 0, 0, null);
     }
 
     /** Reads the session's server events. */
@@ -231,11 +236,14 @@ public class OpenAiSttProvider implements SttProvider {
         private final TranscriptListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch ready;
+        private final EouLatencyTracker eouLatency;
 
-        private ResponseHandler(TranscriptListener listener, AtomicBoolean alive, CountDownLatch ready) {
+        private ResponseHandler(TranscriptListener listener, AtomicBoolean alive, CountDownLatch ready,
+                                EouLatencyTracker eouLatency) {
             this.listener = listener;
             this.alive = alive;
             this.ready = ready;
+            this.eouLatency = eouLatency;
         }
 
         @Override
@@ -254,6 +262,7 @@ public class OpenAiSttProvider implements SttProvider {
                     case "conversation.item.input_audio_transcription.completed" -> {
                         String text = node.path("transcript").asText("").trim();
                         if (!text.isEmpty()) {
+                            eouLatency.finalReceived(metrics, OpenAiSttProvider.this.name());
                             listener.onTranscript(text, true, 0.0f);
                         }
                     }
@@ -296,6 +305,7 @@ public class OpenAiSttProvider implements SttProvider {
         private final AtomicBoolean alive;
         private final SttMetrics metrics;
         private final boolean externalEndpointing;
+        private final EouLatencyTracker eouLatency;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private volatile boolean closed;
         /** Audio has been appended since the last commit — there is something to finalize. */
@@ -306,11 +316,12 @@ public class OpenAiSttProvider implements SttProvider {
         private static final int MAX_PENDING_SENDS = 50;
 
         private OpenAiSttSession(WebSocket webSocket, AtomicBoolean alive, SttMetrics metrics,
-                                 boolean externalEndpointing) {
+                                 boolean externalEndpointing, EouLatencyTracker eouLatency) {
             this.webSocket = webSocket;
             this.alive = alive;
             this.metrics = metrics;
             this.externalEndpointing = externalEndpointing;
+            this.eouLatency = eouLatency;
         }
 
         @Override
@@ -334,6 +345,7 @@ public class OpenAiSttProvider implements SttProvider {
                 return;
             }
             pendingAudio = false;
+            eouLatency.eouSent();
             ObjectNode root = objectMapper.createObjectNode();
             root.put("type", "input_audio_buffer.commit");
             send(root.toString());

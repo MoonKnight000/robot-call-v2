@@ -246,12 +246,14 @@ public class DialogMetrics {
      * dominates is the only question this answers, and it is the one worth asking before
      * anything in the pipeline is tuned.
      */
-    public void recordTurnStage(String stage, String sttProvider, String ttsProvider, long millis) {
+    public void recordTurnStage(String stage, String sttProvider, String ttsProvider, String language,
+                                long millis) {
         Timer.builder("voice.turn.stage.latency")
                 .description("one stage of the wait between the caller finishing and hearing the bot")
                 .tag("stage", stage)
                 .tag("stt", sttProvider)
                 .tag("tts", ttsProvider)
+                .tag("language", language)
                 .publishPercentileHistogram()
                 .register(registry)
                 .record(millis, TimeUnit.MILLISECONDS);

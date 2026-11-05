@@ -135,6 +135,14 @@ public class SpeechOutput {
      * {@code speak} would have refused — the fact guard included.
      */
     public PreparedLine prepare(DialogSession s, String text) {
+        return prepare(s, text, null);
+    }
+
+    /**
+     * As {@link #prepare(DialogSession, String)}; {@code previousSentence} is the sentence of
+     * this reply just before it, for a synthesizer that continues its prosody from it.
+     */
+    public PreparedLine prepare(DialogSession s, String text, String previousSentence) {
         text = withoutBridgeEcho(s, text);
         text = withoutBareAcknowledgement(s, text);
         SpeechOutcome refused = refusal(s, text);
@@ -144,7 +152,8 @@ public class SpeechOutput {
         String spoken = SpokenDates.humanize(text, s.language());
         try {
             s.addTtsChars(spoken);
-            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s), s.pronunciationRules());
+            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s),
+                    s.pronunciationRules(), previousSentence);
             s.clearTtsFailures();
             return new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN);
         } catch (Exception e) {

@@ -619,6 +619,11 @@ public class HttpToolExecutor {
         }
 
         @Override
+        public boolean noteClientFact(String name, String value) {
+            return false;
+        }
+
+        @Override
         public AiAgent agent() {
             return null;
         }

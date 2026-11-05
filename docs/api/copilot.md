@@ -36,18 +36,22 @@ agentlar, kampaniyalar va eval natijalarini o'qib javob beradi va qoralamalarni 
 - **To'lov.** Har javobning tokenlari (barcha tool raundlari bilan) balansdan yechiladi — ledger'da
   `AI_CHARGE`, `copilot-charge:<messageId>`. Balans bo'lmasa — `409 COPILOT_NO_BALANCE`.
 - Bitta savolda ko'pi bilan `voice-agent.copilot.max-tool-calls` (standart 15) tool chaqiruvi; undan
-  keyin model bor ma'lumot bilan javob berishga majbur qilinadi. Tool javobi 12 000 belgidan uzun
-  bo'lsa kesiladi.
+  keyin model bor ma'lumot bilan javob berishga majbur qilinadi. Tool javobi 8 000 belgidan uzun
+  bo'lsa kesiladi va `null` qiymatlar hamda massivlar avtomatik minifikatsiya qilinadi.
+- **Kontekstual Tool Selection:** Copilot barcha 38 ta MCP tool'ni promptga yuklamaydi. So'rov yuborilgan
+  sahifa (`context.page`), fokusdagi obyektlar (`agentId`, `campaignId`, `callId`, `scenarioId`) va
+  savol kalit so'zlariga qarab avtomatik 6-10 ta eng zarur tool'larni tanlab oladi (~80% token tejaladi).
 
 Sozlamalar (`voice-agent.copilot.*`): `model` (standart `gemini-3.8-flash`), `max-tokens` (8192),
 `max-tool-calls` (15), `max-history` (20 — yangi savol bilan birga yuboriladigan oldingi savol-javoblar).
 
 ---
 
-## `POST /api/copilot/ask` — savol berish
+## `POST /api/copilot/ask` — savol berish (JSON va SSE Stream)
 
-Javob model tugatgandagina qaytadi (tool raundlari bilan o'nlab soniya bo'lishi mumkin — frontend
-timeout'ini shunga moslang).
+Endpoint so'rovdagi `Accept` header'iga qarab ikki xil ishlaydi:
+- `Accept: application/json` — model va barcha tool raundlari to'liq tugagach, bitta JSON javob qaytaradi.
+- `Accept: text/event-stream` — real vaqt rejimida SSE (Server-Sent Events) orqali status, tool chaqiruvlari, matn bo'laklari (tokenlar) va takliflarni oqim qilib uzatadi (tavsiya etiladi!).
 
 **Request body** (`AskCopilotRequest`):
 
@@ -60,8 +64,40 @@ timeout'ini shunga moslang).
 |---|---|---|---|
 | `sessionId` | `number` \| `null` | ❌ | Davom ettiriladigan suhbat; `null` — yangi suhbat (sarlavhasi — shu savol) |
 | `message` | `string` (≤4000) | ✅ | Savol |
-| `context` | `object` \| `null` | ❌ | Savol berilgan panel sahifasi: `page` (`[a-z0-9-]{1,40}`, masalan `agent-editor`, `campaign`, `call-detail`), `agentId`, `campaignId`, `callId`, `scenarioId` — hammasi ixtiyoriy. Copilot "shu agent", "bu qo'ng'iroq" ni shular deb tushunadi va ularni tool orqali o'qiydi (kompaniya tekshiriladi — begona ID hech narsa ochmaydi). Noto'g'ri `page` — `400 VALIDATION_FAILED` |
+| `context` | `object` \| `null` | ❌ | Savol berilgan panel sahifasi: `page` (`[a-z0-9-]{1,40}`, masalan `agent-editor`, `campaign`, `call-detail`), `agentId`, `campaignId`, `callId`, `scenarioId` — hammasi ixtiyoriy. Copilot shu kontekstga qarab 38 ta MCP tool'dan eng kerakli 6-10 tasini avtomatik tanlab oladi (tokenlar tejaladi). Noto'g'ri `page` — `400 VALIDATION_FAILED` |
 | `applyChanges` | `boolean` \| `null` | ❌ | `true` — copilot o'zgarishlarni darhol qo'llaydi; `null`/`false` — har bir o'zgarish taklif (`PENDING`) bo'lib qoladi |
+
+---
+
+### 1. SSE Real-time Streaming (`Accept: text/event-stream`)
+
+Frontend foydalanuvchiga silliq animatsiya, tool bajarilish jarayoni (accordion/shimmer) va so'zma-so'z yozilish (typing effect) ko'rsatishi uchun SSE oqimidan foydalanadi.
+
+**Hodisalar ketma-ketligi (Event Lifecycle):**
+
+| Event nomi | Payload formati | Qachon yuboriladi | Frontend animatsiyasi |
+|---|---|---|---|
+| `session` | `CopilotSession` | Suhbat ochilganda yoki topilganda | Sessiya ID va sarlavhasini URL/state'ga yozish |
+| `status` | `{"step":"THINKING", "message":"Savolingiz o'rganilmoqda..."}` | So'rov boshlanishi bilanoq | Yaltirab turuvchi fikrlash animatsiyasi (shimmer loader) |
+| `status` | `{"step":"TOOL_RUNNING", "toolName":"list_calls", "message":"Qo'ng'iroqlar tarixi yuklanmoqda..."}` | Tool chaqirilishi oldidan | Aylanuvchi spinner + insonbop holat matni |
+| `tool_call` | `{"toolName":"list_calls", "arguments":"{...}"}` | Tool chaqiruv argumentlari | "Tahlil jarayoni" dropdown/akkordeoniga qo'shish |
+| `status` | `{"step":"TOOL_DONE", "toolName":"list_calls", "message":"Qo'ng'iroqlar tarixi yuklanmoqda yakunlandi"}` | Tool natija berganda | Yashil belgi (checkmark) bilan yakunlash |
+| `tool_result` | `CopilotMessage` (role: TOOL) | O'qish tool'i yakunlanganda | Natijani yashirin/qisqa ko'rinishda saqlash |
+| `proposal` | `CopilotMessage` (proposalStatus: PENDING) | Qoralamaga o'zgartirish taklifi paydo bo'lganda | "Qo'llash" / "Rad etish" tugmali maxsus interaktiv blok |
+| `status` | `{"step":"GENERATING", "message":"Javob shakllantirilmoqda..."}` | Model matn chiqarishga o'tganda | Yuklash animatsiyasini tugatib, matn blokiga o'tish |
+| `delta` | `{"text":"..."}` | Har 1-3 ta so'z bo'lagi (streaming chunks) | Silliq yozilish animatsiyasi (smooth typing) |
+| `done` | `CopilotReplyResponse` | To'liq yakunlanganda | Token sarfi, narx (chargedUzs) va xabarni saqlash |
+| `error` | `{"message":"..."}` | Kutilmagan xato bo'lganda | Qizil ogohlantirish ko'rsatish |
+
+**Frontend uchun javob formati qoidalari:**
+- **Markdown diff bloklari:** Prompt yoki ssenariy o'zgarishlari ````diff ... ```` kod blokida (`- eski qator`, `+ yangi qator`) keladi.
+- **Bosiladigan havolalar:** Qo'ng'iroq va agentlar avtomatik `[Qo'ng'iroq #8812](/calls/8812)` yoki `[Agent #4](/agents/4)` tarzida keladi.
+- **Taqqoslash jadvallari:** O'tgan davr yoki kampaniyalar taqqoslanganda Markdown jadvallari (`| Metrika | Oldingi | Hozirgi | O'zgarish |`) ishlatiladi.
+- **Tuzilma sarlavhalari:** Murakkab tahlillarda `### 📊 Xulosa`, `### 🔍 Sabab va Tahlil`, `### 💡 Tavsiya va Taklif` sarlavhalari ajratiladi.
+
+---
+
+### 2. Standart JSON javob (`Accept: application/json`)
 
 **Response** (`CopilotReplyResponse`):
 
@@ -72,9 +108,9 @@ timeout'ini shunga moslang).
     "sessionId": 12,
     "reply": {
       "id": 341, "sessionId": 12, "role": "ASSISTANT",
-      "content": "Sotuv agentida (ID 4) transferlar 9% dan 21% ga oshgan. Sabab: ... (qo'ng'iroqlar 8812, 8830, 8847)",
+      "content": "### 📊 Xulosa\nSotuv agentida (ID 4) transferlar 9% dan 21% ga oshgan.\n\n### 🔍 Sabab va Tahlil\n[Qo'ng'iroq #8812](/calls/8812) va [Qo'ng'iroq #8830](/calls/8830) da mijozlar narx so'raganida agent operatorga o'tkazgan.\n\n### 💡 Tavsiya va Taklif\nAgent promptiga narxlar bo'yicha qoidani qo'shish kerak.",
       "toolName": null, "toolArguments": null, "toolError": false,
-      "promptTokens": 18420, "completionTokens": 610, "chargedUzs": 380,
+      "promptTokens": 3420, "completionTokens": 210, "chargedUzs": 150,
       "createdAt": "2026-10-09T08:00:12Z"
     },
     "toolCalls": [

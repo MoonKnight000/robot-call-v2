@@ -60,6 +60,8 @@ voice-agent:
     test-playback-file: ${RTP_TEST_PLAYBACK_FILE:}
     event-loop-threads: ${RTP_EVENT_LOOP_THREADS:0}
     receive-queue-capacity: ${RTP_RECEIVE_QUEUE_CAPACITY:2000}
+    # Browser test/widget calls at 16 kHz (Asterisk G.722 / LiveKit browser room -> slin16), docs/ai/WEBRTC-ASTERISK-LIVEKIT-AUDIO-OPTIMIZATION.md
+    wideband-web-test: ${RTP_WIDEBAND_WEB_TEST:false}
 
   # Outbound dialer (DialerProperties, RetryProperties)
   dialer:

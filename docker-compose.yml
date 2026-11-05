@@ -212,7 +212,9 @@ services:
   # container address in SDP. On a Linux server use `network_mode: host` (and drop `ports:`)
   # with use_external_ip, as LiveKit's own deployment guide does.
   livekit-sip:
-    image: ${LIVEKIT_SIP_IMAGE:-livekit/sip:latest}
+    # Pinned like livekit-server: with `latest` every pull could bring a new SIP stack unannounced.
+    # v1.22.0 is what ran here on 2026-11-05; raise it deliberately, after reading the release notes.
+    image: ${LIVEKIT_SIP_IMAGE:-livekit/sip:v1.22.0}
     container_name: robot-call-livekit-sip
     profiles: ["livekit"]
     depends_on:
@@ -240,7 +242,8 @@ services:
     restart: unless-stopped
 
   # The media bridge (./livekit-bridge, Go): joins each LiveKit call's room as the agent and
-  # streams the phone leg to the app's RTP port as G.711 — what externalMedia is to Asterisk.
+  # streams the phone leg to the app's RTP port as G.711 (a browser room as 16 kHz SLIN16 with
+  # RTP_WIDEBAND_WEB_TEST) — what externalMedia is to Asterisk.
   # Nothing is published: the app drives it (LIVEKIT_BRIDGE_URL) and exchanges RTP with it
   # inside this network, so the app has to run in this compose too (RTP_LOCAL_IP=app).
   livekit-bridge:

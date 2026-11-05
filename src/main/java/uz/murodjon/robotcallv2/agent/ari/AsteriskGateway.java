@@ -38,6 +38,8 @@ public class AsteriskGateway implements TelephonyGateway {
     private final OutboundCallTrackingUseCase outboundCallTrackingUseCase;
     private final SupervisorMonitor supervisorMonitor;
     private final ObjectProvider<OperatorTransferService> operatorTransferServiceProvider;
+    /** Lazy: the assembler reaches this gateway through the resolver, so a direct reference would be a cycle. */
+    private final ObjectProvider<AudioPipelineAssembler> audioPipelineAssemblerProvider;
 
     AsteriskGateway(AriClient ariClient,
                     AsteriskProperties asteriskProperties,
@@ -45,7 +47,9 @@ public class AsteriskGateway implements TelephonyGateway {
                     CallAttemptUseCase callAttemptUseCase,
                     OutboundCallTrackingUseCase outboundCallTrackingUseCase,
                     SupervisorMonitor supervisorMonitor,
-                    ObjectProvider<OperatorTransferService> operatorTransferServiceProvider) {
+                    ObjectProvider<OperatorTransferService> operatorTransferServiceProvider,
+                    ObjectProvider<AudioPipelineAssembler> audioPipelineAssemblerProvider) {
+        this.audioPipelineAssemblerProvider = audioPipelineAssemblerProvider;
         this.operatorTransferServiceProvider = operatorTransferServiceProvider;
         this.supervisorMonitor = supervisorMonitor;
         this.ariClient = ariClient;
@@ -58,6 +62,15 @@ public class AsteriskGateway implements TelephonyGateway {
     @Override
     public TelephonyEngine findEngine() {
         return TelephonyEngine.ASTERISK;
+    }
+
+    /** Best effort: a failure here must never cost the call. */
+    private void prewarmStt(String channelId, OutboundCall outboundCall, int ringSeconds) {
+        try {
+            audioPipelineAssemblerProvider.getObject().prewarmStt(channelId, outboundCall, ringSeconds);
+        } catch (RuntimeException e) {
+            log.debug("[{}] STT prewarm skipped: {}", channelId, e.getMessage());
+        }
     }
 
     @Override
@@ -110,6 +123,7 @@ public class AsteriskGateway implements TelephonyGateway {
                         null, outboundCall != null ? outboundCall.variantId() : null);
                 if (outboundCall != null) {
                     outboundCallTrackingUseCase.register(channelId, outboundCall);
+                    prewarmStt(channelId, outboundCall, ringSeconds);
                 }
                 Long usedTrunkId = trunk != null ? trunk.id() : dial.sipTrunkId();
                 log.info("Originated call {} to {} (dial={}) via {} (trunkId={}) -> channel {}",

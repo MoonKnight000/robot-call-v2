@@ -682,11 +682,16 @@ public class LiveKitCallService {
             }
 
             LiveAudioMonitor audioMonitor = new LiveAudioMonitor(rtpEventLoopGroup);
+            // A browser's room carries 48 kHz Opus, so its leg to us can be 16 kHz; a phone's
+            // room is 8 kHz at the source and stays on the G.711 leg.
+            boolean wideband = rtpProperties.widebandWebTest()
+                    && roomName.startsWith(LiveKitTelephonyService.BROWSER_ROOM_PREFIX);
             endpoint = new RtpEndpoint(roomName, port, rtpProperties.codec(), recorder,
                     List.<AudioListener>of(audioMonitor), audioMonitor::onBotAudio, rtpProperties.receiveQueueCapacity(),
-                    rtpProperties.maxQueuedPlaybackSeconds());
+                    rtpProperties.maxQueuedPlaybackSeconds(), wideband);
             endpoint.bind(rtpEventLoopGroup);
-            endpoint.setRemote(liveKitBridgeClient.startMedia(roomName, rtpProperties.localIp(), port, rtpProperties.codec()));
+            endpoint.setRemote(liveKitBridgeClient.startMedia(roomName, rtpProperties.localIp(), port,
+                    rtpProperties.codec(), wideband));
 
             Instant startedAt = Instant.now();
             attemptId = callAttemptUseCase.findAttemptIdByChannel(roomName);

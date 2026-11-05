@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 import uz.murodjon.robotcallv2.agent.provider.JsonWebSocketListener;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
@@ -49,11 +50,13 @@ public class ElevenLabsSttProvider implements SttProvider {
 
     private final SttProperties sttProperties;
     private final ObjectMapper objectMapper;
+    private final SttMetrics metrics;
     private volatile HttpClient client;
 
-    public ElevenLabsSttProvider(SttProperties sttProperties, ObjectMapper objectMapper) {
+    public ElevenLabsSttProvider(SttProperties sttProperties, ObjectMapper objectMapper, SttMetrics metrics) {
         this.sttProperties = sttProperties;
         this.objectMapper = objectMapper;
+        this.metrics = metrics;
     }
 
     @PostConstruct
@@ -71,6 +74,12 @@ public class ElevenLabsSttProvider implements SttProvider {
     @Override
     public String name() {
         return "elevenlabs";
+    }
+
+    /** The session feeds the socket silence while the call is gated, so it outlives the ringing. */
+    @Override
+    public boolean supportsPrewarm() {
+        return true;
     }
 
     @Override
@@ -104,17 +113,19 @@ public class ElevenLabsSttProvider implements SttProvider {
 
         String lang = languageCode != null && languageCode.length() >= 2 ? languageCode.substring(0, 2) : "uz";
         String chosenModel = model != null && !model.isBlank() ? model.trim() : settings.model();
-        String wsUrl = buildUrl(settings, chosenModel, lang, externalEndpointing, hints);
+        String wsUrl = buildUrl(settings, chosenModel, lang, externalEndpointing, hints, alternativeLanguages);
 
         AtomicBoolean alive = new AtomicBoolean(true);
         CountDownLatch started = new CountDownLatch(1);
         AtomicReference<String> rejection = new AtomicReference<>();
+        EouLatencyTracker eouLatency = new EouLatencyTracker();
 
         try {
             WebSocket webSocket = current.newWebSocketBuilder()
                     .header("xi-api-key", settings.apiKey())
                     .connectTimeout(Duration.ofSeconds(settings.connectTimeoutSeconds()))
-                    .buildAsync(URI.create(wsUrl), new ElevenLabsResponseHandler(listener, alive, started, rejection))
+                    .buildAsync(URI.create(wsUrl),
+                            new ElevenLabsResponseHandler(listener, alive, started, rejection, eouLatency))
                     .get(settings.connectTimeoutSeconds(), TimeUnit.SECONDS);
 
             if (!started.await(settings.connectTimeoutSeconds(), TimeUnit.SECONDS)) {
@@ -130,7 +141,7 @@ public class ElevenLabsSttProvider implements SttProvider {
 
             log.info("Opened ElevenLabs STT stream for lang={} (model={}, commit={})",
                     lang, chosenModel, externalEndpointing ? "manual" : "vad");
-            return new ElevenLabsSttSession(webSocket, alive, externalEndpointing, settings.sampleRate());
+            return new ElevenLabsSttSession(webSocket, alive, externalEndpointing, settings.sampleRate(), eouLatency);
         } catch (ExternalServiceException e) {
             throw e;
         } catch (Exception e) {
@@ -139,12 +150,21 @@ public class ElevenLabsSttProvider implements SttProvider {
     }
 
     private static String buildUrl(ElevenLabsSttProperties settings, String model, String lang,
-                                   boolean externalEndpointing, List<String> hints) {
+                                   boolean externalEndpointing, List<String> hints,
+                                   List<String> alternativeLanguages) {
         StringBuilder url = new StringBuilder(settings.url())
                 .append("?model_id=").append(encode(model))
                 .append("&audio_format=pcm_").append(settings.sampleRate())
                 .append("&language_code=").append(encode(lang))
                 .append("&commit_strategy=").append(externalEndpointing ? "manual" : "vad");
+        if (settings.secondaryLanguages() && alternativeLanguages != null) {
+            alternativeLanguages.stream()
+                    .filter(other -> other != null && other.length() >= 2)
+                    .map(other -> other.substring(0, 2).toLowerCase(java.util.Locale.ROOT))
+                    .filter(other -> !other.equalsIgnoreCase(lang))
+                    .distinct()
+                    .forEach(other -> url.append("&secondary_languages=").append(encode(other)));
+        }
         if (hints != null) {
             hints.stream()
                     .filter(hint -> hint != null && !hint.isBlank() && hint.trim().length() <= MAX_KEYTERM_LENGTH)
@@ -172,13 +192,16 @@ public class ElevenLabsSttProvider implements SttProvider {
         private final AtomicBoolean alive;
         private final CountDownLatch started;
         private final AtomicReference<String> rejection;
+        private final EouLatencyTracker eouLatency;
 
         private ElevenLabsResponseHandler(TranscriptListener listener, AtomicBoolean alive,
-                                          CountDownLatch started, AtomicReference<String> rejection) {
+                                          CountDownLatch started, AtomicReference<String> rejection,
+                                          EouLatencyTracker eouLatency) {
             this.listener = listener;
             this.alive = alive;
             this.started = started;
             this.rejection = rejection;
+            this.eouLatency = eouLatency;
         }
 
         @Override
@@ -202,11 +225,17 @@ public class ElevenLabsSttProvider implements SttProvider {
                     case "committed_transcript" -> {
                         String text = root.path("text").asText("");
                         if (!text.isBlank()) {
+                            eouLatency.finalReceived(metrics, ElevenLabsSttProvider.this.name());
                             listener.onTranscript(text.trim(), true, 1.0f);
                         }
                     }
                     case "warning" -> log.debug("ElevenLabs STT warning: {}", root.path("warning").asText(""));
                     default -> {
+                        if ("commit_throttled".equals(type)) {
+                            // Commits too close together degrade the model; a stream of these
+                            // means the gate is closing utterances faster than Scribe allows.
+                            metrics.sttProviderWarning(ElevenLabsSttProvider.this.name());
+                        }
                         if (root.has("error")) {
                             String error = type + ": " + root.path("error").asText("");
                             log.warn("ElevenLabs STT error {}", error);
@@ -259,17 +288,19 @@ public class ElevenLabsSttProvider implements SttProvider {
         private final boolean externalEndpointing;
         private final int sampleRate;
         private final byte[] keepAliveSilence;
+        private final EouLatencyTracker eouLatency;
         private final AtomicInteger pendingSends = new AtomicInteger();
         private final Object sendLock = new Object();
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private volatile long lastSentNanos = System.nanoTime();
 
         private ElevenLabsSttSession(WebSocket webSocket, AtomicBoolean alive, boolean externalEndpointing,
-                                     int sampleRate) {
+                                     int sampleRate, EouLatencyTracker eouLatency) {
             this.webSocket = webSocket;
             this.alive = alive;
             this.externalEndpointing = externalEndpointing;
             this.sampleRate = sampleRate;
+            this.eouLatency = eouLatency;
             this.keepAliveSilence = new byte[sampleRate / 10 * 2];
             Thread.ofVirtual().name("elevenlabs-stt-keepalive").start(this::keepAlive);
         }
@@ -290,6 +321,7 @@ public class ElevenLabsSttProvider implements SttProvider {
         @Override
         public void endUtterance() {
             if (externalEndpointing && alive.get()) {
+                eouLatency.eouSent();
                 enqueue(chunk(new byte[0], true));
             }
         }

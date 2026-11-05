@@ -37,10 +37,11 @@ class SpeculationManager {
     private final SystemPromptFactory promptFactory;
     private final TurnTools turnTools;
     private final LlmTurnClient llmTurnClient;
+    private final ChunkerProperties chunkerProperties;
 
     SpeculationManager(DialogProperties dialogProperties, DialogExecutors executors, LlmMetrics metrics,
                        SpeechOutput speech, SystemPromptFactory promptFactory, TurnTools turnTools,
-                       LlmTurnClient llmTurnClient) {
+                       LlmTurnClient llmTurnClient, ChunkerProperties chunkerProperties) {
         this.dialogProperties = dialogProperties;
         this.executors = executors;
         this.metrics = metrics;
@@ -48,6 +49,7 @@ class SpeculationManager {
         this.promptFactory = promptFactory;
         this.turnTools = turnTools;
         this.llmTurnClient = llmTurnClient;
+        this.chunkerProperties = chunkerProperties;
     }
 
     /**
@@ -320,7 +322,8 @@ class SpeculationManager {
             return;
         }
         guessed.append(chunk);
-        String sentence = SentenceSplitter.takeSentence(guessed, true);
+        // The same limits as the turn's own stream, or the warmed sentence would not be the one it speaks.
+        String sentence = SentenceSplitter.takeSentence(guessed, true, chunkerProperties);
         if (sentence != null && warmed.compareAndSet(false, true)) {
             executors.submit(() -> speech.warmSentence(s, sentence));
         }

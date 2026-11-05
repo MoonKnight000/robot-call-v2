@@ -96,11 +96,42 @@ class TurnRunnerSentenceTest {
     @Test
     void splitsOpeningGreetingImmediatelyWhenOpeningIsTrue() {
         StringBuilder pending = new StringBuilder("Assalomu alaykum! Sizga qanday yordam bera olaman?");
-        // "Assalomu alaykum!" is 17 characters (> OPENING_MIN_CHARS 14, < MIN_CHUNK_CHARS 20)
+        // "Assalomu alaykum!" is 17 characters (> openingMinChars 14, < minChunkChars 20)
         String first = SentenceSplitter.takeSentence(pending, true);
 
         assertThat(first).isEqualTo("Assalomu alaykum!");
         assertThat(pending.toString()).isEqualTo(" Sizga qanday yordam bera olaman?");
+    }
+
+    @Test
+    void cutsTheOpeningAtACommaOnceItHasEnoughWords() {
+        StringBuilder pending = new StringBuilder("Xo'p, to'lov sanasini bilib olaylik, qachon to'lay olasiz?");
+
+        assertThat(SentenceSplitter.takeSentence(pending, true)).isEqualTo("Xo'p, to'lov sanasini bilib olaylik,");
+        assertThat(pending.toString()).isEqualTo(" qachon to'lay olasiz?");
+    }
+
+    @Test
+    void keepsALaterPieceWholeAcrossTheSameComma() {
+        StringBuilder pending = new StringBuilder("Xo'p, to'lov sanasini bilib olaylik, qachon to'lay olasiz?");
+
+        assertThat(SentenceSplitter.takeSentence(pending)).isEqualTo("Xo'p, to'lov sanasini bilib olaylik, qachon to'lay olasiz?");
+    }
+
+    @Test
+    void waitsForTheCharacterAfterAnOpeningCommaBeforeCutting() {
+        // The stream may still turn "1," into "1,500".
+        StringBuilder pending = new StringBuilder("Sizning qarzingiz hozircha taxminan 1,");
+
+        assertThat(SentenceSplitter.takeSentence(pending, true)).isNull();
+    }
+
+    @Test
+    void openingCommaWordCountIsConfigurable() {
+        StringBuilder pending = new StringBuilder("Xo'p, to'lov sanasini bilib olaylik, qachon to'lay olasiz?");
+
+        assertThat(SentenceSplitter.takeSentence(pending, true, new ChunkerProperties(0, 8, 0, 0)))
+                .isEqualTo("Xo'p, to'lov sanasini bilib olaylik, qachon to'lay olasiz?");
     }
 
     @Test

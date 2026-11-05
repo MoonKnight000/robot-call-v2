@@ -36,10 +36,11 @@ class TtsRouterTest {
         when(primary.name()).thenReturn("primary");
         when(fallback.name()).thenReturn("fallback");
         when(selector.findForCall(any())).thenReturn(primary);
-        when(selector.findFallback(primary)).thenReturn(fallback);
+        when(selector.findFallback(eq(primary), any())).thenReturn(fallback);
         TtsProperties ttsProperties = mock(TtsProperties.class);
         when(ttsProperties.defaultLanguage()).thenReturn("uz-UZ");
-        router = new TtsRouter(selector, ttsProperties, mock(TtsMetrics.class), cache, mock(TtsVoiceUseCase.class));
+        router = new TtsRouter(selector, ttsProperties, mock(TtsMetrics.class), cache, mock(TtsVoiceUseCase.class),
+                new TtsStreamProperties(0, false, false, false, false));
     }
 
     @Test

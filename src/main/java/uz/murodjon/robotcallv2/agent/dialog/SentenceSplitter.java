@@ -18,37 +18,44 @@ final class SentenceSplitter {
             "mr", "mrs", "ms", "dr", "etc", "vs"
     );
 
-    /**
-     * Shortest piece worth its own synthesis round trip. "Xo'p." or "Tushunarli." alone is
-     * under a second of audio, and a line that short cannot cover the round trip of the
-     * sentence behind it — on recorded calls the caller heard the acknowledgement, then
-     * 400-900 ms of silence, then the actual answer. Kept with the sentence that follows,
-     * it costs the first word nothing measurable and the gap disappears.
-     */
-    static final int MIN_CHUNK_CHARS = 20;
-
-    /** Shortest clause that may be cut at a comma rather than waiting for its sentence end. */
-    static final int LONG_CLAUSE_CHARS = 90;
-    static final int OPENING_MIN_CHARS = 14;
-    static final int OPENING_CLAUSE_CHARS = 50;
-
     private SentenceSplitter() {
     }
 
-    /**
-     * Cut the next complete sentence off the front of {@code pending}, or return
-     * {@code null} if there is not one yet. A sentence shorter than {@link #MIN_CHUNK_CHARS}
-     * is not cut on its own but carried into the next one.
-     */
+    /** {@link #takeSentence(StringBuilder, boolean, ChunkerProperties)} for a later piece, at the defaults. */
     static String takeSentence(StringBuilder pending) {
-        return takeSentence(pending, false);
+        return takeSentence(pending, false, ChunkerProperties.DEFAULTS);
     }
 
+    /** {@link #takeSentence(StringBuilder, boolean, ChunkerProperties)} at the defaults. */
     static String takeSentence(StringBuilder pending, boolean opening) {
-        int minChars = opening ? OPENING_MIN_CHARS : MIN_CHUNK_CHARS;
-        int longClauseChars = opening ? OPENING_CLAUSE_CHARS : LONG_CLAUSE_CHARS;
+        return takeSentence(pending, opening, ChunkerProperties.DEFAULTS);
+    }
+
+    /**
+     * Cut the next piece off the front of {@code pending}, or return {@code null} if there is
+     * not one yet.
+     *
+     * <p>A later piece shorter than {@link ChunkerProperties#minChunkChars} is not cut on its
+     * own but carried into the next one: "Xo'p." alone is under a second of audio and cannot
+     * cover the round trip of the sentence behind it — on recorded calls the caller heard the
+     * acknowledgement, then 400-900 ms of silence, then the answer.
+     *
+     * <p>The opening piece is the one the caller is waiting through, so it is cut at a comma
+     * as soon as it has {@link ChunkerProperties#openingClauseWords} words.
+     */
+    static String takeSentence(StringBuilder pending, boolean opening, ChunkerProperties limits) {
+        int minChars = opening ? limits.openingMinChars() : limits.minChunkChars();
+        int longClauseChars = limits.longClauseChars();
+        int words = 0;
+        boolean inWord = false;
         for (int i = 0; i < pending.length(); i++) {
             char c = pending.charAt(i);
+            if (Character.isWhitespace(c)) {
+                inWord = false;
+            } else if (!inWord) {
+                inWord = true;
+                words++;
+            }
             // Ignore decimal/number formatting dots and commas: e.g. 1.500.000 or 1,500
             if ((c == '.' || c == ',') && i > 0 && Character.isDigit(pending.charAt(i - 1))
                     && i + 1 < pending.length() && Character.isDigit(pending.charAt(i + 1))) {
@@ -70,9 +77,20 @@ final class SentenceSplitter {
                 pending.delete(0, i + 1);
                 return sentence.isEmpty() ? null : sentence;
             }
-            // Only a really long clause is cut at a comma. Each piece is synthesized on its
-            // own and ends on a sentence-final fall, so a 30-char cut made every
-            // "Murodjon aka," sound like the end of a sentence — the robotic cadence.
+            // The opening piece is cut at a comma once it has a few words: the caller is waiting
+            // through it. The next character must be there and be a space — a stream may still
+            // be about to continue "1," with "500".
+            if (opening && c == ',' && words >= limits.openingClauseWords()) {
+                if (i + 1 >= pending.length() || !Character.isWhitespace(pending.charAt(i + 1))) {
+                    continue;
+                }
+                String clause = pending.substring(0, i + 1).trim();
+                pending.delete(0, i + 1);
+                return clause.isEmpty() ? null : clause;
+            }
+            // A later piece is cut at a comma only when the clause is really long. Each piece is
+            // synthesized on its own and ends on a sentence-final fall, so a 30-char cut made
+            // every "Murodjon aka," sound like the end of a sentence — the robotic cadence.
             if (c == ',' && i >= longClauseChars) {
                 if (i + 1 < pending.length() && !Character.isWhitespace(pending.charAt(i + 1))) {
                     continue;

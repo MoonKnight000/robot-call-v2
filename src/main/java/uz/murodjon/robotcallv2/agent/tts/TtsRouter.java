@@ -14,6 +14,7 @@ import uz.murodjon.robotcallv2.voice.domain.entity.TtsVoice;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Synthesizes a request with the {@link TtsProvider} that owns the call's voice
@@ -34,20 +35,24 @@ import java.util.List;
 public class TtsRouter {
 
     private static final Logger log = LoggerFactory.getLogger(TtsRouter.class);
+    /** Peak below which a sample counts as silence when timing the first audible chunk. */
+    private static final int AUDIBLE_PEAK = 100;
 
     private final TtsProviderSelector selector;
     private final TtsProperties ttsProperties;
     private final TtsMetrics metrics;
     private final TtsCache cache;
     private final TtsVoiceUseCase ttsVoiceUseCase;
+    private final TtsStreamProperties streamProperties;
 
     public TtsRouter(TtsProviderSelector selector, TtsProperties ttsProperties, TtsMetrics metrics,
-                     TtsCache cache, TtsVoiceUseCase ttsVoiceUseCase) {
+                     TtsCache cache, TtsVoiceUseCase ttsVoiceUseCase, TtsStreamProperties streamProperties) {
         this.selector = selector;
         this.ttsProperties = ttsProperties;
         this.metrics = metrics;
         this.cache = cache;
         this.ttsVoiceUseCase = ttsVoiceUseCase;
+        this.streamProperties = streamProperties;
         log.info("TTS router: providers {}", selector.names());
     }
 
@@ -80,6 +85,16 @@ public class TtsRouter {
      */
     public short[] synthesize(String text, String language, String voiceId, EffectiveVoiceSettings style,
                               List<PronunciationRule> rules) {
+        return synthesize(text, language, voiceId, style, rules, null);
+    }
+
+    /**
+     * As above, for a sentence that follows another in the same reply: {@code previousText} is
+     * that sentence, handed to a provider that can continue its prosody from it. {@code null}
+     * for a reply's first sentence (and a provider ignores it unless it can use it).
+     */
+    public short[] synthesize(String text, String language, String voiceId, EffectiveVoiceSettings style,
+                              List<PronunciationRule> rules, String previousText) {
         Routed r = route(language, voiceId, style);
         String normalized = SpeechTextNormalizer.normalize(text, r.lang(), rules);
         String speech = r.provider().applyStressMarks(normalized);
@@ -96,9 +111,11 @@ public class TtsRouter {
         short[] pcm;
         boolean fellBack = false;
         try {
-            pcm = r.provider().synthesize(speech, r.lang(), r.voiceName(), r.style());
+            pcm = previousText == null
+                    ? r.provider().synthesize(speech, r.lang(), r.voiceName(), r.style())
+                    : r.provider().synthesize(speech, r.lang(), r.voiceName(), r.style(), previousText);
         } catch (RuntimeException e) {
-            TtsProvider fallback = selector.findFallback(r.provider());
+            TtsProvider fallback = selector.findFallback(r.provider(), candidate -> candidate.supports(r.lang()));
             if (fallback != null) {
                 log.warn("TTS provider '{}' failed ({}), attempting fallback to '{}'",
                         r.provider().name(), e.getMessage(), fallback.name());
@@ -163,13 +180,28 @@ public class TtsRouter {
 
         List<short[]> chunks = new ArrayList<>();
         Timer.Sample sample = metrics.startTimer();
+        long requestedAt = System.nanoTime();
+        AtomicBoolean audibleSeen = new AtomicBoolean();
+        FirstChunkWatchdog watchdog = FirstChunkWatchdog.start(streamProperties.firstChunkTimeoutMs());
         try {
             r.provider().synthesizeStreaming(speech, r.lang(), r.voiceName(), r.style(), pcm -> {
+                if (!audibleSeen.get() && isAudible(pcm) && audibleSeen.compareAndSet(false, true)) {
+                    watchdog.firstAudioArrived();
+                    metrics.ttsFirstAudio(r.provider().name(), r.lang(), System.nanoTime() - requestedAt);
+                }
                 chunks.add(pcm);
                 onChunk.onChunk(pcm);
             });
         } catch (RuntimeException e) {
-            TtsProvider fallback = selector.findFallback(r.provider());
+            // Before anything else blocks: a fired watchdog leaves an interrupt on this thread,
+            // which would cut the fallback's own request short.
+            watchdog.close();
+            if (watchdog.timedOut()) {
+                metrics.ttsFirstChunkTimeout(r.provider().name());
+                log.warn("TTS streaming provider '{}' gave no audio within {} ms",
+                        r.provider().name(), streamProperties.firstChunkTimeoutMs());
+            }
+            TtsProvider fallback = selector.findFallback(r.provider(), candidate -> candidate.supports(r.lang()));
             if (fallback != null) {
                 log.warn("TTS streaming provider '{}' failed ({}) after {} chunk(s), falling back to '{}' (batch)",
                         r.provider().name(), e.getMessage(), chunks.size(), fallback.name());
@@ -196,6 +228,7 @@ public class TtsRouter {
                 throw e;
             }
         } finally {
+            watchdog.close();
             metrics.stopTtsSynth(sample);
         }
         metrics.ttsCacheMiss();
@@ -240,6 +273,16 @@ public class TtsRouter {
             throw new ExternalServiceException(ErrorCode.TTS_PROVIDER_UNAVAILABLE, "tts", lang);
         }
         return new Routed(provider, lang, null, settings);
+    }
+
+    /** Whether the chunk carries sound: any sample above the noise floor (about -50 dBFS). */
+    private static boolean isAudible(short[] pcm) {
+        for (short sample : pcm) {
+            if (sample > AUDIBLE_PEAK || sample < -AUDIBLE_PEAK) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static short[] concat(List<short[]> chunks) {

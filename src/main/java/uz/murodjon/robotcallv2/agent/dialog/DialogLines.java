@@ -69,6 +69,11 @@ final class DialogLines {
         return own(s, AiAgentPhrases::gratitudeReply, DialogPhrases.gratitudeReply(s.language()));
     }
 
+    /** The reply to a caller checking the line ({@code FastPathRouter}), in the call's language. */
+    static String lineCheckReply(DialogSession s) {
+        return DialogPhrases.lineCheckReply(s.language());
+    }
+
     /** The reply to a caller who asks never to be called again. */
     static String doNotCallReply(DialogSession s) {
         return own(s, AiAgentPhrases::doNotCallReply, DialogPhrases.doNotCallReply(s.language()));

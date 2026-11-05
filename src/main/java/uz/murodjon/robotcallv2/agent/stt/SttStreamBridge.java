@@ -2,9 +2,10 @@ package uz.murodjon.robotcallv2.agent.stt;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import uz.murodjon.robotcallv2.agent.audio.AudioListener;
 import uz.murodjon.robotcallv2.agent.audio.SpeechGate;
+import uz.murodjon.robotcallv2.agent.audio.StreamingDownsampler;
 import uz.murodjon.robotcallv2.agent.audio.StreamingUpsampler;
+import uz.murodjon.robotcallv2.agent.audio.WidebandAudioListener;
 import uz.murodjon.robotcallv2.agent.metrics.SttMetrics;
 import uz.murodjon.robotcallv2.agent.turn.AgentQuestionCues;
 import uz.murodjon.robotcallv2.agent.turn.TranscriptTurnCues;
@@ -32,7 +33,7 @@ import java.util.function.IntConsumer;
  * stream drops or reconnects: whenever a stream disconnects or stalls, recent in-flight
  * speech is retained and seamlessly replayed once the new stream opens.
  */
-public class SttStreamBridge implements AudioListener, Closeable {
+public class SttStreamBridge implements WidebandAudioListener, Closeable {
 
     private static final Logger log = LoggerFactory.getLogger(SttStreamBridge.class);
 
@@ -55,7 +56,10 @@ public class SttStreamBridge implements AudioListener, Closeable {
     private static final long STREAM_LIMIT_MARGIN_MS = 30_000;
 
     private final String channelId;
-    private final int sourceSampleRate;
+    /** Rate of the audio this bridge is fed: 8 kHz, or 16 kHz once a wideband leg says so ({@link #onWidebandAudio}). */
+    private volatile int sourceSampleRate;
+    /** {@link #sourceSampleRate} over 8 kHz — what the 8 kHz-sized replay buffer is scaled by. */
+    private volatile int widebandFactor = 1;
     private final SpeechGate gate;
     private final SttMetrics metrics;
     /** Where another provider comes from when this one stops working; null disables failover. */
@@ -71,12 +75,12 @@ public class SttStreamBridge implements AudioListener, Closeable {
     private volatile SttProvider provider;
     private volatile int targetSampleRate;
     /**
-     * Carries the interpolation filter across frames for a provider that wants more than
-     * 8 kHz; null when it takes the telephone rate as-is. Replaced whenever the audio it is
+     * Carries the resampling filter across frames for a provider whose rate is not the
+     * source's; null when it takes the source rate as-is. Replaced whenever the audio it is
      * fed stops being one continuous stream — a new utterance after the gate, a reopened
      * stream, another provider — so no filter history crosses a gap. RTP thread only.
      */
-    private volatile StreamingUpsampler upsampler;
+    private volatile Resampling resampler;
     /**
      * Failures charged to the provider in hand. Cleared by a transcript and by nothing
      * else: a reopen that succeeds proves the socket opens, not that anything is being
@@ -116,7 +120,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
     private final IntConsumer onUtteranceEnd;
     /** Whether this call ends its own utterances rather than letting the provider do it. */
     private final boolean externalEndpointing;
-    private final long maxUtteranceSamples;
+    private long maxUtteranceSamples;
     /** How long a stream may take audio without answering before it counts as stalled; 0 = never. */
     private final long responseTimeoutMs;
 
@@ -203,6 +207,22 @@ public class SttStreamBridge implements AudioListener, Closeable {
                            int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints,
                            List<String> keywords, SttProviderSelector selector, String model,
                            SttStreamProperties streamProperties) {
+        this(provider, targetSampleRate, sourceSampleRate, channelId, language, alternativeLanguages, listener,
+                gate, metrics, endpointing, responseTimeoutMs, onUtteranceEnd, hints, keywords, selector, model,
+                streamProperties, null);
+    }
+
+    /**
+     * @param preopened a stream opened at ring time with exactly the parameters this call would
+     *                  open ({@link SttPrewarmRegistry#take}); adopted instead of opening one.
+     *                  Null opens a stream as usual
+     */
+    public SttStreamBridge(SttProvider provider, int targetSampleRate, int sourceSampleRate, String channelId,
+                           String language, List<String> alternativeLanguages, TranscriptListener listener,
+                           SpeechGate gate, SttMetrics metrics, EndpointingProperties endpointing,
+                           int responseTimeoutMs, IntConsumer onUtteranceEnd, List<String> hints,
+                           List<String> keywords, SttProviderSelector selector, String model,
+                           SttStreamProperties streamProperties, PreopenedStt preopened) {
         this.streamProperties = streamProperties;
         this.selector = selector;
         this.model = (model == null || model.isBlank()) ? null : model.trim();
@@ -214,7 +234,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         this.hints = this.agentHints;
         this.onUtteranceEnd = onUtteranceEnd != null ? onUtteranceEnd : ms -> { };
         this.targetSampleRate = targetSampleRate;
-        this.upsampler = upsamplerFor(targetSampleRate);
+        this.resampler = resamplerFor(sourceSampleRate, targetSampleRate);
         this.sourceSampleRate = sourceSampleRate;
         this.gate = gate;
         this.metrics = metrics;
@@ -256,7 +276,38 @@ public class SttStreamBridge implements AudioListener, Closeable {
         this.responseTimeoutMs = Math.max(0, responseTimeoutMs);
         this.lastResponseAt = System.currentTimeMillis();
         this.streamOpenedAt = this.lastResponseAt;
-        this.session = provider.startStream(language, this.alternativeLanguages, this.listener, externalEndpointing, this.hints, this.model);
+        if (preopened != null) {
+            preopened.forwarder().bind(this.listener);
+            this.session = preopened.session();
+        } else {
+            this.session = provider.startStream(language, this.alternativeLanguages, this.listener, externalEndpointing, this.hints, this.model);
+        }
+    }
+
+    /**
+     * The caller at 16 kHz, from a wideband leg — given instead of {@link #onAudio}, from the
+     * first frame of the call on. The first frame switches this bridge to that rate for good:
+     * pre-roll, replay buffer and utterance cap are re-sized, and a 16 kHz provider gets the
+     * audio untouched instead of an upsampled telephone copy.
+     */
+    @Override
+    public void onWidebandAudio(short[] pcm, int length) {
+        if (widebandFactor == 1) {
+            widebandFactor = 2;
+            sourceSampleRate = 16000;
+            if (maxUtteranceSamples != Long.MAX_VALUE) {
+                maxUtteranceSamples *= widebandFactor;
+            }
+            utteranceSamples *= widebandFactor;
+            if (gate != null) {
+                gate.widenPreRoll(widebandFactor);
+            }
+            clearReplayBuffer();
+            resampler = resamplerFor(sourceSampleRate, targetSampleRate);
+            log.info("[{}] STT fed 16 kHz from a wideband leg ({} wants {} Hz)", channelId,
+                    provider.name(), targetSampleRate);
+        }
+        onAudio(pcm, length);
     }
 
     @Override
@@ -291,7 +342,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
             synchronized (finalLock) {
                 promotedAt = 0;
             }
-            upsampler = upsamplerFor(targetSampleRate);
+            resampler = resamplerFor(sourceSampleRate, targetSampleRate);
             log.debug("[{}] STT stream resumed (speech)", channelId);
             short[] preRoll = gate.drainPreRoll();
             if (preRoll != null) {
@@ -309,7 +360,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         try {
             replayBuffer.addLast(copy);
             replayBufferedSamples += length;
-            while (replayBufferedSamples > streamProperties.replayBufferSamples() && !replayBuffer.isEmpty()) {
+            while (replayBufferedSamples > streamProperties.replayBufferSamples() * widebandFactor && !replayBuffer.isEmpty()) {
                 short[] removed = replayBuffer.removeFirst();
                 replayBufferedSamples -= removed.length;
             }
@@ -363,7 +414,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
         }
         short[] samples;
         int len;
-        StreamingUpsampler up = upsampler;
+        Resampling up = resampler;
         if (up != null) {
             samples = up.push(pcm, length);
             len = samples.length;
@@ -598,7 +649,7 @@ public class SttStreamBridge implements AudioListener, Closeable {
      */
     private void openStream(long now) {
         utteranceSamples = 0;
-        upsampler = upsamplerFor(targetSampleRate);
+        resampler = resamplerFor(sourceSampleRate, targetSampleRate);
         session = provider.startStream(language, alternativeLanguages, this.listener, externalEndpointing, hints, model);
         lastResponseAt = now;
         streamOpenedAt = now;
@@ -780,13 +831,13 @@ public class SttStreamBridge implements AudioListener, Closeable {
         if (selector == null) {
             return;
         }
-        SttProvider replacement = selector.findFallback(provider);
+        SttProvider replacement = selector.findFallback(provider, candidate -> candidate.supports(language));
         if (replacement == null) {
             // Said once per failure round, not per frame: reopen() is rate-limited by
             // REOPEN_COOLDOWN_MS, and this is the line that explains a call going quiet.
             log.warn("[{}] {} has failed {} times and this build has no other STT provider "
-                            + "configured — the call stays on it",
-                    channelId, provider.name(), providerFailures.get());
+                            + "configured for {} — the call stays on it",
+                    channelId, provider.name(), providerFailures.get(), language);
             providerFailures.set(0);
             return;
         }
@@ -801,11 +852,35 @@ public class SttStreamBridge implements AudioListener, Closeable {
     }
 
     /**
-     * A band-limited upsampler for a provider above the telephone rate; null for one that
-     * takes 8 kHz, or a rate there is no filter for — sent as-is, as it always was.
+     * The filter from the audio this bridge is fed to the provider's rate. From 8 kHz: a
+     * band-limited upsampler for 16/24 kHz. From 16 kHz (a wideband leg): nothing for a
+     * 16 kHz provider — the point of the leg — and for one that failed over to 8 or 24 kHz,
+     * down to 8 kHz first, which is no worse than a telephone leg. Null for a rate there is
+     * no filter for — sent as-is, as it always was.
      */
-    private static StreamingUpsampler upsamplerFor(int targetRate) {
-        return targetRate == 16000 || targetRate == 24000 ? StreamingUpsampler.from8kTo(targetRate) : null;
+    private static Resampling resamplerFor(int sourceRate, int targetRate) {
+        if (sourceRate == 16000) {
+            if (targetRate == 16000) {
+                return null;
+            }
+            StreamingDownsampler down = StreamingDownsampler.from16kTo8k();
+            Resampling up = resamplerFor(8000, targetRate);
+            if (up == null) {
+                return down::push;
+            }
+            return (pcm, length) -> {
+                short[] narrow = down.push(pcm, length);
+                return up.push(narrow, narrow.length);
+            };
+        }
+        StreamingUpsampler up = targetRate == 16000 || targetRate == 24000 ? StreamingUpsampler.from8kTo(targetRate) : null;
+        return up == null ? null : up::push;
+    }
+
+    /** One stateful resampling filter; RTP thread only. */
+    @FunctionalInterface
+    private interface Resampling {
+        short[] push(short[] pcm, int length);
     }
 
     /** Duration of a frame at the source rate — what the provider bills, upsampled or not. */

@@ -139,6 +139,27 @@ class DialogToolsTest {
     }
 
     @Test
+    void noteClientFactKeepsTheFactAndTheAnnexCarriesIt() {
+        session.setState("REASON_INQUIRY");
+        tools.noteClientFact("situation", "kasalxonada");
+        tools.noteClientFact("situation", "uyda, tuzalyapti");
+
+        assertThat(session.clientFacts()).containsExactly(Map.entry("situation", "uyda, tuzalyapti"));
+        assertThat(new SystemPromptFactory().turnAnnex(session)).contains("situation = uyda, tuzalyapti");
+    }
+
+    @Test
+    void noteClientFactRefusesANewNamePastTheCap() {
+        for (int i = 0; i < DialogSession.MAX_CLIENT_FACTS; i++) {
+            tools.noteClientFact("fact_" + i, "value");
+        }
+
+        assertThat(tools.noteClientFact("one_more", "value")).startsWith("Not noted");
+        assertThat(tools.noteClientFact("fact_0", "changed")).isEqualTo("Noted.");
+        assertThat(session.clientFacts()).hasSize(DialogSession.MAX_CLIENT_FACTS).containsEntry("fact_0", "changed");
+    }
+
+    @Test
     void noteCallerMoodSetsTheMoodTheVoiceFollows() {
         tools.noteCallerMood(CustomerSentiment.FRUSTRATED);
 

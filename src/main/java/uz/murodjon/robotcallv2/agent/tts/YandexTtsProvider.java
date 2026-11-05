@@ -4,7 +4,9 @@ import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.MetadataUtils;
+import io.grpc.stub.StreamObserver;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -19,6 +21,8 @@ import yandex.cloud.api.ai.tts.v3.Tts;
 
 import java.io.ByteArrayOutputStream;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -76,11 +80,23 @@ public class YandexTtsProvider implements TtsProvider {
             "whisper", List.of("whisper"),
             "sad", List.of("sad"));
 
+    /**
+     * Longest text one {@code StreamSynthesis} session accepts ("streaming mode" in SpeechKit's
+     * limits): twenty times {@link #MAX_TEXT_CHARS}, so a line that had to be cut in pieces for
+     * {@code UtteranceSynthesis} goes out whole.
+     */
+    static final int MAX_STREAM_TEXT_CHARS = 5000;
+
+    /** How long {@code StreamSynthesis} may stay silent when the deployment sets no gRPC deadline. */
+    private static final long STREAM_SILENCE_LIMIT_MS = 30_000;
+
     private final TtsProperties ttsProperties;
+    private final TtsStreamProperties streamProperties;
     private volatile ManagedChannel channel;
 
-    public YandexTtsProvider(TtsProperties ttsProperties) {
+    public YandexTtsProvider(TtsProperties ttsProperties, TtsStreamProperties streamProperties) {
         this.ttsProperties = ttsProperties;
+        this.streamProperties = streamProperties;
     }
 
     @PostConstruct
@@ -138,6 +154,18 @@ public class YandexTtsProvider implements TtsProvider {
 
     @Override
     public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style) {
+        if (streamProperties.yandexStreamSynthesis()) {
+            List<short[]> chunks = new ArrayList<>();
+            synthesizeStreaming(text, language, voice, style, chunks::add);
+            int total = chunks.stream().mapToInt(chunk -> chunk.length).sum();
+            short[] whole = new short[total];
+            int offset = 0;
+            for (short[] chunk : chunks) {
+                System.arraycopy(chunk, 0, whole, offset, chunk.length);
+                offset += chunk.length;
+            }
+            return whole;
+        }
         try {
             ByteArrayOutputStream pcm = new ByteArrayOutputStream();
             for (String piece : splitForSynthesis(text)) {
@@ -161,6 +189,12 @@ public class YandexTtsProvider implements TtsProvider {
     @Override
     public void synthesizeStreaming(String text, String language, String voice, EffectiveVoiceSettings style,
                                      PcmChunkListener onChunk) {
+        if (streamProperties.yandexStreamSynthesis()) {
+            for (String piece : splitForSynthesis(text, MAX_STREAM_TEXT_CHARS)) {
+                streamSynthesis(piece, language, voice, style, onChunk);
+            }
+            return;
+        }
         try {
             for (String piece : splitForSynthesis(text)) {
                 Iterator<Tts.UtteranceSynthesisResponse> responses = openStream(piece, language, voice, style);
@@ -186,13 +220,18 @@ public class YandexTtsProvider implements TtsProvider {
      * (heard as a slightly longer pause between them) instead of a lost line.
      */
     static List<String> splitForSynthesis(String text) {
+        return splitForSynthesis(text, MAX_TEXT_CHARS);
+    }
+
+    /** As {@link #splitForSynthesis(String)}, for a limit other than {@link #MAX_TEXT_CHARS}. */
+    static List<String> splitForSynthesis(String text, int limit) {
         String rest = text.trim();
-        if (rest.length() <= MAX_TEXT_CHARS) {
+        if (rest.length() <= limit) {
             return List.of(rest);
         }
         List<String> pieces = new ArrayList<>();
-        while (rest.length() > MAX_TEXT_CHARS) {
-            int cut = cutPoint(rest);
+        while (rest.length() > limit) {
+            int cut = cutPoint(rest, limit);
             pieces.add(rest.substring(0, cut).trim());
             rest = rest.substring(cut).trim();
         }
@@ -203,19 +242,19 @@ public class YandexTtsProvider implements TtsProvider {
     }
 
     /** The best split position within the limit: a sentence end, a space, or the hard limit. */
-    private static int cutPoint(String text) {
-        for (int i = MAX_TEXT_CHARS; i > 0; i--) {
+    private static int cutPoint(String text, int limit) {
+        for (int i = limit; i > 0; i--) {
             char c = text.charAt(i - 1);
             if (c == '.' || c == '!' || c == '?' || c == '…') {
                 return i;
             }
         }
-        for (int i = MAX_TEXT_CHARS; i > 0; i--) {
+        for (int i = limit; i > 0; i--) {
             if (Character.isWhitespace(text.charAt(i - 1))) {
                 return i;
             }
         }
-        return MAX_TEXT_CHARS;
+        return limit;
     }
 
     private Iterator<Tts.UtteranceSynthesisResponse> openStream(String text, String language, String voice,
@@ -246,6 +285,17 @@ public class YandexTtsProvider implements TtsProvider {
             request.addHints(Tts.Hints.newBuilder().setSpeed(style.speed()));
         }
 
+        SynthesizerGrpc.SynthesizerBlockingStub stub = SynthesizerGrpc.newBlockingStub(current)
+                .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(authHeaders(y)));
+        if (y.requestTimeoutMs() > 0) {
+            // Covers the whole server stream this returns, so hasNext() is bounded too.
+            stub = stub.withDeadlineAfter(y.requestTimeoutMs(), TimeUnit.MILLISECONDS);
+        }
+        return stub.utteranceSynthesis(request.build());
+    }
+
+    /** The per-call gRPC metadata: the API key, a fresh request id and, when set, the folder. */
+    private static Metadata authHeaders(YandexTtsProperties y) {
         Metadata headers = new Metadata();
         headers.put(Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER), "Api-Key " + y.apiKey());
         headers.put(Metadata.Key.of("x-client-request-id", Metadata.ASCII_STRING_MARSHALLER),
@@ -253,13 +303,110 @@ public class YandexTtsProvider implements TtsProvider {
         if (y.folderId() != null && !y.folderId().isBlank()) {
             headers.put(Metadata.Key.of("x-folder-id", Metadata.ASCII_STRING_MARSHALLER), y.folderId());
         }
-        SynthesizerGrpc.SynthesizerBlockingStub stub = SynthesizerGrpc.newBlockingStub(current)
-                .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers));
+        return headers;
+    }
+
+    /**
+     * One line through {@code Synthesizer.StreamSynthesis}: the options, the text (ending in a
+     * space, as the docs ask of every phrase sent this way), a {@code force_synthesis}, then the
+     * request side is closed — the server finishes the buffered text and ends the response
+     * stream, which is how the end of the line is known (the API has no "last chunk" marker).
+     *
+     * <p>What this buys over {@code UtteranceSynthesis}: the 5000-character streaming limit
+     * instead of 250, so a long line is one request, not several in sequence. What it does not:
+     * the options carry no free-form hints, only voice, role and speed. Chunks reach {@code onChunk}
+     * on the calling thread, like the unary path, so barge-in and the first-chunk guard behave
+     * the same.
+     */
+    private void streamSynthesis(String text, String language, String voice, EffectiveVoiceSettings style,
+                                 PcmChunkListener onChunk) {
+        ManagedChannel current = channel;
+        if (current == null) {
+            throw new ExternalServiceException(ErrorCode.TTS_YANDEX_CHANNEL_UNAVAILABLE, "yandex-tts");
+        }
+        YandexTtsProperties y = ttsProperties.yandex();
+        String chosen = (voice != null && !voice.isBlank()) ? voice : voiceFor(language);
+
+        Tts.SynthesisOptions.Builder options = Tts.SynthesisOptions.newBuilder()
+                .setVoice(chosen)
+                .setOutputAudioSpec(Tts.AudioFormatOptions.newBuilder()
+                        .setRawAudio(Tts.RawAudio.newBuilder()
+                                .setAudioEncoding(Tts.RawAudio.AudioEncoding.LINEAR16_PCM)
+                                .setSampleRateHertz(y.sampleRate())));
+        String role = roleFor(chosen, style);
+        if (role != null) {
+            options.setRole(role);
+        }
+        if (style != null && style.speed() != null) {
+            options.setSpeed(style.speed());
+        }
+
+        // A byte[] is a chunk of audio; the END marker is the server closing the stream; a
+        // Throwable is the stream failing.
+        BlockingQueue<Object> events = new LinkedBlockingQueue<>();
+        Object end = new Object();
+        StreamObserver<Tts.StreamSynthesisResponse> responses = new StreamObserver<>() {
+            @Override
+            public void onNext(Tts.StreamSynthesisResponse response) {
+                if (response.hasAudioChunk() && !response.getAudioChunk().getData().isEmpty()) {
+                    events.add(response.getAudioChunk().getData().toByteArray());
+                }
+            }
+
+            @Override
+            public void onError(Throwable error) {
+                events.add(error);
+            }
+
+            @Override
+            public void onCompleted() {
+                events.add(end);
+            }
+        };
+        SynthesizerGrpc.SynthesizerStub stub = SynthesizerGrpc.newStub(current)
+                .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(authHeaders(y)));
         if (y.requestTimeoutMs() > 0) {
-            // Covers the whole server stream this returns, so hasNext() is bounded too.
             stub = stub.withDeadlineAfter(y.requestTimeoutMs(), TimeUnit.MILLISECONDS);
         }
-        return stub.utteranceSynthesis(request.build());
+        long silenceLimitMs = y.requestTimeoutMs() > 0 ? y.requestTimeoutMs() + 2_000L : STREAM_SILENCE_LIMIT_MS;
+
+        StreamObserver<Tts.StreamSynthesisRequest> request = stub.streamSynthesis(responses);
+        boolean finished = false;
+        try {
+            request.onNext(Tts.StreamSynthesisRequest.newBuilder().setOptions(options).build());
+            request.onNext(Tts.StreamSynthesisRequest.newBuilder()
+                    .setSynthesisInput(Tts.SynthesisInput.newBuilder().setText(text.trim() + " ")).build());
+            request.onNext(Tts.StreamSynthesisRequest.newBuilder()
+                    .setForceSynthesis(Tts.ForceSynthesisEvent.getDefaultInstance()).build());
+            request.onCompleted();
+            while (true) {
+                Object event = events.poll(silenceLimitMs, TimeUnit.MILLISECONDS);
+                if (event == null) {
+                    throw new ExternalServiceException(ErrorCode.TTS_YANDEX_STREAM_ERROR, "yandex-tts",
+                            "no audio or end of stream for " + silenceLimitMs + " ms");
+                }
+                if (event == end) {
+                    finished = true;
+                    return;
+                }
+                if (event instanceof Throwable error) {
+                    throw new ExternalServiceException(ErrorCode.TTS_YANDEX_STREAM_ERROR, "yandex-tts", error,
+                            error.getMessage());
+                }
+                byte[] raw = (byte[]) event;
+                // As on the unary path, Yandex flushes a chunk on a synthesis boundary, never mid-sample.
+                if (raw.length >= 2) {
+                    onChunk.onChunk(toPcm16(raw));
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ExternalServiceException(ErrorCode.TTS_YANDEX_STREAM_ERROR, "yandex-tts", e, "interrupted");
+        } finally {
+            if (!finished && request instanceof ClientCallStreamObserver<?> call) {
+                call.cancel("synthesis abandoned", null);
+            }
+        }
     }
 
     /**

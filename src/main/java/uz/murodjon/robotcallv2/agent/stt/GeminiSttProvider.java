@@ -94,6 +94,15 @@ public class GeminiSttProvider implements SttProvider {
                 : DEFAULT_SAMPLE_RATE;
     }
 
+    /**
+     * Live transcription sessions stream for up to 10 minutes; {@link SttStreamBridge} swaps the
+     * stream in a pause shortly before that instead of letting it end mid-sentence.
+     */
+    @Override
+    public int maxStreamSeconds() {
+        return 600;
+    }
+
     @Override
     public SttSession startStream(String languageCode, List<String> alternativeLanguages,
                                   TranscriptListener listener, boolean externalEndpointing) {
@@ -125,7 +134,8 @@ public class GeminiSttProvider implements SttProvider {
         AtomicBoolean alive = new AtomicBoolean(false);
         CountDownLatch ready = new CountDownLatch(1);
 
-        ResponseHandler handler = new ResponseHandler(languageCode, listener, alive, ready);
+        EouLatencyTracker eouLatency = new EouLatencyTracker();
+        ResponseHandler handler = new ResponseHandler(languageCode, listener, alive, ready, eouLatency);
         int timeoutSeconds = sttProperties.gemini() != null ? sttProperties.gemini().connectTimeoutSeconds() : 10;
 
         try {
@@ -149,7 +159,7 @@ public class GeminiSttProvider implements SttProvider {
 
             log.info("Gemini STT streaming session open (lang={}, model={}, endpointing={})",
                     languageCode, resolveModel(model), externalEndpointing ? "external" : "gemini");
-            return new GeminiSttSession(webSocket, alive, metrics, externalEndpointing);
+            return new GeminiSttSession(webSocket, alive, metrics, externalEndpointing, eouLatency);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             metrics.sttError();
@@ -252,16 +262,18 @@ public class GeminiSttProvider implements SttProvider {
         private final TranscriptListener listener;
         private final AtomicBoolean alive;
         private final CountDownLatch ready;
+        private final EouLatencyTracker eouLatency;
 
         /** The last interim of the utterance in hand — what a garbage final falls back to. */
         private String lastInterim;
 
         private ResponseHandler(String languageCode, TranscriptListener listener,
-                                AtomicBoolean alive, CountDownLatch ready) {
+                                AtomicBoolean alive, CountDownLatch ready, EouLatencyTracker eouLatency) {
             this.languageCode = languageCode;
             this.listener = listener;
             this.alive = alive;
             this.ready = ready;
+            this.eouLatency = eouLatency;
         }
 
         @Override
@@ -312,6 +324,7 @@ public class GeminiSttProvider implements SttProvider {
                 finalText = lastInterim;
             }
             lastInterim = null;
+            eouLatency.finalReceived(metrics, GeminiSttProvider.this.name());
             // No confidence from this API; 0 keeps the low-confidence repair from firing on it.
             listener.onTranscript(finalText, true, 0.0f);
         }
@@ -343,6 +356,7 @@ public class GeminiSttProvider implements SttProvider {
         private final SttMetrics metrics;
         /** Whether this side brackets utterances with activityStart/activityEnd. */
         private final boolean externalEndpointing;
+        private final EouLatencyTracker eouLatency;
         private CompletableFuture<Void> sendChain = CompletableFuture.completedFuture(null);
         private volatile boolean closed;
         /** An activityStart has been sent and its activityEnd has not. */
@@ -353,11 +367,12 @@ public class GeminiSttProvider implements SttProvider {
         private static final int MAX_PENDING_SENDS = 50;
 
         private GeminiSttSession(WebSocket webSocket, AtomicBoolean alive, SttMetrics metrics,
-                                 boolean externalEndpointing) {
+                                 boolean externalEndpointing, EouLatencyTracker eouLatency) {
             this.webSocket = webSocket;
             this.alive = alive;
             this.metrics = metrics;
             this.externalEndpointing = externalEndpointing;
+            this.eouLatency = eouLatency;
         }
 
         @Override
@@ -395,6 +410,7 @@ public class GeminiSttProvider implements SttProvider {
                 return;
             }
             inActivity = false;
+            eouLatency.eouSent();
             ObjectNode root = objectMapper.createObjectNode();
             root.putObject("realtimeInput").putObject("activityEnd");
             send(root.toString());

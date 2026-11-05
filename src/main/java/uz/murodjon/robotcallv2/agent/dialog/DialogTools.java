@@ -40,7 +40,7 @@ public class DialogTools {
      */
     static final Set<String> HARDCODED_TOOL_NAMES = Set.of(
             "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall", "sendDtmfTones",
-            "waitForCaller", "switchLanguage", "noteCallerMood"
+            "waitForCaller", "switchLanguage", "noteCallerMood", "noteClientFact"
     );
 
     /**
@@ -67,7 +67,7 @@ public class DialogTools {
      */
     static final Set<String> ALWAYS_AVAILABLE_TOOL_NAMES = Set.of(
             "transitionTo", "requestHumanTransfer", "recordWrongPerson", "recordDoNotCall", "endCall",
-            "waitForCaller", "switchLanguage", "noteCallerMood"
+            "waitForCaller", "switchLanguage", "noteCallerMood", "noteClientFact"
     );
 
     /**
@@ -82,7 +82,8 @@ public class DialogTools {
      * Always-available tools only the cascade pipeline offers: a realtime engine does its own
      * turn-taking, speaks whatever language it hears, and has no separate voice to set a mood on.
      */
-    static final Set<String> CASCADE_ONLY_TOOL_NAMES = Set.of("waitForCaller", "switchLanguage", "noteCallerMood");
+    static final Set<String> CASCADE_ONLY_TOOL_NAMES =
+            Set.of("waitForCaller", "switchLanguage", "noteCallerMood", "noteClientFact");
 
     /**
      * One SMS a call, counted by sendMidCallSms on the counter company tools use too —
@@ -523,6 +524,20 @@ public class DialogTools {
     public String noteCallerMood(@ToolParam(description = "the client's current mood") CustomerSentiment mood) {
         session.noteCallerMood(mood);
         log.info("[{}] caller mood noted: {}", session.channelId(), mood);
+        return "Noted.";
+    }
+
+    @Tool(description = "Call when the client tells you something that will matter later in this call and that "
+            + "no other tool records: their situation, a constraint, who decides, when they get paid (e.g. "
+            + "situation = in hospital, salary_day = 15th). Short snake_case name, value of a few words. "
+            + "Only NEW information, never a fact you were given; the same name again replaces the value. "
+            + "Write what you say to the client as plain text as usual — this tool only remembers.")
+    public String noteClientFact(@ToolParam(description = "short snake_case name of the fact") String name,
+                                 @ToolParam(description = "the fact in a few words") String value) {
+        if (!session.noteClientFact(name, value)) {
+            return "Not noted: the name or value is empty, or enough facts are already noted.";
+        }
+        log.info("[{}] client fact noted: {}", session.channelId(), name);
         return "Noted.";
     }
 

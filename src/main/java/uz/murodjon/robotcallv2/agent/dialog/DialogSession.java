@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -57,7 +58,12 @@ import java.util.function.Predicate;
  */
 public class DialogSession implements DialogOutcomeSink {
 
+    /** How many {@link #noteClientFact} entries one call may hold — each is carried on every turn. */
+    static final int MAX_CLIENT_FACTS = 12;
+
     private final String channelId;
+    /** Facts the caller gave that no outcome tool records, by name ({@link #noteClientFact}); guarded by itself. */
+    private final Map<String, String> clientFacts = new LinkedHashMap<>();
     /**
      * The language this call is being spoken in. Starts as the one the target was dialled
      * with and changes if the caller turns out to speak the other one
@@ -456,6 +462,32 @@ public class DialogSession implements DialogOutcomeSink {
     @Override
     public void noteCallerMood(CustomerSentiment mood) {
         setLastCustomerSentiment(mood);
+    }
+
+    /**
+     * Kept by name: the same name again replaces the value (the caller corrected it). A new
+     * name past {@link #MAX_CLIENT_FACTS} is refused — the annex carries these on every turn.
+     */
+    @Override
+    public boolean noteClientFact(String name, String value) {
+        if (name == null || name.isBlank() || value == null || value.isBlank()) {
+            return false;
+        }
+        String key = name.trim();
+        synchronized (clientFacts) {
+            if (!clientFacts.containsKey(key) && clientFacts.size() >= MAX_CLIENT_FACTS) {
+                return false;
+            }
+            clientFacts.put(key, value.trim());
+            return true;
+        }
+    }
+
+    /** The facts noted so far, in the order first noted ({@link #noteClientFact}). */
+    public Map<String, String> clientFacts() {
+        synchronized (clientFacts) {
+            return new LinkedHashMap<>(clientFacts);
+        }
     }
 
     /** The silence watchdog, or {@code null} when it is disabled. */

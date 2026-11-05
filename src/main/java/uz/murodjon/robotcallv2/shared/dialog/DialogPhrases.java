@@ -64,6 +64,12 @@ public final class DialogPhrases {
                 : "Uzr, sizni eshitolmadim. Iltimos, takrorlab ayting.";
     }
 
+    /** The reply to a caller checking the line ("Alo?", "Eshityapsizmi?"), before the agent's last question. */
+    public static String lineCheckReply(String language) {
+        if (english(language)) return "Yes, I can hear you.";
+        return russian(language) ? "Да, я вас слышу." : "Ha, eshitaman.";
+    }
+
     /** Spoken when the agent hands the call to a person. */
     public static String transferring(String language) {
         if (english(language)) return "Please hold on, connecting you to an operator.";

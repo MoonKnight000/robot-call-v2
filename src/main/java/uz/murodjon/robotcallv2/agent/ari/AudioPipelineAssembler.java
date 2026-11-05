@@ -26,6 +26,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.VoicemailAction;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
+import uz.murodjon.robotcallv2.dialer.application.dto.OutboundCall;
 import uz.murodjon.robotcallv2.live.application.port.input.LiveUseCase;
 import uz.murodjon.robotcallv2.live.infrastructure.config.LiveProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -77,6 +78,7 @@ class AudioPipelineAssembler {
     private final TurnDatasetRecorder turnDatasetRecorder;
     private final ObjectProvider<NeuralDenoiser> neuralDenoiserProvider;
     private final RealtimeVoicemailDrop realtimeVoicemailDrop;
+    private final SttPrewarmRegistry sttPrewarmRegistry;
 
     AudioPipelineAssembler(VadProperties vadProperties,
                            VadScorerFactory vadScorerFactory,
@@ -103,7 +105,9 @@ class AudioPipelineAssembler {
                            ExecutorService callExecutor,
                            TurnDatasetRecorder turnDatasetRecorder,
                            ObjectProvider<NeuralDenoiser> neuralDenoiserProvider,
-                           RealtimeVoicemailDrop realtimeVoicemailDrop) {
+                           RealtimeVoicemailDrop realtimeVoicemailDrop,
+                           SttPrewarmRegistry sttPrewarmRegistry) {
+        this.sttPrewarmRegistry = sttPrewarmRegistry;
         this.vadProperties = vadProperties;
         this.vadScorerFactory = vadScorerFactory;
         this.llmTurnDetectorProvider = llmTurnDetectorProvider;
@@ -351,6 +355,54 @@ class AudioPipelineAssembler {
     private SttStreamBridge openSttBridge(String channelId, long companyId, String language, CallContext context,
                                           AiAgent agent, TranscriptListener listener, SpeechGate speechGate,
                                           IntConsumer onUtteranceEnd, boolean cascade) {
+        SttPlan plan = planStt(language, context, agent, cascade);
+        if (plan == null) {
+            return null;
+        }
+        boolean externalEndpointing = sttProperties.endpointing() != null
+                && sttProperties.endpointing().enabled() && speechGate != null;
+        // A stream opened while the line rang, if it is what this call would open anyway.
+        PreopenedStt preopened = sttPrewarmRegistry.take(channelId, plan.params(externalEndpointing));
+        return new SttStreamBridge(plan.provider(), plan.provider().sampleRate(), CallMediaFactory.SAMPLE_RATE,
+                channelId, plan.language(), plan.detectLanguages(), listener, speechGate, sttMetrics,
+                sttProperties.endpointing(), sttProperties.responseTimeoutMs(), onUtteranceEnd,
+                plan.callHints(), plan.keywords(),
+                sttProviderSelector, plan.model(), sttProperties.stream(), preopened);
+    }
+
+    /**
+     * Open the recognizer's stream for an outbound call that has just been originated, so that
+     * it is up when the callee answers ({@link SttPrewarmRegistry}). Only an offer: the call
+     * adopts the stream if, once answered, it asks for the same parameters, and opens its own
+     * otherwise.
+     */
+    void prewarmStt(String channelId, OutboundCall call, int ringSeconds) {
+        if (!sttPrewarmRegistry.isEnabled() || !sttProperties.enabled() || call == null) {
+            return;
+        }
+        SttPlan plan = planStt(call.language(), call.context(), call.agent(), true);
+        if (plan == null) {
+            return;
+        }
+        VadGatingProperties gating = sttProperties.vadGating();
+        EndpointingProperties endpointing = sttProperties.endpointing();
+        // The gate the answered call will have, which is what turns external endpointing on.
+        boolean externalEndpointing = vadProperties.enabled() && gating != null && gating.enabled()
+                && endpointing != null && endpointing.enabled();
+        sttPrewarmRegistry.prewarm(channelId, plan.provider(), plan.params(externalEndpointing),
+                ringSeconds * 1000L);
+    }
+
+    /**
+     * What a call's recognizer is made of: vendor, model, language, detect list and hints. Shared by
+     * the stream opened at answer time and the one opened at ring time, so the two cannot drift.
+     *
+     * @param cascade whether this is a cascade call's recognizer, which also takes the agent's
+     *                {@code transcriptionMode} and {@code boostedKeywords}; a realtime call's
+     *                transcript recognizer keeps the plain model and hints
+     * @return null when no STT vendor is available
+     */
+    private SttPlan planStt(String language, CallContext context, AiAgent agent, boolean cascade) {
         String preferredSttProvider = (agent != null && agent.speechEngine().sttProvider() != null && !agent.speechEngine().sttProvider().isBlank())
                 ? agent.speechEngine().sttProvider().trim()
                 : sttProperties.provider();
@@ -376,11 +428,20 @@ class AudioPipelineAssembler {
         // The agent's own languages; the deployment list only for a call with no agent.
         List<String> detectLangs = agent != null ? agent.findSpokenLanguages()
                 : sttProperties.detectLanguages() != null ? sttProperties.detectLanguages() : List.of();
-        return new SttStreamBridge(stt, stt.sampleRate(), CallMediaFactory.SAMPLE_RATE,
-                channelId, sttLanguage, detectLangs, listener, speechGate, sttMetrics,
-                sttProperties.endpointing(), sttProperties.responseTimeoutMs(), onUtteranceEnd,
-                SttHints.of(context, agent != null ? agent.pronunciationRules() : List.of()), keywords,
-                sttProviderSelector, agentSttModel, sttProperties.stream());
+        return new SttPlan(stt, agentSttModel, sttLanguage, detectLangs,
+                SttHints.of(context, agent != null ? agent.pronunciationRules() : List.of()), keywords);
+    }
+
+    /** See {@link #planStt}. */
+    private record SttPlan(SttProvider provider, String model, String language, List<String> detectLanguages,
+                           List<String> callHints, List<String> keywords) {
+
+        /** The parameters of the stream this plan opens — what {@link SttStreamBridge} sends the provider. */
+        SttOpenParams params(boolean externalEndpointing) {
+            List<String> hints = keywords == null || keywords.isEmpty()
+                    ? callHints : SttHints.withKeywords(keywords, callHints);
+            return new SttOpenParams(provider.name(), language, detectLanguages, hints, model, externalEndpointing);
+        }
     }
 
     /**

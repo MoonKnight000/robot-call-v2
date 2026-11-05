@@ -322,4 +322,37 @@ class FastPathRouterTest {
         assertThat(result.reply()).contains("qarzdorlik to'lovi masalasida bog'lanyapman.");
         assertThat(result.reply()).endsWith("Eshityapsizmi?");
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Alo?", "allo", "Eshityapsizmi?", "Alo, eshityapsizmi?", "alo alo"})
+    void aLineCheckIsAnsweredWithTheLastQuestion(String phrase) {
+        when(session.lastAgentText()).thenReturn("Qarzingiz 500000 so'm. Qachon to'lay olasiz?");
+
+        FastPathResult result = router.evaluate(session, phrase);
+
+        assertThat(result.handled()).isTrue();
+        assertThat(result.endCall()).isFalse();
+        assertThat(result.reply()).isEqualTo("Ha, eshitaman. Qachon to'lay olasiz?");
+    }
+
+    @Test
+    void aLineCheckInsideAnAnswerIsLeftToTheModel() {
+        when(session.lastAgentText()).thenReturn("Siz Murodjon akamisiz?");
+
+        assertThat(router.evaluate(session, "alo ha men Murodjonman").handled()).isFalse();
+    }
+
+    @Test
+    void aLineCheckBeforeTheAgentSpokeIsLeftToTheModel() {
+        assertThat(router.evaluate(session, "alo").handled()).isFalse();
+    }
+
+    @Test
+    void aRussianLineCheckAnswersInRussian() {
+        when(session.language()).thenReturn("ru-RU");
+        when(session.lastAgentText()).thenReturn("Когда сможете оплатить?");
+
+        assertThat(router.evaluate(session, "Алло, вы меня слышите?").reply())
+                .isEqualTo("Да, я вас слышу. Когда сможете оплатить?");
+    }
 }

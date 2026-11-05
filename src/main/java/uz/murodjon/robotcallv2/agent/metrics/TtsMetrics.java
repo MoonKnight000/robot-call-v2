@@ -5,6 +5,8 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * Speech-synthesis metrics: errors, failovers, cache efficiency, billed characters and
  * synthesis latency. Exposed via Actuator at {@code /actuator/prometheus}.
@@ -88,6 +90,47 @@ public class TtsMetrics {
 
     public long ttsCacheMissCount() {
         return (long) ttsCacheMisses.count();
+    }
+
+    /**
+     * Time from asking a provider to speak a line to its first audible PCM — the wait that is
+     * the provider's and the network's, before any of our own queueing. Unlike
+     * {@code voice.tts.synth.latency}, which spans the whole sentence, and the turn's
+     * {@code tts_ttfb}, which also counts our hand-off, this stops at the first sample that
+     * is not silence (a WAV header or a leading run of zeros would otherwise read as "fast").
+     * A cache hit and a failed or fallen-back line record nothing.
+     */
+    public void ttsFirstAudio(String provider, String language, long nanos) {
+        Timer.builder("voice.tts.ttfa")
+                .description("provider request to first audible PCM chunk")
+                .tag("provider", provider)
+                .tag("language", language)
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(nanos, TimeUnit.NANOSECONDS);
+    }
+
+    /**
+     * A streamed line got no audible audio inside {@code voice-agent.tts.stream.first-chunk-timeout-ms}
+     * and was handed to the fallback provider. A provider that keeps showing up here is down
+     * or has regressed, whatever its status endpoint says.
+     */
+    public void ttsFirstChunkTimeout(String provider) {
+        Counter.builder("voice.tts.first.chunk.timeouts")
+                .description("streamed lines abandoned because the provider produced no audio in time")
+                .tag("provider", provider)
+                .register(registry)
+                .increment();
+    }
+
+    /** Which vendor region served a line ({@code x-region} on ElevenLabs): a handful of values, safe as a tag. */
+    public void ttsRegion(String provider, String region) {
+        Counter.builder("voice.tts.region")
+                .description("lines by the vendor region that synthesized them")
+                .tag("provider", provider)
+                .tag("region", region)
+                .register(registry)
+                .increment();
     }
 
     public Timer.Sample startTimer() {

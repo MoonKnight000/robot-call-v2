@@ -565,6 +565,8 @@ public class SystemPromptFactory {
                 + (russian ? "Russian" : "Uzbek") + ".");
         rules.add("At most two short sentences and one question. Do not cram several facts (number, amount, "
                 + "date) into one long sentence — split them into separate sentences.");
+        rules.add("Everything you write is spoken aloud: plain sentences only — no markdown (*, _, #), "
+                + "no lists or numbering, no dashes as bullets, no emoji, no parentheses.");
         rules.add("Every reply MUST end with a question, and ONLY with one that moves the task "
                 + "forward — a question whose answer you need. Empty, confirming questions are "
                 + "STRICTLY FORBIDDEN: "
@@ -820,6 +822,7 @@ public class SystemPromptFactory {
         }
         appendStaticLines(sb, s.scenario(), stage, s.context() != null ? s.context().facts() : Map.of());
         appendRecorded(sb, s.outcome());
+        appendClientFacts(sb, s.clientFacts());
         appendStageExamples(sb, stage, s.language());
         if (stage != null && Boolean.TRUE.equals(stage.skipWhenKnown())) {
             sb.append("ALREADY KNOWN IS NOT ASKED: before asking anything this stage collects, check the client's ")
@@ -1091,6 +1094,25 @@ public class SystemPromptFactory {
             recorded.append(name).append(" = ").append(PromptSafeText.sanitize(String.valueOf(value), MAX_RECORDED_CHARS));
         });
         sb.append("ALREADY ESTABLISHED (do not ask again; if the client changes it, record it again): ").append(recorded).append('\n');
+    }
+
+    /**
+     * What the caller said that no outcome tool records, noted with noteClientFact. Here, after the
+     * history, rather than in the cached prefix — and here on every turn, so it outlives a trimmed history.
+     */
+    private static void appendClientFacts(StringBuilder sb, Map<String, String> facts) {
+        if (facts == null || facts.isEmpty()) {
+            return;
+        }
+        StringBuilder noted = new StringBuilder();
+        facts.forEach((name, value) -> {
+            if (!noted.isEmpty()) {
+                noted.append("; ");
+            }
+            noted.append(PromptSafeText.sanitize(name, MAX_RECORDED_CHARS)).append(" = ")
+                    .append(PromptSafeText.sanitize(value, MAX_RECORDED_CHARS));
+        });
+        sb.append("THE CLIENT TOLD YOU (keep it in mind, do not ask again): ").append(noted).append('\n');
     }
 
     /**
