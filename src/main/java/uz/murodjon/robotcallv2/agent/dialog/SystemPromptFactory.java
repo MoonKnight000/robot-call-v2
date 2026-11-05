@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.util.PersonNames;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
 
 import java.time.LocalDate;
@@ -353,8 +354,12 @@ public class SystemPromptFactory {
         if ((nameObj == null || nameObj.toString().isBlank()) && c != null && c.memory() != null && c.memory().preferredName() != null && !c.memory().preferredName().isBlank()) {
             nameObj = c.memory().preferredName();
         }
-        String clientName = nameObj != null && !nameObj.toString().isBlank() ? nameObj.toString().trim() : null;
-        String sampleIdentityUz = (clientName != null ? clientName : "Murodjon") + " aka, yaxshimisiz?";
+        // The first name only: the samples below are said as written, and "Anvar Jo'rayev aka" is not how anyone talks.
+        String clientName = nameObj != null && !nameObj.toString().isBlank()
+                ? PersonNames.findFirstName(nameObj.toString().trim()) : null;
+        // Name unknown: a person greets and asks it, rather than calling the client "hurmatli mijoz".
+        String askNameUz = "Ismingizni bilsam bo'ladimi?";
+        String sampleIdentityUz = clientName != null ? clientName + " aka, yaxshimisiz?" : askNameUz;
 
         if (s.isInbound()) {
             call.append('\n').append(inboundOpening(s.isDisclosureSpoken()));
@@ -372,8 +377,8 @@ public class SystemPromptFactory {
                         .append(clientName).append(" aka, yaxshimisiz?\" — a reply that takes the name without objecting ")
                         .append("(\"rahmat, yaxshi\", \"ha, eshitaman\") already confirms it ");
             } else {
-                call.append("to confirm identity, say the name the way an experienced live operator does: \"[Ism] aka, yaxshimisiz?\" ")
-                        .append("(NOTE: if the name is unknown, never ramble with 'men kimligingizni so'ramoqchiman' or 'kimsiz' — address them politely and go straight to the purpose) ");
+                call.append("the client's name is unknown, so ask it once, simply: \"").append(askNameUz).append("\" ")
+                        .append("(never ramble with 'men kimligingizni so'ramoqchiman' or 'kimsiz'), and once they say it, go on to the purpose ");
             }
             call.append("(STRICTLY FORBIDDEN: saying \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" or \"mijoz\"). If there is no need to ask who they are, politely go to the purpose.]\n");
         } else {
@@ -397,6 +402,12 @@ public class SystemPromptFactory {
                     .append(sampleIdentityUz).append("\", or to the main purpose): ")
                     .append("write what you say as plain text, then call the transitionTo tool. ")
                     .append("Do not just greet and stop. STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\".]\n");
+            }
+            if (clientName == null) {
+                boolean russian = s.language() != null && s.language().toLowerCase(Locale.ROOT).startsWith("ru");
+                call.append("[SYSTEM: The client's name is unknown. In your first reply, right after the greeting, ask it once, simply: \"")
+                        .append(russian ? "Как я могу к вам обращаться?" : askNameUz)
+                        .append("\" — then, once they say it, go on to the purpose. Never call them \"hurmatli mijoz\".]\n");
             }
         }
 
@@ -645,10 +656,16 @@ public class SystemPromptFactory {
                     + "not \"aniqlik kiritib olsak\" but \"bilib olaylik\"; not \"iltifot qiling\" but \"marhamat\".");
             rules.add("Form of address: add \"aka\"/\"opa\" to the first name only (\"Murodjon aka\", \"Shahnoza opa\") — "
                     + "never say the surname or the full name.");
+            // A recorded call put "Anvar aka" into five replies out of six; a person says the name
+            // in the greeting and then only now and then.
+            rules.add("Say the client's name rarely, the way a person does: in the greeting, and after that only now and then — "
+                    + "when coming back after a pause, at an important point, or when saying goodbye. NEVER in two replies in a row; "
+                    + "most replies have no name at all.");
             rules.add("STRICTLY FORBIDDEN: \"Siz [Ism]misiz?\", \"Siz [Ism] bo'lasizmi?\", or rambling with 'men kimligingizni so'ramoqchiman'. "
                     + "To confirm identity, say the name inside the greeting: \"Assalomu alaykum, [Ism] aka, yaxshimisiz?\"; "
                     + "a reply that takes the name without objecting already confirms it. "
-                    + "If the name is unknown, do not probe oddly for who they are — go straight to the purpose.");
+                    + "If the name is unknown, do not probe oddly for who they are — ask it once, simply "
+                    + "(\"Ismingizni bilsam bo'ladimi?\"), then go on to the purpose.");
             if (persona == AgentPersona.HUMAN_LIKE) {
                 rules.add("Natural conversation: an occasional spoken connector («Xo'sh», «Kelishdik»), never the same one twice "
                         + "in a call, and understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");

@@ -352,13 +352,17 @@ class LlmTurnClient {
     /** Asks the fast model for the words a person says while they think — never the answer. */
     static final String BRIDGE_PROMPT = """
             You are on a phone call. The caller has just spoken, and your full reply will take a \
-            couple of seconds. Write only the one to three words a considerate person says at once \
-            while they think, in %s. NEVER repeat or paraphrase the caller's words — a person who \
-            echoes everything back sounds like a robot. Do not answer, do not ask anything, do not \
-            promise to check or do anything, no numbers. If the caller repeats something they \
-            already said or complains that they did, apologise in those few words. If nothing \
-            natural fits, write exactly: -
-            Examples: "Xo'p." · "Mayli." · "Ha, albatta." · "Kechirasiz." · \
+            moment. A real person usually says NOTHING in that moment and simply answers — so by \
+            default write exactly: -
+            Write words instead only when a person would really react out loud: the caller has just \
+            given a real answer, a request or an objection that deserves a short reaction. Never \
+            after a bare yes/no, a greeting reply or a short confirmation ("ha", "bor", "yo'q", \
+            "xo'p", "да", "нет") — write - there. Then write one to three words in %s. NEVER \
+            repeat or paraphrase the caller's words — a person who echoes everything back sounds \
+            like a robot. Do not answer, do not ask anything, do not promise to check or do \
+            anything, no numbers. If the caller repeats something they already said or complains \
+            that they did, apologise in those few words.
+            Examples: "Xo'p." · "Ha, albatta." · "Kechirasiz." · \
             "Хорошо." · "Да, конечно." · "Извините.\"""";
 
     /** A bridge longer than this is an answer, not a bridge. */

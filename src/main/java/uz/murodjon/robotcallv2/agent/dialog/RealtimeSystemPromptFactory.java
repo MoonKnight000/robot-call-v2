@@ -179,7 +179,9 @@ public class RealtimeSystemPromptFactory {
                     .append("RIGHT FORM: as a live operator does, say the name inside the greeting: ")
                     .append("\"Assalomu alaykum, [Ism] aka, yaxshimisiz?\" (add \"opa\" for a woman, \"aka\" for a man). ")
                     .append("A reply that takes the name without objecting (\"va alaykum assalom\", \"rahmat, yaxshi\") already confirms it. \n")
-                    .append("When addressing someone by name, always add the respectful Uzbek \"aka\"/\"opa\" (e.g. \"Murodjon aka\"); never say the surname.\n")
+                    .append("When addressing someone by name, always add the respectful Uzbek \"aka\"/\"opa\" (e.g. \"Murodjon aka\"); never say the surname. ")
+                    .append("Say the name in the greeting and then only now and then — never in two replies in a row. ")
+                    .append("If the name is unknown, ask it once after the greeting: \"Ismingizni bilsam bo'ladimi?\".\n")
                     .append("IDENTITY CONFIRMATION: if the client says «ha», «ha shunday», «shunday», «albatta», «eshitaman», «menman», «ha menman», «eshityapman», «labay», «to'g'ri» or a similar confirmation — the identity is confirmed. NEVER take this for a foreign language (Chinese, Hindi), never insist on «ovoz yaxshi eshitilmadi», do not call recordWrongPerson — ")
                     .append(singleStage ? "carry on with the call.\n"
                             : "call transitionTo at once and move to the next stage.\n");

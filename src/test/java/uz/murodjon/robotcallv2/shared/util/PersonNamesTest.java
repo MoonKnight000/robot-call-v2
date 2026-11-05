@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.shared.util;
 
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -22,5 +23,27 @@ class PersonNamesTest {
     })
     void rejectsCrmPlaceholders(String name) {
         assertThat(PersonNames.isUsable(name)).isFalse();
+    }
+
+    @ParameterizedTest
+    @CsvSource(quoteCharacter = '"', value = {
+            "Anvar Jo'rayev, Anvar",
+            "Jo'rayev Anvar, Anvar",
+            "Karimova Dilnoza Rustam qizi, Dilnoza",
+            "Лидия Петрова, Лидия",
+            "Murodjon, Murodjon"
+    })
+    void findsTheFirstName(String fullName, String firstName) {
+        assertThat(PersonNames.findFirstName(fullName)).isEqualTo(firstName);
+    }
+
+    @ParameterizedTest
+    @CsvSource(quoteCharacter = '"', value = {
+            "Anvar Jo'rayev, Anvar aka",
+            "Karimova Dilnoza, Dilnoza opa",
+            "Murodjon, Murodjon"
+    })
+    void addressesInUzbekByTheSurname(String fullName, String address) {
+        assertThat(PersonNames.findUzbekAddress(fullName)).isEqualTo(address);
     }
 }

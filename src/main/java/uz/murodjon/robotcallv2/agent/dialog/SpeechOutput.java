@@ -493,18 +493,18 @@ public class SpeechOutput {
      * once, when the wait starts: after a fixed 1400 ms it landed a moment before the answer
      * ("Bir lahza." and 0.8 s later "Tushunarli, …"), and on a fast turn it was never needed.
      *
-     * <p>Consecutive turns are no longer ruled out. They were, and that is what left the
-     * middle of a four-turn call in three and a half seconds of silence: the wait is that
-     * long on <em>every</em> turn here, so a turn's right to cover it cannot depend on what
-     * the previous turn happened to need. Repetition is handled where it actually lives —
-     * {@link #speakFiller} indexes the phrase by how many fillers this call has had
-     * ({@link DialogSession#takeFillerIndex}), so consecutive fillers are never the same words,
-     * however many quick turns lie between them.
+     * <p>Never on two turns in a row ({@link DialogSession#wasFillerSpokenLastTurn}). With the
+     * model's first token at about a second on every turn, a recorded call opened every reply
+     * with one ("Xo'p." · "Mayli." · "Tushunarli." · "Ha, albatta."), which the caller hears as
+     * a script; a second of quiet before an answer is how a person sounds. Within the turns
+     * that may have one, {@link #speakFiller} still indexes the canned phrase by how many
+     * fillers this call has had ({@link DialogSession#takeFillerIndex}).
      */
     public ScheduledFuture<?> scheduleFiller(DialogSession s, Supplier<String> bridgeLine) {
         int threshold = dialogProperties.fillerWaitThresholdMs();
         if (threshold <= 0 || !ttsProperties.enabled() || !s.isFirstAudioPending()
-                || s.latency().isSpeculated() || s.latency().expectedTtftMs() < threshold) {
+                || s.latency().isSpeculated() || s.latency().expectedTtftMs() < threshold
+                || s.wasFillerSpokenLastTurn()) {
             return null;
         }
         return executors.scheduleOnWorker(() -> speakFiller(s, bridgeLine), 0);
@@ -531,12 +531,17 @@ public class SpeechOutput {
             return;
         }
         try {
-            // Words about what the caller said, when the fast model has some; the canned line otherwise.
+            // Words about what the caller said, when the fast model has some. With the fast model
+            // on, its "nothing to say" is kept: a recorded call heard "Xo'p." · "Mayli." ·
+            // "Tushunarli." · "Ha, albatta." before every reply, and a person mostly just answers.
+            // The canned line is for the setup without the fast model only.
             String bridge = bridgeLine != null ? bridgeLine.get() : null;
             if (bridge != null && s.wasBridgeSaid(bridge)) {
-                // Said already this call: the rotating canned line is at least different words.
                 log.debug("[{}] bridge line already said this call, not repeated: {}", s.channelId(), bridge);
                 bridge = null;
+            }
+            if (bridgeLine != null && bridge == null) {
+                return;
             }
             String line = bridge;
             if (line == null) {

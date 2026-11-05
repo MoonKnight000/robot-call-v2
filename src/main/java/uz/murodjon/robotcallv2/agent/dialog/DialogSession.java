@@ -211,6 +211,8 @@ public class DialogSession implements DialogOutcomeSink {
     /** How many holding fillers and backchannels this call has picked — what rotates their pools. */
     private final AtomicInteger fillersPicked = new AtomicInteger();
     private final AtomicInteger backchannelsPicked = new AtomicInteger();
+    /** {@link #turnCount} of the last turn that opened with a filler; far in the past until one does. */
+    private volatile int lastFillerTurn = Integer.MIN_VALUE / 2;
     /** The bridge lines this call has said, as {@link #bridgeKey} — the fast model writes "Xo'p." on nearly every turn. */
     private final Map<String, String> bridgesSaid = new ConcurrentHashMap<>();
     /** Set by the waitForCaller tool for the turn in progress; cleared when the next turn starts. */
@@ -997,7 +999,16 @@ public class DialogSession implements DialogOutcomeSink {
 
     /** The thinking filler ("bir lahza") was played this turn. */
     public void markFillerSpoken() {
+        lastFillerTurn = turnState.turnCount();
         turnState.markFillerSpoken();
+    }
+
+    /**
+     * Whether the turn before this one opened with a filler. A person does not react out loud
+     * before every answer: a recorded call had one on every turn ("Xo'p." · "Mayli." · "Tushunarli.").
+     */
+    public boolean wasFillerSpokenLastTurn() {
+        return turnState.turnCount() - lastFillerTurn == 1;
     }
 
     /** Whether this turn opened with a filler; answers true once, for the reply's first sentence. */

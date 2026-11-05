@@ -221,8 +221,7 @@ public class DialogEngine implements CallDialog {
         // The line this call opens with: the agent's greeting picks among its lines by language and
         // direction; null leaves the opening to the model (dynamic greeting, or no line configured).
         String openingLine = agent != null ? agent.findOpeningLine(language, inbound) : null;
-        String firstMessage = openingLine != null
-                ? PromptTemplateEngine.render(openingLine, context != null ? context.facts() : Map.of()) : null;
+        String firstMessage = OpeningLines.render(openingLine, context != null ? context.facts() : Map.of(), language);
         boolean speaksFirst = agent == null || agent.speaksFirst();
         DialogSession session = DialogSession.builder(channelId, language)
                 .ttsVoice(ttsVoice)

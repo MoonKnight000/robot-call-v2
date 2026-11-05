@@ -386,10 +386,11 @@ public class RealtimeDialogEngine implements CallDialog {
     private String openingNudge(RealtimeDialogSession session) {
         AiAgent agent = session.agent();
         String line = agent != null ? agent.findOpeningLine(session.language(), session.isInbound()) : null;
-        if (line == null) {
+        String spoken = OpeningLines.render(line, session.context() != null ? session.context().facts() : Map.of(),
+                session.language());
+        if (spoken == null) {
             return GREETING_BOOTSTRAP;
         }
-        String spoken = PromptTemplateEngine.render(line, session.context() != null ? session.context().facts() : Map.of());
         return "[SYSTEM: the call has started, the client has picked up. Open the conversation by saying exactly this, "
                 + "word for word, and nothing before it: «" + spoken + "»]";
     }
