@@ -232,7 +232,9 @@ class SpeculationManager {
                 return;
             }
             messages.add(new UserMessage(text));
-            messages.add(new UserMessage(promptFactory.turnAnnex(s) + turnTools.findStageToolNote(s)));
+            // The same annex the turn would send (TurnRunner#advance): an adopted guess is that turn's reply.
+            messages.add(new UserMessage(promptFactory.turnAnnex(s) + turnTools.findStageToolNote(s)
+                    + StageEntry.describeInlineJobs(s.scenario(), SystemPromptFactory.stageOf(s.scenario(), s.state()))));
             // Replayed and eagerly connected — see LlmTurnClient#openSpeculativeStream.
             AtomicReference<Disposable> upstream = new AtomicReference<>();
             Flux<ChatResponse> responses = llmTurnClient.openSpeculativeStream(s,

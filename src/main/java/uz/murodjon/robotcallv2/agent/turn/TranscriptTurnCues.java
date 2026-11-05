@@ -61,7 +61,9 @@ public final class TranscriptTurnCues {
             "bilmayman", "albatta", "aniq", "hozircha", "ertaga", "indinga", "bugun", "kechqurun",
             "ertalab", "eshitaman", "eshityapman", "som", "dollar", "kun", "hafta", "oy",
             "toladim", "tolayman", "tolandi", "kelishdik", "boladi", "bolmaydi", "yetadi",
-            "qilaman", "qildim", "beraman", "berdim", "kuting", "kutaman", "koramiz", "yoqdir"
+            "qilaman", "qildim", "beraman", "berdim", "kuting", "kutaman", "koramiz", "yoqdir",
+            "sana", "sanada", "sanasi", "sanagacha", "kuni", "kunida", "oyida",
+            "yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"
     );
 
     /**

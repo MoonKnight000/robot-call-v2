@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsRecipient;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
+import uz.murodjon.robotcallv2.tool.domain.service.ToolOverrides;
 
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -103,9 +104,19 @@ final class AgentFunctionPlan {
         if (!isConfigured(agent)) {
             return true;
         }
+        return findCustomFunction(agent, tool) != null;
+    }
+
+    /** The CUSTOM function of a configured agent that offers {@code tool}, or null. */
+    static AgentFunction findCustomFunction(AiAgent agent, Tool tool) {
+        if (!isConfigured(agent)) {
+            return null;
+        }
         return agent.functions().stream()
-                .anyMatch(function -> function.type() == AgentFunctionType.CUSTOM && function.toolId() != null
-                        && function.toolId().equals(tool.id()));
+                .filter(function -> function.type() == AgentFunctionType.CUSTOM && function.toolId() != null
+                        && function.toolId().equals(tool.id()))
+                .findFirst()
+                .orElse(null);
     }
 
     /**
@@ -124,6 +135,19 @@ final class AgentFunctionPlan {
             }
         }
         return names;
+    }
+
+    /**
+     * {@code tool} as the agent's function times it: {@code BACKGROUND} does not wait for the answer, {@code IN_TURN}
+     * does, and no function or no timing keeps the tool's own "wait for result". {@link HttpToolExecutor} then
+     * starts a tool that does not wait on a thread of its own — after its confirmation check, so a write held for
+     * the caller's yes is still read back in the turn.
+     */
+    static Tool applyTiming(Tool tool, AgentFunction function) {
+        if (function == null || function.timing() == null) {
+            return tool;
+        }
+        return ToolOverrides.withWaitForResult(tool, !function.runsInBackground());
     }
 
     /**

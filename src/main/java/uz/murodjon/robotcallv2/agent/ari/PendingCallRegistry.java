@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -76,6 +77,12 @@ class PendingCallRegistry {
      * target to settle, so teardown must find nothing there.
      */
     private final Map<String, OutboundCall> webTestCalls = new ConcurrentHashMap<>();
+
+    /**
+     * The pre-call functions of a dialled call, started while the phone rings
+     * ({@link OutboundDialService}) and taken by the setup that answers it.
+     */
+    private final Map<String, CompletableFuture<Map<String, Object>>> preCallRuns = new ConcurrentHashMap<>();
 
     PendingCallRegistry(OutboundCallTrackingUseCase outboundCallTrackingUseCase) {
         this.outboundCallTrackingUseCase = outboundCallTrackingUseCase;
@@ -168,6 +175,15 @@ class PendingCallRegistry {
         return pendingManualPhones.remove(channelId);
     }
 
+    void registerPreCallRun(String channelId, CompletableFuture<Map<String, Object>> run) {
+        preCallRuns.put(channelId, run);
+    }
+
+    /** The pre-call run started for {@code channelId} while it rang, or null when none was. */
+    CompletableFuture<Map<String, Object>> takePreCallRun(String channelId) {
+        return preCallRuns.remove(channelId);
+    }
+
     /** The campaign profile behind a channel: a dialer call, or a browser test of a campaign. */
     OutboundCall findOutboundProfile(String channelId) {
         OutboundCall outbound = outboundCallTrackingUseCase.peek(channelId);
@@ -185,6 +201,10 @@ class PendingCallRegistry {
         pendingManualCompanies.remove(channelId);
         pendingManualPhones.remove(channelId);
         webTestCalls.remove(channelId);
+        CompletableFuture<Map<String, Object>> preCallRun = preCallRuns.remove(channelId);
+        if (preCallRun != null) {
+            preCallRun.cancel(true);
+        }
     }
 
     void forgetWebTestCall(String channelId) {

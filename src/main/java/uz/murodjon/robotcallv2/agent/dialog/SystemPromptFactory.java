@@ -403,7 +403,10 @@ public class SystemPromptFactory {
                     .append("write what you say as plain text, then call the transitionTo tool. ")
                     .append("Do not just greet and stop. STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\".]\n");
             }
-            if (clientName == null) {
+            if (clientName != null) {
+                call.append("[SYSTEM: The client's name is known (").append(clientName).append("). Use it once in the greeting, but NEVER repeat \"")
+                        .append(clientName).append(" aka/opa\" across subsequent questions or turns. Addressing them by name in every reply is STRICTLY FORBIDDEN.]\n");
+            } else {
                 boolean russian = s.language() != null && s.language().toLowerCase(Locale.ROOT).startsWith("ru");
                 call.append("[SYSTEM: The client's name is unknown. In your first reply, right after the greeting, ask it once, simply: \"")
                         .append(russian ? "Как я могу к вам обращаться?" : askNameUz)

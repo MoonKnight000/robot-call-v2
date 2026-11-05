@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
+import io.grpc.Status;
 import io.grpc.stub.ClientCallStreamObserver;
 import io.grpc.stub.MetadataUtils;
 import io.grpc.stub.StreamObserver;
@@ -132,10 +133,12 @@ public class YandexSttProvider implements SttProvider {
         // Shared by the two halves of the stream: the response side learns the stream is
         // gone (onError/onCompleted), the request side is what has to stop writing to it.
         AtomicBoolean alive = new AtomicBoolean(true);
+        // Set when the provider refused the stream itself (an unknown model, a bad key), not lost it.
+        AtomicBoolean rejected = new AtomicBoolean();
         // When our last EOU went out (System.nanoTime), 0 when none is awaiting its final.
         AtomicLong eouSentAt = new AtomicLong();
         StreamObserver<Stt.StreamingResponse> responseObserver =
-                new ResponseHandler(languageCode, listener, alive, eouSentAt);
+                new ResponseHandler(languageCode, listener, alive, rejected, eouSentAt);
         // The async stub's request side is always flow-control aware; the interface it is
         // declared as just hides it. Held as the wider type so the session can ask whether
         // the transport will actually carry the next frame (SttSession#isReady).
@@ -149,7 +152,7 @@ public class YandexSttProvider implements SttProvider {
                 (alternativeLanguages == null || alternativeLanguages.isEmpty())
                         ? "" : " (+" + String.join(", ", alternativeLanguages) + ")",
                 externalEndpointing ? "external" : "speechkit");
-        return new YandexSttSession(requestObserver, alive, eouSentAt);
+        return new YandexSttSession(requestObserver, alive, rejected, eouSentAt);
     }
 
     /**
@@ -287,21 +290,34 @@ public class YandexSttProvider implements SttProvider {
         }
     }
 
+    /**
+     * Whether the server refused the stream's own settings rather than dropped it: the same
+     * request is refused again on every reopen ("Unknown model …" once a model id from
+     * another vendor reached it), so retrying it only keeps the call deaf.
+     */
+    static boolean isRejection(Throwable t) {
+        Status.Code code = Status.fromThrowable(t).getCode();
+        return code == Status.Code.INVALID_ARGUMENT || code == Status.Code.NOT_FOUND
+                || code == Status.Code.UNAUTHENTICATED || code == Status.Code.PERMISSION_DENIED;
+    }
+
     /** Maps v3 streaming responses (partial / final) onto the {@link TranscriptListener}. */
     private final class ResponseHandler implements StreamObserver<Stt.StreamingResponse> {
 
         private final String language;
         private final TranscriptListener listener;
         private final AtomicBoolean alive;
+        private final AtomicBoolean rejected;
         private final AtomicLong eouSentAt;
         private volatile String lastFinalText;
         private volatile long lastFinalAt;
 
         private ResponseHandler(String language, TranscriptListener listener, AtomicBoolean alive,
-                                AtomicLong eouSentAt) {
+                                AtomicBoolean rejected, AtomicLong eouSentAt) {
             this.language = language;
             this.listener = listener;
             this.alive = alive;
+            this.rejected = rejected;
             this.eouSentAt = eouSentAt;
         }
 
@@ -377,6 +393,7 @@ public class YandexSttProvider implements SttProvider {
         @Override
         public void onError(Throwable t) {
             metrics.sttError();
+            rejected.set(isRejection(t));
             alive.set(false);
             log.warn("Yandex STT v3 stream error ({}): {}", language, t.getMessage());
         }
@@ -395,13 +412,15 @@ public class YandexSttProvider implements SttProvider {
 
         private final ClientCallStreamObserver<Stt.StreamingRequest> requestObserver;
         private final AtomicBoolean alive;
+        private final AtomicBoolean rejected;
         private final AtomicLong eouSentAt;
         private boolean closed;
 
         private YandexSttSession(ClientCallStreamObserver<Stt.StreamingRequest> requestObserver, AtomicBoolean alive,
-                                 AtomicLong eouSentAt) {
+                                 AtomicBoolean rejected, AtomicLong eouSentAt) {
             this.requestObserver = requestObserver;
             this.alive = alive;
+            this.rejected = rejected;
             this.eouSentAt = eouSentAt;
         }
 
@@ -439,6 +458,11 @@ public class YandexSttProvider implements SttProvider {
         @Override
         public boolean isAlive() {
             return !closed && alive.get();
+        }
+
+        @Override
+        public boolean isRejected() {
+            return rejected.get();
         }
 
         @Override

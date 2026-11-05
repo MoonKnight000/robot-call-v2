@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.agent.stt;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -18,7 +19,9 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CountDownLatch;
@@ -147,7 +150,7 @@ public class GeminiSttProvider implements SttProvider {
             alive.set(true);
 
             // Send session setup message
-            String setupPayload = buildSetupMessage(externalEndpointing, resolveModel(model), languageCode);
+            String setupPayload = buildSetupMessage(externalEndpointing, resolveModel(model), languageCode, alternativeLanguages, hints);
             webSocket.sendText(setupPayload, true).get(timeoutSeconds, TimeUnit.SECONDS);
 
             // Wait for setup acknowledgement
@@ -205,23 +208,73 @@ public class GeminiSttProvider implements SttProvider {
      * field ({@code customVocabulary} closes the socket with "Cannot find field"), and a
      * setup that fails costs the whole call its recognition.
      */
-    private String buildSetupMessage(boolean externalEndpointing, String model, String languageCode) {
+    private String buildSetupMessage(boolean externalEndpointing, String model, String languageCode,
+                                     List<String> alternativeLanguages, List<String> hints) {
         ObjectNode root = objectMapper.createObjectNode();
         ObjectNode setup = root.putObject("setup");
         setup.put("model", "models/" + model);
 
         ObjectNode genConfig = setup.putObject("generationConfig");
         genConfig.putArray("responseModalities").add("TEXT");
+        genConfig.put("temperature", 0.0);
 
         boolean isRussian = languageCode != null && languageCode.toLowerCase().startsWith("ru");
         String instruction = isRussian
-                ? "You are a speech-to-text transcriber for a phone call in Uzbekistan. The speaker is speaking Russian. Transcribe speech accurately in Russian Cyrillic script. Never translate. Never output Chinese, Hindi, or other foreign scripts."
-                : "You are a speech-to-text transcriber for a phone call in Uzbekistan. The speaker is speaking Uzbek (or occasionally Russian). Transcribe speech accurately in Uzbek Latin or Cyrillic script. Never translate. Never output Chinese (Hanzi), Hindi, Arabic, or other foreign scripts. Short utterances such as 'ha', 'ha shunday', 'yo\\'q', 'alo' are common Uzbek phrases.";
+                ? "You are an accurate, verbatim speech-to-text transcriber for a phone call in Uzbekistan. The speaker is speaking Russian. Transcribe speech accurately verbatim in Russian Cyrillic script. Never translate. Never output foreign words or foreign scripts. If you cannot recognize the audio, output nothing."
+                : "You are an accurate, verbatim speech-to-text transcriber for a phone call in Uzbekistan. The speaker is speaking Uzbek (or occasionally Russian). Transcribe speech accurately verbatim in Uzbek Latin or Cyrillic script. Never translate. STRICTLY FORBIDDEN: outputting words from Vietnamese, Bengali, Hindi, English, Spanish, or other foreign languages. Never invent or hallucinate food names, lyrics, or phrases from other languages. Short utterances like 'ha', 'yo\\'q', 'xop', 'va alaykum assalom' are common Uzbek phrases. If speech is unclear, output nothing.";
         setup.putObject("systemInstruction").putArray("parts")
                 .addObject().put("text", instruction);
 
         // This is what makes the server transcribe the audio at all.
-        setup.putObject("inputAudioTranscription");
+        ObjectNode transcription = setup.putObject("inputAudioTranscription");
+        ArrayNode langCodes = transcription.putArray("languageCodes");
+        if (isRussian) {
+            langCodes.add("ru-RU");
+            langCodes.add("uz-UZ");
+        } else {
+            langCodes.add("uz-UZ");
+            langCodes.add("ru-RU");
+        }
+        if (alternativeLanguages != null) {
+            for (String alt : alternativeLanguages) {
+                if (alt != null && !alt.isBlank()) {
+                    String norm = alt.trim();
+                    boolean exists = false;
+                    for (int i = 0; i < langCodes.size(); i++) {
+                        if (langCodes.get(i).asText().equalsIgnoreCase(norm)) {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists) {
+                        langCodes.add(norm);
+                    }
+                }
+            }
+        }
+
+        ArrayNode vocab = transcription.putArray("customVocabulary");
+        Set<String> added = new LinkedHashSet<>();
+        List<String> defaultKeywords = List.of(
+                "assalomu alaykum", "va alaykum assalom", "ha", "yo'q", "xop", "xo'p", "tushundim",
+                "to'lov", "to'layman", "to'lab beraman", "to'ladim", "to'lay olmayman",
+                "keyingi oy", "shu oy", "ertaga", "indin", "oylik", "uch oylik", "birdaniga",
+                "bir million", "ikki million", "uch million", "besh yuz ming",
+                "qarz", "qarzdorlik", "shartnoma", "so'm", "bank", "kredit", "grafik",
+                "operator", "qayta telefon", "vaqtim yo'q", "keyinroq", "alo"
+        );
+        for (String w : defaultKeywords) {
+            if (added.add(w.toLowerCase())) {
+                vocab.add(w);
+            }
+        }
+        if (hints != null) {
+            for (String h : hints) {
+                if (h != null && !h.isBlank() && added.add(h.toLowerCase().trim())) {
+                    vocab.add(h.trim());
+                }
+            }
+        }
         if (externalEndpointing) {
             // The gate says where an utterance ends (activityStart/activityEnd); the
             // server's own detector would wait for a silence the gate never sends it.
@@ -246,11 +299,21 @@ public class GeminiSttProvider implements SttProvider {
             }
             anyLetter = true;
             Character.UnicodeScript script = Character.UnicodeScript.of(c);
+            if (script == Character.UnicodeScript.LATIN) {
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || isUzbekModifier(c)) {
+                    continue;
+                }
+                return false;
+            }
             if (script != Character.UnicodeScript.LATIN && script != Character.UnicodeScript.CYRILLIC) {
                 return false;
             }
         }
         return anyLetter;
+    }
+
+    private static boolean isUzbekModifier(char c) {
+        return c == '\'' || c == '`' || c == 'ʻ' || c == 'ʼ' || c == '’' || c == '‘';
     }
 
     /**

@@ -94,6 +94,10 @@ public final class AgentFunctionValidator {
                     .toolId(type == AgentFunctionType.CUSTOM ? function.toolId() : null)
                     .integrationTool(type == AgentFunctionType.INTEGRATION ? function.integrationTool() : null)
                     .integration(type == AgentFunctionType.INTEGRATION ? function.integration() : null)
+                    // Only a company's or the integration's HTTP tool can be left running; a system function
+                    // steers the call and an extraction is recorded at once.
+                    .timing(type == AgentFunctionType.CUSTOM || type == AgentFunctionType.INTEGRATION
+                            ? function.timing() : null)
                     .build());
         }
         return result;

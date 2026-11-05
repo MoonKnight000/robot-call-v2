@@ -379,4 +379,13 @@ class AiAgentServiceTest {
     private static <E extends AppException> void assertRefused(ThrowingCallable call, Class<E> type, ErrorCode code) {
         assertThatThrownBy(call).isInstanceOfSatisfying(type, e -> assertThat(e.code()).isEqualTo(code));
     }
+
+    /** Call 12: switching STT from Gemini to Yandex kept the Gemini model, and Yandex refused every stream. */
+    @Test
+    void aSpeechModelStaysOnlyWithTheProviderThatOwnsIt() {
+        assertThat(AiAgentService.findModelKeptWithProvider("gemini-3.5-transcribe-live", "gemini", "yandex")).isNull();
+        assertThat(AiAgentService.findModelKeptWithProvider("general", "yandex", " Yandex ")).isEqualTo("general");
+        assertThat(AiAgentService.findModelKeptWithProvider("nova-3", "deepgram", null)).isNull();
+        assertThat(AiAgentService.findModelKeptWithProvider(null, null, null)).isNull();
+    }
 }

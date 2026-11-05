@@ -225,6 +225,92 @@ class StageEntryTest {
         assertThat(StageEntry.findSoleNextStage(scenario, scenario.findStage("PROFILE"), "found")).isNull();
     }
 
+    /** The CRM task of the debt flow: one way on to the confirmation, a conversation stage, or to another job. */
+    @Test
+    void aJobWhoseAnswerChangesNothingCanBeLeftRunning() {
+        ScenarioDefinition scenario = flow(
+                action("CREATE_TASK", StageType.FUNCTION, "CONFIRMATION", crmTask()),
+                new StageDef("CONFIRMATION", "Tasdiqla", List.of(), List.of()),
+                action("NOTE", StageType.FUNCTION, "CREATE_TASK", crmTask()));
+
+        assertThat(StageEntry.findDetachedNextStage(scenario, scenario.findStage("CREATE_TASK"))).isEqualTo("CONFIRMATION");
+        assertThat(StageEntry.findDetachedNextStage(scenario, scenario.findStage("NOTE"))).isEqualTo("CREATE_TASK");
+        assertThat(StageEntry.describeDetachedJob(scenario.findStage("CREATE_TASK"), "CONFIRMATION"))
+                .contains("createFollowUpTask").contains("CONFIRMATION");
+    }
+
+    @Test
+    void aJobWhoseAnswerMayDecideTheWayOnIsWaitedFor() {
+        StageDef required = StageDef.builder().id("CREATE_TASK").type(StageType.FUNCTION).action(crmTask())
+                .allowedTransitions(List.of("CONFIRMATION")).requiredOutcomes(List.of("res")).build();
+        StageDef twoWays = StageDef.builder().id("CREATE_TASK").type(StageType.FUNCTION).action(crmTask())
+                .allowedTransitions(List.of("CONFIRMATION", "BYE")).build();
+        StageDef confirmation = new StageDef("CONFIRMATION", "Tasdiqla", List.of(), List.of());
+        StageDef bye = new StageDef("BYE", "Xayr", List.of(), List.of());
+        StageDef branching = StageDef.builder().id("CONFIRMATION").type(StageType.CONVERSATION)
+                .branches(List.of(new StageBranch(null, BranchOperator.ALWAYS, null, "BYE"))).build();
+        StageDef job = action("CREATE_TASK", StageType.FUNCTION, "CONFIRMATION", crmTask());
+
+        assertThat(StageEntry.findDetachedNextStage(flow(required, confirmation), required)).isNull();
+        assertThat(StageEntry.findDetachedNextStage(flow(twoWays, confirmation, bye), twoWays)).isNull();
+        // The stage it lands on decides by itself on entry: that needs the code a transition runs.
+        assertThat(StageEntry.findDetachedNextStage(flow(job, branching, bye), job)).isNull();
+        ScenarioDefinition flex = flow(job, confirmation).toBuilder().transitionMode(TransitionMode.FLEX).build();
+        assertThat(StageEntry.findDetachedNextStage(flex, job)).isNull();
+        // Not a tool's job at all.
+        StageDef extract = action("READ", StageType.EXTRACT_VARIABLE, "CONFIRMATION", null);
+        assertThat(StageEntry.findDetachedNextStage(flow(extract, confirmation), extract)).isNull();
+    }
+
+    /** The debt flow's date question leads straight to the promise job: the reply that hears the date can record it. */
+    @Test
+    void aConversationStageOffersTheJobsItLeadsToDirectly() {
+        StageAction promise = new StageAction("recordPaymentPromise", null, null, null, null, null, null, null, null, null);
+        StageDef paymentDate = StageDef.builder().id("PAYMENT_DATE").type(StageType.CONVERSATION)
+                .allowedTransitions(List.of("RECORD_PROMISE", "CALLBACK")).build();
+        ScenarioDefinition scenario = flow(
+                paymentDate,
+                action("RECORD_PROMISE", StageType.FUNCTION, "CREATE_TASK", promise),
+                action("CREATE_TASK", StageType.FUNCTION, "CONFIRMATION", crmTask()),
+                new StageDef("CALLBACK", "Qayta qo'ng'iroq", List.of(), List.of()),
+                new StageDef("CONFIRMATION", "Tasdiqla", List.of(), List.of()));
+
+        // Only the job it leads to itself — not the CRM task one job further on.
+        assertThat(StageEntry.findInlineJobTools(scenario, paymentDate)).containsExactly("recordPaymentPromise");
+        assertThat(StageEntry.describeInlineJobs(scenario, paymentDate))
+                .contains("RECORD_PROMISE").contains("recordPaymentPromise").doesNotContain("createFollowUpTask");
+        // A job stage itself offers nothing more: its own tool is already its job.
+        assertThat(StageEntry.findInlineJobTools(scenario, scenario.findStage("RECORD_PROMISE"))).isEmpty();
+        assertThat(StageEntry.describeInlineJobs(scenario, scenario.findStage("CALLBACK"))).isEmpty();
+    }
+
+    /** Call 14: recordPaymentPromise called in DEBT_NOTICE, two stages before its own. */
+    @Test
+    void aJobFurtherOnIsFoundThroughConversationStagesOnly() {
+        StageAction promise = new StageAction("recordPaymentPromise", null, null, null, null, null, null, null, null, null);
+        StageAction reason = new StageAction("recordDelayReason", null, null, null, null, null, null, null, null, null);
+        ScenarioDefinition scenario = flow(
+                StageDef.builder().id("DEBT_NOTICE").type(StageType.CONVERSATION)
+                        .allowedTransitions(List.of("RECORD_REASON", "PAYMENT_DATE")).build(),
+                action("RECORD_REASON", StageType.FUNCTION, "PAYMENT_DATE", reason),
+                StageDef.builder().id("PAYMENT_DATE").type(StageType.CONVERSATION)
+                        .allowedTransitions(List.of("RECORD_PROMISE")).build(),
+                action("RECORD_PROMISE", StageType.FUNCTION, "CREATE_TASK", promise),
+                action("CREATE_TASK", StageType.FUNCTION, "CONFIRMATION", crmTask()),
+                new StageDef("CONFIRMATION", "Tasdiqla", List.of(), List.of()));
+
+        assertThat(StageEntry.findReachableJobStage(scenario, "DEBT_NOTICE", "recordPaymentPromise"))
+                .isEqualTo("RECORD_PROMISE");
+        // Reaching it would mean walking past RECORD_PROMISE's own job: not offered.
+        assertThat(StageEntry.findReachableJobStage(scenario, "DEBT_NOTICE", "createFollowUpTask")).isNull();
+        assertThat(StageEntry.findReachableJobStage(scenario, "DEBT_NOTICE", "noSuchTool")).isNull();
+        assertThat(StageEntry.findReachableJobStage(scenario, "CONFIRMATION", "recordPaymentPromise")).isNull();
+    }
+
+    private static StageAction crmTask() {
+        return new StageAction("createFollowUpTask", null, null, null, null, null, null, null, null, null);
+    }
+
     private DialogSession session(ScenarioDefinition scenario) {
         DialogSession session = DialogSession.builder("chan-1", "uz-UZ")
                 .context(new CallContext(Map.of("clientName", "Aziz", "debtAmount", new BigDecimal("1500000")), "goal"))

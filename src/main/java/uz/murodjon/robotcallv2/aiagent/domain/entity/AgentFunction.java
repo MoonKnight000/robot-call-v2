@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionTiming;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolOverride;
 
@@ -23,6 +24,8 @@ import uz.murodjon.robotcallv2.tool.domain.entity.ToolOverride;
  * @param integrationTool      INTEGRATION: the catalog tool (its {@code toolName}, else its key)
  * @param integration          INTEGRATION: the agent's own inputs and answer fields for an HTTP catalog tool;
  *                             null keeps the catalog's. A built-in tool has none to change
+ * @param timing               CUSTOM and INTEGRATION: whether the turn waits for the answer; null keeps the
+ *                             tool's own "wait for result"
  */
 public record AgentFunction(
         String id,
@@ -38,13 +41,22 @@ public record AgentFunction(
         AgentFunctionExtract extract,
         Long toolId,
         String integrationTool,
-        ToolOverride integration
+        ToolOverride integration,
+        AgentFunctionTiming timing
 ) {
 
     public AgentFunction {
         description = description == null || description.isBlank() ? null : description.trim();
         executionMessage = executionMessage == null || executionMessage.isBlank() ? null : executionMessage.trim();
         integrationTool = integrationTool == null || integrationTool.isBlank() ? null : integrationTool.trim();
+    }
+
+    /**
+     * Whether the turn leaves this function running instead of waiting for its answer. Not an {@code is…}
+     * accessor on purpose: Jackson would write it into the stored list as a field of its own.
+     */
+    public boolean runsInBackground() {
+        return timing == AgentFunctionTiming.BACKGROUND;
     }
 
     public static AgentFunctionBuilder builder() {

@@ -226,7 +226,9 @@ class RealtimeToolRunner {
                             s.channelId(), tool.name());
                     continue;
                 }
-                callbacks.add(httpToolExecutor.buildCallback(tool, s, variables));
+                callbacks.add(httpToolExecutor.buildCallback(
+                        AgentFunctionPlan.applyTiming(tool, AgentFunctionPlan.findCustomFunction(s.agent(), tool)),
+                        s, variables));
             }
             return callbacks;
         } catch (Exception e) {

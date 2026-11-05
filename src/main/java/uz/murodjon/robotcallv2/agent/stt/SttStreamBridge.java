@@ -621,6 +621,20 @@ public class SttStreamBridge implements WidebandAudioListener, Closeable {
             } catch (Exception e) {
                 log.debug("[{}] closing the dead STT session failed: {}", channelId, e.getMessage());
             }
+            if (current.isRejected()) {
+                // Refused, not lost: the same stream is refused again. Call 12 retried Yandex with
+                // a Gemini model id until the caller's first answer was gone. The model is the
+                // likeliest cause, so the provider's own goes first; refused without one too,
+                // the provider is what fails and the call moves on at once.
+                if (model != null) {
+                    log.warn("[{}] {} refused the stream with model {} — reopening on its own model",
+                            channelId, provider.name(), model);
+                    model = null;
+                    agentModel = null;
+                } else {
+                    providerFailures.set(Math.max(providerFailures.get(), streamProperties.failoverAfterFailures()));
+                }
+            }
             if (providerFailures.get() >= streamProperties.failoverAfterFailures()) {
                 failOver();
             }

@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 /**
  * What the model is told after a company tool ran ({@link HttpToolExecutor}).
@@ -112,12 +113,29 @@ final class ToolResponseFormatter {
         }
     }
 
+    private static final Pattern FAILED_STATUS = Pattern.compile("^\\{\"status\":[45]\\d\\d\\b");
+
+    private static final String STARTED_TEXT ="Started in the background; there is no result yet. Carry on the conversation.";
+
     /** What the model is told when the tool runs in the background: there is no answer to read yet. */
     String formatStarted() {
         ObjectNode node = objectMapper.createObjectNode();
         node.put("status", 202);
-        node.put("data", "Started in the background; there is no result yet. Carry on the conversation.");
+        node.put("data", STARTED_TEXT);
         return node.toString();
+    }
+
+    /** Whether {@code answer} is {@link #formatStarted}'s: the tool was not waited for, so there is nothing to answer with. */
+    static boolean isStarted(String answer) {
+        return answer != null && answer.contains(STARTED_TEXT);
+    }
+
+    /**
+     * Whether a tool's answer says it did not do its job: a refusal of the engine's own ({@code ERROR: …}) or an HTTP
+     * answer whose status is 4xx/5xx — every answer of this class opens with its status.
+     */
+    static boolean isFailure(String answer) {
+        return answer == null || answer.startsWith("ERROR") || FAILED_STATUS.matcher(answer).find();
     }
 
     /** What the model is told once a tool has been called as often as one call allows. */

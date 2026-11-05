@@ -77,6 +77,23 @@ public final class ToolOverrides {
                 tool.readbackTemplate(), tool.createdAt(), tool.updatedAt());
     }
 
+    /**
+     * {@code tool} with its "wait for result" set to {@code waitForResult} — one user of a shared tool deciding
+     * whether its turn waits for the answer; the tool itself when it already says so.
+     */
+    public static Tool withWaitForResult(Tool tool, boolean waitForResult) {
+        ToolHttpConfig http = tool.http();
+        if (http.waitForResult() == waitForResult) {
+            return tool;
+        }
+        ToolHttpConfig changed = new ToolHttpConfig(http.url(), http.method(), http.headers(), http.body(),
+                http.queryParams(), http.pathParams(), http.bodySchema(), http.responseTimeoutSecs(),
+                http.retryAttempts(), http.auth(), waitForResult, http.statusVariable());
+        return new Tool(tool.id(), tool.companyId(), tool.name(), tool.description(), changed, tool.dynamicVariables(),
+                tool.speech(), tool.responseMapping(), tool.result(), tool.maxCallsPerCall(), tool.effect(),
+                tool.requiresConfirmation(), tool.readbackTemplate(), tool.createdAt(), tool.updatedAt());
+    }
+
     private static List<ToolParamConfig> applyToParams(List<ToolParamConfig> params, Map<String, ToolInputOverride> byName) {
         List<ToolParamConfig> changed = new ArrayList<>(params.size());
         for (ToolParamConfig param : params) {

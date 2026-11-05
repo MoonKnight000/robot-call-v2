@@ -48,7 +48,7 @@ public class PreCallWorkflowRunner {
     private static final Logger log = LoggerFactory.getLogger(PreCallWorkflowRunner.class);
 
     /** How long the whole slot may keep the caller waiting. */
-    static final long BUDGET_MILLIS = 10_000;
+    public static final long BUDGET_MILLIS = 10_000;
 
     private static final Pattern VARIABLE = Pattern.compile("\\{\\{\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*}}");
 

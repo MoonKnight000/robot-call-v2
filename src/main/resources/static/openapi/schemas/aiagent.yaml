@@ -1363,6 +1363,12 @@ AgentFunctionType:
   - CUSTOM
   - INTEGRATION
   description: 'What a function does. System types have a fixed model tool name: endCall, requestHumanTransfer, transferToAgent, sendDtmfTones, sendMidCallSms. CODE is not accepted.'
+AgentFunctionTiming:
+  type: string
+  enum:
+  - IN_TURN
+  - BACKGROUND
+  description: IN_TURN - the turn waits and the model replies with the answer. BACKGROUND - started and not waited for; no model round on the answer and no waiting line. A tool that needs the caller's confirmation still reads it back in the turn first.
 AgentFunction:
   type: object
   description: One function (tool) the agent may use on a call. Only the settings group of its own type is filled; the others are dropped on save.
@@ -1407,6 +1413,11 @@ AgentFunction:
       type: string
       nullable: true
       description: INTEGRATION - the catalog tool (`toolName ?? tool` of GET /api/settings/integrations/tools).
+    timing:
+      allOf:
+      - $ref: '#/AgentFunctionTiming'
+      nullable: true
+      description: CUSTOM and INTEGRATION - whether the turn waits for the answer, over the tool's own `http.waitForResult`; null - the tool's own. Dropped for other types.
   required:
   - id
   - type

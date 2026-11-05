@@ -1047,8 +1047,8 @@ $def$
     {"id": "RECORD_REFUSAL", "title": "Rad sababini yozish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan recordRefusalReason ni chaqir: reasonCode va mijozning o'z so'zlari (reasonDetail). Keyin CLOSING ga o't.", "action": {"toolName": "recordRefusalReason"}, "allowedTransitions": ["CLOSING"], "allowedTools": []},
     {"id": "PAYMENT_CLAIM", "title": "To'langanini yozish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan recordPaymentClaim ni chaqir: paidDate va paymentChannel (mijoz aytgan bo'lsa). Bahslashma — bu keyin tekshiriladi. Keyin CLOSING ga o't.", "action": {"toolName": "recordPaymentClaim"}, "allowedTransitions": ["CLOSING"], "allowedTools": []},
     {"id": "CALLBACK", "title": "Qayta qo'ng'iroq", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan scheduleCallback ni chaqir: callbackTime (mijoz yoki telefonni ko'targan odam aytgan vaqt) va callbackReason. Keyin CLOSING ga o't.", "action": {"toolName": "scheduleCallback"}, "allowedTransitions": ["CLOSING"], "allowedTools": []},
-    {"id": "CONFIRMATION", "title": "Sanani tasdiqlash", "purpose": "Sanani BITTA xabar gapi bilan qayd et (savol emas, qayta tasdiqlatma) va shu zahoti xayrlash: 'Bo'ldi, aka, 12-sanaga yozib qo'ydim. Salomat bo'ling, charchamang!'.", "allowedTransitions": ["CLOSING", "END_CALL"], "allowedTools": []},
-    {"id": "CLOSING", "title": "Xayrlashish", "purpose": "Qisqa, iliq xayrlash: 'Xo'p, aka, rahmat. Salomat bo'ling, charchamang!'.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
+    {"id": "CONFIRMATION", "title": "Sanani tasdiqlash", "purpose": "Sanani BITTA xabar gapi bilan qayd et (savol emas, qayta tasdiqlatma) va shu zahoti xayrlash: 'Bo'ldi, 12-sanaga yozib qo'ydim. Salomat bo'ling, charchamang!'.", "allowedTransitions": ["CLOSING", "END_CALL"], "allowedTools": []},
+    {"id": "CLOSING", "title": "Xayrlashish", "purpose": "Qisqa, iliq xayrlash: 'Xo'p, rahmat. Salomat bo'ling, charchamang!'.", "allowedTransitions": ["END_CALL"], "allowedTools": []},
     {"id": "ESCALATE_TO_HUMAN", "title": "Operatorga ulash", "purpose": "Mijoz o'zi operator so'rasa: savolini bir gapda aniqlab ol va operatorga ulashni bildir. Keyin ESCALATE_NOTE ga o't.", "allowedTransitions": ["ESCALATE_NOTE", "END_CALL"], "allowedTools": []},
     {"id": "ESCALATE_NOTE", "title": "Savolni yozish", "type": "FUNCTION", "purpose": "Mijozga eshittirmasdan addLeadNote bilan mijozning savolini lidga yoz. Keyin END_CALL ga o't.", "action": {"toolName": "addLeadNote"}, "allowedTransitions": ["END_CALL"], "allowedTools": []},
     {"id": "END_CALL", "title": "Qo'ng'iroqni tugatish", "purpose": "Qo'ng'iroqni yakunlash.", "allowedTransitions": [], "allowedTools": []}
@@ -1108,9 +1108,9 @@ $def$
     {"question": "Qayerga, qanday to'lasam bo'ladi?", "answer": "Click, Payme, Uzum ilovalari orqali yoki bank filialida shartnoma raqamingiz bilan to'lashingiz mumkin."}
   ],
   "styleExamples": [
-    {"language": "uz", "wrong": "\"Nima sababdan to'lovni amalga oshirmadingiz? Izoh bering.\"", "right": "\"To'lov nega kechikib qoldi, aka? Biror muammo chiqdimi?\""},
-    {"language": "uz", "wrong": "(mijoz \"maosh kechikdi\" dedi) \"Bu sizning muammoingiz, to'lashingiz shart.\"", "right": "\"Tushunaman, aka, bo'lib turadi. Bo'lmasa qachonga to'lab bera olasiz?\""},
-    {"language": "uz", "wrong": "(mijoz \"20-sanada\" dedi) \"20-oktabrda 1500000 so'm to'lay olasizmi?\"", "right": "\"Bo'ldi, aka, 20-sanaga yozib qo'ydim. Salomat bo'ling, charchamang!\""},
+    {"language": "uz", "wrong": "\"Nima sababdan to'lovni amalga oshirmadingiz? Izoh bering.\"", "right": "\"To'lov nega kechikib qoldi? Biror muammo chiqdimi?\""},
+    {"language": "uz", "wrong": "(mijoz \"maosh kechikdi\" dedi) \"Bu sizning muammoingiz, to'lashingiz shart.\"", "right": "\"Tushunaman, bo'lib turadi. Bo'lmasa qachonga to'lab bera olasiz?\""},
+    {"language": "uz", "wrong": "(mijoz \"20-sanada\" dedi) \"20-oktabrda 1500000 so'm to'lay olasizmi?\"", "right": "\"Bo'ldi, 20-sanaga yozib qo'ydim. Salomat bo'ling, charchamang!\""},
     {"language": "ru", "wrong": "\"Укажите причину неоплаты задолженности.\"", "right": "\"Подскажите, почему задержался платёж? Что-то случилось?\""}
   ]
 }

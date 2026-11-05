@@ -24,9 +24,16 @@ class SttStreamBridgeTest {
     private static final class FakeSession implements SttSession {
         final List<byte[]> sent = new ArrayList<>();
         volatile boolean alive;
+        volatile boolean rejected;
 
         FakeSession(boolean alive) {
             this.alive = alive;
+        }
+
+        static FakeSession refused() {
+            FakeSession session = new FakeSession(false);
+            session.rejected = true;
+            return session;
         }
 
         @Override
@@ -37,6 +44,11 @@ class SttStreamBridgeTest {
         @Override
         public boolean isAlive() {
             return alive;
+        }
+
+        @Override
+        public boolean isRejected() {
+            return rejected;
         }
 
         @Override
@@ -102,6 +114,66 @@ class SttStreamBridgeTest {
         // Each of the three frames reaches the backup exactly once: all of them from the
         // replay buffer, and the current one not sent a second time after it.
         assertThat(backupSession.sent).hasSize(3);
+        bridge.close();
+    }
+
+    /** Hands out scripted sessions and records the model each one was opened with. */
+    private static final class ScriptedModelProvider implements SttProvider {
+        final List<String> models = new ArrayList<>();
+        final Deque<FakeSession> script = new ArrayDeque<>();
+
+        @Override
+        public String name() {
+            return "primary";
+        }
+
+        @Override
+        public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                      TranscriptListener listener, boolean externalEndpointing) {
+            return startStream(languageCode, alternativeLanguages, listener, externalEndpointing, List.of(), null);
+        }
+
+        @Override
+        public SttSession startStream(String languageCode, List<String> alternativeLanguages,
+                                      TranscriptListener listener, boolean externalEndpointing,
+                                      List<String> hints, String model) {
+            models.add(model);
+            return script.poll();
+        }
+
+        @Override
+        public int sampleRate() {
+            return 8000;
+        }
+    }
+
+    /**
+     * Call 12: Yandex refused a Gemini model id on every reopen and the caller's first answer
+     * was lost before the failover came. A refused stream now drops the model first, then the provider.
+     */
+    @Test
+    void aRefusedStreamDropsTheModelFirstThenTheProviderWithoutCountingFailures() throws Exception {
+        ScriptedModelProvider primary = new ScriptedModelProvider();
+        primary.script.add(FakeSession.refused()); // opened with the agent's model, refused
+        primary.script.add(FakeSession.refused()); // its own model refused as well
+        FakeProvider backup = new FakeProvider("backup");
+        FakeSession backupSession = new FakeSession(true);
+        backup.script.add(backupSession);
+        SttProviderSelector selector = mock(SttProviderSelector.class);
+        when(selector.findFallback(eq(primary), any())).thenReturn(backup);
+
+        SttStreamBridge bridge = new SttStreamBridge(primary, 8000, 8000, "test-channel", "uz-UZ", List.of(),
+                (text, isFinal, confidence) -> { }, null, mock(SttMetrics.class), null, 0, null,
+                List.of(), List.of(), selector, "gemini-model", SttStreamProperties.DEFAULTS);
+
+        short[] frame = new short[160];
+        bridge.onAudio(frame, frame.length); // refused with the model: reopened without it
+        Thread.sleep(1100);                  // past the reopen cooldown
+        bridge.onAudio(frame, frame.length); // refused without it too: straight to the backup
+
+        assertThat(primary.models).containsExactly("gemini-model", null);
+        assertThat(backup.opened).isEqualTo(1);
+        assertThat(backupSession.sent).isNotEmpty();
         bridge.close();
     }
 

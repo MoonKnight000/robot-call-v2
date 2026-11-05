@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.aiagent.domain.entity;
 
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionTiming;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
 import uz.murodjon.robotcallv2.tool.domain.entity.ToolOverride;
 
@@ -23,6 +24,7 @@ public class AgentFunctionBuilder {
     private Long toolId;
     private String integrationTool;
     private ToolOverride integration;
+    private AgentFunctionTiming timing;
 
     AgentFunctionBuilder() {
     }
@@ -42,6 +44,7 @@ public class AgentFunctionBuilder {
         this.toolId = source.toolId();
         this.integrationTool = source.integrationTool();
         this.integration = source.integration();
+        this.timing = source.timing();
     }
 
     public AgentFunctionBuilder id(String id) {
@@ -114,8 +117,13 @@ public class AgentFunctionBuilder {
         return this;
     }
 
+    public AgentFunctionBuilder timing(AgentFunctionTiming timing) {
+        this.timing = timing;
+        return this;
+    }
+
     public AgentFunction build() {
         return new AgentFunction(id, type, name, description, speakDuringExecution, executionMessage, transfer,
-                agentTransfer, pressDigit, sms, extract, toolId, integrationTool, integration);
+                agentTransfer, pressDigit, sms, extract, toolId, integrationTool, integration, timing);
     }
 }

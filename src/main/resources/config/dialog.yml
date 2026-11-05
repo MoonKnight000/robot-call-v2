@@ -66,13 +66,13 @@ voice-agent:
     tts-voice: ${DIALOG_TTS_VOICE:}
     greeting-delay-ms: ${DIALOG_GREETING_DELAY_MS:400}
     max-turns: ${DIALOG_MAX_TURNS:25}
-    language-switch-finals: ${DIALOG_LANGUAGE_SWITCH_FINALS:2}
+    language-switch-finals: ${DIALOG_LANGUAGE_SWITCH_FINALS:1}
     max-call-seconds: ${DIALOG_MAX_CALL_SECONDS:300}
     streaming: ${DIALOG_STREAMING:true}
     # "bir lahza" only when this call's measured first-token wait reaches this; said at once, not after a timer.
-    filler-wait-threshold-ms: ${DIALOG_FILLER_WAIT_THRESHOLD_MS:1000}
+    filler-wait-threshold-ms: ${DIALOG_FILLER_WAIT_THRESHOLD_MS:2500}
     # That filler is a few words about what the caller said, from the fast model; "Bir lahza" is the fallback.
-    filler-bridge: ${DIALOG_FILLER_BRIDGE:true}
+    filler-bridge: ${DIALOG_FILLER_BRIDGE:false}
     backchannel-after-ms: ${DIALOG_BACKCHANNEL_AFTER_MS:4000}
     backchannel-volume-percent: ${DIALOG_BACKCHANNEL_VOLUME_PERCENT:35}
     interject-after-ms: ${DIALOG_INTERJECT_AFTER_MS:25000}

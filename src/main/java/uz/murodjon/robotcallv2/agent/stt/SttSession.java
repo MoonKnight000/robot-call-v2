@@ -41,6 +41,18 @@ public interface SttSession extends Closeable {
     boolean isAlive();
 
     /**
+     * Whether the provider refused this stream outright — its model, key or rights — instead
+     * of losing it. Opening the same stream again is refused the same way, so
+     * {@link SttStreamBridge} drops the agent's model or moves to another provider at once
+     * rather than counting failures.
+     *
+     * <p>A provider that cannot tell leaves this {@code false} and is retried as before.
+     */
+    default boolean isRejected() {
+        return false;
+    }
+
+    /**
      * Whether the transport can take another frame right now.
      *
      * <p>Separate from {@link #isAlive()}: a session stays perfectly alive while it is

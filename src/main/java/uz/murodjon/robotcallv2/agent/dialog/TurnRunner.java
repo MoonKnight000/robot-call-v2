@@ -12,10 +12,12 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.time.Duration;
@@ -66,6 +68,9 @@ public class TurnRunner {
      * which is what the provider's context cache is keyed on.
      */
     private static final int HISTORY_TRIM_BLOCK = 6;
+
+    /** What a stage's step 2 is handed when its job was done inline: no tool note of a turn of its own to read. */
+    private static final String INLINE_JOB_NOTE = "Done in the reply that moved here.";
 
     private final DialogProperties dialogProperties;
     private final SystemPromptFactory promptFactory;
@@ -161,6 +166,15 @@ public class TurnRunner {
             }
             log.debug("[{}] turn in progress, deferring: {}", s.channelId(), clientText);
             s.deferInput(clientText);
+            if (fromClient && s.isFirstAudioPending() && !s.isCancelled()) {
+                // The caller went on before a word of the reply was heard, so that reply
+                // answers half a sentence: call 14 asked "kelishdikmi?" for "o'n beshinchi
+                // sanalar to'lab" and then again for the "to'layman" that followed it. The
+                // running reply is dropped unheard and the next turn reads both parts.
+                log.info("[{}] caller went on before the reply was heard — answering both parts together",
+                        s.channelId());
+                s.setCancelled(true);
+            }
             return;
         }
         String stageActionNote = null; // what a flow stage's job answered, for scheduleStageAction
@@ -249,7 +263,8 @@ public class TurnRunner {
             // The state block goes after the history, not into the system message, so
             // the cached prefix stays append-only (see SystemPromptFactory).
             List<Message> messages = new ArrayList<>(s.history());
-            messages.add(new UserMessage(promptFactory.turnAnnex(s) + turnTools.findStageToolNote(s)));
+            messages.add(new UserMessage(promptFactory.turnAnnex(s) + turnTools.findStageToolNote(s)
+                    + StageEntry.describeInlineJobs(s.scenario(), SystemPromptFactory.stageOf(s.scenario(), s.state()))));
             s.setInterrupted(false); // the annex has carried the barge-in note now
             boolean quietFollowUp = s.isCallerWentQuiet();
             s.setCallerWentQuiet(false); // and the "caller went quiet" note
@@ -373,9 +388,16 @@ public class TurnRunner {
                 }
                 speech.speakChunk(s, DialogLines.fallback(s));
             }
-            // Not from inside a silent stage job: the flow still has its steps ahead and its own ENDING.
-            boolean inSilentJob = stageActionTurn && StageEntry.isSilentJob(SystemPromptFactory.stageOf(s.scenario(), s.state()));
-            if (!s.isEnded() && !cutOff && haveText && !inSilentJob && Farewells.saidByAgent(reply)) {
+            // Not from inside a silent stage job: the flow still has its jobs ahead. Closing here lost them — on a
+            // recorded call the reply that heard the date moved to RECORD_PROMISE and said goodbye in one breath,
+            // the call closed, and the promise was never recorded. The jobs run first; scheduleStageAction then
+            // closes the call where the flow would talk again, without a second goodbye.
+            boolean inSilentJob = StageEntry.isSilentJob(SystemPromptFactory.stageOf(s.scenario(), s.state()));
+            if (!s.isEnded() && !cutOff && haveText && inSilentJob && Farewells.saidByAgent(reply)) {
+                log.info("[{}] agent said goodbye on its way into stage {} — its jobs run first, then the call closes",
+                        s.channelId(), s.state());
+                s.markFarewellSaid();
+            } else if (!s.isEnded() && !cutOff && haveText && Farewells.saidByAgent(reply)) {
                 // The model wrote a goodbye and reached for some other tool to say it with.
                 // endCall is what sets the flag the hangup hangs off, so without this the
                 // farewell goes out into a line that stays open until the caller drops it —
@@ -473,20 +495,99 @@ public class TurnRunner {
      */
     private boolean scheduleStageAction(DialogSession s, String toolNote) {
         StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        if (s.isFarewellSaid() && !StageEntry.isSilentJob(stage)) {
+            // The goodbye was said on the way into the jobs; they are done or left running, and the flow would
+            // only talk again from here.
+            closeAfterFarewell(s);
+            return true;
+        }
         if (!StageEntry.needsModelAction(stage) || s.stageActionStep() >= StageEntry.countModelSteps(stage)) {
             return false;
         }
         int step = s.stageActionStep() + 1;
+        String jobTool = stage.type() == StageType.FUNCTION && stage.action() != null ? stage.action().toolName() : null;
+        if (step == 1 && jobTool != null && s.isHeldTool(jobTool)) {
+            // Read back for the caller's yes: the job waits for their answer, and a turn of its own would only
+            // read it back again before they have said anything.
+            return false;
+        }
+        if (step == 1 && jobTool != null && s.isDoneTool(jobTool)) {
+            // The reply that moved here did the job too (StageEntry#describeInlineJobs): no silent turn for it.
+            log.info("[{}] stage {} job {} was done in the reply that moved here", s.channelId(), stage.id(), jobTool);
+            s.setStageActionStep(1);
+            return scheduleStageAction(s, INLINE_JOB_NOTE);
+        }
+        if (step == 1 && detachStageJob(s, stage)) {
+            return true;
+        }
         String next = step == 2 ? StageEntry.findSoleNextStage(s.scenario(), stage, toolNote) : null;
         if (next != null) {
             s.setState(next);
             log.info("[{}] dialog state -> {} (the only way on from {} — no model turn)", s.channelId(), next, stage.id());
             return scheduleStageAction(s, null);
         }
+        if (step == 2 && s.isFarewellSaid()) {
+            // Step 2 writes the next stage's line, and the goodbye has been said already.
+            closeAfterFarewell(s);
+            return true;
+        }
         s.setStageActionStep(step);
         String note = "[SYSTEM: " + StageEntry.describeTask(s.scenario(), stage, step, StageEntry.variables(s)) + "]";
         executors.submit(() -> advance(s, note, false));
         return true;
+    }
+
+    /**
+     * A FUNCTION stage whose tool the agent leaves running ({@code AgentFunctionTiming.BACKGROUND}): its job is asked
+     * of the model off the call ({@link LlmTurnClient#runStageJob}) and the call moves on at once, so the caller hears
+     * the next stage's line instead of sitting through a silent turn and the request after it. Only where the job's
+     * answer could not change where the call goes ({@link StageEntry#findDetachedNextStage}).
+     *
+     * @return whether the job was left running and the call moved on; false leaves it to a turn of its own
+     */
+    private boolean detachStageJob(DialogSession s, StageDef stage) {
+        String next = StageEntry.findDetachedNextStage(s.scenario(), stage);
+        if (next == null) {
+            return false;
+        }
+        String toolName = stage.action().toolName();
+        Map<String, AgentFunction> functions = AgentFunctionPlan.indexByModelName(s.agent(), s.tools());
+        AgentFunction function = functions.getOrDefault(toolName, functions.get(HttpToolExecutor.sanitizeToolName(toolName)));
+        if (function == null || !function.runsInBackground()) {
+            return false;
+        }
+        String modelName = HttpToolExecutor.sanitizeToolName(toolName);
+        List<ToolCallback> tools = turnTools.build(s).stream()
+                .filter(tool -> tool.getToolDefinition().name().equals(modelName))
+                .toList();
+        if (tools.isEmpty()) {
+            log.warn("[{}] stage {} job {} is not offered on this call — asked in a turn of its own",
+                    s.channelId(), stage.id(), toolName);
+            return false;
+        }
+        // Built while the call is still in the job's stage: its annex is what tells the model the arguments.
+        List<Message> messages = new ArrayList<>(s.history());
+        messages.add(new UserMessage("[SYSTEM: " + StageEntry.describeTask(s.scenario(), stage, 1, StageEntry.variables(s)) + "]"));
+        messages.add(new UserMessage(promptFactory.turnAnnex(s) + turnTools.findStageToolNote(s)));
+        String system = llmTurnClient.resolveSystemPrefix(s);
+        executors.submit(() -> llmTurnClient.runStageJob(s, system, messages, tools));
+        s.setState(next);
+        log.info("[{}] dialog state -> {} (stage {} left running {} in the background)",
+                s.channelId(), next, stage.id(), toolName);
+        if (StageEntry.needsModelAction(SystemPromptFactory.stageOf(s.scenario(), next)) || s.isFarewellSaid()) {
+            scheduleStageAction(s, null);
+            return true;
+        }
+        String note = "[SYSTEM: " + StageEntry.describeDetachedJob(stage, next) + "]";
+        executors.submit(() -> advance(s, note, false));
+        return true;
+    }
+
+    /** Ends a call whose goodbye was said on the way into its jobs ({@link DialogSession#markFarewellSaid}). */
+    private void closeAfterFarewell(DialogSession s) {
+        log.info("[{}] the jobs after the goodbye are done — closing the call in {}", s.channelId(), s.state());
+        s.end(null);
+        speech.finishWhenSpoken(s);
     }
 
     private void closeOnLimit(DialogSession s, String reason) {

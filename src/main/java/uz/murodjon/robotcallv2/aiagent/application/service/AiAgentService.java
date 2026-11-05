@@ -389,10 +389,12 @@ public class AiAgentService implements AiAgentUseCase {
                         engineRequest.pipecatTts() != null ? trimmed(engineRequest.pipecatTts()) : speechEngine.pipecatTts(),
                         sttProvider,
                         requestedSttModel != null
-                                ? engineGuard.requireKnownSttModel(sttProvider, requestedSttModel) : speechEngine.sttModel(),
+                                ? engineGuard.requireKnownSttModel(sttProvider, requestedSttModel)
+                                : findModelKeptWithProvider(speechEngine.sttModel(), speechEngine.sttProvider(), sttProvider),
                         ttsProvider,
                         engineRequest.ttsModel() != null
-                                ? engineGuard.requireKnownTtsModel(ttsProvider, engineRequest.ttsModel()) : speechEngine.ttsModel(),
+                                ? engineGuard.requireKnownTtsModel(ttsProvider, engineRequest.ttsModel())
+                                : findModelKeptWithProvider(speechEngine.ttsModel(), speechEngine.ttsProvider(), ttsProvider),
                         engineRequest.transcriptionMode() != null
                                 ? engineRequest.transcriptionMode() : speechEngine.transcriptionMode(),
                         engineRequest.boostedKeywords() != null
@@ -799,6 +801,18 @@ public class AiAgentService implements AiAgentUseCase {
     /** A trimmed value, or null — a blank engine name means "the configured default". */
     private static String trimmed(String value) {
         return value != null ? value.trim() : null;
+    }
+
+    /**
+     * The agent's current speech model while it stays on the provider that owns it; null (the
+     * new provider's own model) once an edit switches provider without naming a model. Kept
+     * across a switch, the old id reached the new vendor as one it has never heard of — a
+     * Gemini model on Yandex — and the call heard nothing.
+     */
+    static String findModelKeptWithProvider(String currentModel, String currentProvider, String newProvider) {
+        boolean sameProvider = currentProvider == null ? newProvider == null
+                : newProvider != null && currentProvider.trim().equalsIgnoreCase(newProvider.trim());
+        return sameProvider ? currentModel : null;
     }
 
     /** A field the edit both gives a value and lists in {@code clearFields} contradicts itself. */

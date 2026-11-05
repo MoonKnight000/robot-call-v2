@@ -50,6 +50,7 @@ class OutboundDialService {
     private final CompanyConfigUseCase companyConfigUseCase;
     private final OutboundRouting outboundRouting;
     private final TelephonyGatewayResolver telephonyGatewayResolver;
+    private final RingingPreCallRunner ringingPreCallRunner;
 
     OutboundDialService(AriClient ariClient,
                         CallAttemptUseCase callAttemptUseCase,
@@ -63,7 +64,8 @@ class OutboundDialService {
                         PendingCallRegistry pendingCallRegistry,
                         CompanyConfigUseCase companyConfigUseCase,
                         OutboundRouting outboundRouting,
-                        TelephonyGatewayResolver telephonyGatewayResolver) {
+                        TelephonyGatewayResolver telephonyGatewayResolver,
+                        RingingPreCallRunner ringingPreCallRunner) {
         this.ariClient = ariClient;
         this.callAttemptUseCase = callAttemptUseCase;
         this.dialogProperties = dialogProperties;
@@ -77,6 +79,7 @@ class OutboundDialService {
         this.companyConfigUseCase = companyConfigUseCase;
         this.outboundRouting = outboundRouting;
         this.telephonyGatewayResolver = telephonyGatewayResolver;
+        this.ringingPreCallRunner = ringingPreCallRunner;
     }
 
     String originate(String rawNumber, long companyId) {
@@ -111,8 +114,13 @@ class OutboundDialService {
 
         CompanyConfig config = companyConfigUseCase.find(companyId);
         TelephonyEngine engine = config != null ? config.telephonyEngine() : TelephonyEngine.ASTERISK;
-        return telephonyGatewayResolver.findByEngine(engine)
+        String channelId = telephonyGatewayResolver.findByEngine(engine)
                 .originate(new OutboundDial(companyId, targetId, number, language, sipTrunkId, outboundCall, callId));
+        if (outboundCall != null) {
+            // While it rings, not after the answer: the lookups otherwise add to the silence before the greeting.
+            ringingPreCallRunner.start(channelId, companyId, outboundCall);
+        }
+        return channelId;
     }
 
     /**

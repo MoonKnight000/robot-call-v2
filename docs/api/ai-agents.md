@@ -450,6 +450,13 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 >   egasi bo'lishi shart (`nova-3` → `deepgram`), aks holda `400 STT_MODEL_PROVIDER_MISMATCH`
 >   (TTS uchun `TTS_MODEL_PROVIDER_MISMATCH`). Sababi — ikkala maydon qo'ng'iroqda birga
 >   o'qiladi, va mos kelmagan juft vendorga u bilmaydigan id bo'lib boradi.
+>   `PUT` provayderni **almashtirsa**-yu, `sttModel` / `ttsModel` bermasa, eski model **o'chiriladi**
+>   (`null` — yangi provayderning o'z modeli). Ilgari eski model qolardi: Gemini'dan Yandex'ga
+>   o'tilganda `gemini-3.5-transcribe-live` Yandex'ga borib, qo'ng'iroq hech narsani eshitmagan.
+>   Provayder o'zgarmasa, model avvalgidek qoladi.
+> - Qo'ng'iroq paytida provayder oqimni **rad etsa** (noma'lum model, kalit, huquq — Yandex'da
+>   `INVALID_ARGUMENT`/`NOT_FOUND`/`UNAUTHENTICATED`/`PERMISSION_DENIED`), oqim avval agent modelisiz
+>   qayta ochiladi, u ham rad etilsa darhol zaxira STT provayderiga o'tiladi (xatolar sanalmaydi).
 > - `pipelineMode` — `CASCADE` (bizning STT + LLM + TTS), `REALTIME` (engine eshitadi,
 >   o'ylaydi va o'z ovozida gapiradi) yoki `HALF_CASCADE` (mijozni **bizning STT** eshitadi — `sttProvider`,
 >   matnini engine oladi, o'ylaydi va **engine'ning o'z ovozida** — `ttsVoice` — gapiradi).
@@ -1045,7 +1052,8 @@ Quyidagi eski maydonlar (`callBehaviour.pressDigitEnabled`, `callBehaviour.midCa
   "integration": {                 // INTEGRATION, faqat HTTP katalog tool'i uchun; null = katalogdagidek
     "inputs": [ { "name": "rooms", "source": "VALUE", "value": ["3"], "description": null } ],
     "responseMapping": { "flats": "$.data[*]{number,rooms,price}" }
-  }
+  },
+  "timing": null                   // CUSTOM/INTEGRATION: AgentFunctionTiming (IN_TURN | BACKGROUND), null = tool'ning o'z "wait for result"
 }
 ```
 
@@ -1101,6 +1109,24 @@ formasi). Katalog tool'iga ta'sir qiladi (`GET /api/settings/integrations/tools`
 - Sinash: `POST /api/settings/integrations/tools/{toolName}/test` ([settings.md](settings.md)) shu `inputs`/`responseMapping` ni
   saqlamasdan qo'llab, kompaniya hisobiga haqiqiy so'rov yuboradi.
 - O'zgarish yangi qo'ng'iroqlardan amal qiladi; `functions` bilan birga versiyalanadi.
+
+**`timing`** (2026-11-05 dan) — `CUSTOM` va `INTEGRATION` funksiyasi chaqirilganda turn uning javobini kutadimi. Bu tool'ning
+`http.waitForResult` sozlamasini ([tools.md](tools.md)) **shu agent uchun** almashtiradi; boshqa turlarda yuborilsa tashlab yuboriladi
+(javobda `null`).
+- `null` — tool'ning o'z `waitForResult` i (katalog yoki kompaniya tool'i qanday sozlangan bo'lsa).
+- `IN_TURN` — kutadi: javob modelga qaytadi va shu turnda aytiladi. Natijasi mijozga kerak bo'lgan tool uchun (xonadon qidirish, qoldiq, bron holati).
+- `BACKGROUND` — kutmaydi: so'rov fonda ketadi, turn darhol davom etadi. Natijani modelga o'qib berish uchun qo'shimcha LLM aylanmasi
+  ham, kutish gapi ("Hozir tekshiraman") ham bo'lmaydi. Natijasi mijozga kerak bo'lmagan yozuv uchun (CRM vazifasi, lidga izoh, bosqichni
+  o'zgartirish). Javobning `responseMapping` maydonlari va status o'zgaruvchisi so'rov tugaganda qo'ng'iroqqa yoziladi; xato
+  `tool_execution` da qoladi, model unga javob bermaydi.
+- Mijoz tasdig'i kerak bo'lgan tool (`requiresConfirmation`) `BACKGROUND` da ham avval tasdiqni turn ichida o'qib beradi (tasdiqsiz hech narsa yuborilmaydi).
+- Ssenariyning `FUNCTION` bosqichi (`action.toolName`) shu funksiyaga ishora qilsa va `BACKGROUND` bo'lsa (kaskad): bosqichning ishi
+  (modelning argumentlarni to'ldirishi + so'rov) qo'ng'iroqdan tashqarida bajariladi, qo'ng'iroq esa darhol keyingi bosqichga o'tadi
+  va o'sha bosqichning gapi aytiladi. Faqat bosqichning **yagona** yo'li bo'lsa, `branches` / `requiredOutcomes` yo'q bo'lsa, flow `FLEX`
+  bo'lmasa, keyingi bosqich esa branch'siz `CONVERSATION` yoki yana model ishi bo'lsa. Aks holda bosqich avvalgidek alohida turnda kutiladi.
+- Qo'ng'iroqdan **oldin** ishlaydigan qidiruvlar `timing` emas — ular `preCallFunctions` da (argumentlar shablondan, modeldan emas).
+- Kaskad va REALTIME ikkalasida amal qiladi (REALTIME'da natija aylanmasi yo'q, faqat kutish/kutmaslik). Yangi qo'ng'iroqlardan amal qiladi;
+  `functions` bilan birga versiyalanadi.
 
 **`speakDuringExecution` / `executionMessage`** — kaskad: `speakDuringExecution=true` bo'lsa shu tool chaqirilganda `executionMessage`
 (yoki bo'sh bo'lsa standart filler) aytiladi, `dialog.pre-tool-speech` o'chiq bo'lsa ham. `false` — funksiyaga xos filler qo'shilmaydi,
@@ -1427,7 +1453,11 @@ bo'lib suhbatga (promptga, vositalarga, initiation webhook'ka) tushadi. Slot —
   qo'ng'iroq hech qachon shu sababli to'xtamaydi;
 - butun slotga **10 soniya** byudjet (qo'ng'iroq boshida mijoz kutadigan eng ko'p vaqt);
 - faqat `effect: READ` vositalar ishlaydi (hali hech kim gapirmagan — o'qib berib tasdiq olinadigan odam yo'q);
-  `WRITE`/`DESTRUCTIVE` vosita o'tkazib yuboriladi.
+  `WRITE`/`DESTRUCTIVE` vosita o'tkazib yuboriladi;
+- **qachon ishlaydi:** kampaniya (dialer) qo'ng'irog'ida — raqam terilishi bilan, telefon **jiringlayotganda**
+  (Asterisk ham, LiveKit ham); javob berilganda tayyor natija olinadi, tugamagan bo'lsa byudjet oxirigacha kutiladi.
+  Shuning uchun javob berilmagan qo'ng'iroqda ham qidiruvlar bajarilgan bo'ladi. Qo'lda/test qo'ng'iroq, brauzer
+  testi va kiruvchi qo'ng'iroqda — avvalgidek javob berilgandan keyin.
 
 `toolName` — agentga biriktirilgan vosita yoki kompaniyaga yoqilgan integratsiya vositasi nomi (agentniki ustun).
 Vositalarga qo'shimcha o'zgaruvchilar: `phone`, `phone_last9`, `language`, `call_attempt_id`, qo'ng'iroq faktlari va

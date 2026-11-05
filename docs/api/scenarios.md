@@ -421,6 +421,20 @@ avtomatik turn'da bajariladi, mijoz gapirishini kutmasdan: (1) tool chaqiriladi 
 bosqichga o'tiladi. Realtime'da bu vazifa `transitionTo` natijasida aytiladi; `extractVariables` tool'i va bosqich
 almashganda instructions'ni yangilash realtime uchun keyingi bosqichda (3) ulanadi.
 
+Cascade'da bu turn'lar kamaytiriladi (2026-11-05 dan):
+- **Inline.** `CONVERSATION` bosqichi to'g'ridan-to'g'ri o'tadigan `FUNCTION` bosqichlarining tool'i o'sha
+  `CONVERSATION` bosqichida ham beriladi va modelga "o'tayotganda shu javobda chaqir" deb aytiladi. Model tool'ni
+  `transitionTo` bilan bir javobda chaqirsa va u muvaffaqiyatli bo'lsa, (1) turn bo'lmaydi. Tool mijoz tasdig'ini
+  kutayotgan bo'lsa (`requiresConfirmation`), tasdiq kutiladi va (1) turn so'ralmaydi.
+- **Uzoqroqdagi ish.** Model bosqichda yo'q, lekin oldinda — faqat `CONVERSATION` bosqichlari orqali yetiladigan —
+  `FUNCTION` bosqichining tool'ini chaqirsa (`DEBT_NOTICE` da `recordPaymentPromise`), qo'ng'iroq o'sha bosqichga
+  `transitionTo` qoidalari bilan o'tkaziladi (branch / `requiredOutcomes` li bosqichda to'xtaydi) va tool bajariladi.
+  Yo'l ochiq bo'lmasa, tool avvalgidek rad etiladi.
+- **Fonda.** Tool'i agentda `timing: BACKGROUND` bo'lgan funksiya bo'lsa (`docs/api/ai-agents.md`), (1) qo'ng'iroqdan tashqarida
+  bajariladi va qo'ng'iroq yagona keyingi bosqichga darhol o'tadi.
+- **Xayrlashuv.** Model `FUNCTION` bosqichiga o'tayotgan javobda xayrlashsa, qo'ng'iroq darhol yopilmaydi: bosqich
+  ishlari bajariladi, flow yana gapiradigan joyda esa qo'ng'iroq ikkinchi xayrlashuvsiz yopiladi.
+
 `globalCondition` li bosqichlar har bir bosqichning "keyingi bosqichlar" ro'yxatida turadi va ularga
 `requiredOutcomes` bajarilmagan bo'lsa ham o'tish mumkin. `transitionMode: FLEX` da ro'yxatga barcha CONVERSATION
 bosqichlari (maqsadi bilan) qo'shiladi. Faktlar va natijalar `branches` da bitta lug'at sifatida o'qiladi, nomi

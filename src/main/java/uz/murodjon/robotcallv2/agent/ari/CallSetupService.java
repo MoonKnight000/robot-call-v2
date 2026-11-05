@@ -53,6 +53,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 
@@ -240,6 +241,8 @@ class CallSetupService {
 
     private void setupMedia(String channelId, String channelName, Channel channel, String inboundDid) {
         OutboundCall outbound = pendingCallRegistry.findOutboundProfile(channelId);
+        // Taken at once, so a setup that gives up early leaves nothing behind in the registry.
+        CompletableFuture<Map<String, Object>> preCallRun = pendingCallRegistry.takePreCallRun(channelId);
         boolean manual = pendingCallRegistry.isManual(channelId);
         InboundRoute inboundRoute = null;
         if (outbound == null && !manual) {
@@ -480,8 +483,10 @@ class CallSetupService {
             if (agent != null && !agent.preCallFunctions().isEmpty() && context != null) {
                 // Before the initiation webhook, so the webhook sees what the lookups found.
                 String preCallPhone = outbound != null ? outbound.phone() : ChannelNames.extractCallerNumber(channel);
-                context = context.withMergedFacts(preCallWorkflowRunner.run(agent, companyId, channelId, attemptId,
-                        language, preCallPhone, context.facts()));
+                // A dialled call started them while it rang; the rest run them now.
+                context = context.withMergedFacts(preCallRun != null ? RingingPreCallRunner.await(preCallRun)
+                        : preCallWorkflowRunner.run(agent, companyId, channelId, attemptId, language, preCallPhone,
+                        context.facts()));
             }
 
             if (agent != null && agent.initiationWebhook() != null && agentWebhookUseCase != null) {

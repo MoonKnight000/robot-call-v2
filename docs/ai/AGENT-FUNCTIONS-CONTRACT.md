@@ -32,7 +32,8 @@ eski maydonlardan standart ro'yxatni yasab qaytaradi, pastda §3).
   "extract":       { "variables": [ { "name": "budget", "type": "NUMBER",
                                       "description": "…", "choices": [] } ] },  // EXTRACT_VARIABLE; type STRING|NUMBER|BOOLEAN|ENUM (ENUM → choices)
   "toolId": 17,                    // CUSTOM — kompaniyaning REST tool'i (studio "Tools")
-  "integrationTool": "createLead"  // INTEGRATION — GET /api/settings/integrations/tools qatoridagi `toolName ?? tool`
+  "integrationTool": "createLead", // INTEGRATION — GET /api/settings/integrations/tools qatoridagi `toolName ?? tool`
+  "timing": null                   // CUSTOM/INTEGRATION: IN_TURN | BACKGROUND | null (= tool'ning o'z waitForResult); docs/api/ai-agents.md
 }
 ```
 

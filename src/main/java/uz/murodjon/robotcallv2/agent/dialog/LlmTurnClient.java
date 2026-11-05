@@ -361,13 +361,14 @@ class LlmTurnClient {
             Write words instead only when a person would really react out loud: the caller has just \
             given a real answer, a request or an objection that deserves a short reaction. Never \
             after a bare yes/no, a greeting reply or a short confirmation ("ha", "bor", "yo'q", \
-            "xo'p", "да", "нет") — write - there. Then write one to three words in %s. NEVER \
+            "xo'p", "да", "нет") — write - there. Never write bare one-word fillers like "Xo'p." or \
+            "Tushunarli." as a bridge. Then write one to three words in %s. NEVER \
             repeat or paraphrase the caller's words — a person who echoes everything back sounds \
             like a robot. Do not answer, do not ask anything, do not promise to check or do \
             anything, no numbers. If the caller repeats something they already said or complains \
             that they did, apologise in those few words.
-            Examples: "Xo'p." · "Ha, albatta." · "Kechirasiz." · \
-            "Хорошо." · "Да, конечно." · "Извините.\"""";
+            Examples: "Ha, albatta." · "Kechirasiz." · \
+            "Да, конечно." · "Извините.\"""";
 
     /** A bridge longer than this is an answer, not a bridge. */
     private static final int BRIDGE_MAX_WORDS = 8;
@@ -550,6 +551,46 @@ class LlmTurnClient {
     }
 
     /** The stable, per-call half of the prompt — built once and then reused verbatim. */
+    /**
+     * A flow stage's job asked of the model off the call ({@code TurnRunner}): one request whose tool calls are run
+     * and whose text is dropped — the caller is already hearing the next stage. The normal model, not the fast
+     * one: the arguments (a date, a sum) are read out of the conversation. Never throws; a job that fails is logged,
+     * and its tool's own execution log has the rest.
+     *
+     * @param tools the job's own tool and nothing else, so nothing here can move the call
+     */
+    void runStageJob(DialogSession s, String system, List<Message> messages, List<ToolCallback> tools) {
+        try {
+            ChatResponse response = callWithDeadline(() -> clientFor(s).prompt()
+                    .system(system)
+                    .messages(messages)
+                    .options(turnTools.buildOptions(s, tools, null).mutate())
+                    .call()
+                    .chatResponse(), llmTimeout.callTimeoutMs());
+            TokenUsage usage = new TokenUsage();
+            usage.add(response);
+            publishUsage(s, usage);
+            List<AssistantMessage.ToolCall> calls = turnTools.extractCalls(response);
+            if (calls.isEmpty()) {
+                log.warn("[{}] background stage job called no tool", s.channelId());
+                return;
+            }
+            for (AssistantMessage.ToolCall call : calls) {
+                ToolCallback callback = tools.stream()
+                        .filter(tool -> tool.getToolDefinition().name().equals(call.name()))
+                        .findFirst()
+                        .orElse(null);
+                if (callback == null) {
+                    continue;
+                }
+                String result = callback.call(call.arguments());
+                log.info("[{}] background stage job {}({}) -> {}", s.channelId(), call.name(), call.arguments(), result);
+            }
+        } catch (Exception e) {
+            log.warn("[{}] background stage job failed: {}", s.channelId(), e.getMessage());
+        }
+    }
+
     String resolveSystemPrefix(DialogSession s) {
         String prefix = s.systemPrefix();
         if (prefix == null) {
@@ -719,6 +760,7 @@ class LlmTurnClient {
         StreamedReply reply = consume(s, speculated != null ? speculated
                 : withBackupModel(s, system, messages, tools, model), turnUsage, toolCalls, muted);
         publishUsage(s, turnUsage);
+        TypedToolCalls.addTypedTransition(s.channelId(), reply.text(), toolCalls);
         if (muted) {
             // Tools still run — the job and the transition are what this turn is for.
             String toolNote = s.isLineGone() ? null : turnTools.run(s, tools, toolCalls);
@@ -738,6 +780,14 @@ class LlmTurnClient {
         }
         if (!reply.text().isEmpty() && !SpeechSanitizer.isUnspeakable(reply.text())) {
             return new TurnResult(reply.text(), reply.spoken(), reply.blocked(), toolNote);
+        }
+        if (reply.spoken()) {
+            // Part of the reply is already on the line; only a chunk with a tool call the model
+            // typed out was refused. Asking again put a second, unrelated line on top of it
+            // (call 12: "Aka, adashibsiz, men Rustam emasman"). The sentences the caller heard are
+            // the reply: dropped with the rest, the greeting of call 13 never reached the history
+            // or the transcript, and the model greeted again.
+            return new TurnResult(reply.spokenText(), true, reply.blocked(), toolNote);
         }
         if (s.isWaitingForCaller()) {
             // The model chose silence: the caller is mid-thought. Asking it again for a
@@ -795,7 +845,9 @@ class LlmTurnClient {
         LlmFallback fallback = fallbackOf(s);
         String backup = fallback != null && fallback.mode() == LlmFallbackMode.CONCURRENT
                 ? fallback.model() : resolveFastModel(s);
-        if (llmTimeout.backupAfterMs() <= 0 || model != null || backup == null || backup.isBlank()) {
+        String primaryModel = turnTools.buildOptions(s, tools, model).getModel();
+        if (llmTimeout.backupAfterMs() <= 0 || model != null || backup == null || backup.isBlank()
+                || backup.equalsIgnoreCase(primaryModel)) {
             return primary;
         }
         Flux<ChatResponse> backupCall = clientFor(s).prompt()
@@ -938,7 +990,7 @@ class LlmTurnClient {
             sentences.add(pending.toString().trim());
         }
         sentences.finish();
-        return new StreamedReply(full.toString().trim(), sentences.spoken(), sentences.blocked());
+        return new StreamedReply(full.toString().trim(), sentences.spoken(), sentences.blocked(), sentences.spokenText());
     }
 
     /**
@@ -960,6 +1012,8 @@ class LlmTurnClient {
         private CompletableFuture<Void> chain = CompletableFuture.completedFuture(null);
         private final AtomicBoolean spoken = new AtomicBoolean();
         private final AtomicBoolean blocked = new AtomicBoolean();
+        /** Spoken one after another (the chain is sequential), so the order is the order heard. */
+        private final List<String> spokenSentences = Collections.synchronizedList(new ArrayList<>());
         /** Whether the streamed first sentence is still to come. */
         private boolean opening = true;
         /** The sentence added just before, as written — what a synthesizer may continue from. */
@@ -981,12 +1035,12 @@ class LlmTurnClient {
                 // A refused opening line leaves the next one on the clock, and on the
                 // streamed path.
                 opening = outcome != SpeechOutcome.SPOKEN;
-                note(outcome);
+                note(outcome, sentence);
                 return;
             }
             CompletableFuture<PreparedLine> prepared = executors.supply(() -> speech.prepare(s, sentence, previous));
             chain = chain.thenCombine(prepared, (done, line) -> {
-                note(speech.deliver(s, line));
+                note(speech.deliver(s, line), sentence);
                 return null;
             });
         }
@@ -1020,9 +1074,15 @@ class LlmTurnClient {
             return blocked.get();
         }
 
-        private void note(SpeechOutcome outcome) {
+        /** The sentences that reached the caller, in order — what the reply was if part of it was refused. */
+        String spokenText() {
+            return String.join(" ", spokenSentences);
+        }
+
+        private void note(SpeechOutcome outcome, String sentence) {
             if (outcome == SpeechOutcome.SPOKEN) {
                 spoken.set(true);
+                spokenSentences.add(sentence);
             } else if (outcome == SpeechOutcome.BLOCKED) {
                 blocked.set(true);
             }
@@ -1072,7 +1132,8 @@ class LlmTurnClient {
         TokenUsage turnUsage = new TokenUsage();
         turnUsage.add(response);
         publishUsage(s, turnUsage);
-        List<AssistantMessage.ToolCall> calls = turnTools.extractCalls(response);
+        List<AssistantMessage.ToolCall> calls = new ArrayList<>(turnTools.extractCalls(response));
+        TypedToolCalls.addTypedTransition(s.channelId(), extractText(response), calls);
         maybeSpeakPreToolSpeech(s, calls, false);
         String toolNote = s.isLineGone() ? null : turnTools.run(s, tools, calls);
         if (muted) {
@@ -1187,7 +1248,9 @@ class LlmTurnClient {
         return dialogProperties.toolResultRounds() > 0 && toolNote != null && calls != null
                 && !s.isLineGone() && !s.isEnded() && !s.isCancelled() && !s.isWaitingForCaller()
                 && s.stageActionStep() <= 0
-                && calls.stream().anyMatch(call -> DialogTools.isDataTool(call.name()) && !isScenarioTool(s, call.name()));
+                // A tool started without waiting has no answer yet: a round would only read "started" back.
+                && calls.stream().anyMatch(call -> DialogTools.isDataTool(call.name()) && !isScenarioTool(s, call.name())
+                        && !s.isBackgroundTool(call.name()));
     }
 
     /**
@@ -1290,6 +1353,9 @@ class LlmTurnClient {
                 continue;
             }
             AgentFunction function = functions.get(call.name());
+            if (function != null && function.runsInBackground()) {
+                continue; // not waited for, so there is no wait to announce
+            }
             boolean functionSpeaks = function != null && function.speakDuringExecution();
             if (!dialogProperties.preToolSpeech() && !functionSpeaks) {
                 continue;
@@ -1377,7 +1443,12 @@ class LlmTurnClient {
         return retryMessages;
     }
 
-    /** What one drained stream produced — the same three facts a {@link TurnResult} carries. */
-    private record StreamedReply(String text, boolean spoken, boolean blocked) {
+    /**
+     * What one drained stream produced — the same three facts a {@link TurnResult} carries.
+     *
+     * @param spokenText the sentences that reached the caller, joined; differs from {@code text}
+     *                   when a sentence was refused
+     */
+    private record StreamedReply(String text, boolean spoken, boolean blocked, String spokenText) {
     }
 }

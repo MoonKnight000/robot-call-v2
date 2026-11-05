@@ -56,6 +56,21 @@ class ToolOverridesTest {
     }
 
     @Test
+    void waitForResultCanBeTurnedOffForOneUserAndTheRestStays() {
+        Tool tool = searchFlats();
+
+        Tool detached = ToolOverrides.withWaitForResult(tool, false);
+
+        assertThat(tool.http().waitForResult()).isTrue();
+        assertThat(detached.http().waitForResult()).isFalse();
+        assertThat(detached.http().url()).isEqualTo(tool.http().url());
+        assertThat(detached.http().bodySchema()).isEqualTo(tool.http().bodySchema());
+        assertThat(detached.responseMapping()).isEqualTo(tool.responseMapping());
+        assertThat(detached.maxCallsPerCall()).isEqualTo(tool.maxCallsPerCall());
+        assertThat(ToolOverrides.withWaitForResult(tool, true)).isSameAs(tool);
+    }
+
+    @Test
     void aFixedValueTakesABodyFieldAwayFromTheModel() {
         Tool tool = ToolOverrides.apply(searchFlats(), new ToolOverride(
                 List.of(new ToolInputOverride("rooms", ToolInputSource.VALUE, List.of("3"), null)), null));

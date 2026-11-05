@@ -160,6 +160,11 @@ public class DialogSession implements DialogOutcomeSink {
     private final AtomicBoolean voicemailEventPublished = new AtomicBoolean();
     private volatile boolean ended = false;
     /**
+     * The agent said goodbye on its way into a flow stage's jobs (a promise to record, a CRM task). The call is
+     * not closed there — the jobs would be lost — but where the flow would talk again ({@code TurnRunner}).
+     */
+    private volatile boolean farewellSaid;
+    /**
      * The caller's line is gone — hung up or torn down. Unlike {@link #ended}, which a
      * farewell tool also sets while its goodbye is still to be spoken and written down,
      * nothing more is spoken, run or written for the call once this is set.
@@ -722,6 +727,16 @@ public class DialogSession implements DialogOutcomeSink {
         return ended;
     }
 
+    /** See {@link #farewellSaid}. */
+    public void markFarewellSaid() {
+        this.farewellSaid = true;
+    }
+
+    /** See {@link #farewellSaid}. */
+    public boolean isFarewellSaid() {
+        return farewellSaid;
+    }
+
     public boolean isLineGone() {
         return lineGone;
     }
@@ -1210,9 +1225,39 @@ public class DialogSession implements DialogOutcomeSink {
         return turnState.toolReplies();
     }
 
-    /** Drop the previous turn's lines before a new turn calls its tools. */
+    /** Drop the previous turn's lines (and its background tools) before a new turn calls its tools. */
     public void clearToolReplies() {
         turnState.clearToolReplies();
+    }
+
+    /** {@code toolName} was started this turn without waiting for its answer; the model has nothing to read back. */
+    public void addBackgroundTool(String toolName) {
+        turnState.addBackgroundTool(toolName);
+    }
+
+    /** Whether this turn started {@code toolName} without waiting for its answer. */
+    public boolean isBackgroundTool(String toolName) {
+        return turnState.isBackgroundTool(toolName);
+    }
+
+    /** {@code toolName} did its job this turn: answered, or started in the background. */
+    public void addDoneTool(String toolName) {
+        turnState.addDoneTool(toolName);
+    }
+
+    /** Whether {@code toolName} did its job this turn — a flow stage's job done inline needs no turn of its own. */
+    public boolean isDoneTool(String toolName) {
+        return turnState.isDoneTool(toolName);
+    }
+
+    /** {@code toolName} was held for the caller's yes this turn. */
+    public void addHeldTool(String toolName) {
+        turnState.addHeldTool(toolName);
+    }
+
+    /** Whether this turn held {@code toolName} for the caller's yes: its job waits for the caller, not for a turn. */
+    public boolean isHeldTool(String toolName) {
+        return turnState.isHeldTool(toolName);
     }
 
     public boolean isCancelled() {

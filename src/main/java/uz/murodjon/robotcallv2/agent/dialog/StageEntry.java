@@ -15,7 +15,10 @@ import uz.murodjon.robotcallv2.scenario.domain.enums.TransitionMode;
 import uz.murodjon.robotcallv2.scenario.domain.service.StageBranchEvaluator;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -223,6 +226,113 @@ final class StageEntry {
         }
         String next = stage.allowedTransitions().getFirst();
         return needsModelAction(scenario.findStage(next)) ? next : null;
+    }
+
+    /**
+     * The tools of the FUNCTION stages a conversation stage leads to directly. Offered in that stage so the turn
+     * that hears the job's arguments (the promised date, the reason, the flat the caller wants) does the job in the
+     * same reply, instead of the job taking a silent turn of its own after it ({@code TurnRunner#scheduleStageAction}).
+     */
+    static List<String> findInlineJobTools(ScenarioDefinition scenario, StageDef stage) {
+        List<String> tools = new ArrayList<>();
+        for (StageDef job : findInlineJobs(scenario, stage)) {
+            tools.add(job.action().toolName());
+        }
+        return tools;
+    }
+
+    /** What the turn is told about {@link #findInlineJobTools}; empty when the stage leads to no job. */
+    static String describeInlineJobs(ScenarioDefinition scenario, StageDef stage) {
+        StringBuilder text = new StringBuilder();
+        for (StageDef job : findInlineJobs(scenario, stage)) {
+            text.append("\nSTAGE ").append(job.id()).append(" ONLY RUNS THE TOOL ").append(job.action().toolName())
+                    .append(": when you move to ").append(job.id()).append(", call ").append(job.action().toolName())
+                    .append(" in that same reply with what the client has said (first ").append(job.action().toolName())
+                    .append(", then transitionTo ").append(job.id()).append("). Do not tell the client about it.");
+        }
+        return text.toString();
+    }
+
+    /**
+     * The FUNCTION stage whose job is {@code toolName}, reached from {@code fromStageId} through
+     * conversation stages only — never through another job, which the walk would skip — or
+     * null. Call 14 had the date agreed in DEBT_NOTICE and called recordPaymentPromise, the job
+     * of RECORD_PROMISE two stages on; refused, the model asked for the date again three times.
+     */
+    static String findReachableJobStage(ScenarioDefinition scenario, String fromStageId, String toolName) {
+        if (scenario == null || fromStageId == null || toolName == null) {
+            return null;
+        }
+        Set<String> seen = new HashSet<>(List.of(fromStageId));
+        Deque<String> queue = new ArrayDeque<>(List.of(fromStageId));
+        while (!queue.isEmpty()) {
+            StageDef stage = scenario.findStage(queue.poll());
+            if (stage == null || stage.allowedTransitions() == null) {
+                continue;
+            }
+            for (String id : stage.allowedTransitions()) {
+                StageDef next = scenario.findStage(id);
+                if (next == null || !seen.add(id)) {
+                    continue;
+                }
+                if (next.type() == StageType.FUNCTION) {
+                    if (next.action() != null && toolName.equals(next.action().toolName())) {
+                        return id;
+                    }
+                } else {
+                    queue.add(id);
+                }
+            }
+        }
+        return null;
+    }
+
+    private static List<StageDef> findInlineJobs(ScenarioDefinition scenario, StageDef stage) {
+        if (scenario == null || stage == null || stage.type() != StageType.CONVERSATION
+                || stage.allowedTransitions() == null) {
+            return List.of();
+        }
+        List<StageDef> jobs = new ArrayList<>();
+        for (String id : stage.allowedTransitions()) {
+            StageDef target = scenario.findStage(id);
+            if (target != null && target.type() == StageType.FUNCTION && target.action() != null
+                    && target.action().toolName() != null) {
+                jobs.add(target);
+            }
+        }
+        return jobs;
+    }
+
+    /**
+     * Where a FUNCTION stage moves the call at once when its job is left running instead of waited for: its one
+     * drawn way on, when nothing the job answers could change where the call goes — no branches, no required
+     * outcome, not a FLEX flow — and the stage there runs nothing on entry (a conversation stage without branches,
+     * or another job for the model). Null when the job has to be waited for. Whether its tool may be left running
+     * is the agent's ({@code AgentFunctionTiming}), not the scenario's, and is asked by the caller.
+     */
+    static String findDetachedNextStage(ScenarioDefinition scenario, StageDef stage) {
+        if (scenario == null || stage == null || stage.type() != StageType.FUNCTION || stage.action() == null
+                || stage.action().toolName() == null
+                || scenario.transitionMode() == TransitionMode.FLEX
+                || stage.branches() != null && !stage.branches().isEmpty()
+                || stage.requiredOutcomes() != null && !stage.requiredOutcomes().isEmpty()
+                || stage.allowedTransitions() == null || stage.allowedTransitions().size() != 1) {
+            return null;
+        }
+        String next = stage.allowedTransitions().getFirst();
+        StageDef nextStage = scenario.findStage(next);
+        if (nextStage == null) {
+            return null;
+        }
+        boolean plainConversation = nextStage.type() == StageType.CONVERSATION
+                && (nextStage.branches() == null || nextStage.branches().isEmpty());
+        return plainConversation || needsModelAction(nextStage) ? next : null;
+    }
+
+    /** What the turn that speaks right after a job was left running is told ({@link #findDetachedNextStage}). */
+    static String describeDetachedJob(StageDef job, String landed) {
+        return "Stage " + job.id() + " (the tool " + job.action().toolName() + ") is being done in the background"
+                + " — do not call that tool. You are now in stage " + landed + ": write its line to the client now.";
     }
 
     /**

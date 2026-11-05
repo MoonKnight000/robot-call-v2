@@ -195,7 +195,9 @@ public class TurnTools {
                     // A simulation with canned answers: offered the same, never sent.
                     callbacks.add(s.toolMocks() != null
                             ? httpToolExecutor.buildMockCallback(tool, s)
-                            : httpToolExecutor.buildCallback(tool, s, callVars));
+                            : httpToolExecutor.buildCallback(
+                                    AgentFunctionPlan.applyTiming(tool, AgentFunctionPlan.findCustomFunction(s.agent(), tool)),
+                                    s, callVars));
                 }
             }
         }
@@ -382,6 +384,8 @@ public class TurnTools {
         if (stage != null && stage.type() == StageType.FUNCTION && stage.action() != null) {
             allowed.add(stage.action().toolName());
         }
+        // The jobs of the stages this one leads to, done in the reply that hears their arguments.
+        allowed.addAll(StageEntry.findInlineJobTools(s.scenario(), stage));
         if (stage != null && stage.type() == StageType.EXTRACT_VARIABLE) {
             allowed.add(StageEntry.EXTRACT_TOOL_NAME);
         }
@@ -623,7 +627,14 @@ public class TurnTools {
                     .findFirst()
                     .orElse(null);
             if (callback != null && stageTools != null && !stageTools.contains(call.name())) {
+                ToolCallback declared = callback;
                 callback = null;
+                String moved = moveToJobStage(s, tools, call.name());
+                if (moved != null) {
+                    results.add(moved);
+                    stageTools = findStageToolNames(s, mcpTools(s), catalogTools(s), integrationTools(s));
+                    callback = stageTools.contains(call.name()) ? declared : null;
+                }
             }
             if (callback == null) {
                 // A tool this stage does not offer (see build) — the model invented the
@@ -639,6 +650,16 @@ public class TurnTools {
             try {
                 String result = callback.call(call.arguments());
                 logCall(s, call, result, System.nanoTime() - started);
+                if (ToolResponseFormatter.isStarted(result)) {
+                    // Not waited for: no round of the turn is spent reading "started" back to the model.
+                    s.addBackgroundTool(call.name());
+                }
+                // What a flow stage's job needs to know about this turn (TurnRunner#scheduleStageAction).
+                if (result.contains(ToolConfirmation.CONFIRMATION_REQUIRED)) {
+                    s.addHeldTool(call.name());
+                } else if (!ToolResponseFormatter.isFailure(result)) {
+                    s.addDoneTool(call.name());
+                }
                 if (!result.startsWith("ERROR:")) {
                     s.publishWebhookEvent(AgentWebhookEvent.TOOL_EXECUTED, Map.of("toolName", call.name()));
                 }
@@ -653,6 +674,32 @@ public class TurnTools {
             }
         }
         return results.isEmpty() ? null : String.join(" ", results);
+    }
+
+    /**
+     * The model called the job of a flow stage further on (StageEntry#findReachableJobStage):
+     * the call is moved there the way a transitionTo would move it — its own checks, branches
+     * and required outcomes included — so the job runs instead of being refused. The move's
+     * result, or null when there is no such stage or the move did not land on it.
+     */
+    private String moveToJobStage(DialogSession s, List<ToolCallback> tools, String toolName) {
+        String jobStage = StageEntry.findReachableJobStage(s.scenario(), s.state(), toolName);
+        ToolCallback transition = jobStage == null ? null : tools.stream()
+                .filter(t -> TypedToolCalls.TRANSITION_TOOL.equals(t.getToolDefinition().name()))
+                .findFirst()
+                .orElse(null);
+        if (transition == null) {
+            return null;
+        }
+        String from = s.state();
+        String moved = transition.call("{\"nextStage\":\"" + jobStage + "\"}");
+        if (!jobStage.equals(s.state())) {
+            log.warn("[{}] {} called in {} — the way to its stage {} is not open ({})",
+                    s.channelId(), toolName, from, jobStage, moved);
+            return Objects.equals(from, s.state()) ? null : moved;
+        }
+        log.info("[{}] {} called in {} — moved to its stage {} to run it", s.channelId(), toolName, from, jobStage);
+        return moved;
     }
 
     /**

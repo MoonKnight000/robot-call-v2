@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionExtract;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionSms;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionTransfer;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunctionVariable;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionTiming;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsContentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsRecipient;
@@ -44,6 +45,22 @@ class AgentFunctionValidatorTest {
 
         assertThat(normalized.transfer()).isNull();
         assertThat(normalized.toolId()).isNull();
+    }
+
+    @Test
+    void keepsTheTimingOfAnHttpToolAndDropsItElsewhere() {
+        List<AgentFunction> normalized = AgentFunctionValidator.normalize(List.of(
+                AgentFunction.builder().id("a").type(AgentFunctionType.INTEGRATION).integrationTool("createFollowUpTask")
+                        .timing(AgentFunctionTiming.BACKGROUND).build(),
+                AgentFunction.builder().id("b").type(AgentFunctionType.CUSTOM).toolId(5L)
+                        .timing(AgentFunctionTiming.IN_TURN).build(),
+                AgentFunction.builder().id("c").type(AgentFunctionType.END_CALL)
+                        .timing(AgentFunctionTiming.BACKGROUND).build()));
+
+        assertThat(normalized).extracting(AgentFunction::timing)
+                .containsExactly(AgentFunctionTiming.BACKGROUND, AgentFunctionTiming.IN_TURN, null);
+        assertThat(normalized.getFirst().runsInBackground()).isTrue();
+        assertThat(normalized.get(1).runsInBackground()).isFalse();
     }
 
     @Test

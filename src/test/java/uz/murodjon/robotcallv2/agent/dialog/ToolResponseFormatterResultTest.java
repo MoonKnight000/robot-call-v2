@@ -125,4 +125,18 @@ class ToolResponseFormatterResultTest {
         assertThat(result.emptyMessage()).isNull();
         assertThat(result.errorMessage()).isNull();
     }
+
+    /** What decides whether a flow stage's job done inline counts as done (TurnRunner#scheduleStageAction). */
+    @Test
+    void aFailedOrRefusedAnswerIsToldFromOneThatDidTheJob() throws Exception {
+        Tool tool = tool(ToolResult.NONE, null);
+
+        assertThat(ToolResponseFormatter.isFailure(formatter.formatForModel(tool, session, 200, TEN_COMPLEXES))).isFalse();
+        assertThat(ToolResponseFormatter.isFailure(formatter.formatForModel(tool, session, 404, "{}"))).isTrue();
+        assertThat(ToolResponseFormatter.isFailure(formatter.formatFailed(tool))).isTrue();
+        assertThat(ToolResponseFormatter.isFailure(formatter.formatLimitReached(2))).isTrue();
+        assertThat(ToolResponseFormatter.isFailure(formatter.formatStarted())).isFalse();
+        assertThat(ToolResponseFormatter.isFailure("ERROR: 2026-01-01 is in the past")).isTrue();
+        assertThat(ToolResponseFormatter.isFailure("Yozib olindi.")).isFalse();
+    }
 }

@@ -125,6 +125,15 @@ class TurnState {
      */
     private final List<String> toolReplies = new CopyOnWriteArrayList<>();
 
+    /** The tools this turn started without waiting for their answer ("wait for result" off). */
+    private final List<String> backgroundTools = new CopyOnWriteArrayList<>();
+
+    /** The tools that did their job this turn (answered, or started in the background) — not refused, failed or held. */
+    private final List<String> doneTools = new CopyOnWriteArrayList<>();
+
+    /** The write tools this turn held for the caller's yes ({@code ToolConfirmation}). */
+    private final List<String> heldTools = new CopyOnWriteArrayList<>();
+
     /** Sentences in a row the synthesizer failed on; any sentence it speaks resets it. */
     private final AtomicInteger ttsFailures = new AtomicInteger();
 
@@ -400,6 +409,33 @@ class TurnState {
     /** Drop the previous turn's lines before a new turn calls its tools. */
     void clearToolReplies() {
         toolReplies.clear();
+        backgroundTools.clear();
+        doneTools.clear();
+        heldTools.clear();
+    }
+
+    void addDoneTool(String toolName) {
+        doneTools.add(toolName);
+    }
+
+    boolean isDoneTool(String toolName) {
+        return doneTools.contains(toolName);
+    }
+
+    void addHeldTool(String toolName) {
+        heldTools.add(toolName);
+    }
+
+    boolean isHeldTool(String toolName) {
+        return heldTools.contains(toolName);
+    }
+
+    void addBackgroundTool(String toolName) {
+        backgroundTools.add(toolName);
+    }
+
+    boolean isBackgroundTool(String toolName) {
+        return backgroundTools.contains(toolName);
     }
 
     /** @return how many sentences in a row have now failed to synthesize */

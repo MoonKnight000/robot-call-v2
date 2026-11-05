@@ -92,7 +92,7 @@ voice-agent:
       short-silence-ms: ${STT_ENDPOINTING_SHORT_SILENCE_MS:350}
       complete-silence-ms: ${STT_ENDPOINTING_COMPLETE_SILENCE_MS:400}
       max-utterance-ms: ${STT_ENDPOINTING_MAX_UTTERANCE_MS:25000}
-      final-grace-ms: ${STT_ENDPOINTING_FINAL_GRACE_MS:250}
+      final-grace-ms: ${STT_ENDPOINTING_FINAL_GRACE_MS:650}
       dynamic:
         enabled: ${STT_ENDPOINTING_DYNAMIC:true}
         min-post-roll-ms: ${STT_ENDPOINTING_DYNAMIC_MIN_POST_ROLL_MS:800}
@@ -153,11 +153,11 @@ voice-agent:
     enabled: ${TURN_DETECTOR:true}
     model-path: ${TURN_MODEL_PATH:models/smart_turn_v3.onnx}
     languages: ${TURN_LANGUAGES:ru-RU,uz-UZ}
-    shadow-languages: ${TURN_SHADOW_LANGUAGES:uz-UZ}
+    shadow-languages: ${TURN_SHADOW_LANGUAGES:}
     threshold: ${TURN_THRESHOLD:0.5}
     max-extend-ms: ${TURN_MAX_EXTEND_MS:500}
-    early-wait-ms: ${TURN_EARLY_WAIT_MS:0}
-    early-threshold: ${TURN_EARLY_THRESHOLD:0.9}
+    early-wait-ms: ${TURN_EARLY_WAIT_MS:400}
+    early-threshold: ${TURN_EARLY_THRESHOLD:0.85}
     n-fft: ${TURN_N_FFT:400}
     hop-samples: ${TURN_HOP_SAMPLES:160}
     mels: ${TURN_MELS:80}

@@ -62,6 +62,7 @@ import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.function.Consumer;
 
@@ -664,6 +665,8 @@ public class LiveKitCallService {
     /** {@link CallSetupService}'s media-and-dialog half, with the bridge in place of Asterisk's legs. */
     private void startSession(String roomName, SessionPlan plan) {
         OutboundCall outbound = plan.outbound();
+        // Taken at once, so a setup that gives up early leaves nothing behind in the registry.
+        CompletableFuture<Map<String, Object>> preCallRun = pendingCallRegistry.takePreCallRun(roomName);
         AiAgent agent = plan.agent();
         int port = -1;
         RtpEndpoint endpoint = null;
@@ -751,8 +754,10 @@ public class LiveKitCallService {
 
             if (agent != null && !agent.preCallFunctions().isEmpty() && context != null) {
                 // Before the initiation webhook, so the webhook sees what the lookups found.
-                context = context.withMergedFacts(preCallWorkflowRunner.run(agent, plan.companyId(), roomName,
-                        attemptId, plan.language(), plan.phone(), context.facts()));
+                // A dialled call started them while it rang; the rest run them now.
+                context = context.withMergedFacts(preCallRun != null ? RingingPreCallRunner.await(preCallRun)
+                        : preCallWorkflowRunner.run(agent, plan.companyId(), roomName, attemptId, plan.language(),
+                        plan.phone(), context.facts()));
             }
 
             if (agent != null && agent.initiationWebhook() != null && agentWebhookUseCase != null) {

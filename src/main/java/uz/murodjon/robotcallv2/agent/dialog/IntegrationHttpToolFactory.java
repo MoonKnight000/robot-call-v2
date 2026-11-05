@@ -76,7 +76,8 @@ class IntegrationHttpToolFactory {
                 }
                 // The agent's own inputs and answer fields, as its function form saved them.
                 AgentFunction function = functions.getOrDefault(tool.name(), functions.get(modelName));
-                Tool own = function == null ? tool : ToolOverrides.apply(tool, function.integration());
+                Tool own = function == null ? tool
+                        : AgentFunctionPlan.applyTiming(ToolOverrides.apply(tool, function.integration()), function);
                 if (HttpToolExecutor.isOfferedToModel(own)) {
                     callbacks.add(httpToolExecutor.buildCallback(own, session, variables));
                 }
