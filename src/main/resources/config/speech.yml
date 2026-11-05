@@ -129,6 +129,12 @@ voice-agent:
       model: ${STT_OPENAI_MODEL:gpt-live-transcribe}
       sample-rate: ${STT_OPENAI_SAMPLE_RATE:24000}
       connect-timeout-seconds: ${STT_OPENAI_TIMEOUT_SECONDS:10}
+    eleven-labs:
+      api-key: ${STT_ELEVENLABS_API_KEY:${ELEVENLABS_API_KEY:}}
+      url: ${STT_ELEVENLABS_URL:wss://api.elevenlabs.io/v1/speech-to-text/realtime}
+      model: ${STT_ELEVENLABS_MODEL:scribe_v2_realtime}
+      sample-rate: ${STT_ELEVENLABS_SAMPLE_RATE:16000}
+      connect-timeout-seconds: ${STT_ELEVENLABS_TIMEOUT_SECONDS:5}
 
   # Semantic end-of-turn, Smart Turn (SmartTurnProperties)
   turn:
