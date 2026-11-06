@@ -256,6 +256,7 @@ public class SttStreamBridge implements WidebandAudioListener, Closeable {
                 if (text == null) {
                     return; // already answered from the last interim
                 }
+                recordSpeechRate(text);
             } else {
                 if (gate != null) {
                     gate.onInterimTranscript(text);
@@ -436,6 +437,25 @@ public class SttStreamBridge implements WidebandAudioListener, Closeable {
         } catch (Exception e) {
             log.warn("STT send failed [{}]: {}", channelId, e.getMessage());
         }
+    }
+
+    /**
+     * The caller's speaking rate on this final, measured only — nothing adapts to it yet
+     * (human-like call plan, phase 0). Skipped without a gate (no VAD speech time to divide
+     * by) and for a word or two over a short run, where the rate says nothing.
+     */
+    private void recordSpeechRate(String text) {
+        if (gate == null) {
+            return;
+        }
+        int speechMs = gate.lastUtteranceSpeechMs();
+        double wordsPerSecond = SpeechRate.wordsPerSecond(text, speechMs);
+        if (Double.isNaN(wordsPerSecond)) {
+            return;
+        }
+        metrics.callerSpeechRate(language, wordsPerSecond);
+        log.info("[{}] caller pace: {} ms of speech = {} words/s", channelId, speechMs,
+                String.format(Locale.ROOT, "%.2f", wordsPerSecond));
     }
 
     /**

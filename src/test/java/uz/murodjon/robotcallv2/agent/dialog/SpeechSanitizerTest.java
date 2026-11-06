@@ -53,6 +53,28 @@ class SpeechSanitizerTest {
         assertThat(SpeechSanitizer.isUnspeakable("[\"item1\", \"item2\"]")).isTrue();
     }
 
+    /** JSON or a field name pasted into an otherwise ordinary sentence — not only a line that is all JSON. */
+    @Test
+    void rejectsJsonAndIdentifiersInsideASentence() {
+        assertThat(SpeechSanitizer.isUnspeakable("Natija: {\"amount\": 500000, \"due\": \"2026-11-10\"}")).isTrue();
+        assertThat(SpeechSanitizer.isUnspeakable("json { \"status\": \"ok\" }")).isTrue();
+        assertThat(SpeechSanitizer.isUnspeakable("Sizning debt_amount qiymatingiz tekshirildi.")).isTrue();
+        assertThat(SpeechSanitizer.isUnspeakable("Hozir get_balance orqali tekshiraman.")).isTrue();
+    }
+
+    @Test
+    void keepsBracesAndColonsOfOrdinarySpeech() {
+        assertThat(SpeechSanitizer.isUnspeakable("Eslatma: to'lov muddati ertaga tugaydi.")).isFalse();
+        assertThat(SpeechSanitizer.isUnspeakable("Sizga (agar qulay bo'lsa) ertaga qo'ng'iroq qilaman.")).isFalse();
+        assertThat(SpeechSanitizer.isUnspeakable("Saytimiz uysot.uz manzilida.")).isFalse();
+    }
+
+    @Test
+    void stripsMarkdownSymbolsButKeepsTheWords() {
+        assertThat(SpeechSanitizer.stripUnspeakableCharacters("**Muhim:** to'lov `ertaga` # kerak"))
+                .isEqualTo("Muhim: to'lov ertaga  kerak");
+    }
+
     @Test
     void allowsNaturalUzbekAndRussianSentences() {
         assertThat(SpeechSanitizer.isUnspeakable("Assalomu alaykum! Men Murodjon aka bilan gaplashayapmanmi?")).isFalse();

@@ -77,6 +77,18 @@ public interface RealtimeListener {
     }
 
     /**
+     * What one response of a separate text model the engine handed its reasoning to cost
+     * (GPT-Live's delegation). Unlike {@link #onUsage}, these tokens are not covered by the
+     * engine's minutes: the vendor bills them per token, so they are kept under {@code model}
+     * and priced at that model's rate.
+     *
+     * @param model the text model that spent them (e.g. {@code gpt-6-luna})
+     */
+    default void onDelegatedUsage(String model, long promptTokens, long completionTokens, long cachedTokens) {
+        onUsage(promptTokens, completionTokens, cachedTokens);
+    }
+
+    /**
      * A final caller transcript the engine itself is unsure of (mean token probability
      * below its threshold). Engines without a confidence signal never call this.
      */

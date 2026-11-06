@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.metrics;
 
 import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,9 @@ public class LlmMetrics {
     private final Counter llmCachedTokens;
     private final Counter spokenLineRetries;
     private final Counter llmRetries;
+    private final DistributionSummary systemPromptChars;
+    private final DistributionSummary turnPromptTokens;
+    private final Counter promptsOverBudget;
     private final Timer llmTurn;
 
     public LlmMetrics(MeterRegistry registry) {
@@ -82,7 +86,44 @@ public class LlmMetrics {
         this.llmRetries = Counter.builder("voice.llm.retries")
                 .description("turns whose request failed transiently and was attempted once more")
                 .register(registry);
+        // How big one turn's request is (human-like call plan, phase 0). A prompt that keeps
+        // growing — knowledge, memory, stage rules — slows every turn and, past the model's
+        // window, is cut silently by the provider; these show the drift before it hurts.
+        // Untagged by stage on purpose: stage names are tenant-defined, an unbounded tag set.
+        this.systemPromptChars = DistributionSummary.builder("voice.llm.prompt.system.chars")
+                .description("characters in the system prompt of one caller turn's request")
+                .publishPercentileHistogram()
+                .register(registry);
+        this.turnPromptTokens = DistributionSummary.builder("voice.llm.prompt.tokens")
+                .description("prompt tokens the provider reported for one caller turn's first request")
+                .publishPercentileHistogram()
+                .register(registry);
+        // Should stay near zero. A rise is the prompt drifting past what it was sized for —
+        // find which stage in the "llm request" log line before raising the budget.
+        this.promptsOverBudget = Counter.builder("voice.llm.prompt.over.budget")
+                .description("caller turns whose prompt tokens went over voice-agent.dialog.prompt-budget-tokens")
+                .register(registry);
         this.llmTurn = Timer.builder("voice.llm.turn.latency").publishPercentileHistogram().register(registry);
+    }
+
+    /**
+     * The size of one caller turn's request: the system prompt we built, and the prompt tokens
+     * the provider counted for it ({@code 0} when it reported none — not recorded then).
+     *
+     * @param budgetTokens the prompt tokens a turn should stay under; 0 = no budget
+     * @return whether the turn went over the budget (counted in {@code voice.llm.prompt.over.budget})
+     */
+    public boolean recordTurnPrompt(int systemChars, long promptTokens, int budgetTokens) {
+        systemPromptChars.record(systemChars);
+        if (promptTokens <= 0) {
+            return false;
+        }
+        turnPromptTokens.record(promptTokens);
+        if (budgetTokens <= 0 || promptTokens <= budgetTokens) {
+            return false;
+        }
+        promptsOverBudget.increment();
+        return true;
     }
 
     public void llmError() {

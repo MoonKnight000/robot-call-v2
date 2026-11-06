@@ -309,6 +309,15 @@ class LlmTurnClient {
         }
     }
 
+    /** One caller turn's request size, and a WARN when its prompt went over the configured budget. */
+    private void recordTurnPrompt(DialogSession s, String system, TokenUsage turnUsage) {
+        int budget = dialogProperties.promptBudgetTokens();
+        if (metrics.recordTurnPrompt(system.length(), turnUsage.promptTokens(), budget)) {
+            log.warn("[{}] prompt over budget in {}: {} tokens (budget {}), system={} chars, history={} messages",
+                    s.channelId(), s.state(), turnUsage.promptTokens(), budget, system.length(), s.history().size());
+        }
+    }
+
     /** Names, descriptions and schemas in request order — any change here moves the cached prefix. */
     private static String toolsetHash(List<ToolCallback> tools) {
         StringBuilder toolset = new StringBuilder();
@@ -747,8 +756,8 @@ class LlmTurnClient {
         // has been closed and the request pays a fresh TLS handshake.
         long now = System.nanoTime();
         long previous = lastLlmRequestNanos.getAndSet(now);
-        log.info("[{}] llm request: model={}, system={} chars, messages={}, tools={} ({} chars), "
-                        + "prefix={}, toolset={}, idle={}", s.channelId(),
+        log.info("[{}] llm request: stage={}, model={}, system={} chars, messages={}, tools={} ({} chars), "
+                        + "prefix={}, toolset={}, idle={}", s.channelId(), s.state(),
                 speculated != null ? "speculated" : turnTools.buildOptions(s, tools, model).getModel(),
                 system.length(), messages.size(), tools.size(), tools.stream()
                         .mapToInt(tool -> Objects.toString(tool.getToolDefinition().description(), "").length()
@@ -760,6 +769,8 @@ class LlmTurnClient {
         StreamedReply reply = consume(s, speculated != null ? speculated
                 : withBackupModel(s, system, messages, tools, model), turnUsage, toolCalls, muted);
         publishUsage(s, turnUsage);
+        // Read before any tool-result round adds its own request to the turn's usage.
+        recordTurnPrompt(s, system, turnUsage);
         TypedToolCalls.addTypedTransition(s.channelId(), reply.text(), toolCalls);
         if (muted) {
             // Tools still run — the job and the transition are what this turn is for.
@@ -1194,6 +1205,7 @@ class LlmTurnClient {
         TokenUsage turnUsage = new TokenUsage();
         turnUsage.add(response);
         publishUsage(s, turnUsage);
+        recordTurnPrompt(s, system, turnUsage);
         List<AssistantMessage.ToolCall> calls = new ArrayList<>(turnTools.extractCalls(response));
         TypedToolCalls.addTypedTransition(s.channelId(), extractText(response), calls);
         maybeSpeakPreToolSpeech(s, calls, false);

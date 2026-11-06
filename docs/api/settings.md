@@ -30,7 +30,7 @@ Platformada joriy vaqtda API kalitlari ulangan va ishlatish mumkin bo'lgan prova
   "data": {
     "stt": ["aisha", "deepgram", "elevenlabs", "gemini", "yandex"],
     "tts": ["aisha", "cartesia", "elevenlabs", "gemini", "yandex"],
-    "realtime": ["gemini-live", "moshi", "openai-realtime", "pipecat", "qwen-omni"],
+    "realtime": ["gemini-live", "moshi", "openai-live", "openai-realtime", "pipecat", "qwen-omni"],
     "pipecatStt": ["deepgram", "gemini", "soniox", "speechmatics", "yandex", "whisper"],
     "pipecatLlm": ["claude-3-5-haiku", "claude-3-5-sonnet", "gemini-3.5-flash-lite", "gemini-3.8-flash", "gpt-4o-mini", "groq-llama-3.3-70b"],
     "pipecatTts": ["cartesia", "elevenlabs", "gemini", "yandex", "google-chirp"]

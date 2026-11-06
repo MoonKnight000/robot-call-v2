@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.realtime;
 
 import org.springframework.ai.tool.ToolCallback;
+import uz.murodjon.robotcallv2.shared.dialog.ReasoningEffort;
 
 import java.util.List;
 
@@ -25,6 +26,9 @@ import java.util.List;
  *                     or {@code null} to leave the provider on the model it was deployed
  *                     with. Providers read it through {@link #modelOr}, so a company that
  *                     configures nothing per scenario behaves exactly as before
+ * @param reasoningEffort the agent's own thinking level ({@code AiAgent.reasoningEffort}), or
+ *                     {@code null} for the deployment default. Only engines that reason in a
+ *                     separate model read it (OpenAI Live's delegation model)
  */
 public record RealtimeCallConfig(
         String channelId,
@@ -35,11 +39,23 @@ public record RealtimeCallConfig(
         String pipecatStt,
         String pipecatLlm,
         String pipecatTts,
-        String model
+        String model,
+        ReasoningEffort reasoningEffort
 ) {
     public RealtimeCallConfig(String channelId, String language, String systemPrompt,
                               String voice, List<ToolCallback> tools) {
-        this(channelId, language, systemPrompt, voice, tools, null, null, null, null);
+        this(channelId, language, systemPrompt, voice, tools, null, null, null, null, null);
+    }
+
+    public static RealtimeCallConfigBuilder builder() {
+        return new RealtimeCallConfigBuilder();
+    }
+
+    public RealtimeCallConfigBuilder toBuilder() {
+        return new RealtimeCallConfigBuilder()
+                .channelId(channelId).language(language).systemPrompt(systemPrompt).voice(voice).tools(tools)
+                .pipecatStt(pipecatStt).pipecatLlm(pipecatLlm).pipecatTts(pipecatTts).model(model)
+                .reasoningEffort(reasoningEffort);
     }
 
     /**

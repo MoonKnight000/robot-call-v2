@@ -94,6 +94,7 @@ public class SpeechGate {
     private int speechSamples;
     /** The silence the last closed utterance waited out, hangover plus extension. */
     private volatile int lastCloseWaitMs;
+    private volatile int lastUtteranceSpeechMs;
     /** See {@link #setNoTranscriptClose}; 0 = off. */
     private int noTranscriptCloseSamples;
     /** Audio the gate has been open for with no interim from the recognizer yet. */
@@ -442,6 +443,7 @@ public class SpeechGate {
         lastCloseNoise = noise;
         openWithoutTranscriptSamples = 0;
         lastCloseWaitMs = (int) Math.round(waitSamples * 1000d / sampleRate);
+        lastUtteranceSpeechMs = noise ? 0 : (int) Math.round(speechSamples * 1000d / sampleRate);
         silenceSamples = 0;
         speechSamples = 0;
         extensionDecided = false;
@@ -652,6 +654,15 @@ public class SpeechGate {
      */
     public int lastCloseWaitMs() {
         return lastCloseWaitMs;
+    }
+
+    /**
+     * How much of the utterance that just closed the VAD scored as speech — its pauses left
+     * out, so words over this is the caller's speaking rate. 0 for a close on noise, and
+     * before the first close.
+     */
+    public int lastUtteranceSpeechMs() {
+        return lastUtteranceSpeechMs;
     }
 
     /**

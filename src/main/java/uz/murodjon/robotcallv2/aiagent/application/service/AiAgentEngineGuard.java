@@ -84,6 +84,7 @@ class AiAgentEngineGuard {
                 throw new ValidationException(ErrorCode.ENGINE_REALTIME_PROVIDER_REQUIRED, realtimeProviderRegistry.names());
             }
             requireToolCalling(realtimeProviderRegistry.findForCall(null).name());
+            requireCallerText(pipelineMode, realtimeProviderRegistry.findForCall(null).name());
             return trimmed;
         }
         if (!realtimeProviderRegistry.exists(trimmed)) {
@@ -91,7 +92,15 @@ class AiAgentEngineGuard {
                     realtimeProviderRegistry.names());
         }
         requireToolCalling(trimmed);
+        requireCallerText(pipelineMode, trimmed);
         return trimmed;
+    }
+
+    /** HALF_CASCADE hands the engine the caller's words as text; GPT-Live cannot take them. */
+    private void requireCallerText(PipelineMode pipelineMode, String realtimeProvider) {
+        if (pipelineMode == PipelineMode.HALF_CASCADE && realtimeProviderRegistry.lacksCallerText(realtimeProvider)) {
+            throw new ValidationException(ErrorCode.ENGINE_REALTIME_HALF_CASCADE_UNSUPPORTED, realtimeProvider);
+        }
     }
 
     /** Every agent needs endCall at least, so an engine that cannot call tools cannot run one. */

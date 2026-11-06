@@ -66,6 +66,21 @@ class SpeechGateTest {
     }
 
     @Test
+    void reportsTheSpeechTimeOfTheClosedUtteranceWithoutItsPauses() {
+        SpeechGate gate = gate();
+        assertThat(gate.lastUtteranceSpeechMs()).isZero();
+
+        feed(gate, true, 1000);
+        feed(gate, false, 400); // a pause shorter than the hangover: the same utterance
+        feed(gate, true, 1000);
+        feed(gate, false, 2000);
+
+        assertThat(gate.isOpen()).isFalse();
+        // Two 1000 ms runs in whole 32 ms windows — the 400 ms pause is not speech.
+        assertThat(gate.lastUtteranceSpeechMs()).isBetween(1900, 2100);
+    }
+
+    @Test
     void startsClosedSoIdleAudioIsNeverBilled() {
         assertThat(gate().isOpen()).isFalse();
     }

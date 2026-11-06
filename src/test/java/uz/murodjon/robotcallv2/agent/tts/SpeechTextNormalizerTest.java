@@ -114,4 +114,15 @@ class SpeechTextNormalizerTest {
         assertThat(SpeechTextNormalizer.applyPronunciationRules("100 USD", "uz-UZ", rules))
                 .isEqualTo("100 $1 dollar");
     }
+
+    /** Only the domain of a link is said; scheme, "www." and path are not, the sentence's period stays. */
+    @Test
+    void aLinkIsSpokenAsItsDomain() {
+        assertThat(SpeechTextNormalizer.normalize("Batafsil: https://www.uysot.uz/ru/catalog?id=5.", "uz-UZ"))
+                .isEqualTo("Batafsil: uysot.uz.");
+        assertThat(SpeechTextNormalizer.normalize("Kiring: http://uysot.uz, u yerda bor", "uz-UZ"))
+                .isEqualTo("Kiring: uysot.uz, u yerda bor");
+        assertThat(SpeechTextNormalizer.normalize("www.uysot.uz saytiga kiring", "uz-UZ"))
+                .isEqualTo("uysot.uz saytiga kiring");
+    }
 }

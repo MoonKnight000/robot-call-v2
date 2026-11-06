@@ -21,7 +21,9 @@ import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -117,6 +119,11 @@ public class DialogSession implements DialogOutcomeSink {
     private final EffectiveVoiceSettings voiceSettings;
     private final boolean emotionAdaptiveVoice;
     private volatile CustomerSentiment lastCustomerSentiment = CustomerSentiment.NEUTRAL;
+    /** The caller's last few speaking rates (words/s), newest last — {@link CallerPaceTracker}. */
+    private final Deque<Double> recentCallerPaces = new ArrayDeque<>();
+    /** Multiplies the bot's speed to meet the caller's pace; 1.0 until the tracker has a reading. */
+    private volatile double callerPaceFactor = 1.0;
+    private volatile boolean callerHurried;
     /** Campaign's own choice on the §11.1 opening disclosure (§10.6); the engine also
      * checks the global {@code mandatory-disclosure} kill-switch on top of this. */
     private final boolean disclosureEnabled;
@@ -453,6 +460,36 @@ public class DialogSession implements DialogOutcomeSink {
 
     public CustomerSentiment lastCustomerSentiment() {
         return lastCustomerSentiment;
+    }
+
+    /**
+     * Adds one utterance's speaking rate and returns the average of the last {@code window},
+     * or {@code NaN} while fewer than {@code minReadings} have been heard.
+     */
+    public double addCallerPace(double wordsPerSecond, int window, int minReadings) {
+        synchronized (recentCallerPaces) {
+            recentCallerPaces.addLast(wordsPerSecond);
+            while (recentCallerPaces.size() > window) {
+                recentCallerPaces.removeFirst();
+            }
+            if (recentCallerPaces.size() < minReadings) {
+                return Double.NaN;
+            }
+            return recentCallerPaces.stream().mapToDouble(Double::doubleValue).average().orElse(Double.NaN);
+        }
+    }
+
+    public double callerPaceFactor() {
+        return callerPaceFactor;
+    }
+
+    public boolean isCallerHurried() {
+        return callerHurried;
+    }
+
+    public void setCallerPace(double factor, boolean hurried) {
+        this.callerPaceFactor = factor;
+        this.callerHurried = hurried;
     }
 
     public void setLastCustomerSentiment(CustomerSentiment sentiment) {

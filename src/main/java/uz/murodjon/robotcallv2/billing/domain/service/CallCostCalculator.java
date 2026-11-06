@@ -62,6 +62,14 @@ public final class CallCostCalculator {
         if (usage.realtime()) {
             realtime = minutes(usage.realtimeSeconds())
                     .multiply(BigDecimal.valueOf(realtimePerMinuteUzs(usage.realtimeModel(), rates, priceOf)));
+            // The engine's own tokens carry no model and are covered by its minutes. A named model
+            // is a separate text model the engine handed its reasoning to (GPT-Live's delegation),
+            // which the vendor bills per token on top of the minutes.
+            for (ModelTokens tokens : usage.llmByModel()) {
+                if (tokens.model() != null && !tokens.model().isBlank()) {
+                    llmByModel.add(priceModel(tokens, rates, priceOf));
+                }
+            }
         } else {
             for (ModelTokens tokens : usage.tokensToPrice()) {
                 llmByModel.add(priceModel(tokens, rates, priceOf));

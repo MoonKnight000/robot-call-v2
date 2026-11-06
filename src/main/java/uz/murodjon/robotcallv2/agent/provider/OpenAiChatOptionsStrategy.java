@@ -73,7 +73,7 @@ public class OpenAiChatOptionsStrategy extends AbstractVendorChatOptionsStrategy
      * "none" (measured on gpt-5.6-luna), while gpt-6 answers 400 to "minimal" — so every model not
      * known to take a lighter one falls back to "low".
      */
-    static String findReasoningEffort(ReasoningEffort effort, String model) {
+    public static String findReasoningEffort(ReasoningEffort effort, String model) {
         return switch (effort) {
             case NONE, MINIMAL -> findLightestEffort(model);
             case LOW, MEDIUM, HIGH -> effort.name().toLowerCase(Locale.ROOT);

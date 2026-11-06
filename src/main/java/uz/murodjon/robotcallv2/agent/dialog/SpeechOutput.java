@@ -102,7 +102,7 @@ public class SpeechOutput {
         // digits, and the prompt asking the model not to write one is not a guarantee.
         String spoken = SpokenDates.humanize(text, s.language());
         try {
-            EffectiveVoiceSettings dynamicSettings = emotionResolver.resolve(s);
+            EffectiveVoiceSettings dynamicSettings = emotionResolver.resolveForSentence(s, text);
             // Only the turn's first sentence is still on the §1.3 turnaround clock — that
             // is the one place shaving a TTS network round trip actually moves the number
             // that matters (everything after it already overlaps LLM generation, §7.2).
@@ -152,8 +152,8 @@ public class SpeechOutput {
         String spoken = SpokenDates.humanize(text, s.language());
         try {
             s.addTtsChars(spoken);
-            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(), emotionResolver.resolve(s),
-                    s.pronunciationRules(), previousSentence);
+            short[] pcm = ttsRouter.synthesize(spoken, s.language(), s.ttsVoice(),
+                    emotionResolver.resolveForSentence(s, text), s.pronunciationRules(), previousSentence);
             s.clearTtsFailures();
             return new PreparedLine(spoken, pcm, SpeechOutcome.SPOKEN);
         } catch (Exception e) {

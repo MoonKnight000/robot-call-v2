@@ -217,6 +217,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param maxTokensPerCall cumulative LLM tokens one call may spend before it is closed
  *                       politely. Bounds the cost of a call that loops or refuses to
  *                       end. 0 disables the budget
+ * @param promptBudgetTokens prompt tokens one caller turn's request should stay under. Past it
+ *                       the turn is logged and counted ({@code voice.llm.prompt.over.budget}),
+ *                       nothing is cut: a prompt that keeps growing — knowledge, memory, stage
+ *                       rules — slows every turn and, past the model's window, is truncated
+ *                       silently by the provider. dialog.yml sets it about 30% over the p95
+ *                       measured on 2026-11-06 calls (9.3k). 0 disables the check
  * @param preToolSpeech  whether to speak a short intermediate phrase before executing tools
  *                       to prevent dead silence during long or external tool operations
  * @param toolResultRounds how many follow-up model rounds a cascade turn may spend answering
@@ -262,6 +268,7 @@ public record DialogProperties(
         boolean factGuard,
         int factViolationEscalateAfter,
         long maxTokensPerCall,
+        int promptBudgetTokens,
         boolean preToolSpeech,
         int knowledgePassages,
         int toolResultRounds,

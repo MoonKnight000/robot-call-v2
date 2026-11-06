@@ -78,6 +78,30 @@ public class CallMetrics {
                 .increment();
     }
 
+    /**
+     * How the audio answering-machine detector decided on one call, and how long it took
+     * (human-like call plan, phase 0). Read {@code result=machine} as a share of all verdicts:
+     * a high one is either a list full of voicemail or thresholds hanging up on people — and
+     * {@code voice.calls.voicemail.detected{by=transcript}} is the machines it called people.
+     * {@code path} is {@code ai} for a call the agent answers, {@code operator} for a progressive one.
+     */
+    public void amdVerdict(boolean machine, int afterMs, String path) {
+        String result = machine ? "machine" : "human";
+        Counter.builder("voice.amd.verdicts")
+                .description("answering-machine detector verdicts")
+                .tag("result", result)
+                .tag("path", path)
+                .register(registry)
+                .increment();
+        DistributionSummary.builder("voice.amd.verdict.ms")
+                .description("time from connect to the answering-machine detector's verdict")
+                .baseUnit("milliseconds")
+                .tag("result", result)
+                .tag("path", path)
+                .register(registry)
+                .record(afterMs);
+    }
+
     public void recordCallDuration(long seconds) {
         callDuration.record(Duration.ofSeconds(Math.max(0, seconds)));
     }

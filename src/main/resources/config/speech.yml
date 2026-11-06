@@ -40,6 +40,11 @@ voice-agent:
       eagerness: ${REALTIME_OPENAI_EAGERNESS:auto}
       noise-reduction: ${REALTIME_OPENAI_NOISE_REDUCTION:far_field}
       transcription-model: ${REALTIME_OPENAI_TRANSCRIPTION_MODEL:gpt-4o-transcribe}
+    # OpenAI GPT-Live: full-duplex voice model, tools go through a delegated Responses model.
+    # Same key as OpenAI Realtime; the rest defaults in OpenAiLiveProperties, the reasoning
+    # effort comes from the agent.
+    open-ai-live:
+      api-key: ${OPENAI_API_KEY:}
     moshi:
       api-key: ${REALTIME_MOSHI_API_KEY:}
       url: ${REALTIME_MOSHI_URL:ws://localhost:8998/api/chat}

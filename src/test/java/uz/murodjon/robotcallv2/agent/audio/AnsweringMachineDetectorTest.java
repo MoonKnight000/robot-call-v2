@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.agent.audio;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -18,10 +20,12 @@ class AnsweringMachineDetectorTest {
     private static final int WINDOW = 256;
 
     private final AtomicInteger detections = new AtomicInteger();
+    private final List<String> verdicts = new ArrayList<>();
 
     private AnsweringMachineDetector detector() {
         return new AnsweringMachineDetector("ch-1", RATE, 6000, 3500, 250,
-                detections::incrementAndGet);
+                detections::incrementAndGet,
+                (machine, afterMs) -> verdicts.add((machine ? "machine@" : "human@") + afterMs));
     }
 
     /** Feed {@code ms} of speech or silence in 32 ms windows. */
@@ -102,5 +106,36 @@ class AnsweringMachineDetectorTest {
         feed(d, true, 5500);
 
         assertThat(detections.get()).isEqualTo(1);
+    }
+
+    @Test
+    void reportsAMachineVerdictOnceWithItsTime() {
+        AnsweringMachineDetector d = detector();
+
+        feed(d, true, 5500);
+
+        // 3500 ms is reached on the 110th 32 ms window: 110 * 256 samples = 3520 ms.
+        assertThat(verdicts).containsExactly("machine@3520");
+    }
+
+    @Test
+    void reportsAHumanVerdictWhenTheWindowCloses() {
+        AnsweringMachineDetector d = detector();
+
+        feed(d, true, 600);
+        feed(d, false, 6000);
+
+        assertThat(verdicts).hasSize(1);
+        assertThat(verdicts.getFirst()).startsWith("human@");
+    }
+
+    @Test
+    void reportsNothingWhileStillListening() {
+        AnsweringMachineDetector d = detector();
+
+        feed(d, true, 600);
+        feed(d, false, 1000);
+
+        assertThat(verdicts).isEmpty();
     }
 }

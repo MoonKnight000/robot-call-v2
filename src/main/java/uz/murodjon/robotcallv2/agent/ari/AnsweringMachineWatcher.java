@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.audio.AnsweringMachineDetector;
 import uz.murodjon.robotcallv2.agent.audio.TalkActivityTracker;
+import uz.murodjon.robotcallv2.agent.metrics.CallMetrics;
 import uz.murodjon.robotcallv2.agent.vad.AmdProperties;
 import uz.murodjon.robotcallv2.agent.vad.VadProperties;
 
@@ -32,15 +33,17 @@ class AnsweringMachineWatcher {
     private final CallMediaFactory callMediaFactory;
     private final VadProperties vadProperties;
     private final ExecutorService callExecutor;
+    private final CallMetrics callMetrics;
 
     private final Map<String, MediaTap> taps = new ConcurrentHashMap<>();
 
     AnsweringMachineWatcher(AriClient ariClient, CallMediaFactory callMediaFactory, VadProperties vadProperties,
-                            ExecutorService callExecutor) {
+                            ExecutorService callExecutor, CallMetrics callMetrics) {
         this.ariClient = ariClient;
         this.callMediaFactory = callMediaFactory;
         this.vadProperties = vadProperties;
         this.callExecutor = callExecutor;
+        this.callMetrics = callMetrics;
     }
 
     /**
@@ -55,7 +58,8 @@ class AnsweringMachineWatcher {
         }
         AnsweringMachineDetector detector = new AnsweringMachineDetector(channelId, CallMediaFactory.SAMPLE_RATE,
                 amd.observeMs(), amd.minContinuousSpeechMs(), amd.silenceToleranceMs(),
-                () -> callExecutor.execute(onMachine));
+                () -> callExecutor.execute(onMachine),
+                (machine, afterMs) -> callMetrics.amdVerdict(machine, afterMs, "operator"));
         try {
             ARI current = ariClient.requireConnection();
             MediaTap tap = callMediaFactory.openTap(current, channelId, (pcm, length) -> {

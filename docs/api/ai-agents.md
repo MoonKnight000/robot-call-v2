@@ -503,7 +503,10 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 >   tanlanadi. Agentning STT si ishga tushmasa qo'ng'iroq boshlanmaydi (`STT_START_FAILED`).
 > - `realtimeProvider` — `pipelineMode=REALTIME` (yoki `HALF_CASCADE`) agentning speech-to-speech engine'i
 >   (`GET /api/ai-agents/engine-options` dagi `realtime` ro'yxati: `gemini-live`,
->   `openai-realtime`, `pipecat`, …). `REALTIME` saqlanayotganda (yoki rejim/engine
+>   `openai-realtime`, `openai-live`, `pipecat`, …). `openai-live` — GPT-Live: faqat `REALTIME`
+>   rejimida; `HALF_CASCADE` + `openai-live` saqlansa — `400 ENGINE_REALTIME_HALF_CASCADE_UNSUPPORTED`
+>   (unga mijoz gapini matn qilib berib bo'lmaydi). Uning delegatsiya modeli agentning
+>   `reasoningEffort` i bilan o'ylaydi. `REALTIME` saqlanayotganda (yoki rejim/engine
 >   o'zgarganda) tekshiriladi: ro'yxatda yo'q id — `400 ENGINE_REALTIME_PROVIDER_UNKNOWN`;
 >   bo'sh qoldirilib, standart engine sozlanmagan bo'lsa — `400 ENGINE_REALTIME_PROVIDER_REQUIRED`;
 >   build'da birorta realtime engine bo'lmasa — `400 ENGINE_REALTIME_NOT_AVAILABLE`;

@@ -160,6 +160,26 @@ class CallCostCalculatorTest {
         assertThat(cost.realtimeUzs()).isEqualTo(1800);
     }
 
+    /**
+     * GPT-Live: the minutes cover the voice engine, the delegation model's tokens are billed on
+     * top; the engine's own model-less tokens are still not.
+     */
+    @Test
+    void billsADelegatedModelsTokensOnTopOfTheRealtimeMinutes() {
+        CallUsage usage = new CallUsage(120, 500_000, 60_000, 0, 0, 120, 0, List.of(
+                new ModelTokens(null, 400_000, 50_000, 0),
+                new ModelTokens("gpt-6-luna", 100_000, 10_000, 0)), "gpt-live-1");
+
+        CallCostBreakdown cost = CallCostCalculator.calculate(usage, PLAIN, model -> null);
+
+        // Realtime 2 * 300 = 600. Delegation at the common rate: 100k @ 1000/M = 100, 10k @ 10 000/M = 100.
+        assertThat(cost.realtimeUzs()).isEqualTo(600);
+        assertThat(cost.llmByModel()).hasSize(1);
+        assertThat(cost.llmUzs()).isEqualTo(200);
+        assertThat(cost.sttUzs()).isZero();
+        assertThat(cost.ttsUzs()).isZero();
+    }
+
     /** Tokens the per-model split does not account for are still billed, at the common rate. */
     @Test
     void billsTokensOutsideTheSplitAtTheCommonRate() {

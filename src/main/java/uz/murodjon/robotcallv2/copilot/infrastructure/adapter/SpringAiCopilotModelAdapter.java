@@ -9,14 +9,11 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
+import uz.murodjon.robotcallv2.agent.provider.PortableChatOptions;
 import uz.murodjon.robotcallv2.copilot.application.port.output.CopilotModelPort;
 import uz.murodjon.robotcallv2.copilot.application.port.output.CopilotToolInvoker;
 import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotMessage;
@@ -24,6 +21,7 @@ import uz.murodjon.robotcallv2.copilot.domain.entity.CopilotModelReply;
 import uz.murodjon.robotcallv2.copilot.domain.enums.CopilotMessageRole;
 import uz.murodjon.robotcallv2.copilot.infrastructure.config.CopilotProperties;
 import uz.murodjon.robotcallv2.mcp.domain.entity.McpTool;
+import uz.murodjon.robotcallv2.shared.dialog.ReasoningEffort;
 import uz.murodjon.robotcallv2.shared.exception.AppException;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
@@ -53,17 +51,18 @@ public class SpringAiCopilotModelAdapter implements CopilotModelPort {
 
     @Override
     public CopilotModelReply generateReply(String instructions, List<CopilotMessage> history, List<McpTool> tools,
-                                           CopilotToolInvoker invoker) {
+                                           ReasoningEffort reasoningEffort, CopilotToolInvoker invoker) {
         List<ToolCallback> callbacks = tools.stream().map(tool -> toCallback(tool, invoker)).toList();
-        return call(instructions, toMessages(history), callbacks);
+        return call(instructions, toMessages(history), callbacks, reasoningEffort);
     }
 
     @Override
     public CopilotModelReply generateText(String instructions, String message) {
-        return call(instructions, List.of(new UserMessage(message)), List.of());
+        return call(instructions, List.of(new UserMessage(message)), List.of(), null);
     }
 
-    private CopilotModelReply call(String instructions, List<Message> messages, List<ToolCallback> callbacks) {
+    private CopilotModelReply call(String instructions, List<Message> messages, List<ToolCallback> callbacks,
+                                   ReasoningEffort reasoningEffort) {
         ChatModel chatModel = chatModelProvider.getIfAvailable();
         if (chatModel == null) {
             throw new ConflictException(ErrorCode.COPILOT_NOT_CONFIGURED);
@@ -71,7 +70,7 @@ public class SpringAiCopilotModelAdapter implements CopilotModelPort {
         ChatResponse response;
         try {
             response = ChatClient.create(chatModel).prompt()
-                    .options(options(chatModel, callbacks).mutate())
+                    .options(options(callbacks, reasoningEffort).mutate())
                     .system(instructions)
                     .messages(messages)
                     .call()
@@ -93,15 +92,18 @@ public class SpringAiCopilotModelAdapter implements CopilotModelPort {
                 reportedModel != null && !reportedModel.isBlank() ? reportedModel : copilotProperties.model());
     }
 
-    private ChatOptions options(ChatModel chatModel, List<ToolCallback> callbacks) {
-        String model = copilotProperties.model();
-        boolean openAi = chatModel instanceof OpenAiChatModel
-                || model.startsWith("gpt-") || model.startsWith("llama") || model.startsWith("qwen");
-        return openAi
-                ? OpenAiChatOptions.builder().model(model).maxTokens(copilotProperties.maxTokens())
-                        .toolCallbacks(callbacks).build()
-                : GoogleGenAiChatOptions.builder().model(model).maxOutputTokens(copilotProperties.maxTokens())
-                        .toolCallbacks(callbacks).build();
+    /**
+     * Vendor-neutral options: the routing chat model turns them into the chosen vendor's own
+     * (OpenAI's {@code reasoning_effort}, Gemini's {@code thinkingLevel}), which a vendor-typed
+     * options object would lose in the merge.
+     */
+    private PortableChatOptions options(List<ToolCallback> callbacks, ReasoningEffort reasoningEffort) {
+        return PortableChatOptions.builder()
+                .model(copilotProperties.model())
+                .maxTokens(copilotProperties.maxTokens())
+                .toolCallbacks(callbacks)
+                .reasoningEffort(reasoningEffort)
+                .build();
     }
 
     private static ToolCallback toCallback(McpTool tool, CopilotToolInvoker invoker) {

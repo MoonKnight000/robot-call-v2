@@ -96,6 +96,23 @@ class VoiceEmotionResolverTest {
     }
 
     @Test
+    void theCallersPaceMovesTheSpeedOnTopOfEverythingElse() {
+        EffectiveVoiceSettings base = new EffectiveVoiceSettings("yandex", 1.0, 0.0, null, null);
+        DialogSession session = createSession("GREETING", "cheerful", "zamira", base, false);
+        session.setCallerPace(1.06, true);
+
+        assertThat(resolver.resolve(session).speed()).isEqualTo(1.06);
+    }
+
+    @Test
+    void aSentenceWithAFigureIsSpokenNeutrallyAndOneWithoutKeepsTheStageMood() {
+        DialogSession session = createSession("DEBT_NOTICE", "strict", "zamira", EffectiveVoiceSettings.NONE, false);
+
+        assertThat(resolver.resolveForSentence(session, "Qarzingiz 1 500 000 so'm.").role()).isEqualTo("neutral");
+        assertThat(resolver.resolveForSentence(session, "Qachon to'lay olasiz?").role()).isEqualTo("strict");
+    }
+
+    @Test
     void moodIsNamedWithoutRegardToTheVoiceThatWillSpeakIt() {
         DialogSession session = createSession("GREETING", "cheerful", "nigora", EffectiveVoiceSettings.NONE, true);
 

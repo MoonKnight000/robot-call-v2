@@ -42,6 +42,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *                      itself, this only changes what lands in {@code call_transcript}
  * @param geminiLive    Gemini Live settings
  * @param openAi        OpenAI Realtime settings
+ * @param openAiLive    OpenAI GPT-Live settings
  * @param moshi         Kyutai Moshi settings
  * @param qwenOmni      Alibaba Cloud Qwen-Omni settings
  * @param pipecat       Pipecat Cloud & Claude Realtime settings
@@ -58,6 +59,7 @@ public record RealtimeProperties(
         boolean transcriptStt,
         GeminiLiveProperties geminiLive,
         OpenAiRealtimeProperties openAi,
+        OpenAiLiveProperties openAiLive,
         MoshiRealtimeProperties moshi,
         QwenOmniRealtimeProperties qwenOmni,
         PipecatRealtimeProperties pipecat

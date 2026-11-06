@@ -46,6 +46,6 @@ class RealtimeCallConfigTest {
 
     private static RealtimeCallConfig withModel(String model) {
         return new RealtimeCallConfig("chan-1", "uz-UZ", "prompt", null, List.of(),
-                null, null, null, model);
+                null, null, null, model, null);
     }
 }

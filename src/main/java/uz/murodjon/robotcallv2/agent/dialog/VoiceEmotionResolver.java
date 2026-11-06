@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
 
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Resolves the mood a turn is spoken with — and an adaptive speed — from the scenario
@@ -24,6 +25,7 @@ import java.util.Locale;
 public class VoiceEmotionResolver {
 
     private static final Logger log = LoggerFactory.getLogger(VoiceEmotionResolver.class);
+    private static final Pattern DIGIT = Pattern.compile("\\d");
 
     /**
      * Resolves the effective voice settings (role + adaptive speed) for the given dialog session turn.
@@ -50,12 +52,34 @@ public class VoiceEmotionResolver {
                 effectiveSpeed = Math.round(speed * 0.96 * 100.0) / 100.0;
             }
         }
+        // The caller's own pace (CallerPaceTracker), already bounded to a few percent; 1.0 when off.
+        double paceFactor = s.callerPaceFactor();
+        if (paceFactor != 1.0) {
+            double speed = effectiveSpeed != null ? effectiveSpeed : 1.0;
+            effectiveSpeed = Math.round(speed * paceFactor * 100.0) / 100.0;
+        }
 
         String role = mapEmotionToRole(emotion);
         log.debug("[{}] Resolved voice style: state={}, sentiment={}, emotion={}, role={}, speed={}",
                 s.channelId(), s.state(), s.lastCustomerSentiment(), emotion, role, effectiveSpeed);
 
         return new EffectiveVoiceSettings(base.provider(), effectiveSpeed, base.pitch(), role, base.fallbackVoice());
+    }
+
+    /**
+     * As {@link #resolve(DialogSession)}, for one sentence of a reply: a sentence that carries a
+     * figure (a sum, a date, a number) is spoken in the voice's neutral mood whatever the turn's
+     * (human-like call plan, phase 5). An acted delivery is where a synthesizer slurs or mis-stresses
+     * words, and a debt call's figures are the words the caller must hear exactly. Speed is kept.
+     */
+    public EffectiveVoiceSettings resolveForSentence(DialogSession s, String sentence) {
+        EffectiveVoiceSettings settings = resolve(s);
+        if (sentence == null || !DIGIT.matcher(sentence).find() || settings.role() == null
+                || mapEmotionToRole(VoiceEmotion.NEUTRAL).equals(settings.role())) {
+            return settings;
+        }
+        return new EffectiveVoiceSettings(settings.provider(), settings.speed(), settings.pitch(),
+                mapEmotionToRole(VoiceEmotion.NEUTRAL), settings.fallbackVoice());
     }
 
     /**

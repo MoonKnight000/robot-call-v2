@@ -103,6 +103,11 @@ INSERT INTO tts_voice (id, provider, language, name, label, role) VALUES
     ('gemini-puck-ru',   'gemini-live', 'ru-RU', 'Puck',     'Puck (мужской)', NULL),
     ('gemini-charon-ru', 'gemini-live', 'ru-RU', 'Charon',   'Charon (мужской)', NULL),
     ('gemini-fenrir-ru', 'gemini-live', 'ru-RU', 'Fenrir',   'Fenrir (женский)', NULL),
+    -- OpenAI GPT-Live (no Uzbek/Russian voice is documented; these are its general built-ins)
+    ('openai-live-marin-uz', 'openai-live', 'uz-UZ', 'marin', 'Marin (ayol, GPT-Live)', NULL),
+    ('openai-live-cedar-uz', 'openai-live', 'uz-UZ', 'cedar', 'Cedar (erkak, GPT-Live)', NULL),
+    ('openai-live-marin-ru', 'openai-live', 'ru-RU', 'marin', 'Marin (женский, GPT-Live)', NULL),
+    ('openai-live-cedar-ru', 'openai-live', 'ru-RU', 'cedar', 'Cedar (мужской, GPT-Live)', NULL),
     -- Gemini TTS (Cascade mode: gemini-3.8-flash-tts, gemini-3.1-flash-tts-preview)
     ('gemini-tts-aoede-uz',  'gemini',   'uz-UZ', 'Aoede',    'Aoede (ayol, Gemini TTS)', NULL),
     ('gemini-tts-kore-uz',   'gemini',   'uz-UZ', 'Kore',     'Kore (ayol, Gemini TTS)', NULL),
@@ -186,6 +191,7 @@ INSERT INTO ai_model (id, kind, provider, mode, label) VALUES
     ('gemini-3.1-flash-live-preview', 'LLM', 'gemini-live',   'REALTIME', 'Gemini 3.1 Flash Live — oldingi avlod, preview'),
     ('gpt-realtime-2.1',            'LLM', 'openai-realtime', 'REALTIME', 'GPT Realtime 2.1 — standart, tool chaqirish bilan'),
     ('gpt-realtime-2.1-mini',       'LLM', 'openai-realtime', 'REALTIME', 'GPT Realtime 2.1 mini — arzonroq'),
+    ('gpt-live-1',                  'LLM', 'openai-live',     'REALTIME', 'GPT-Live 1 — full-duplex, tool''lar delegatsiya orqali (sinov)'),
     ('qwen-omni-turbo',             'LLM', 'qwen-omni',       'REALTIME', 'Qwen Omni Turbo'),
     ('moshi',                       'LLM', 'moshi',           'REALTIME', 'Moshi — o''z serveringizda'),
     ('claude-3-5-haiku-20241022',   'LLM', 'pipecat',         'REALTIME', 'Claude 3.5 Haiku (Pipecat LLM)'),

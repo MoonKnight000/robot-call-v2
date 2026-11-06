@@ -100,6 +100,19 @@ public final class SpeechTextNormalizer {
      */
     private static final Pattern DELIVERY_TAG = Pattern.compile("\\[[\\p{L} ]{1,40}]\\s*");
 
+    /**
+     * A link with its scheme: only the domain is worth saying — "https colon slash slash … slash
+     * ru slash" is not. The sentence punctuation after it is kept. The transcript keeps the link;
+     * this is the synthesized text only.
+     */
+    private static final Pattern URL = Pattern.compile(
+            "\\bhttps?://(?:www\\.)?([^\\s/?#]+)(?:[/?#]\\S*?)?(?=[.,!?;:)»\"]*(?:\\s|$))",
+            Pattern.CASE_INSENSITIVE);
+
+    /** "www." in front of a domain without a scheme. */
+    private static final Pattern WWW_PREFIX = Pattern.compile("\\bwww\\.(?=[\\p{L}\\d-]+\\.)",
+            Pattern.CASE_INSENSITIVE);
+
     private static final int MAX_QUANTITY_DIGITS = 12;
 
     private static final String[] UZ_MONTHS = {
@@ -165,6 +178,7 @@ public final class SpeechTextNormalizer {
         // None of the voices here performs a delivery tag; read as text, "[laugh]" is the
         // word "laugh" spoken in the middle of the line.
         text = DELIVERY_TAG.matcher(text).replaceAll("").trim();
+        text = WWW_PREFIX.matcher(URL.matcher(text).replaceAll("$1")).replaceAll("");
         String lang = (language == null ? "uz" : language).toLowerCase();
         if (lang.startsWith("uz")) {
             return normalizeUzbek(text);

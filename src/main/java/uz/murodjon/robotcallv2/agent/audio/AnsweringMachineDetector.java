@@ -35,6 +35,7 @@ public class AnsweringMachineDetector {
     private final int minContinuousSamples;
     private final int silenceToleranceSamples;
     private final Runnable onDetected;
+    private final AmdVerdictListener onVerdict;
 
     private int elapsedSamples;
     private int speechRunSamples;
@@ -52,16 +53,19 @@ public class AnsweringMachineDetector {
      *                              plosives, and without this every consonant would reset
      *                              the run and nothing would ever be detected
      * @param onDetected            invoked once, on the RTP thread, when a machine is found
+     * @param onVerdict             told once, on the RTP thread, how the detector decided — for
+     *                              the machine/person split it is tuned against; may be null
      */
     public AnsweringMachineDetector(String channelId, int sampleRate, int observeMs,
                                     int minContinuousSpeechMs, int silenceToleranceMs,
-                                    Runnable onDetected) {
+                                    Runnable onDetected, AmdVerdictListener onVerdict) {
         this.channelId = channelId;
         this.sampleRate = sampleRate;
         this.observeSamples = Math.max(1, observeMs) * sampleRate / 1000;
         this.minContinuousSamples = Math.max(1, minContinuousSpeechMs) * sampleRate / 1000;
         this.silenceToleranceSamples = Math.max(0, silenceToleranceMs) * sampleRate / 1000;
         this.onDetected = onDetected;
+        this.onVerdict = onVerdict;
     }
 
     /**
@@ -82,6 +86,7 @@ public class AnsweringMachineDetector {
                 finished = true;
                 log.info("[{}] answering machine: {} ms of continuous speech within the first {} ms",
                         channelId, msOf(speechRunSamples), msOf(observeSamples));
+                reportVerdict(true);
                 try {
                     onDetected.run();
                 } catch (Exception e) {
@@ -100,6 +105,18 @@ public class AnsweringMachineDetector {
         if (elapsedSamples >= observeSamples) {
             finished = true;
             log.debug("[{}] answering-machine window closed without a detection", channelId);
+            reportVerdict(false);
+        }
+    }
+
+    private void reportVerdict(boolean machine) {
+        if (onVerdict == null) {
+            return;
+        }
+        try {
+            onVerdict.onVerdict(machine, msOf(elapsedSamples));
+        } catch (Exception e) {
+            log.warn("[{}] answering-machine verdict listener failed: {}", channelId, e.getMessage());
         }
     }
 

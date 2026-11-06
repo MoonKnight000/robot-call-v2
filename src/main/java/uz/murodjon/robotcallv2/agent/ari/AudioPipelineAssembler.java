@@ -79,6 +79,7 @@ class AudioPipelineAssembler {
     private final ObjectProvider<NeuralDenoiser> neuralDenoiserProvider;
     private final RealtimeVoicemailDrop realtimeVoicemailDrop;
     private final SttPrewarmRegistry sttPrewarmRegistry;
+    private final CallerPaceTracker callerPaceTracker;
 
     AudioPipelineAssembler(VadProperties vadProperties,
                            VadScorerFactory vadScorerFactory,
@@ -106,8 +107,10 @@ class AudioPipelineAssembler {
                            TurnDatasetRecorder turnDatasetRecorder,
                            ObjectProvider<NeuralDenoiser> neuralDenoiserProvider,
                            RealtimeVoicemailDrop realtimeVoicemailDrop,
-                           SttPrewarmRegistry sttPrewarmRegistry) {
+                           SttPrewarmRegistry sttPrewarmRegistry,
+                           CallerPaceTracker callerPaceTracker) {
         this.sttPrewarmRegistry = sttPrewarmRegistry;
+        this.callerPaceTracker = callerPaceTracker;
         this.vadProperties = vadProperties;
         this.vadScorerFactory = vadScorerFactory;
         this.llmTurnDetectorProvider = llmTurnDetectorProvider;
@@ -306,6 +309,7 @@ class AudioPipelineAssembler {
 
         if (sttProperties.enabled()) {
             boolean dialog = dialogProperties.enabled() && dialogEngine.available();
+            SpeechGate callerGate = speechGate;
             TranscriptListener listener = (text, isFinal, confidence) -> {
                 if (isFinal) {
                     // What the caller said is personal data: DEBUG, like the rest of the pipeline.
@@ -315,6 +319,11 @@ class AudioPipelineAssembler {
                     ariEventLanes.execute(channelId, () -> callTranscriptUseCase.addTranscript(callAttemptId, "CLIENT", safeText, null,
                             offsetMs, confidence));
                     if (dialog) {
+                        if (callerGate != null) {
+                            // Before the turn: the reply this final starts is spoken at the pace it sets.
+                            callerPaceTracker.record(dialogEngine.findSession(channelId), text,
+                                    callerGate.lastUtteranceSpeechMs());
+                        }
                         dialogEngine.onClientFinal(channelId, text, confidence);
                     }
                 } else {
@@ -521,7 +530,8 @@ class AudioPipelineAssembler {
         }
         return new AnsweringMachineDetector(channelId, CallMediaFactory.SAMPLE_RATE, amd.observeMs(),
                 amd.minContinuousSpeechMs(), amd.silenceToleranceMs(),
-                () -> handleVoicemail(channelId, realtime));
+                () -> handleVoicemail(channelId, realtime),
+                (machine, afterMs) -> callMetrics.amdVerdict(machine, afterMs, "ai"));
     }
 
     /** @param realtime whether the call is on a realtime engine, which has no voice of ours to leave a message with */

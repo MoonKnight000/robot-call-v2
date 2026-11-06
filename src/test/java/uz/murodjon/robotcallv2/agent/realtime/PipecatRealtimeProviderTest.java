@@ -42,6 +42,7 @@ class PipecatRealtimeProviderTest {
                 null,
                 null,
                 null,
+                null,
                 pipecatProps
         );
         provider = new PipecatRealtimeProvider(properties, new ObjectMapper());
@@ -77,6 +78,7 @@ class PipecatRealtimeProviderTest {
                 "deepgram",
                 "claude-3-5-haiku",
                 "cartesia",
+                null,
                 null
         );
         assertThat(config.pipecatStt()).isEqualTo("deepgram");

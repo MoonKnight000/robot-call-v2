@@ -96,6 +96,17 @@ public class RealtimeProviderRegistry {
         return provider != null && provider.lacksToolCalling();
     }
 
+    /**
+     * Whether the engine {@code providerName} resolves to (blank: the default) cannot take the
+     * caller's words as text ({@link RealtimeProvider#lacksCallerText}). False when nothing resolves.
+     */
+    public boolean lacksCallerText(String providerName) {
+        RealtimeProvider provider = providerName == null || providerName.isBlank()
+                ? defaultProvider
+                : byName.get(providerName.toLowerCase());
+        return provider != null && provider.lacksCallerText();
+    }
+
     /** Whether any engine could serve a call at all — what gates selecting the mode. */
     public boolean isEmpty() {
         return byName.isEmpty();

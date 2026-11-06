@@ -164,6 +164,20 @@ public class SttMetrics {
                 .increment();
     }
 
+    /**
+     * One caller utterance's speaking rate: final words over the VAD-scored speech time
+     * (human-like call plan, phase 0). Read before anything adapts the bot's pace to it —
+     * the spread per language says whether "fast" and "slow" callers are worth telling apart.
+     */
+    public void callerSpeechRate(String language, double wordsPerSecond) {
+        DistributionSummary.builder("voice.stt.caller.words.per.second")
+                .description("caller words per second of VAD-scored speech, one utterance")
+                .tag("language", language == null ? "unknown" : language)
+                .publishPercentileHistogram()
+                .register(registry)
+                .record(wordsPerSecond);
+    }
+
     /** The wait a long utterance earned before it was closed — fixed, or learned. */
     public void sttEndpointingHangover(int ms) {
         endpointingHangover.record(ms);

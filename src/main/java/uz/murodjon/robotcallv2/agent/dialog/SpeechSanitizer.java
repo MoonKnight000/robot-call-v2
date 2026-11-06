@@ -30,6 +30,20 @@ public final class SpeechSanitizer {
     private static final Pattern STAGE_NAME_PATTERN = Pattern.compile("\\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+\\b");
 
     /**
+     * ...and any other identifier with an underscore, anywhere in the line: a tool argument or
+     * a field name ({@code get_balance}, {@code debt_amount}). The whole-string snake_case check
+     * only catches one standing alone; spoken Uzbek and Russian never write an underscore.
+     */
+    private static final Pattern IDENTIFIER_PATTERN = Pattern.compile("\\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\\b");
+
+    /**
+     * A JSON object opening mid-sentence — {@code {"amount": 500}} after "Natija:", or a code
+     * fence whose backticks were already stripped. The whole-string JSON check only catches a
+     * line that is nothing but JSON.
+     */
+    private static final Pattern EMBEDDED_JSON_PATTERN = Pattern.compile("\\{\\s*\"[^\"]{1,64}\"\\s*:");
+
+    /**
      * Anything a spoken Uzbek or Russian line cannot be made of. What is kept: Latin and
      * Cyrillic letters, digits, whitespace, the apostrophes Uzbek writes o' and g' with
      * (ASCII, U+02BB, U+02BC, U+2019), sentence punctuation, and the brackets, braces,
@@ -141,7 +155,14 @@ public final class SpeechSanitizer {
         // DEBT_NOTICE dan PAYMENT_NEGOTIATION ga o'tishimiz kerak." — the model narrating
         // its own next move. Neither spelling exists in spoken Uzbek or Russian, so
         // finding one is enough to drop the sentence.
-        if (TOOL_NAME_PATTERN.matcher(trimmed).find() || STAGE_NAME_PATTERN.matcher(trimmed).find()) {
+        if (TOOL_NAME_PATTERN.matcher(trimmed).find() || STAGE_NAME_PATTERN.matcher(trimmed).find()
+                || IDENTIFIER_PATTERN.matcher(trimmed).find()) {
+            return true;
+        }
+
+        // JSON inside an otherwise ordinary sentence — a tool result or arguments the model
+        // pasted into its reply. Read aloud it is braces, quotes and English field names.
+        if (EMBEDDED_JSON_PATTERN.matcher(trimmed).find()) {
             return true;
         }
 

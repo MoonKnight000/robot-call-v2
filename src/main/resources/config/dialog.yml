@@ -101,6 +101,13 @@ voice-agent:
       opening-clause-words: ${DIALOG_CHUNKER_OPENING_CLAUSE_WORDS:4}
       min-chunk-chars: ${DIALOG_CHUNKER_MIN_CHUNK_CHARS:20}
       long-clause-chars: ${DIALOG_CHUNKER_LONG_CLAUSE_CHARS:90}
+    # The bot's speed follows the caller's pace (CallerPaceProperties). Off until the reference is set
+    # from real calls: voice.stt.caller.words.per.second p50 for the agents' main language.
+    caller-pace:
+      enabled: ${DIALOG_CALLER_PACE_ENABLED:false}
+      reference-words-per-second: ${DIALOG_CALLER_PACE_REFERENCE_WPS:2.5}
+      max-adjust-percent: ${DIALOG_CALLER_PACE_MAX_ADJUST_PERCENT:6}
+      hurried-ratio: ${DIALOG_CALLER_PACE_HURRIED_RATIO:1.3}
     llm-timeout:
       token-gap-ms: ${DIALOG_LLM_TOKEN_GAP_TIMEOUT_MS:5000}
       queue-drain-ms: ${DIALOG_LLM_QUEUE_DRAIN_TIMEOUT_MS:30000}
@@ -141,6 +148,8 @@ voice-agent:
     knowledge-passages: ${DIALOG_KNOWLEDGE_PASSAGES:3}
     tool-result-rounds: ${DIALOG_TOOL_RESULT_ROUNDS:2}
     max-tokens-per-call: ${DIALOG_MAX_TOKENS_PER_CALL:0}
+    # One turn's prompt tokens over this is logged and counted, never cut. p95 on 2026-11-06 calls was 9.3k.
+    prompt-budget-tokens: ${DIALOG_PROMPT_BUDGET_TOKENS:12000}
     test-context:
       client-name: ${TEST_CLIENT_NAME:Murodjon}
       debt-amount: ${TEST_DEBT_AMOUNT:1500000}

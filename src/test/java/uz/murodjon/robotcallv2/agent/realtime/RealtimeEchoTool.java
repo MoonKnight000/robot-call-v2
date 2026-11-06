@@ -84,7 +84,7 @@ public final class RealtimeEchoTool {
                         env("REALTIME_GEMINI_END_SENSITIVITY", ""),
                         0, 0, 0, false, false,
                         env("REALTIME_GEMINI_THINKING_LEVEL", "")),
-                null, null, null, null), new ObjectMapper());
+                null, null, null, null, null), new ObjectMapper());
         provider.init();
 
         WavAudio audio = WavReader.read(input);

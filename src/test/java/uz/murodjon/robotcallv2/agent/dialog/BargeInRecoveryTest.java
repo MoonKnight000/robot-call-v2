@@ -2,9 +2,14 @@ package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.rtp.RtpEndpoint;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -87,5 +92,42 @@ class BargeInRecoveryTest {
         verify(session).setUnansweredClientText(null);
         assertThat(answered).hasValue(0);
         assertThat(busy).isFalse();
+    }
+
+    /*
+     * The context a barge-in leaves behind. The system prompt is not in the history — it is built
+     * again for every request (SystemPromptFactory) — so a barge-in can only lose context by
+     * editing the history wrongly: these pin that it touches the cut-off line and nothing before it.
+     */
+
+    @Test
+    void stitchingRemovesOnlyTheCutOffCallerLine() {
+        List<Message> history = new ArrayList<>(List.of(
+                new UserMessage("Alo"),
+                new AssistantMessage("Assalomu alaykum, to'lov haqida qo'ng'iroq qilyapman."),
+                new UserMessage("Men ertaga")));
+        when(session.history()).thenReturn(history);
+        when(session.takeUnansweredClientText()).thenReturn("Men ertaga");
+
+        String stitched = recovery.stitchUnansweredUtterance(session, "to'layman");
+
+        assertThat(stitched).isEqualTo("Men ertaga to'layman");
+        assertThat(history).extracting(Message::getText)
+                .containsExactly("Alo", "Assalomu alaykum, to'lov haqida qo'ng'iroq qilyapman.");
+    }
+
+    @Test
+    void aResumedTailJoinsTheLastReplyAndLeavesEarlierTurnsAlone() {
+        List<Message> history = new ArrayList<>(List.of(
+                new UserMessage("Alo"),
+                new AssistantMessage("Assalomu alaykum,")));
+        when(session.history()).thenReturn(history);
+        when(session.takeUnspokenText()).thenReturn("hozir gaplashishga qulaymi?");
+        when(speech.speakChunk(session, "hozir gaplashishga qulaymi?")).thenReturn(true);
+
+        recovery.scheduleResume(session, TURN, () -> { });
+
+        assertThat(history).extracting(Message::getText)
+                .containsExactly("Alo", "Assalomu alaykum, hozir gaplashishga qulaymi?");
     }
 }

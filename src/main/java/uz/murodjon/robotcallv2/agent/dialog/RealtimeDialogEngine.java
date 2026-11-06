@@ -271,12 +271,15 @@ public class RealtimeDialogEngine implements CallDialog {
             realtimeMetrics.realtimeFallback(provider.name());
             return false;
         }
-        RealtimeCallConfig config = new RealtimeCallConfig(channelId, language, prompt,
-                voiceFor(voice, provider), session.tools(),
-                agent != null ? agent.speechEngine().pipecatStt() : null,
-                agent != null ? agent.speechEngine().pipecatLlm() : null,
-                agent != null ? agent.speechEngine().pipecatTts() : null,
-                agent != null ? agent.llmModel() : null);
+        RealtimeCallConfig config = RealtimeCallConfig.builder()
+                .channelId(channelId).language(language).systemPrompt(prompt)
+                .voice(voiceFor(voice, provider)).tools(session.tools())
+                .pipecatStt(agent != null ? agent.speechEngine().pipecatStt() : null)
+                .pipecatLlm(agent != null ? agent.speechEngine().pipecatLlm() : null)
+                .pipecatTts(agent != null ? agent.speechEngine().pipecatTts() : null)
+                .model(agent != null ? agent.llmModel() : null)
+                .reasoningEffort(agent != null ? agent.reasoningEffort() : null)
+                .build();
         // The catalog id only counts as the call's voice if the engine took it (voiceFor).
         session.setEngineIdentity(provider.name(), provider.resolveModel(config),
                 config.voice() != null ? voice : null);
@@ -923,6 +926,16 @@ public class RealtimeDialogEngine implements CallDialog {
         @Override
         public void onUsage(long promptTokens, long completionTokens, long cachedTokens) {
             session.addUsage(promptTokens, completionTokens, cachedTokens);
+            afterUsage(promptTokens, completionTokens, cachedTokens);
+        }
+
+        @Override
+        public void onDelegatedUsage(String model, long promptTokens, long completionTokens, long cachedTokens) {
+            session.addDelegatedUsage(model, promptTokens, completionTokens, cachedTokens);
+            afterUsage(promptTokens, completionTokens, cachedTokens);
+        }
+
+        private void afterUsage(long promptTokens, long completionTokens, long cachedTokens) {
             realtimeMetrics.recordRealtimeUsage(session.engineName(), promptTokens, completionTokens, cachedTokens);
             // Cost cap (§C14), the same budget the cascade pipeline closes on.
             long cap = session.maxTokensPerCall();

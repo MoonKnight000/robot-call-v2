@@ -845,6 +845,10 @@ public class SystemPromptFactory {
         appendRecorded(sb, s.outcome());
         appendClientFacts(sb, s.clientFacts());
         appendStageExamples(sb, stage, s.language());
+        if (s.isCallerHurried()) {
+            // CallerPaceTracker: the caller talks well above an ordinary pace.
+            sb.append("The client speaks fast and is in a hurry: keep this reply to one short sentence.\n");
+        }
         if (stage != null && Boolean.TRUE.equals(stage.skipWhenKnown())) {
             sb.append("ALREADY KNOWN IS NOT ASKED: before asking anything this stage collects, check the client's ")
                     .append("memory, the FACTS and ALREADY ESTABLISHED. Whatever is already there — do not ask for it ")

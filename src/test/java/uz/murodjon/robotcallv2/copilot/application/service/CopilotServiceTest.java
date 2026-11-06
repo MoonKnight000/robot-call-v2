@@ -80,8 +80,8 @@ class CopilotServiceTest {
 
     /** The model calls the given tools, in order, and then answers. */
     private void givenModelCalls(String... tools) {
-        when(modelPort.generateReply(anyString(), anyList(), anyList(), any())).thenAnswer(call -> {
-            CopilotToolInvoker invoker = call.getArgument(3);
+        when(modelPort.generateReply(anyString(), anyList(), anyList(), any(), any())).thenAnswer(call -> {
+            CopilotToolInvoker invoker = call.getArgument(4);
             for (String tool : tools) {
                 invoker.callTool(tool, "{}");
             }
@@ -95,7 +95,7 @@ class CopilotServiceTest {
         when(mcpServerUseCase.callServerToolAsDraftOnly(COMPANY_ID, "list_calls", "{}")).thenReturn("[]");
         when(callBillingUseCase.chargeCopilotReply(eq(COMPANY_ID), anyLong(), any())).thenReturn(45L);
 
-        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "Nega transferlar ko'paydi?", null, null));
+        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "Nega transferlar ko'paydi?", null, null, null));
 
         assertThat(response.sessionId()).isEqualTo(SESSION_ID);
         assertThat(response.reply().content()).isEqualTo("javob");
@@ -122,7 +122,7 @@ class CopilotServiceTest {
         when(callBillingUseCase.chargeCopilotReply(eq(COMPANY_ID), anyLong(), any())).thenReturn(45L);
         EventSink sink = mock(EventSink.class);
 
-        EventSubscription sub = service.askStream(COMPANY_ID, new AskCopilotRequest(null, "Stream savol", null, null), sink);
+        EventSubscription sub = service.askStream(COMPANY_ID, new AskCopilotRequest(null, "Stream savol", null, null, null), sink);
         assertThat(sub).isNotNull();
 
         // Give virtual thread a moment to run
@@ -139,7 +139,7 @@ class CopilotServiceTest {
         givenModelCalls("a", "b", "c");
         when(mcpServerUseCase.callServerToolAsDraftOnly(eq(COMPANY_ID), anyString(), anyString())).thenReturn("ok");
 
-        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, null));
+        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, null, null));
 
         assertThat(response.toolCalls()).hasSize(2);
         verify(mcpServerUseCase, times(2)).callServerToolAsDraftOnly(eq(COMPANY_ID), anyString(), anyString());
@@ -153,14 +153,14 @@ class CopilotServiceTest {
         givenModelCalls("get_agent", "update_agent_draft");
         when(mcpServerUseCase.callServerToolAsDraftOnly(eq(COMPANY_ID), anyString(), anyString())).thenReturn("ok");
 
-        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, null));
+        CopilotReplyResponse response = service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, null, null));
 
         verify(mcpServerUseCase).callServerToolAsDraftOnly(COMPANY_ID, "get_agent", "{}");
         verify(mcpServerUseCase, never()).callServerToolAsDraftOnly(COMPANY_ID, "update_agent_draft", "{}");
         assertThat(response.toolCalls().get(1).proposalStatus()).isEqualTo(CopilotProposalStatus.PENDING);
         assertThat(response.toolCalls().get(1).content()).startsWith("PROPOSED");
 
-        service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, true));
+        service.ask(COMPANY_ID, new AskCopilotRequest(null, "o'zgartir", null, true, null));
         verify(mcpServerUseCase).callServerToolAsDraftOnly(COMPANY_ID, "update_agent_draft", "{}");
     }
 
@@ -198,7 +198,7 @@ class CopilotServiceTest {
     void anApiKeyCannotAskTheCopilot() {
         when(currentUser.id()).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?", null, null)))
+        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?", null, null, null)))
                 .isInstanceOf(ForbiddenException.class);
         verifyNoInteractions(modelPort);
     }
@@ -207,7 +207,7 @@ class CopilotServiceTest {
     void anotherUsersSessionCannotBeReused() {
         when(repository.findSessionByCompanyIdAndUserIdAndId(COMPANY_ID, USER_ID, 77L)).thenReturn(null);
 
-        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(77L, "?", null, null)))
+        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(77L, "?", null, null, null)))
                 .isInstanceOf(NotFoundException.class);
         verifyNoInteractions(modelPort);
     }
@@ -216,7 +216,7 @@ class CopilotServiceTest {
     void withoutBalanceNothingIsAsked() {
         when(callBillingUseCase.hasBalanceForCall(COMPANY_ID)).thenReturn(false);
 
-        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?", null, null)))
+        assertThatThrownBy(() -> service.ask(COMPANY_ID, new AskCopilotRequest(null, "?", null, null, null)))
                 .isInstanceOf(ConflictException.class);
         verifyNoInteractions(modelPort);
         verify(repository, never()).createSession(anyLong(), any());
@@ -232,11 +232,11 @@ class CopilotServiceTest {
                 CopilotMessage.assistant(SESSION_ID, new CopilotModelReply("javob", 1, 1))));
         givenModelCalls();
 
-        service.ask(COMPANY_ID, new AskCopilotRequest(SESSION_ID, "ikkinchi", null, null));
+        service.ask(COMPANY_ID, new AskCopilotRequest(SESSION_ID, "ikkinchi", null, null, null));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<CopilotMessage>> history = ArgumentCaptor.forClass(List.class);
-        verify(modelPort).generateReply(anyString(), history.capture(), anyList(), any());
+        verify(modelPort).generateReply(anyString(), history.capture(), anyList(), any(), any());
         assertThat(history.getValue()).extracting(CopilotMessage::content)
                 .containsExactly("birinchi", "javob", "ikkinchi");
     }

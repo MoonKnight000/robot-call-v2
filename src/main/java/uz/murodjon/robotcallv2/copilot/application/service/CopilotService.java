@@ -99,7 +99,8 @@ public class CopilotService implements CopilotUseCase {
         RecordingToolInvoker invoker = new RecordingToolInvoker(companyId, session.id(),
                 ToolRun.of(tools, request.applyChangesOrDefault()));
         CopilotModelReply reply = modelPort.generateReply(
-                CopilotInstructions.forQuestion(today(companyId), request.context()), history, tools, invoker);
+                CopilotInstructions.forQuestion(today(companyId), request.context()), history, tools,
+                        request.modeOrDefault().reasoningEffort(), invoker);
 
         CopilotMessage answer = repository.createMessage(companyId, CopilotMessage.assistant(session.id(), reply));
         long chargedUzs = callBillingUseCase.chargeCopilotReply(companyId, answer.id(),
@@ -140,7 +141,8 @@ public class CopilotService implements CopilotUseCase {
                 StreamingToolInvoker invoker = new StreamingToolInvoker(companyId, session.id(), sink, cancelled,
                         ToolRun.of(tools, request.applyChangesOrDefault()));
                 CopilotModelReply reply = modelPort.generateReply(
-                        CopilotInstructions.forQuestion(today(companyId), request.context()), history, tools, invoker);
+                        CopilotInstructions.forQuestion(today(companyId), request.context()), history, tools,
+                        request.modeOrDefault().reasoningEffort(), invoker);
 
                 if (cancelled.get()) {
                     return;

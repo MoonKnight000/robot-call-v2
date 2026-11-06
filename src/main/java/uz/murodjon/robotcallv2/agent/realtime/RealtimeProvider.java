@@ -60,6 +60,16 @@ public interface RealtimeProvider {
     }
 
     /**
+     * Whether this engine cannot be handed the caller's words as text — what HALF_CASCADE runs
+     * on ({@link RealtimeSession#sendUserText} as the caller's turn). GPT-Live has no such input:
+     * text it is given is spoken commentary, not something the caller said. An agent cannot be
+     * saved on such an engine in HALF_CASCADE ({@code ENGINE_REALTIME_HALF_CASCADE_UNSUPPORTED}).
+     */
+    default boolean lacksCallerText() {
+        return false;
+    }
+
+    /**
      * Open a conversation. The returned session is live from this point: the engine may
      * start speaking (a greeting) before any audio has been sent to it.
      *

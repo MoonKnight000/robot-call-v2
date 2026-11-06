@@ -23,7 +23,7 @@ class GeminiLiveProviderTest {
     void extendedThinkingModelIncludesThinkingLevelLowByDefault() throws Exception {
         RealtimeCallConfig config = new RealtimeCallConfig(
                 "chan-1", "uz-UZ", "Prompt", null, List.of(),
-                null, null, null, "gemini-3.8-live-extended-thinking"
+                null, null, null, "gemini-3.8-live-extended-thinking", null
         );
         GeminiLiveProperties live = new GeminiLiveProperties(
                 "key", "wss://example.com", "gemini-3.8-live-extended-thinking", "Aoede",
@@ -42,7 +42,7 @@ class GeminiLiveProviderTest {
     void configuredThinkingLevelIsRespected() throws Exception {
         RealtimeCallConfig config = new RealtimeCallConfig(
                 "chan-1", "uz-UZ", "Prompt", null, List.of(),
-                null, null, null, "gemini-3.8-live-extended-thinking"
+                null, null, null, "gemini-3.8-live-extended-thinking", null
         );
         GeminiLiveProperties live = new GeminiLiveProperties(
                 "key", "wss://example.com", "gemini-3.8-live-extended-thinking", "Aoede",
@@ -61,7 +61,7 @@ class GeminiLiveProviderTest {
     void nonThinkingModelWithoutConfiguredLevelOmitsThinkingConfig() throws Exception {
         RealtimeCallConfig config = new RealtimeCallConfig(
                 "chan-1", "uz-UZ", "Prompt", null, List.of(),
-                null, null, null, "gemini-3.1-flash-live-preview"
+                null, null, null, "gemini-3.1-flash-live-preview", null
         );
         GeminiLiveProperties live = new GeminiLiveProperties(
                 "key", "wss://example.com", "gemini-3.1-flash-live-preview", "Aoede",

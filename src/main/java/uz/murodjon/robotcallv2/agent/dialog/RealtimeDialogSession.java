@@ -597,6 +597,14 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         usageLedger.addTokenBreakdown(null, prompt, completion, cached);
     }
 
+    /**
+     * Add the usage of a text model the engine delegated to; kept under its model, because
+     * unlike the engine's own tokens these are billed per token on top of the minutes.
+     */
+    public void addDelegatedUsage(String model, long prompt, long completion, long cached) {
+        usageLedger.addTokenBreakdown(model, prompt, completion, cached);
+    }
+
     public long promptTokens() {
         return usageLedger.promptTokens();
     }

@@ -66,6 +66,7 @@ Endpoint so'rovdagi `Accept` header'iga qarab ikki xil ishlaydi:
 | `message` | `string` (≤4000) | ✅ | Savol |
 | `context` | `object` \| `null` | ❌ | Savol berilgan panel sahifasi: `page` (`[a-z0-9-]{1,40}`, masalan `agent-editor`, `campaign`, `call-detail`), `agentId`, `campaignId`, `callId`, `scenarioId` — hammasi ixtiyoriy. Copilot shu kontekstga qarab 38 ta MCP tool'dan eng kerakli 6-10 tasini avtomatik tanlab oladi (tokenlar tejaladi). Noto'g'ri `page` — `400 VALIDATION_FAILED` |
 | `applyChanges` | `boolean` \| `null` | ❌ | `true` — copilot o'zgarishlarni darhol qo'llaydi; `null`/`false` — har bir o'zgarish taklif (`PENDING`) bo'lib qoladi |
+| `mode` | `"LOW"` \| `"MEDIUM"` \| `"PRO"` \| `null` | ❌ | Copilot qanchalik o'ylab javob beradi (model o'zgarmaydi, faqat reasoning effort: `LOW`→low, `MEDIUM`→medium, `PRO`→high). `null` — `LOW`. Ko'proq o'ylash — sekinroq va qimmatroq javob. Noma'lum qiymat — `400` |
 
 ---
 
