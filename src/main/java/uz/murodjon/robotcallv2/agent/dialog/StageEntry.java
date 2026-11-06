@@ -24,6 +24,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * What happens when a call enters a flow stage ({@link StageType}), shared by both pipelines
@@ -216,16 +217,32 @@ final class StageEntry {
      * @param toolNote what step 1's tools answered, or null when none ran
      */
     static String findSoleNextStage(ScenarioDefinition scenario, StageDef stage, String toolNote) {
-        if (scenario == null || stage == null || toolNote == null || toolNote.contains("ERROR")
-                || toolNote.contains(ToolConfirmation.CONFIRMATION_REQUIRED)
+        if (toolNote == null || toolNote.contains("ERROR") || toolNote.contains(ToolConfirmation.CONFIRMATION_REQUIRED)) {
+            return null;
+        }
+        String next = findSoleWayOn(scenario, stage);
+        return next != null && needsModelAction(scenario.findStage(next)) ? next : null;
+    }
+
+    /** Whether the stage's only way on is ending the call — after its line there is nothing left to say. */
+    static boolean onlyEndsCall(StageDef stage) {
+        return stage != null && stage.allowedTransitions() != null && !stage.allowedTransitions().isEmpty()
+                && stage.allowedTransitions().stream().allMatch("END_CALL"::equals);
+    }
+
+    /**
+     * The stage's one drawn way on, whatever kind of stage it leads to; null whenever the choice
+     * needs reading — branches, more than one way on, a FLEX flow, an outcome the stage still requires.
+     */
+    static String findSoleWayOn(ScenarioDefinition scenario, StageDef stage) {
+        if (scenario == null || stage == null
                 || scenario.transitionMode() == TransitionMode.FLEX
                 || stage.branches() != null && !stage.branches().isEmpty()
                 || stage.requiredOutcomes() != null && !stage.requiredOutcomes().isEmpty()
                 || stage.allowedTransitions() == null || stage.allowedTransitions().size() != 1) {
             return null;
         }
-        String next = stage.allowedTransitions().getFirst();
-        return needsModelAction(scenario.findStage(next)) ? next : null;
+        return stage.allowedTransitions().getFirst();
     }
 
     /**
@@ -248,7 +265,10 @@ final class StageEntry {
             text.append("\nSTAGE ").append(job.id()).append(" ONLY RUNS THE TOOL ").append(job.action().toolName())
                     .append(": when you move to ").append(job.id()).append(", call ").append(job.action().toolName())
                     .append(" in that same reply with what the client has said (first ").append(job.action().toolName())
-                    .append(", then transitionTo ").append(job.id()).append("). Do not tell the client about it.");
+                    .append(", then transitionTo ").append(job.id())
+                    // "Do not tell the client about it" read as "write no text": the turn came back empty and
+                    // was asked again (call 18). The text is still written — it just never mentions the recording.
+                    .append("). Still write your line to the client as text first — just never mention the recording.");
         }
         return text.toString();
     }
@@ -282,6 +302,20 @@ final class StageEntry {
                 } else {
                     queue.add(id);
                 }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The FUNCTION stage {@code stage} leads to whose job ran inline this turn while the call stayed in
+     * {@code stage}, or null. Call 18 ran recordDelayReason in REASON_INQUIRY but moved to a stage that
+     * does not exist; the call stayed put and asked for the promised date three times.
+     */
+    static String findDoneInlineJobStage(ScenarioDefinition scenario, StageDef stage, Predicate<String> isDoneTool) {
+        for (StageDef job : findInlineJobs(scenario, stage)) {
+            if (isDoneTool.test(job.action().toolName())) {
+                return job.id();
             }
         }
         return null;
@@ -345,7 +379,9 @@ final class StageEntry {
             return "Stage " + stage.id() + " is done. Move on now to ONE of: "
                     + SystemPromptFactory.describeReachableStages(scenario, stage)
                     + " — choose by what the tool answered or what was recorded; first write that stage's line "
-                    + "as text, then call transitionTo for it.";
+                    + "as text, then call transitionTo for it. If your last line to the client already said what "
+                    + "that stage would say (the date read back, a thank-you, a goodbye), write NO text and only "
+                    + "call transitionTo — the client must not hear it twice.";
         }
         return switch (stage.type()) {
             case FUNCTION -> "Stage " + stage.id() + ": call the tool " + (action == null ? "" : action.toolName())

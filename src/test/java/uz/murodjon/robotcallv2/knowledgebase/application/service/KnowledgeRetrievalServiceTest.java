@@ -2,100 +2,134 @@ package uz.murodjon.robotcallv2.knowledgebase.application.service;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeBaseRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeChunkRepository;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeCollectionRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.TextEmbedderPort;
-import uz.murodjon.robotcallv2.knowledgebase.domain.entity.IndexedChunk;
-import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeChunk;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemMatch;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
+import uz.murodjon.robotcallv2.knowledgebase.infrastructure.config.KnowledgeBaseProperties;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
+/**
+ * The database does the nearest-neighbour and text search (pgvector); what is pinned here is what the service
+ * does with the candidates: the similarity floor, the keyword score, the fusion, and the curated-answer choice.
+ */
 class KnowledgeRetrievalServiceTest {
 
-    private static final float[] PAYMENT = {1.0f, 0.0f, 0.0f};
-    private static final float[] LEGAL = {0.0f, 1.0f, 0.0f};
+    private static final float[] VECTOR = {1.0f, 0.0f, 0.0f};
+    private static final KnowledgeBaseProperties PROPERTIES = new KnowledgeBaseProperties(800, 3, 5, 0.80, 100);
 
-    private StubChunkRepository chunkRepository;
-
-    private static KnowledgeCollectionRepository noCollections() {
-        return org.mockito.Mockito.mock(KnowledgeCollectionRepository.class);
-    }
+    private KnowledgeChunkRepository chunkRepository;
+    private KnowledgeBaseRepository knowledgeBaseRepository;
 
     @BeforeEach
     void setUp() {
-        chunkRepository = new StubChunkRepository(List.of(
-                new IndexedChunk(1L, null, "To'lov qoidalari", "To'lovni Click yoki Payme orqali qiling.", PAYMENT),
-                new IndexedChunk(2L, 7L, "Sud amaliyoti", "Qarz uzoq to'lanmasa ish sudga oshadi.", LEGAL)
-        ));
+        chunkRepository = mock(KnowledgeChunkRepository.class);
+        knowledgeBaseRepository = mock(KnowledgeBaseRepository.class);
+        when(chunkRepository.findByTerms(anyLong(), any(), anyList(), anyList(), anyInt())).thenReturn(List.of());
+        when(chunkRepository.findNearest(anyLong(), any(), anyList(), any(), anyInt())).thenReturn(List.of());
     }
 
     @Test
-    void returnsThePassageClosestToTheQuestion() {
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(PAYMENT), noCollections());
+    void passagesBelowTheSimilarityFloorAreDropped() {
+        when(chunkRepository.findNearest(anyLong(), any(), anyList(), any(), anyInt())).thenReturn(List.of(
+                passage(1L, "To'lovni Click yoki Payme orqali qiling.", 0.91),
+                passage(2L, "Ofis soat 9 da ochiladi.", 0.40)));
 
-        List<KnowledgePassage> hits = service.findRelevantPassages(1L, 7L, "Qanday to'lasam bo'ladi?", 3);
-
-        assertThat(hits).hasSize(1);
-        assertThat(hits.getFirst().sourceName()).isEqualTo("To'lov qoidalari");
-        assertThat(hits.getFirst().score()).isGreaterThan(0.9);
-    }
-
-    @Test
-    void aPassageThatIsMerelyTheLeastUnrelatedIsNotReturned() {
-        // Orthogonal to both documents: cosine 0, far below the floor.
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(
-                chunkRepository, embedder(new float[]{0.0f, 0.0f, 1.0f}), noCollections());
-
-        assertThat(service.findRelevantPassages(1L, 7L, "Bugun havo qanday?", 3)).isEmpty();
-    }
-
-    @Test
-    void anotherAgentsSourceIsNeverReturned() {
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(LEGAL), noCollections());
-
-        // Source 2 belongs to agent 7; agent 9 must not see it, and the company-wide
-        // source 1 does not match this question.
-        assertThat(service.findRelevantPassages(1L, 9L, "Sudga berishadimi?", 3)).isEmpty();
-        assertThat(service.findRelevantPassages(1L, 7L, "Sudga berishadimi?", 3))
-                .extracting(KnowledgePassage::sourceId)
-                .containsExactly(2L);
-    }
-
-    @Test
-    void withNoEmbeddingModelItFallsBackToKeywords() {
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(null), noCollections());
-
-        List<KnowledgePassage> hits = service.findRelevantPassages(1L, 7L, "Click orqali to'lash", 3);
+        List<KnowledgePassage> hits = service(embedder(VECTOR)).findRelevantPassages(1L, 7L, "Qanday to'lasam bo'ladi?", 3);
 
         assertThat(hits).extracting(KnowledgePassage::sourceId).containsExactly(1L);
     }
 
     @Test
-    void anUtteranceTooShortToBeAQuestionIsNotSearched() {
-        StubEmbedder embedder = embedder(PAYMENT);
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder, noCollections());
+    void withNoEmbeddingModelItFallsBackToKeywordCandidatesScoredByCoverage() {
+        when(chunkRepository.findByTerms(anyLong(), any(), anyList(), anyList(), anyInt())).thenReturn(List.of(
+                passage(1L, "To'lovni Click orqali qiling.", 0.0),
+                passage(2L, "Bu matnda so'zlar yo'q.", 0.0)));
 
-        assertThat(service.findRelevantPassages(1L, 7L, "ha", 3)).isEmpty();
+        List<KnowledgePassage> hits = service(embedder(null)).findRelevantPassages(1L, 7L, "Click orqali to'lash", 3);
+
+        assertThat(hits).extracting(KnowledgePassage::sourceId).containsExactly(1L);
+        assertThat(hits.getFirst().score()).isGreaterThan(0.5);
+        verify(chunkRepository, never()).findNearest(anyLong(), any(), anyList(), any(), anyInt());
+    }
+
+    @Test
+    void aPassageBothRankingsFoundComesFirst() {
+        when(chunkRepository.findNearest(anyLong(), any(), anyList(), any(), anyInt())).thenReturn(List.of(
+                passage(2L, "Shartnoma muddati bir yil.", 0.80),
+                passage(1L, "Shartnoma raqami 12345 bo'yicha to'lov.", 0.70)));
+        when(chunkRepository.findByTerms(anyLong(), any(), anyList(), anyList(), anyInt())).thenReturn(List.of(
+                passage(1L, "Shartnoma raqami 12345 bo'yicha to'lov.", 0.0)));
+
+        List<KnowledgePassage> hits = service(embedder(VECTOR)).findRelevantPassages(1L, 7L, "shartnoma 12345 qarzi", 2);
+
+        assertThat(hits).extracting(KnowledgePassage::sourceId).containsExactly(1L, 2L);
+    }
+
+    @Test
+    void anUtteranceTooShortToBeAQuestionIsNotSearched() {
+        StubEmbedder embedder = embedder(VECTOR);
+
+        assertThat(service(embedder).findRelevantPassages(1L, 7L, "ha", 3)).isEmpty();
+        assertThat(embedder.queries.get()).isZero();
+        verifyNoInteractions(chunkRepository);
+    }
+
+    @Test
+    void theSameWordsAreEmbeddedOnce() {
+        StubEmbedder embedder = embedder(VECTOR);
+        KnowledgeRetrievalService service = service(embedder);
+
+        service.findRelevantPassages(1L, 7L, "Qanday to'layman?", 3);
+        service.findRelevantPassages(1L, 7L, "Qanday to'layman?", 3);
+
+        assertThat(embedder.queries.get()).isEqualTo(1);
+    }
+
+    @Test
+    void aCompanyWithNoCuratedItemsCostsNoEmbedding() {
+        StubEmbedder embedder = embedder(VECTOR);
+        when(knowledgeBaseRepository.findAllActiveByCompanyIdAndAgentId(1L, 7L)).thenReturn(List.of());
+
+        assertThat(service(embedder).findCuratedAnswer(1L, 7L, "To'lov usullari qanaqa?", "uz-UZ")).isNull();
         assertThat(embedder.queries.get()).isZero();
     }
 
     @Test
-    void passagesAreReadOncePerCompanyAndAgainAfterEviction() {
-        KnowledgeRetrievalService service = new KnowledgeRetrievalService(chunkRepository, embedder(PAYMENT), noCollections());
+    void aCuratedItemCloseInMeaningIsChosenWithoutItsKeywords() {
+        KnowledgeItem item = item(5L, "payment-methods", "click, payme", "Click yoki Payme orqali to'lashingiz mumkin.");
+        when(knowledgeBaseRepository.findAllActiveByCompanyIdAndAgentId(1L, 7L)).thenReturn(List.of(item));
+        when(knowledgeBaseRepository.findSimilarities(eq(1L), eq(7L), any(), anyInt())).thenReturn(Map.of(5L, 0.86));
 
-        service.findRelevantPassages(1L, 7L, "Qanday to'layman?", 3);
-        service.findRelevantPassages(1L, 7L, "Qayerga to'layman?", 3);
-        assertThat(chunkRepository.reads.get()).isEqualTo(1);
+        KnowledgeItemMatch match = service(embedder(VECTOR)).findCuratedAnswer(1L, 7L, "Pulni qanday o'tkazsam bo'ladi?", "uz-UZ");
 
-        service.evictCompany(1L);
-        service.findRelevantPassages(1L, 7L, "Qanday to'layman?", 3);
-        assertThat(chunkRepository.reads.get()).isEqualTo(2);
+        assertThat(match).isNotNull();
+        assertThat(match.itemId()).isEqualTo(5L);
+        assertThat(match.byKeyword()).isFalse();
+    }
+
+    private KnowledgeRetrievalService service(TextEmbedderPort embedder) {
+        return new KnowledgeRetrievalService(chunkRepository, knowledgeBaseRepository, embedder, PROPERTIES);
+    }
+
+    private static KnowledgePassage passage(long sourceId, String content, double score) {
+        return new KnowledgePassage(sourceId * 100, sourceId, "Manba " + sourceId, content, score, null);
+    }
+
+    private static KnowledgeItem item(long id, String key, String keywords, String answer) {
+        return new KnowledgeItem(id, 1L, null, key, "payment", "To'lov usullari", answer, null, null, keywords,
+                true, Instant.now(), Instant.now());
     }
 
     private static StubEmbedder embedder(float[] queryVector) {
@@ -124,29 +158,6 @@ class KnowledgeRetrievalServiceTest {
         public float[] embedQuery(String text) {
             queries.incrementAndGet();
             return queryVector;
-        }
-    }
-
-    private static final class StubChunkRepository implements KnowledgeChunkRepository {
-        private final List<IndexedChunk> chunks;
-        private final AtomicInteger reads = new AtomicInteger();
-
-        private StubChunkRepository(List<IndexedChunk> chunks) {
-            this.chunks = chunks;
-        }
-
-        @Override
-        public void replaceBySourceId(long sourceId, List<KnowledgeChunk> replacement) {
-        }
-
-        @Override
-        public void deleteBySourceId(long sourceId) {
-        }
-
-        @Override
-        public List<IndexedChunk> findIndexedByCompanyId(long companyId) {
-            reads.incrementAndGet();
-            return chunks;
         }
     }
 }

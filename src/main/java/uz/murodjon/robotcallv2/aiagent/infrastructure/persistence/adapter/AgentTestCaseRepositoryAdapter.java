@@ -73,5 +73,6 @@ public class AgentTestCaseRepositoryAdapter implements AgentTestCaseRepository {
         entity.setMaxTurns(testCase.maxTurns());
         entity.setToolMocks(mapper.write(testCase.toolMocks()));
         entity.setExpectTools(mapper.write(testCase.expectTools()));
+        entity.setSuccessCriteria(testCase.successCriteria());
     }
 }

@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.GreetingMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.ReasoningEffort;
 
 import java.time.Instant;
 import java.util.Collections;
@@ -67,6 +68,7 @@ public record AiAgent(
         LlmFallback llmFallback,
         Double temperature,
         Integer maxOutputTokens,
+        ReasoningEffort reasoningEffort,
         boolean useRag,
         List<DataExtractionField> dataNeeded,
         List<DataEvaluationCriterion> dataEvaluation,
@@ -125,9 +127,6 @@ public record AiAgent(
             // 0.3 sat close to greedy decoding: the same caller answer got the same
             // opening word every time ("Tushunarli, ..."), turn after turn.
             temperature = 0.65;
-        }
-        if (maxOutputTokens == null) {
-            maxOutputTokens = 300;
         }
         // A group is never null: every reader reaches through one, and making them prove
         // it first would put the same null check in every caller instead of here once.

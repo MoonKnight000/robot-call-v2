@@ -52,7 +52,10 @@ public class VoiceCallSimulator {
 
     private static final Logger log = LoggerFactory.getLogger(VoiceCallSimulator.class);
 
-    /** Phone recorded on a simulated call's attempt row — not a number, like {@code WEB-TEST}. */
+    /**
+     * Phone recorded on a simulated call's attempt row — not a number, like {@code WEB-TEST}. The call
+     * outbox skips summarizing rows with it ({@code CallAttemptJpaRepository#claimAttemptsAwaitingSummary}).
+     */
     private static final String SIM_PHONE = "VOICE-SIM";
     private static final long POLL_MS = 50;
 
@@ -206,8 +209,15 @@ public class VoiceCallSimulator {
         long deadline = System.currentTimeMillis() + voiceSimulationProperties.turnTimeoutMs();
         long quietSince = -1;
         while (System.currentTimeMillis() < deadline) {
-            if (hungUp.get() || session.isEnded()) {
+            if (hungUp.get()) {
                 return false;
+            }
+            if (session.isEnded()) {
+                // Ended by a tool, not hung up yet: the engine hangs up once the closing line has played
+                // (SpeechOutput#finishWhenSpoken). Leaving here closed the simulated line first, and a caller
+                // who asked to be taken off the list never heard the line that said it was done.
+                Thread.sleep(POLL_MS);
+                continue;
             }
             boolean spoke = endpoint.playedSamples() > playedBefore;
             if (endpoint.isPlaying() || !spoke) {

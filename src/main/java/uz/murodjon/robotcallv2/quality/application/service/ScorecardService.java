@@ -16,6 +16,8 @@ import uz.murodjon.robotcallv2.notification.domain.enums.NotificationType;
 import uz.murodjon.robotcallv2.quality.application.dto.ReviewScorecardRequest;
 import uz.murodjon.robotcallv2.quality.application.dto.SaveScorecardCriterionRequest;
 import uz.murodjon.robotcallv2.quality.application.dto.ScorecardAnswerCorrection;
+import uz.murodjon.robotcallv2.quality.application.dto.ScorecardSettingsResponse;
+import uz.murodjon.robotcallv2.quality.application.dto.UpdateScorecardSettingsRequest;
 import uz.murodjon.robotcallv2.quality.application.port.input.ScorecardUseCase;
 import uz.murodjon.robotcallv2.quality.application.port.output.CallScorecardRepository;
 import uz.murodjon.robotcallv2.quality.application.port.output.ScorecardCriterionRepository;
@@ -215,15 +217,29 @@ public class ScorecardService implements ScorecardUseCase {
         return callScorecardRepository.deleteEvidenceWithoutTranscript(batchSize);
     }
 
+    @Override
+    public ScorecardSettingsResponse findSettings(long companyId) {
+        return new ScorecardSettingsResponse(findReviewThreshold(companyId));
+    }
+
+    /** Only the threshold is written; the rest of the company config stays the platform's. */
+    @Override
+    public ScorecardSettingsResponse updateSettings(long companyId, UpdateScorecardSettingsRequest request) {
+        CompanyConfig saved = companyConfigUseCase.updateScorecardReviewThreshold(companyId, request.reviewThreshold());
+        return new ScorecardSettingsResponse(saved.scorecardReviewThreshold());
+    }
+
     /** Under the company's threshold, or a client the judge read as upset. */
     private boolean needsReview(long companyId, Integer score, Sentiment sentiment) {
         if (sentiment == Sentiment.NEGATIVE || sentiment == Sentiment.HOSTILE) {
             return true;
         }
+        return score != null && score < findReviewThreshold(companyId);
+    }
+
+    private int findReviewThreshold(long companyId) {
         CompanyConfig config = companyConfigUseCase.find(companyId);
-        int threshold = config != null ? config.scorecardReviewThreshold()
-                : CompanyConfig.DEFAULT_SCORECARD_REVIEW_THRESHOLD;
-        return score != null && score < threshold;
+        return config != null ? config.scorecardReviewThreshold() : CompanyConfig.DEFAULT_SCORECARD_REVIEW_THRESHOLD;
     }
 
     private void notifyReview(long companyId, long callId, Integer score, Sentiment sentiment) {

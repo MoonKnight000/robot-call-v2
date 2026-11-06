@@ -28,4 +28,7 @@ public interface CallEventUseCase {
 
     /** A chat conversation's trace, oldest first. */
     List<CallEvent> findByChatSessionId(long companyId, long chatSessionId);
+
+    /** The company's events of one type, calls and chats alike, in {@code [from, to]}, newest first, at most {@code limit}. */
+    List<CallEvent> findByCompanyIdAndType(long companyId, CallEventType type, Instant from, Instant to, int limit);
 }

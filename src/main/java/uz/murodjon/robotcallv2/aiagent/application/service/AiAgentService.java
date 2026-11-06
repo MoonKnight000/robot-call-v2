@@ -67,7 +67,7 @@ public class AiAgentService implements AiAgentUseCase {
     private static final AgentScriptDto NO_SCRIPT = new AgentScriptDto(null, null, null, null, null, null);
     private static final AgentSpeechEngineDto NO_SPEECH_ENGINE =
             new AgentSpeechEngineDto(null, null, null, null, null, null, null, null, null, null, null);
-    private static final AgentVoiceDto NO_VOICE = new AgentVoiceDto(null, null, null, null, null, null);
+    private static final AgentVoiceDto NO_VOICE = new AgentVoiceDto(null, null, null, null, null, null, null, null);
     /** What a new agent starts with where its request is silent: noise cancellation and keypad input on, data kept. */
     private static final AiAgentAmbience NEW_AMBIENCE = new AiAgentAmbience(null, null, null, null, null, true, null);
     private static final AiAgentCallBehaviour NEW_CALL_BEHAVIOUR =
@@ -146,7 +146,7 @@ public class AiAgentService implements AiAgentUseCase {
         return new CreateAiAgentRequest(name, description, language, speechLanguages,
                 channel != null ? channel : AiAgentChannel.VOICE, mode, AgentPersona.AI_ASSISTANT, engineProfileId,
                 new AgentScriptDto(null, null, mode.toScenarioMode(), flowDefinition, firstMessage, systemPrompt),
-                speechEngine, voice, llmModel, null, null, null, temperature, maxOutputTokens, ambience,
+                speechEngine, voice, llmModel, null, null, null, temperature, maxOutputTokens, null, ambience,
                 null, null, null, null, false, dataNeeded, dataEvaluation, null, null, null, null, true);
     }
 
@@ -248,7 +248,9 @@ public class AiAgentService implements AiAgentUseCase {
                         checkedLanguageVoices,
                         voiceRequest.perLanguageSpeed(),
                         voiceRequest.emotionAdaptive() != null && voiceRequest.emotionAdaptive(),
-                        voiceRequest.warmth()))
+                        voiceRequest.warmth(),
+                        voiceRequest.emotion(),
+                        engineGuard.requireKnownVoice(companyId, PipelineMode.CASCADE, voiceRequest.fallbackVoice())))
                 .ambience(AiAgentSettingsMapper.toAiAgentAmbience(request.ambience(), NEW_AMBIENCE))
                 .greeting(AiAgentSettingsMapper.toAgentGreeting(request.greeting(), AgentGreeting.DEFAULT))
                 .callBehaviour(AiAgentSettingsMapper.toAiAgentCallBehaviour(request.callBehaviour(), NEW_CALL_BEHAVIOUR))
@@ -259,6 +261,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .llmFallback(llmFallback)
                 .temperature(request.temperature() != null ? request.temperature() : profile.temperature())
                 .maxOutputTokens(request.maxOutputTokens() != null ? request.maxOutputTokens() : profile.maxOutputTokens())
+                .reasoningEffort(request.reasoningEffort())
                 .useRag(request.useRag() != null && request.useRag())
                 .dataNeeded(dataNeeded)
                 .dataEvaluation(dataEvaluation)
@@ -405,7 +408,11 @@ public class AiAgentService implements AiAgentUseCase {
                         languageVoices,
                         voiceRequest.perLanguageSpeed() != null ? voiceRequest.perLanguageSpeed() : voice.perLanguageSpeed(),
                         voiceRequest.emotionAdaptive() != null ? voiceRequest.emotionAdaptive() : voice.emotionAdaptive(),
-                        voiceRequest.warmth() != null ? voiceRequest.warmth() : voice.warmth()))
+                        voiceRequest.warmth() != null ? voiceRequest.warmth() : voice.warmth(),
+                        voiceRequest.emotion() != null ? voiceRequest.emotion() : voice.emotion(),
+                        voiceRequest.fallbackVoice() != null
+                                ? engineGuard.requireKnownVoice(companyId, PipelineMode.CASCADE, voiceRequest.fallbackVoice())
+                                : voice.fallbackVoice()))
                 .ambience(AiAgentSettingsMapper.toAiAgentAmbience(request.ambience(), existing.ambience()))
                 .greeting(AiAgentSettingsMapper.toAgentGreeting(request.greeting(), existing.greeting()))
                 .callBehaviour(AiAgentSettingsMapper.toAiAgentCallBehaviour(request.callBehaviour(), existing.callBehaviour()))
@@ -416,6 +423,7 @@ public class AiAgentService implements AiAgentUseCase {
                 .llmFallback(llmFallback)
                 .temperature(temperature != null ? temperature : existing.temperature())
                 .maxOutputTokens(maxOutputTokens != null ? maxOutputTokens : existing.maxOutputTokens())
+                .reasoningEffort(request.reasoningEffort() != null ? request.reasoningEffort() : existing.reasoningEffort())
                 .useRag(request.useRag() != null ? request.useRag() : existing.useRag())
                 .dataNeeded(request.dataNeeded() != null ? request.dataNeeded() : existing.dataNeeded())
                 .dataEvaluation(request.dataEvaluation() != null ? request.dataEvaluation() : existing.dataEvaluation())
@@ -831,6 +839,8 @@ public class AiAgentService implements AiAgentUseCase {
                 case VOICEMAIL_MESSAGE -> behaviourRequest != null ? behaviourRequest.voicemailMessage() : null;
                 case FAST_LLM_MODEL -> request.fastLlmModel();
                 case FALLBACK_LLM_MODEL -> request.fallbackLlmModel() != null ? request.fallbackLlmModel() : request.fallbackLlmMode();
+                case MAX_OUTPUT_TOKENS -> request.maxOutputTokens();
+                case REASONING_EFFORT -> request.reasoningEffort();
                 case GREETING_PAUSE -> request.greeting() != null ? request.greeting().pauseBeforeSpeakingMs() : null;
                 case SPEECH_LANGUAGES -> request.speechLanguages();
                 case RESPONSE_WAIT_MS -> behaviourRequest != null ? behaviourRequest.responseWaitMs() : null;
@@ -844,6 +854,7 @@ public class AiAgentService implements AiAgentUseCase {
                 case RING_DURATION_SECONDS -> behaviourRequest != null ? behaviourRequest.ringDurationSeconds() : null;
                 case LLM_TURN_DETECTION -> behaviourRequest != null ? behaviourRequest.llmTurnDetection() : null;
                 case RAG_MIN_SCORE -> request.ragMinScore();
+                case FALLBACK_VOICE -> request.voice() != null ? request.voice().fallbackVoice() : null;
             };
             if (given != null) {
                 throw new ValidationException(ErrorCode.AI_AGENT_CLEAR_FIELD_CONFLICT, field);
@@ -882,7 +893,10 @@ public class AiAgentService implements AiAgentUseCase {
                 .postCallWebhook(fields.contains(AgentClearableField.POST_CALL_WEBHOOK) ? null : agent.postCallWebhook())
                 .fastLlmModel(fields.contains(AgentClearableField.FAST_LLM_MODEL) ? null : agent.fastLlmModel())
                 .llmFallback(fields.contains(AgentClearableField.FALLBACK_LLM_MODEL) ? null : agent.llmFallback())
+                .maxOutputTokens(fields.contains(AgentClearableField.MAX_OUTPUT_TOKENS) ? null : agent.maxOutputTokens())
+                .reasoningEffort(fields.contains(AgentClearableField.REASONING_EFFORT) ? null : agent.reasoningEffort())
                 .ragMinScore(fields.contains(AgentClearableField.RAG_MIN_SCORE) ? null : agent.ragMinScore())
+                .voice(fields.contains(AgentClearableField.FALLBACK_VOICE) ? withoutFallbackVoice(agent.voice()) : agent.voice())
                 .callBehaviour(new AiAgentCallBehaviour(
                         behaviour.interruptionSensitivity(),
                         behaviour.dtmfInputEnabled(),
@@ -907,6 +921,11 @@ public class AiAgentService implements AiAgentUseCase {
                         behaviour.pressDigitEnabled(),
                         fields.contains(AgentClearableField.LLM_TURN_DETECTION) ? null : behaviour.llmTurnDetection()))
                 .build();
+    }
+
+    private static AiAgentVoice withoutFallbackVoice(AiAgentVoice voice) {
+        return new AiAgentVoice(voice.defaultVoice(), voice.speed(), voice.perLanguage(), voice.perLanguageSpeed(),
+                voice.emotionAdaptive(), voice.warmth(), voice.emotion(), null);
     }
 
     private static List<String> normalizeSpeechLanguages(List<String> requested, String primaryLanguage) {

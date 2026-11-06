@@ -9,9 +9,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
-import org.springframework.ai.google.genai.common.GoogleGenAiThinkingLevel;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
@@ -21,6 +18,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.AiModel;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
+import uz.murodjon.robotcallv2.agent.provider.ChatVendor;
+import uz.murodjon.robotcallv2.agent.provider.OpenAiChatOptionsStrategy;
+import uz.murodjon.robotcallv2.agent.provider.PortableChatOptions;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
@@ -467,9 +467,10 @@ public class TurnTools {
      * the speech rules in the prompt ("ko'pi bilan ikki qisqa gap"), not by this, and
      * raising it costs nothing because only tokens actually generated are billed.
      *
-     * <p>The OpenAI-or-Gemini shape of the options is decided here from the model id (a
-     * {@code claude-*} id takes the Gemini shape; {@code RoutingChatModel} carries it over
-     * to Claude), and it has to agree with
+     * <p>The options are vendor-neutral ({@link PortableChatOptions}): {@code RoutingChatModel}
+     * picks the vendor from the model id and that vendor's strategy decides the shape — its
+     * token-cap field, its thinking setting from the agent's {@code reasoningEffort}, and what
+     * it refuses. An OpenAI id has to agree with
      * {@code spring.ai.openai.base-url}: the ids in the model catalog are OpenAI's, and a
      * catalog listing one vendor's ids while the URL points at another is exactly the
      * failure this branch exists to prevent. That slot used to point at Groq's
@@ -513,9 +514,9 @@ public class TurnTools {
             selectedModel = null;
         }
         ChatModel chatModel = chatModelProvider != null ? chatModelProvider.getIfAvailable() : null;
-        // A company without its own model must still name one here: GoogleGenAiChatOptions
-        // turns a null model into its hardcoded gemini-2.5-flash, never the configured
-        // spring.ai.google.genai.chat model — and 2.5 rejects thinkingLevel outright.
+        // A company without its own model must still name one here: Gemini's options turn a
+        // null model into their hardcoded gemini-2.5-flash, never the configured
+        // spring.ai.google.genai.chat model.
         if ((selectedModel == null || selectedModel.isBlank()) && chatModel != null && chatModel.getOptions() != null) {
             String defaultModel = chatModel.getOptions().getModel();
             if (!AiModel.isRealtimeModel(defaultModel)) {
@@ -526,27 +527,11 @@ public class TurnTools {
             selectedModel = "gemini-3.8-flash";
         }
 
-        boolean isOpenAi = (chatModel instanceof OpenAiChatModel)
-                || (selectedModel != null && (selectedModel.startsWith("llama") || selectedModel.startsWith("mixtral")
-                || selectedModel.startsWith("gpt-") || selectedModel.startsWith("qwen")));
-
-        if (isOpenAi) {
-            var builder = OpenAiChatOptions.builder()
-                    .toolCallbacks(tools)
-                    .model(selectedModel);
-            Integer maxOutputTokens = findMaxOutputTokens(aiModel, isOpenAiReasoningModel(selectedModel));
-            if (maxOutputTokens != null) {
-                builder.maxTokens(maxOutputTokens);
-            }
-            if (aiModel.temperature() != null) {
-                builder.temperature(aiModel.temperature());
-            }
-            builder.frequencyPenalty(FREQUENCY_PENALTY).presencePenalty(PRESENCE_PENALTY);
-            return builder.build();
-        }
-
-        var builder = GoogleGenAiChatOptions.builder()
-                .toolCallbacks(tools)
+        // Vendor-neutral: RoutingChatModel turns these into the chosen vendor's options (its token-cap
+        // field, its thinking setting, what it refuses) once the model id has named the vendor.
+        boolean thinkingModel = ChatVendor.ofModel(selectedModel) != ChatVendor.OPENAI
+                || OpenAiChatOptionsStrategy.isReasoningModel(selectedModel);
+        return PortableChatOptions.builder()
                 // Declarations only (see chatClient). With the framework loop left on, a
                 // real call ran every tool twice — once in the framework's loop, once in
                 // run() — and paid an LLM round trip for each: 35 tool executions and an
@@ -554,21 +539,16 @@ public class TurnTools {
                 // (SpeculationManager#startSpeculation) carries these same live callbacks, so the
                 // framework was moving the FSM and recording payment promises from a guess
                 // at what the caller was still in the middle of saying.
+                .toolCallbacks(tools)
                 .model(selectedModel)
-                // Always asked to think (LOW below), so the cap carries the thinking reserve.
-                .maxOutputTokens(findMaxOutputTokens(aiModel, true))
-                .thinkingLevel(GoogleGenAiThinkingLevel.LOW);
-
-        // Gemini 3.8 Flash (and Gemini 3+) deprecates sampling parameters (temperature, top_p, top_k).
-        // Must strip temperature from generation configs for Gemini 3+.
-        if (!isGemini3OrLater(selectedModel) && aiModel.temperature() != null) {
-            builder.temperature(aiModel.temperature());
-        }
-        GoogleGenAiChatOptions.ToolChoice toolChoice = findToolChoice(s, tools, selectedModel);
-        if (toolChoice != null) {
-            builder.toolChoice(toolChoice);
-        }
-        return builder.build();
+                // A model that thinks spends it out of the same cap, so the cap carries the reserve.
+                .maxTokens(findMaxOutputTokens(aiModel, thinkingModel))
+                .temperature(aiModel.temperature())
+                .frequencyPenalty(FREQUENCY_PENALTY)
+                .presencePenalty(PRESENCE_PENALTY)
+                .reasoningEffort(aiModel.reasoningEffort())
+                .allowedToolNames(findAllowedToolNames(s, tools, selectedModel))
+                .build();
     }
 
     /**
@@ -579,9 +559,9 @@ public class TurnTools {
      *
      * <p>Null leaves the model free: no stable toolset, a non-Gemini model, nothing declared, nothing to
      * take away, or a list of one — a job the caller has already narrowed the turn to (a FUNCTION stage's
-     * job step, a job run off the call after the call has left its stage).
+     * job step, a job run off the call after the call has left its stage). An empty list allows none.
      */
-    GoogleGenAiChatOptions.ToolChoice findToolChoice(DialogSession s, List<ToolCallback> tools, String model) {
+    List<String> findAllowedToolNames(DialogSession s, List<ToolCallback> tools, String model) {
         if (!isStableToolset() || !promptCache.restrictToolCalls() || tools == null || tools.size() < 2
                 || model == null || !model.toLowerCase(Locale.ROOT).startsWith("gemini")) {
             return null;
@@ -593,15 +573,7 @@ public class TurnTools {
                 .distinct()
                 .sorted()
                 .toList();
-        if (allowed.size() == tools.size()) {
-            return null;
-        }
-        return allowed.isEmpty()
-                ? GoogleGenAiChatOptions.ToolChoice.builder().mode(GoogleGenAiChatOptions.ToolChoice.Mode.NONE).build()
-                : GoogleGenAiChatOptions.ToolChoice.builder()
-                        .mode(GoogleGenAiChatOptions.ToolChoice.Mode.VALIDATED)
-                        .allowedFunctionNames(allowed)
-                        .build();
+        return allowed.size() == tools.size() ? null : allowed;
     }
 
     /**
@@ -613,22 +585,6 @@ public class TurnTools {
             return aiModel.maxOutputTokens();
         }
         return replyLimitProperties != null ? replyLimitProperties.findCap(thinkingModel) : null;
-    }
-
-    /** OpenAI's reasoning families (gpt-5*, o1/o3/o4…) spend reasoning tokens out of the same cap. */
-    private static boolean isOpenAiReasoningModel(String model) {
-        if (model == null) {
-            return false;
-        }
-        String id = model.toLowerCase();
-        return id.startsWith("gpt-5") || id.matches("o\\d.*");
-    }
-
-    private static boolean isGemini3OrLater(String model) {
-        if (model == null || model.isBlank()) {
-            return true; // default model is gemini-3.8-flash
-        }
-        return model.toLowerCase().contains("gemini-3");
     }
 
     /** Every tool call carried by one response (or one streamed chunk of it). */
@@ -658,7 +614,16 @@ public class TurnTools {
         // With the whole set declared on every turn, what this stage offers is decided here.
         Set<String> stageTools = isStableToolset()
                 ? findStageToolNames(s, mcpTools(s), catalogTools(s), integrationTools(s)) : null;
+        Map<String, Integer> runsByName = new HashMap<>();
         for (AssistantMessage.ToolCall call : calls) {
+            if (runsByName.merge(call.name(), 1, Integer::sum) > MAX_SAME_TOOL_PER_TURN) {
+                // A simulated call's single reply called recordDelayReason 13 times and noteClientFact 8 times,
+                // each with the same thing reworded: nothing more is recorded, and every result is more for the
+                // model to read back.
+                log.warn("[{}] dropped repeated call {} #{} in one reply", s.channelId(), call.name(),
+                        runsByName.get(call.name()));
+                continue;
+            }
             ToolCallback callback = tools.stream()
                     .filter(t -> t.getToolDefinition().name().equals(call.name()))
                     .findFirst()
@@ -717,6 +682,9 @@ public class TurnTools {
         }
         return results.isEmpty() ? null : String.join(" ", results);
     }
+
+    /** How many times one reply may run the same tool; the calls past it are dropped. */
+    static final int MAX_SAME_TOOL_PER_TURN = 3;
 
     /** What {@link #run} answers a tool the current stage does not offer with. */
     static final String UNAVAILABLE = " is not available in the current stage";

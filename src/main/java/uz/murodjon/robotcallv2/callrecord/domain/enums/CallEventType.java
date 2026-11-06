@@ -64,11 +64,25 @@ public enum CallEventType {
      */
     TOOL_HTTP,
     /** One model request's tokens; payload: stage, promptTokens, cachedTokens, completionTokens, thinkingTokens, offsetMs. */
-    LLM_USAGE;
+    LLM_USAGE,
+    /**
+     * The knowledge base was searched for a caller's turn; payload: stage, question, curatedAnswer (the Q&A answer
+     * spoken verbatim, or null), passages ([{sourceId, sourceName, score, preview}], best first — what the model was
+     * given), found, limit, durationMs, offsetMs.
+     */
+    KNOWLEDGE_RETRIEVED,
+    /**
+     * What the agent was told about the client when the conversation started (the memory block of its prompt);
+     * payload: preferredName, preferredLanguage, operatorNotes, calls ([{id, at, scenarioKey, disposition, summary,
+     * callAttemptId, chatSessionId}], newest first — only the ones the prompt carried), facts. Written only when
+     * there was something to remember. On the plain timeline: it is what an operator checks when the agent
+     * "forgot" something.
+     */
+    MEMORY_RECALLED;
 
     /** Part of the call's block-by-block trace, shown under CALL_DEBUG_READ only — not on the plain timeline. */
     public boolean isCallTrace() {
         return this == TOOL_CALLED || this == STAGE_ENTERED || this == FACT_RECORDED || this == TOOL_HTTP
-                || this == LLM_USAGE;
+                || this == LLM_USAGE || this == KNOWLEDGE_RETRIEVED;
     }
 }

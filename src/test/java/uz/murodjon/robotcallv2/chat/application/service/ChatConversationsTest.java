@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCase;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.agent.dialog.CallTraceLog;
@@ -134,6 +136,18 @@ class ChatConversationsTest {
     }
 
     @Test
+    void startChatWhenTheProviderFails_isAnsweredAsNoReplyNotAsABug() {
+        when(textTurnEngine.reply(any(DialogSession.class), anyString()))
+                .thenThrow(new RuntimeException("Failed to generate content"));
+        ChatSession session = ChatSession.startingOnWidget("key-429", COMPANY_ID, AGENT_ID, 100L, null, "GREETING");
+
+        assertThatThrownBy(() -> conversations.start(session))
+                .isInstanceOf(ExternalServiceException.class)
+                .extracting(e -> ((ExternalServiceException) e).code())
+                .isEqualTo(ErrorCode.CHAT_NO_REPLY);
+    }
+
+    @Test
     void aTurnIsChargedUnderItsOwnLedgerKey() {
         when(textTurnEngine.reply(any(DialogSession.class), anyString()))
                 .thenReturn(new TextTurn("Salom!", List.of()));
@@ -149,7 +163,7 @@ class ChatConversationsTest {
                 .thenReturn(new TextTurn("Здравствуйте! Чем могу помочь?", List.of()));
 
         ClientMemory memory = new ClientMemory(1L, COMPANY_ID, PHONE, "Aziz aka", "ru",
-                "VIP mijoz", List.of(), Map.of("vip", true), NOW);
+                "VIP mijoz", List.of(), Map.of("vip", true), Map.of(), NOW);
         when(clientMemoryUseCase.findByCompanyIdAndPhone(COMPANY_ID, PHONE)).thenReturn(memory);
 
         ChatSession session = new ChatSession(1L, "key-2", COMPANY_ID, AGENT_ID, 100L, null, null,
@@ -173,7 +187,7 @@ class ChatConversationsTest {
         when(aiAgentUseCase.resolveScenario(COMPANY_ID, templatedAgent)).thenReturn(scenario);
 
         ClientMemory memory = new ClientMemory(1L, COMPANY_ID, PHONE, "Murodjon aka", "uz",
-                null, List.of(), Map.of(), NOW);
+                null, List.of(), Map.of(), Map.of(), NOW);
         when(clientMemoryUseCase.findByCompanyIdAndPhone(COMPANY_ID, PHONE)).thenReturn(memory);
 
         ChatSession session = new ChatSession(1L, "key-3", COMPANY_ID, AGENT_ID, 100L, null, null,
@@ -188,7 +202,7 @@ class ChatConversationsTest {
     @Test
     void answerChat_rebuildsWithClientMemoryAndAnswersMessage() {
         ClientMemory memory = new ClientMemory(1L, COMPANY_ID, PHONE, "Karim aka", "uz",
-                null, List.of(), Map.of(), NOW);
+                null, List.of(), Map.of(), Map.of(), NOW);
         when(clientMemoryUseCase.findByCompanyIdAndPhone(COMPANY_ID, PHONE)).thenReturn(memory);
         when(repository.findMessages(1L)).thenReturn(List.of(
                 ChatMessage.written(1L, ChatRole.AGENT, "Assalomu alaykum!")));
@@ -208,7 +222,7 @@ class ChatConversationsTest {
     @Test
     void answerChat_whenSessionEnds_recordsRememberedCallIntoClientMemory() {
         ClientMemory memory = new ClientMemory(1L, COMPANY_ID, PHONE, "Karim aka", "uz",
-                null, List.of(), Map.of(), NOW);
+                null, List.of(), Map.of(), Map.of(), NOW);
         when(clientMemoryUseCase.findByCompanyIdAndPhone(COMPANY_ID, PHONE)).thenReturn(memory);
         when(repository.findMessages(1L)).thenReturn(List.of());
 

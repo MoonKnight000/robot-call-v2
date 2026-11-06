@@ -1,6 +1,11 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -64,6 +69,45 @@ class TurnRunnerSentenceTest {
         // Different intent / speech
         assertThat(SpeculationManager.isSpeculationCompatible("yo'q", "ha albatta")).isFalse();
         assertThat(SpeculationManager.isSpeculationCompatible("salom", "xayr")).isFalse();
+
+        // The final adds words: new information the guessed reply never saw
+        assertThat(SpeculationManager.isSpeculationCompatible("да я помню про этот долг",
+                "Да, я помню про этот долг, извините, были небольшие финансовые трудности.")).isFalse();
+        assertThat(SpeculationManager.isSpeculationCompatible("keyingi oy",
+                "Keyingi oy o'n beshinchi sanada to'layman.")).isFalse();
+        // ...unless what it adds is a bare filler
+        assertThat(SpeculationManager.isSpeculationCompatible("ha bor", "Ha bor, ha.")).isTrue();
+    }
+
+    @Test
+    void theLastSpokenAgentLineDecidesWhetherTheCallerOwesAnAnswer() {
+        List<Message> history = List.of(
+                new UserMessage("ishlarim yurishmayapti"),
+                new AssistantMessage("Tushunaman. Qaysi sanada to'laysiz?"),
+                new AssistantMessage(""));
+
+        assertThat(TurnRunner.findLastAgentLine(history)).isEqualTo("Tushunaman. Qaysi sanada to'laysiz?");
+        assertThat(TurnRunner.endsWithQuestion(TurnRunner.findLastAgentLine(history))).isTrue();
+        assertThat(TurnRunner.endsWithQuestion("Xo'p, salomat bo'ling.")).isFalse();
+        assertThat(TurnRunner.findLastAgentLine(List.of())).isNull();
+    }
+
+    @Test
+    void theLineAfterAJobIsToldWhatWasJustSaid() {
+        assertThat(TurnRunner.describeLineJustSpoken("Bo'ldi, 13-noyabrga yozib qo'ydim."))
+                .contains("\"Bo'ldi, 13-noyabrga yozib qo'ydim.\"").contains("Do not repeat");
+        assertThat(TurnRunner.describeLineJustSpoken(null)).isEmpty();
+    }
+
+    @Test
+    void speculationSurvivesTheFinalSpellingTheSameWordsApart() {
+        // Yandex: the interim writes "koʻramiz", the final "ko ramiz" — the same words.
+        assertThat(SpeculationManager.isSpeculationCompatible(
+                "dekabrning boshlarida koʻramiz endi", "dekabrning boshlarida ko ramiz endi")).isTrue();
+        assertThat(SpeculationManager.isSpeculationCompatible("toʻlayman", "to'layman")).isTrue();
+        // ...but a final that adds words after the respelled ones still says something new
+        assertThat(SpeculationManager.isSpeculationCompatible(
+                "boshlarida koʻramiz", "boshlarida ko ramiz yigirmanchida")).isFalse();
     }
 
     @Test

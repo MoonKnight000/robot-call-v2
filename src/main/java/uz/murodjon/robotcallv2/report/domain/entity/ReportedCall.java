@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.report.domain.entity;
 
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -29,6 +30,14 @@ import java.time.LocalDate;
  * @param campaignName the campaign this call's target belongs to
  * @param operatorName {@code app_user} who handled this call, if it was transferred to a
  *                     human; {@code null} for every bot-only call
+ * @param aiAgentId    the AI agent that ran the call; null for an operator-only call or a deleted agent
+ * @param agentName    that agent's name
+ * @param inbound      true for a call that came in through an inbound route
+ * @param sentiment    the caller's mood as the post-call summary read it; null until summarised
+ * @param qualityScore the AI quality judge's 0–100 score; null when the call was not judged
+ * @param costUzs      what the call was billed, once settled; null before or without billing
+ * @param avgTurnLatencyMs mean time from the caller finishing to the agent's first audio; null without AI turns
+ * @param agentVersion the published agent version the call spoke with; null for a draft (web test) or no agent
  */
 public record ReportedCall(
         long callId,
@@ -47,6 +56,14 @@ public record ReportedCall(
         String crmNoteId,
         String clientName,
         String campaignName,
-        String operatorName
+        String operatorName,
+        Long aiAgentId,
+        String agentName,
+        boolean inbound,
+        Sentiment sentiment,
+        Integer qualityScore,
+        Long costUzs,
+        Integer avgTurnLatencyMs,
+        Integer agentVersion
 ) {
 }

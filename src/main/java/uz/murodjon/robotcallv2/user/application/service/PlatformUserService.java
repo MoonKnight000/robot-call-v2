@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserResponse;
 import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRoleRequest;
+import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import uz.murodjon.robotcallv2.user.application.port.input.PlatformUserUseCase;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
@@ -61,6 +62,12 @@ public class PlatformUserService implements PlatformUserUseCase {
     public UserRow changeRole(long companyId, long id, UpdateUserRoleRequest request) {
         companyUseCase.requireExists(companyId);
         return userUseCase.changeRole(companyId, id, request);
+    }
+
+    @Override
+    public UserRow update(long companyId, long id, UpdateUserRequest request) {
+        companyUseCase.requireExists(companyId);
+        return userUseCase.update(companyId, id, request);
     }
 
     @Override

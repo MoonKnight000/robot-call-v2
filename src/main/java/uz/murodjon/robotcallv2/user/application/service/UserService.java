@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.user.application.service;
 
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
@@ -14,6 +15,7 @@ import uz.murodjon.robotcallv2.shared.util.Tokens;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserResponse;
 import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRoleRequest;
+import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 import uz.murodjon.robotcallv2.user.application.port.output.UserRepository;
@@ -21,6 +23,7 @@ import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserAction;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 import uz.murodjon.robotcallv2.user.domain.event.UserBlockedEvent;
+import uz.murodjon.robotcallv2.user.domain.event.UserPasswordResetByAdminEvent;
 import uz.murodjon.robotcallv2.user.domain.event.UserRoleChangedEvent;
 
 import java.time.Duration;
@@ -41,14 +44,16 @@ public class UserService implements UserUseCase {
     private final ApplicationEventPublisher eventPublisher;
     private final CurrentUser currentUser;
     private final AuditUseCase audit;
+    private final PasswordEncoder passwordEncoder;
 
     public UserService(UserRepository repository, RoleUseCase roleUseCase, ApplicationEventPublisher eventPublisher,
-                       CurrentUser currentUser, AuditUseCase audit) {
+                       CurrentUser currentUser, AuditUseCase audit, PasswordEncoder passwordEncoder) {
         this.repository = repository;
         this.roleUseCase = roleUseCase;
         this.eventPublisher = eventPublisher;
         this.currentUser = currentUser;
         this.audit = audit;
+        this.passwordEncoder = passwordEncoder;
     }
 
     @Override
@@ -116,6 +121,48 @@ public class UserService implements UserUseCase {
         // The old permissions are already inside the token this user is holding.
         eventPublisher.publishEvent(new UserRoleChangedEvent(companyId, id));
         audit.record(companyId, "USER_ROLE_CHANGE", "user", String.valueOf(id), role.name());
+        return UserRow.of(requireUser(companyId, id));
+    }
+
+    @Override
+    public UserRow update(long companyId, long id, UpdateUserRequest request) {
+        User target = requireUser(companyId, id);
+        // Email and username are unique across the whole platform; keeping one's own value is not a clash.
+        repository.findByEmail(request.email())
+                .filter(other -> other.id() != id)
+                .ifPresent(other -> {
+                    throw new ConflictException(ErrorCode.USER_EMAIL_TAKEN, request.email());
+                });
+        repository.findByUsername(request.username())
+                .filter(other -> other.id() != id)
+                .ifPresent(other -> {
+                    throw new ConflictException(ErrorCode.USER_USERNAME_TAKEN, request.username());
+                });
+        // Colleagues dial the extension, so two people in one company cannot share it.
+        String sipExtension = blankToNull(request.sipExtension());
+        if (sipExtension != null) {
+            User holder = repository.findBySipExtension(sipExtension, companyId);
+            if (holder != null && holder.id() != id) {
+                throw new ConflictException(ErrorCode.USER_SIP_EXTENSION_TAKEN, sipExtension);
+            }
+        }
+        // A new login name alone needs no session revocation: the token's subject is the user id.
+        repository.updateAccount(companyId, id, request.name(), request.username(), request.email(),
+                blankToNull(request.phone()), blankToNull(request.position()), sipExtension);
+        audit.record(companyId, "USER_UPDATE", "user", String.valueOf(id), target.email() + " -> " + request.email());
+
+        if (request.newPassword() != null) {
+            String passwordHash = passwordEncoder.encode(request.newPassword());
+            if (target.status() == UserStatus.INVITED) {
+                // The admin is handing over working credentials, so the pending invite is no longer needed.
+                repository.activate(id, passwordHash);
+            } else {
+                repository.updatePassword(companyId, id, passwordHash);
+            }
+            // Whoever knew the old password may hold a session opened with it.
+            eventPublisher.publishEvent(new UserPasswordResetByAdminEvent(companyId, id));
+            audit.record(companyId, "USER_PASSWORD_RESET_BY_ADMIN", "user", String.valueOf(id), null);
+        }
         return UserRow.of(requireUser(companyId, id));
     }
 
@@ -232,6 +279,10 @@ public class UserService implements UserUseCase {
     @Override
     public void updateCallColumns(long companyId, long id, String callColumns) {
         repository.updateCallColumns(companyId, id, callColumns);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     /** The role has to exist in this company, and DEVELOPER/SUPERADMIN need platform staff. */

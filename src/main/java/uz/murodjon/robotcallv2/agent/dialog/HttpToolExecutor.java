@@ -13,6 +13,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.memory.domain.entity.MemorySource;
 import uz.murodjon.robotcallv2.secret.application.port.input.SecretUseCase;
 import uz.murodjon.robotcallv2.secret.domain.service.SecretPlaceholders;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
@@ -415,7 +416,8 @@ public class HttpToolExecutor {
             return;
         }
         try {
-            clientMemoryUseCase.rememberFacts(companyId, number, facts);
+            clientMemoryUseCase.rememberFacts(companyId, number, facts,
+                    MemorySource.tool(tool.name(), session.callAttemptId(), session.chatSessionId(), Instant.now()));
         } catch (Exception e) {
             // The model already has its answer; a memory that could not be written costs the next call only.
             log.warn("[{}] Tool '{}' result was not remembered: {}", session.channelId(), tool.name(), e.getMessage());
@@ -549,6 +551,16 @@ public class HttpToolExecutor {
         @Override
         public String channelId() {
             return "tool-test";
+        }
+
+        @Override
+        public long callAttemptId() {
+            return 0;
+        }
+
+        @Override
+        public long chatSessionId() {
+            return 0;
         }
 
         @Override

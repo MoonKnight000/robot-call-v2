@@ -20,6 +20,8 @@ import java.util.Map;
  * @param toolMocks         what each of the agent's company tools answers in a simulation, by tool name;
  *                          a tool not listed answers that it is unavailable. No request ever leaves.
  * @param expectTools       tools the agent has to call at some point
+ * @param successCriteria   what a good call looks like, in plain words ("does not ask again for a date the
+ *                          client already gave"), judged by a model over the transcript; null — not judged
  */
 public record AgentTestCase(
         Long id,
@@ -36,7 +38,8 @@ public record AgentTestCase(
         int maxTurns,
         Instant createdAt,
         Map<String, String> toolMocks,
-        List<String> expectTools
+        List<String> expectTools,
+        String successCriteria
 ) {
 
     public static final int DEFAULT_MAX_TURNS = 12;

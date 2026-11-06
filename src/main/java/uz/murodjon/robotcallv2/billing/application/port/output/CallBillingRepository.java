@@ -15,9 +15,9 @@ public interface CallBillingRepository {
 
     /**
      * Adds the post-call summary to a settled call's row: its tokens to their own summary
-     * columns, its price to the LLM line and the total.
+     * columns, its price to the LLM line (and its input / output / cached split) and the total.
      */
-    void addSummaryCharge(long callAttemptId, CallUsage summaryUsage, long costUzs);
+    void addSummaryCharge(long callAttemptId, CallUsage summaryUsage, CallCostBreakdown cost);
 
     /**
      * Adds an operator call's analysis to its settled row: the scorecard's tokens and the
@@ -34,6 +34,12 @@ public interface CallBillingRepository {
 
     /** Everything the company was charged for since {@code from}. */
     PeriodUsage findUsageSince(long companyId, Instant from);
+
+    /** Usage and cost, line by line, of the calls settled in {@code [from, to)}. */
+    CostTotals findCostTotals(long companyId, Instant from, Instant to);
+
+    /** What the calls settled in {@code [from, to)} cost per day, oldest first; days with none are absent. */
+    List<DailySpend> findDailySpend(long companyId, Instant from, Instant to);
 
     /**
      * What each A/B variant of one campaign has been charged, plus a row with a null

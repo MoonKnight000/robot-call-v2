@@ -5,6 +5,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemMatch;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 /**
@@ -18,17 +20,17 @@ class TurnShortcuts {
 
     private final DialogProperties dialogProperties;
     private final FastPathRouter fastPathRouter;
-    private final KnowledgeBaseLookup knowledgeBase;
+    private final KnowledgeRetrievalUseCase knowledgeRetrieval;
     private final SpeechOutput speech;
     private final DialogTranscript transcript;
     private final DialogMetrics metrics;
 
     TurnShortcuts(DialogProperties dialogProperties, FastPathRouter fastPathRouter,
-                  KnowledgeBaseLookup knowledgeBase, SpeechOutput speech, DialogTranscript transcript,
+                  KnowledgeRetrievalUseCase knowledgeRetrieval, SpeechOutput speech, DialogTranscript transcript,
                   DialogMetrics metrics) {
         this.dialogProperties = dialogProperties;
         this.fastPathRouter = fastPathRouter;
-        this.knowledgeBase = knowledgeBase;
+        this.knowledgeRetrieval = knowledgeRetrieval;
         this.speech = speech;
         this.transcript = transcript;
         this.metrics = metrics;
@@ -94,11 +96,11 @@ class TurnShortcuts {
      * Sending it to the LLM buys a paraphrase for a full turnaround and a prompt's worth of
      * tokens, and the paraphrase is the part most likely to be wrong.
      */
-    String findKnowledgeItemAnswer(DialogSession s, String clientText, boolean fromClient, boolean knowledgeEnabled) {
+    KnowledgeItemMatch findKnowledgeItemAnswer(DialogSession s, String clientText, boolean fromClient, boolean knowledgeEnabled) {
         if (!dialogProperties.knowledgeBase() || !fromClient || !knowledgeEnabled) {
             return null;
         }
-        return knowledgeBase.findRelevantKnowledge(s.companyId(), findAgentId(s), clientText, s.language());
+        return knowledgeRetrieval.findCuratedAnswer(s.companyId(), findAgentId(s), clientText, s.language());
     }
 
     /**

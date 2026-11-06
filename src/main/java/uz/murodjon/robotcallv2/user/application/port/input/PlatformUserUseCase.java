@@ -4,6 +4,7 @@ import uz.murodjon.robotcallv2.role.application.dto.RoleRow;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserResponse;
 import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRoleRequest;
+import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 
 import java.util.List;
@@ -20,6 +21,8 @@ public interface PlatformUserUseCase {
     InviteUserResponse invite(long companyId, InviteUserRequest request);
 
     UserRow changeRole(long companyId, long id, UpdateUserRoleRequest request);
+
+    UserRow update(long companyId, long id, UpdateUserRequest request);
 
     UserRow block(long companyId, long id);
 

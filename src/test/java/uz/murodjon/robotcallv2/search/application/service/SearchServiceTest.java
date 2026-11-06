@@ -68,6 +68,6 @@ class SearchServiceTest {
 
     private static ReportedCall call(long id, String phone) {
         return new ReportedCall(id, 1L, phone, "uz", Instant.parse("2026-10-05T10:00:00Z"), null, null, null,
-                null, false, null, null, null, null, null, null, null);
+                null, false, null, null, null, null, null, null, null, null, null, false, null, null, null, null, null);
     }
 }

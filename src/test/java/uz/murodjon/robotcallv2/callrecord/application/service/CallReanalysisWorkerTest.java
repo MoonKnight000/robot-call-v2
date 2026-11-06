@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.callrecord.application.port.output.CallResultRepo
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTranscriptRepository;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallReanalysisJob;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallReanalysisTarget;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallReanalysisMode;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.CallReanalysisStatus;
 
 import java.time.Clock;
@@ -40,9 +41,10 @@ class CallReanalysisWorkerTest {
     private final AiAgentUseCase aiAgentUseCase = mock(AiAgentUseCase.class);
     private final CallBillingUseCase callBillingUseCase = mock(CallBillingUseCase.class);
     private final SummaryService summaryService = mock(SummaryService.class);
+    private final CallMemoryWriter callMemoryWriter = mock(CallMemoryWriter.class);
     private final AiAgent agent = mock(AiAgent.class);
     private final CallReanalysisWorker worker = new CallReanalysisWorker(jobRepository, callResultRepository,
-            callTranscriptRepository, aiAgentUseCase, callBillingUseCase, summaryService,
+            callTranscriptRepository, aiAgentUseCase, callBillingUseCase, summaryService, callMemoryWriter,
             (name, job) -> {
                 job.run();
                 return true;
@@ -51,9 +53,7 @@ class CallReanalysisWorkerTest {
 
     @BeforeEach
     void setUp() {
-        when(jobRepository.findNextActive()).thenReturn(new CallReanalysisJob(JOB_ID, COMPANY_ID, AGENT_ID,
-                NOW.minusSeconds(86_400), NOW, CallReanalysisStatus.QUEUED, 1, 0, 0, 0, 0, 0, 0, 0, null,
-                NOW, null, null));
+        when(jobRepository.findNextActive()).thenReturn(job(CallReanalysisMode.ANALYSIS));
         when(aiAgentUseCase.findAgent(COMPANY_ID, AGENT_ID)).thenReturn(agent);
         when(agent.dataNeeded()).thenReturn(List.of(new DataExtractionField("amount", "number", "Summa", "")));
         when(callBillingUseCase.hasBalanceForCall(COMPANY_ID)).thenReturn(true);
@@ -125,6 +125,52 @@ class CallReanalysisWorkerTest {
         ArgumentCaptor<CallReanalysisJob> progress = ArgumentCaptor.forClass(CallReanalysisJob.class);
         verify(jobRepository).updateProgress(progress.capture());
         assertThat(progress.getValue().status()).isEqualTo(CallReanalysisStatus.FAILED);
+    }
+
+    /** Contact backfill from stored outcomes: no model, no charge, no balance check; the stored outcome goes to the contact. */
+    @Test
+    void storedBackfillHandsTheStoredOutcomeToTheContactWithoutTheModel() {
+        when(jobRepository.findNextActive()).thenReturn(job(CallReanalysisMode.CONTACTS_STORED));
+        when(callBillingUseCase.hasBalanceForCall(COMPANY_ID)).thenReturn(false);
+        when(callResultRepository.findReanalysisTargets(anyLong(), anyLong(), any(), any(), anyLong(), anyInt()))
+                .thenReturn(List.of(target(11L), target(12L)));
+        when(callResultRepository.findOutcomeByCallId(anyLong())).thenReturn(Map.of("city", "Toshkent"));
+        when(callMemoryWriter.saveStoredContactFields(11L, COMPANY_ID, agent, Map.of("city", "Toshkent")))
+                .thenReturn(true);
+
+        worker.processNextBatch();
+
+        verify(summaryService, never()).summarize(anyLong(), any(), any(), any(), any());
+        verify(callResultRepository, never()).updateOutcome(anyLong(), any());
+        verify(callMemoryWriter).saveStoredContactFields(12L, COMPANY_ID, agent, Map.of("city", "Toshkent"));
+        ArgumentCaptor<CallReanalysisJob> progress = ArgumentCaptor.forClass(CallReanalysisJob.class);
+        verify(jobRepository, atLeastOnce()).updateProgress(progress.capture());
+        CallReanalysisJob last = progress.getValue();
+        assertThat(last.status()).isEqualTo(CallReanalysisStatus.COMPLETED);
+        assertThat(last.processedCalls()).isEqualTo(2);
+        assertThat(last.updatedCalls()).isEqualTo(1);
+        assertThat(last.failedCalls()).isZero();
+    }
+
+    /** Re-extracting backfill: the merged new outcome is saved on the call and then given to the contact. */
+    @Test
+    void reextractingBackfillGivesTheNewOutcomeToTheContact() {
+        when(jobRepository.findNextActive()).thenReturn(job(CallReanalysisMode.CONTACTS_REEXTRACT));
+        when(callResultRepository.findReanalysisTargets(anyLong(), anyLong(), any(), any(), anyLong(), anyInt()))
+                .thenReturn(List.of(target(11L)));
+        when(summaryService.summarize(anyLong(), any(), isNull(), eq(agent), any())).thenReturn(summarized(Map.of("amount", 250)));
+        when(callResultRepository.findOutcomeByCallId(11L)).thenReturn(Map.of("reasonCode", "NO_MONEY", "amount", 100));
+
+        worker.processNextBatch();
+
+        Map<String, Object> merged = Map.of("reasonCode", "NO_MONEY", "amount", 250);
+        verify(callResultRepository).updateOutcome(11L, merged);
+        verify(callMemoryWriter).saveStoredContactFields(11L, COMPANY_ID, agent, merged);
+    }
+
+    private static CallReanalysisJob job(CallReanalysisMode mode) {
+        return new CallReanalysisJob(JOB_ID, COMPANY_ID, AGENT_ID, mode, NOW.minusSeconds(86_400), NOW,
+                CallReanalysisStatus.QUEUED, 1, 0, 0, 0, 0, 0, 0, 0, null, NOW, null, null);
     }
 
     private static CallReanalysisTarget target(long callId) {

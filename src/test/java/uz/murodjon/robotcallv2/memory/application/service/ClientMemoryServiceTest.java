@@ -5,15 +5,22 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.memory.application.dto.UpdateClientMemoryRequest;
+import uz.murodjon.robotcallv2.memory.application.dto.UpdateRememberedCallRequest;
+import uz.murodjon.robotcallv2.memory.application.dto.UpsertClientMemoryFactRequest;
 import uz.murodjon.robotcallv2.memory.application.port.output.ClientMemoryRepository;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemoryBuilder;
+import uz.murodjon.robotcallv2.memory.domain.entity.MemorySource;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
+import uz.murodjon.robotcallv2.memory.domain.enums.MemorySourceKind;
+import uz.murodjon.robotcallv2.memory.infrastructure.config.ClientMemoryProperties;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -39,7 +46,7 @@ class ClientMemoryServiceTest {
     void setUp() {
         repository = mock(ClientMemoryRepository.class);
         when(repository.upsert(eq(COMPANY), any())).thenAnswer(inv -> inv.getArgument(1));
-        service = new ClientMemoryService(repository, mock(AuditService.class));
+        service = new ClientMemoryService(repository, mock(AuditService.class), new ClientMemoryProperties(3, 4));
     }
 
     @Test
@@ -67,13 +74,11 @@ class ClientMemoryServiceTest {
     }
 
     @Test
-    void keepsOnlyTheThreeNewestCallsNewestFirst() {
-        List<RememberedCall> existing = List.of(
+    void keepsOnlyTheConfiguredNumberOfCallsNewestFirst() {
+        givenMemory(memory().recentCalls(List.of(
                 call("2026-08-03T09:00:00Z", Disposition.HUNG_UP, "third"),
                 call("2026-08-02T09:00:00Z", Disposition.HUNG_UP, "second"),
-                call("2026-08-01T09:00:00Z", Disposition.HUNG_UP, "first"));
-        when(repository.findByCompanyIdAndPhone(COMPANY, PHONE)).thenReturn(
-                new ClientMemory(1, COMPANY, PHONE, null, null, null, existing, Map.of(), Instant.now()));
+                call("2026-08-01T09:00:00Z", Disposition.HUNG_UP, "first"))).build());
 
         service.rememberCall(COMPANY, PHONE, call("2026-08-04T09:00:00Z", Disposition.PROMISE_TO_PAY, "fourth"), null);
 
@@ -82,10 +87,36 @@ class ClientMemoryServiceTest {
     }
 
     @Test
+    void theSameCallRememberedTwiceReplacesItsEntryAndGetsItsOwnId() {
+        RememberedCall first = RememberedCall.ofCall(42L, Instant.parse("2026-08-01T09:00:00Z"), "debt",
+                Disposition.HUNG_UP, "first try").withId("old-id");
+        givenMemory(memory().recentCalls(List.of(first)).build());
+
+        service.rememberCall(COMPANY, PHONE, RememberedCall.ofCall(42L, Instant.parse("2026-08-01T09:01:00Z"),
+                "debt", Disposition.HUNG_UP, "outbox retry"), null);
+
+        List<RememberedCall> calls = savedMemory().recentCalls();
+        assertThat(calls).singleElement().satisfies(call -> {
+            assertThat(call.summary()).isEqualTo("outbox retry");
+            assertThat(call.id()).isNotEqualTo("old-id").isNotBlank();
+        });
+    }
+
+    @Test
+    void factsFromACallRememberWhichCallSaidThem() {
+        service.rememberCall(COMPANY, PHONE, RememberedCall.ofCall(42L, Instant.parse("2026-08-01T09:00:00Z"),
+                "debt", Disposition.PROMISE_TO_PAY, "x"), Map.of("promisedDate", "2026-08-10"));
+
+        MemorySource source = savedMemory().factSources().get("promisedDate");
+        assertThat(source.kind()).isEqualTo(MemorySourceKind.CALL);
+        assertThat(source.callAttemptId()).isEqualTo(42L);
+        assertThat(source.at()).isEqualTo(Instant.parse("2026-08-01T09:00:00Z"));
+    }
+
+    @Test
     void newerFactsOverlayOlderOnesAndBlanksAreSkipped() {
-        when(repository.findByCompanyIdAndPhone(COMPANY, PHONE)).thenReturn(
-                new ClientMemory(1, COMPANY, PHONE, "Aziz aka", null, "notes", List.of(),
-                        Map.of("promisedDate", "2026-08-10", "reasonCode", "NO_MONEY"), Instant.now()));
+        givenMemory(memory().preferredName("Aziz aka").operatorNotes("notes")
+                .facts(Map.of("promisedDate", "2026-08-10", "reasonCode", "NO_MONEY")).build());
         Map<String, Object> outcome = new HashMap<>();
         outcome.put("promisedDate", "2026-08-20");
         outcome.put("reasonCode", "");
@@ -101,6 +132,25 @@ class ClientMemoryServiceTest {
     }
 
     @Test
+    void pastTheFactLimitTheOldestGoesButNeverWhatAnOperatorTyped() {
+        Map<String, Object> facts = new LinkedHashMap<>();
+        facts.put("legacy", "no source");
+        facts.put("byOperator", "typed");
+        facts.put("older", "a");
+        facts.put("newer", "b");
+        givenMemory(memory().facts(facts).factSources(Map.of(
+                "byOperator", MemorySource.operator(Instant.parse("2026-01-01T00:00:00Z")),
+                "older", MemorySource.tool("searchCatalog", 1, 0, Instant.parse("2026-08-01T00:00:00Z")),
+                "newer", MemorySource.tool("searchCatalog", 2, 0, Instant.parse("2026-08-02T00:00:00Z")))).build());
+
+        service.rememberFacts(COMPANY, PHONE, Map.of("fresh1", "x", "fresh2", "y"),
+                MemorySource.tool("searchFlats", 3, 0, Instant.parse("2026-08-03T00:00:00Z")));
+
+        assertThat(savedMemory().facts()).containsOnlyKeys("byOperator", "newer", "fresh1", "fresh2");
+        assertThat(savedMemory().factSources()).containsOnlyKeys("byOperator", "newer", "fresh1", "fresh2");
+    }
+
+    @Test
     void placeholderPhonesAreNotRemembered() {
         service.rememberCall(COMPANY, "MANUAL", call("2026-08-04T09:00:00Z", Disposition.COMPLETED, "x"), Map.of());
         service.rememberCall(COMPANY, "INBOUND", call("2026-08-04T09:00:00Z", Disposition.COMPLETED, "x"), Map.of());
@@ -110,8 +160,7 @@ class ClientMemoryServiceTest {
 
     @Test
     void operatorUpdateKeepsNullClearsBlankReplacesText() {
-        when(repository.findByCompanyIdAndPhone(COMPANY, PHONE)).thenReturn(
-                new ClientMemory(1, COMPANY, PHONE, "Aziz aka", "uz-UZ", "old notes", List.of(), Map.of(), Instant.now()));
+        givenMemory(memory().preferredName("Aziz aka").preferredLanguage("uz-UZ").operatorNotes("old notes").build());
 
         ClientMemory updated = service.updateByCompanyIdAndPhone(COMPANY, "998901234567",
                 new UpdateClientMemoryRequest(null, "", "  new notes  "));
@@ -122,6 +171,57 @@ class ClientMemoryServiceTest {
     }
 
     @Test
+    void anOperatorFactIsMarkedAsTheirsAndABadNameIsRejected() {
+        givenMemory(memory().build());
+
+        ClientMemory saved = service.upsertFactByCompanyIdAndPhone(COMPANY, PHONE, "visitDay",
+                new UpsertClientMemoryFactRequest("  shanba "));
+
+        assertThat(saved.facts()).containsEntry("visitDay", "shanba");
+        assertThat(saved.factSources().get("visitDay").kind()).isEqualTo(MemorySourceKind.OPERATOR);
+        assertThatThrownBy(() -> service.upsertFactByCompanyIdAndPhone(COMPANY, PHONE, "1 bad name",
+                new UpsertClientMemoryFactRequest("x"))).isInstanceOf(ValidationException.class);
+    }
+
+    @Test
+    void anOperatorCanCorrectAndRemoveARememberedConversationButNotOneThatIsNotThere() {
+        RememberedCall kept = call("2026-08-02T09:00:00Z", Disposition.HUNG_UP, "kept");
+        RememberedCall wrong = call("2026-08-01T09:00:00Z", Disposition.HUNG_UP, "wrong");
+        givenMemory(memory().recentCalls(List.of(kept, wrong)).build());
+
+        ClientMemory corrected = service.updateCallByCompanyIdAndPhone(COMPANY, PHONE, wrong.id(),
+                new UpdateRememberedCallRequest("Mijoz ertaga qayta qo'ng'iroq qilishni so'radi"));
+        assertThat(corrected.recentCalls().get(1).summary()).isEqualTo("Mijoz ertaga qayta qo'ng'iroq qilishni so'radi");
+        assertThat(corrected.recentCalls().get(1).id()).isEqualTo(wrong.id());
+
+        ClientMemory removed = service.deleteCallByCompanyIdAndPhone(COMPANY, PHONE, kept.id());
+        assertThat(removed.recentCalls()).extracting(RememberedCall::summary).containsExactly("wrong");
+
+        assertThatThrownBy(() -> service.deleteCallByCompanyIdAndPhone(COMPANY, PHONE, "missing"))
+                .isInstanceOf(NotFoundException.class);
+        assertThatThrownBy(() -> service.deleteFactByCompanyIdAndPhone(COMPANY, PHONE, "missing"))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
+    void anEntrySavedBeforeIdsExistedKeepsTheSameIdOnEveryRead() {
+        RememberedCall legacy = new RememberedCall(null, Instant.parse("2026-08-01T09:00:00Z"), "debt",
+                Disposition.HUNG_UP, "old", null, null);
+        RememberedCall readAgain = new RememberedCall(null, Instant.parse("2026-08-01T09:00:00Z"), "debt",
+                Disposition.HUNG_UP, "old", null, null);
+
+        assertThat(legacy.id()).isNotBlank().isEqualTo(readAgain.id());
+    }
+
+    @Test
+    void clearingAClientThatHasNoMemoryIs404() {
+        when(repository.deleteByCompanyIdAndPhone(COMPANY, PHONE)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.deleteByCompanyIdAndPhone(COMPANY, PHONE))
+                .isInstanceOf(NotFoundException.class);
+    }
+
+    @Test
     void lookupOfUnknownClientIs404AndBadPhoneIs400() {
         assertThatThrownBy(() -> service.requireByCompanyIdAndPhone(COMPANY, PHONE))
                 .isInstanceOf(NotFoundException.class);
@@ -129,13 +229,21 @@ class ClientMemoryServiceTest {
                 .isInstanceOf(ValidationException.class);
     }
 
+    private void givenMemory(ClientMemory memory) {
+        when(repository.lockByCompanyIdAndPhone(COMPANY, PHONE)).thenReturn(memory);
+    }
+
+    private static ClientMemoryBuilder memory() {
+        return ClientMemory.builder().id(1).companyId(COMPANY).phone(PHONE).updatedAt(Instant.now());
+    }
+
     private ClientMemory savedMemory() {
         ArgumentCaptor<ClientMemory> captor = ArgumentCaptor.forClass(ClientMemory.class);
-        verify(repository).upsert(eq(COMPANY), captor.capture());
+        verify(repository, atLeastOnce()).upsert(eq(COMPANY), captor.capture());
         return captor.getValue();
     }
 
     private static RememberedCall call(String at, Disposition disposition, String summary) {
-        return new RememberedCall(Instant.parse(at), "debt-collection", disposition, summary);
+        return new RememberedCall(null, Instant.parse(at), "debt-collection", disposition, summary, null, null);
     }
 }

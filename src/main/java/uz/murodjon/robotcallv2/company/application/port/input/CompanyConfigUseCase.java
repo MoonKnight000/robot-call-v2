@@ -17,6 +17,12 @@ public interface CompanyConfigUseCase {
 
     CompanyConfig update(long callerCompanyId, long companyId, UpdateCompanyConfigRequest request);
 
+    /**
+     * The company's own setting inside the platform-owned config: the operator scorecard review
+     * threshold (0–100). Every other value is kept as it is.
+     */
+    CompanyConfig updateScorecardReviewThreshold(long companyId, int threshold);
+
     /** Platform-only: the engine the company's calls run on. */
     TelephonyEngineResponse findTelephonyEngine(long companyId);
 

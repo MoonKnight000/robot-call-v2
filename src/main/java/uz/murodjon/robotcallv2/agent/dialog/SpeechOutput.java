@@ -247,10 +247,17 @@ public class SpeechOutput {
             // turn wants to say by exactly that round trip.
             return SpeechOutcome.SKIPPED;
         }
-        if (SystemPromptFactory.isSystemNote(text) || SpeechSanitizer.isUnspeakable(text)) {
+        if (SystemPromptFactory.isSystemNote(text) || SpeechSanitizer.isUnspeakable(text)
+                || SpeechSanitizer.namesStage(text, s.scenario())) {
             // The model recited a note addressed to it or a technical/code token instead of answering.
             // Nothing in it is for the caller. The turn's own fallback line covers it.
             log.warn("[{}] refused to speak unspeakable or system note token in {}: {}",
+                    s.channelId(), s.state(), text);
+            return SpeechOutcome.SKIPPED;
+        }
+        if (SpeechSanitizer.isOtherScript(text, s.findLastCallerText())) {
+            // The turn answers again in the caller's language (LlmTurnClient#answerInClientsLanguage).
+            log.warn("[{}] refused a sentence in another alphabet than the caller's in {}: {}",
                     s.channelId(), s.state(), text);
             return SpeechOutcome.SKIPPED;
         }

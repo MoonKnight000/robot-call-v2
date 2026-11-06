@@ -83,7 +83,7 @@ class PackServiceTest {
         when(toolUseCase.createTool(eq(COMPANY_ID), any())).thenReturn(tool);
         when(agentEvaluationUseCase.createTestCase(eq(COMPANY_ID), eq(AGENT_ID), any())).thenReturn(
                 new AgentTestCase(9L, COMPANY_ID, AGENT_ID, "case", "persona", null, null, null, null,
-                        null, null, 0, null, null, null));
+                        null, null, 0, null, null, null, null));
         when(conversionUseCase.upsertGoal(eq(COMPANY_ID), any())).thenAnswer(invocation -> {
             ConversionGoalRequest request = invocation.getArgument(1);
             return goal(request.goalKey());

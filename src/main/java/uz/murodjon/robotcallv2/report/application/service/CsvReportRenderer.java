@@ -27,7 +27,8 @@ public class CsvReportRenderer {
             "call_id", "target_id", "phone", "client_name", "campaign_name", "operator_name",
             "language", "started_at", "ended_at", "duration_sec",
             "disposition", "hangup_cause", "has_recording", "summary", "promised_date",
-            "promised_amount", "crm_note_id"
+            "promised_amount", "crm_note_id", "agent_name", "direction", "sentiment", "quality_score",
+            "cost_uzs", "avg_turn_latency_ms"
     };
 
     /** The call list behind {@code POST /api/reports/calls/export}, one row per call. */
@@ -52,7 +53,13 @@ public class CsvReportRenderer {
                     r.summary(),
                     r.promisedDate() != null ? DateTimeProperties.DATE_FORMATTER.format(r.promisedDate()) : "",
                     r.promisedAmount() != null ? r.promisedAmount().toString() : "",
-                    r.crmNoteId() != null ? r.crmNoteId() : "");
+                    r.crmNoteId() != null ? r.crmNoteId() : "",
+                    r.agentName(),
+                    r.inbound() ? "inbound" : "outbound",
+                    r.sentiment() != null ? r.sentiment().name() : "",
+                    r.qualityScore() != null ? String.valueOf(r.qualityScore()) : "",
+                    r.costUzs() != null ? String.valueOf(r.costUzs()) : "",
+                    r.avgTurnLatencyMs() != null ? String.valueOf(r.avgTurnLatencyMs()) : "");
         }
         return sb.toString().getBytes(StandardCharsets.UTF_8);
     }

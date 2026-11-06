@@ -18,7 +18,7 @@ import java.util.List;
  * {@code page}/{@code size} may be omitted (defaulted by {@link FilterInterface}), but a
  * value that is present and out of range is rejected rather than silently clamped.
  *
- * @param q               free-text match against the dialled phone number
+ * @param q               free-text match against the dialled phone number or the target's client name
  * @param campaignId      restrict to one campaign
  * @param disposition     restrict to one final outcome
  * @param dateFrom        only calls started at or after this instant
@@ -38,6 +38,8 @@ import java.util.List;
  * @param randomSample    true: the page is a random sample of the matching calls instead of the newest —
  *                        for reading examples that represent the whole period; {@code page} and
  *                        {@code orders} are ignored
+ * @param inbound         true: only calls that came in through an inbound route; false: only the rest
+ *                        (campaign, manual, test and operator calls); null: both
  */
 public record CallFilter(
         @Min(0) Integer page,
@@ -54,7 +56,8 @@ public record CallFilter(
         @Min(1) Long afterId,
         Long aiAgentId,
         Sentiment sentiment,
-        Boolean randomSample)
+        Boolean randomSample,
+        Boolean inbound)
         implements FilterInterface<CallTableField> {
 
     /** Newest first by default, matching what a "what just happened" view needs. */

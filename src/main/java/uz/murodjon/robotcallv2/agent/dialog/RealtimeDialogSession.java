@@ -207,6 +207,9 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         CallTraceLog trace = callTraceLog;
         if (trace != null && state != null && !Objects.equals(previousState, state)) {
             trace.recordStageEntered(this, companyId(), callAttemptId(), 0, startedAt(), previousState, state);
+            if (previousState == null && context() != null) {
+                trace.recordMemoryRecalled(companyId(), callAttemptId(), 0, context().memory());
+            }
         }
     }
 
@@ -416,6 +419,12 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
         return callAttemptId;
     }
 
+    /** A realtime session only ever runs on a call. */
+    @Override
+    public long chatSessionId() {
+        return 0;
+    }
+
     public long companyId() {
         return companyId;
     }
@@ -584,7 +593,8 @@ public class RealtimeDialogSession implements DialogOutcomeSink {
 
     /** Add one engine response's reported usage; a negative count adds nothing. */
     public void addUsage(long prompt, long completion, long cached) {
-        usageLedger.addTokenBreakdown(prompt, completion, cached);
+        // A realtime call is billed on the engine's minutes, not per model, so no model is kept.
+        usageLedger.addTokenBreakdown(null, prompt, completion, cached);
     }
 
     public long promptTokens() {

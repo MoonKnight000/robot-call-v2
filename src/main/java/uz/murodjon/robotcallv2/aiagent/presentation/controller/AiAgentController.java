@@ -179,6 +179,39 @@ public interface AiAgentController {
             @PathVariable long id,
             @Valid @RequestBody AgentTestChatRequest request);
 
+    /**
+     * The webhook "Test" button: a sample payload to the given address, sent once the way a
+     * call would send it (docs/api/ai-agents.md §14.4a). Takes the settings as typed, so an
+     * unsaved URL can be tried. A failing endpoint is {@code ok: false} in a 200, not an error.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/{id:\\d+}/webhook-test")
+    ResponseEntity<ResponseData<AgentWebhookTestResponse>> testWebhook(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody AgentWebhookTestRequest request);
+
+    /**
+     * The agent as a JSON file (docs/api/ai-agents.md §14.6) — settings only, no calls, versions,
+     * knowledge files or keys. A shared scenario is written in as the agent's own definition.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_READ')")
+    @GetMapping("/{id:\\d+}/export")
+    ResponseEntity<ResponseData<AgentExportFile>> exportAgent(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    /**
+     * A new draft agent from an export file (docs/api/ai-agents.md §14.6). References to the
+     * exporting company (queue, tools, other agents, MCP connections, Telegram bot, knowledge
+     * sources) are left out and listed in {@code removed}.
+     */
+    @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
+    @PostMapping("/import")
+    ResponseEntity<ResponseData<AgentImportResponse>> importAgent(
+            @CurrentCompanyId long companyId,
+            @Valid @RequestBody AgentExportFile request);
+
     /** The candidate goes live for every caller. */
     @PreAuthorize("hasAuthority('AI_AGENT_EDIT')")
     @PostMapping("/{id:\\d+}/rollout/promote")

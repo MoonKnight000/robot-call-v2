@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.knowledgebase.application.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
@@ -8,6 +10,7 @@ import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemRespon
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeItemUpdateRequest;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeBaseUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeBaseRepository;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.TextEmbedderPort;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
 import uz.murodjon.robotcallv2.knowledgebase.domain.service.KnowledgeValidator;
@@ -22,12 +25,17 @@ import java.util.Locale;
 @Service
 public class KnowledgeBaseService implements KnowledgeBaseUseCase {
 
+    private static final Logger log = LoggerFactory.getLogger(KnowledgeBaseService.class);
+
     private final KnowledgeBaseRepository repository;
     private final AiAgentUseCase aiAgentUseCase;
+    private final TextEmbedderPort textEmbedder;
 
-    public KnowledgeBaseService(KnowledgeBaseRepository repository, AiAgentUseCase aiAgentUseCase) {
+    public KnowledgeBaseService(KnowledgeBaseRepository repository, AiAgentUseCase aiAgentUseCase,
+                                TextEmbedderPort textEmbedder) {
         this.repository = repository;
         this.aiAgentUseCase = aiAgentUseCase;
+        this.textEmbedder = textEmbedder;
     }
 
     @Override
@@ -53,6 +61,7 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
         );
 
         KnowledgeItem saved = repository.save(item);
+        embed(saved);
         return toResponse(saved);
     }
 
@@ -89,6 +98,7 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
         );
 
         KnowledgeItem saved = repository.save(updated);
+        embed(saved);
         return toResponse(saved);
     }
 
@@ -110,23 +120,24 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
     }
 
     @Override
-    public String findRelevantAnswer(long companyId, Long agentId, String query, String language) {
-        if (query == null || query.isBlank()) {
-            return null;
-        }
-        String lower = query.toLowerCase(Locale.ROOT);
-        List<KnowledgeItem> items = repository.findAllActiveByCompanyIdAndAgentId(companyId, agentId);
-        for (KnowledgeItem item : items) {
-            if (matches(lower, item)) {
-                return item.answerForLanguage(language);
-            }
-        }
-        return null;
+    public List<String> findTopics(long companyId) {
+        return repository.findTopicsByCompanyId(companyId);
     }
 
-    @Override
-    public List<KnowledgeItem> findAllActiveByCompanyIdAndAgentId(long companyId, Long agentId) {
-        return repository.findAllActiveByCompanyIdAndAgentId(companyId, agentId);
+    /**
+     * Gives the saved item the vector it is matched by meaning with. Its text changed, so any old vector is
+     * wrong: when the model cannot be reached the item is left with none (keyword matching only) and the
+     * backfill fills it in — a save never fails on the embedding model.
+     */
+    private void embed(KnowledgeItem item) {
+        float[] vector = null;
+        try {
+            List<float[]> vectors = textEmbedder.embedAll(List.of(item.embeddingText()));
+            vector = vectors.isEmpty() ? null : vectors.getFirst();
+        } catch (Exception e) {
+            log.warn("[company {}] Could not embed knowledge item {}: {}", item.companyId(), item.id(), e.getMessage());
+        }
+        repository.updateEmbedding(item.id(), vector);
     }
 
     /** Refuses an agent that is not this company's, so an item cannot be bound across tenants. */
@@ -143,21 +154,6 @@ public class KnowledgeBaseService implements KnowledgeBaseUseCase {
      */
     private static String normalizeTopic(String topic) {
         return topic.trim().toLowerCase(Locale.ROOT);
-    }
-
-    private boolean matches(String query, KnowledgeItem item) {
-        if (query.contains(item.key().toLowerCase(Locale.ROOT))) {
-            return true;
-        }
-        if (item.keywords() != null && !item.keywords().isBlank()) {
-            String[] split = item.keywords().split("[,;\\s]+");
-            for (String kw : split) {
-                if (!kw.isBlank() && query.contains(kw.toLowerCase(Locale.ROOT))) {
-                    return true;
-                }
-            }
-        }
-        return false;
     }
 
     private KnowledgeItemResponse toResponse(KnowledgeItem item) {

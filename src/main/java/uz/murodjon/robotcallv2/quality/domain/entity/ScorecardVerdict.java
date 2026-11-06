@@ -10,6 +10,7 @@ import java.util.List;
  *
  * @param sentiment null when the judge did not say
  * @param topics    one to three short lowercase tags; empty when the judge gave none
+ * @param model     the model id the provider reported; null when unknown (billed at the common rate)
  */
 public record ScorecardVerdict(
         List<CallScorecardAnswer> answers,
@@ -17,8 +18,15 @@ public record ScorecardVerdict(
         List<String> topics,
         long promptTokens,
         long completionTokens,
-        long cachedTokens
+        long cachedTokens,
+        String model
 ) {
+
+    /** A verdict whose model is not known. */
+    public ScorecardVerdict(List<CallScorecardAnswer> answers, Sentiment sentiment, List<String> topics,
+                            long promptTokens, long completionTokens, long cachedTokens) {
+        this(answers, sentiment, topics, promptTokens, completionTokens, cachedTokens, null);
+    }
 
     public ScorecardVerdict {
         answers = answers == null ? List.of() : List.copyOf(answers);

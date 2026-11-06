@@ -35,6 +35,12 @@ public interface WebhookDeliveryUseCase {
                                      String signingSecret, Duration readTimeout);
 
     /**
+     * POSTs {@code payload} once and ignores the reply's body — a test send: nothing is kept
+     * for retry and nothing goes to the live delivery stream. The transport's exception is let out.
+     */
+    void postOnce(String url, Map<String, String> headers, Map<String, Object> payload, String signingSecret);
+
+    /**
      * The deliveries kept for retry: every webhook whose first try failed, until a week
      * after it got through. A webhook delivered on its first try is not kept.
      */

@@ -27,7 +27,6 @@ import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
 
 import java.time.Instant;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -38,7 +37,7 @@ import static org.mockito.Mockito.*;
 class AuthServiceTest {
 
     private static final Role ADMIN_ROLE = new Role(1L, 1L, SystemRole.ADMIN.name(), SystemRole.ADMIN.label(),
-            null, true, Set.of(), Instant.now());
+            null, true, SystemRole.ADMIN.resolvePermissions(), Instant.now());
     private static final String ADDRESS = "10.0.0.1";
     private static final String FAILURES_KEY = "auth:login-fail:ali:" + ADDRESS;
 

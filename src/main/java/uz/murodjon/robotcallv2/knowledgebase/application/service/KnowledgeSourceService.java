@@ -10,7 +10,6 @@ import uz.murodjon.robotcallv2.knowledgebase.application.dto.CreateKnowledgeSour
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.CreateKnowledgeSourceRequest;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeSourceRow;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.UpdateKnowledgeSourceRequest;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeSourceUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeChunkRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeCollectionRepository;
@@ -43,7 +42,6 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
     private final KnowledgeSourceRepository repository;
     private final KnowledgeChunkRepository chunkRepository;
     private final KnowledgeIndexingService indexingService;
-    private final KnowledgeRetrievalUseCase knowledgeRetrievalUseCase;
     private final AiAgentUseCase aiAgentUseCase;
     private final AuditUseCase auditService;
     private final FileStorageUseCase fileStorageUseCase;
@@ -52,7 +50,6 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
     public KnowledgeSourceService(KnowledgeSourceRepository repository,
                                   KnowledgeChunkRepository chunkRepository,
                                   KnowledgeIndexingService indexingService,
-                                  KnowledgeRetrievalUseCase knowledgeRetrievalUseCase,
                                   AiAgentUseCase aiAgentUseCase,
                                   AuditUseCase auditService,
                                   FileStorageUseCase fileStorageUseCase,
@@ -60,7 +57,6 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
         this.repository = repository;
         this.chunkRepository = chunkRepository;
         this.indexingService = indexingService;
-        this.knowledgeRetrievalUseCase = knowledgeRetrievalUseCase;
         this.aiAgentUseCase = aiAgentUseCase;
         this.auditService = auditService;
         this.fileStorageUseCase = fileStorageUseCase;
@@ -95,7 +91,10 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                     item.feedItemsPath(),
                     item.feedKeyField(),
                     item.refreshMinutes(),
-                    request.collectionId()
+                    request.collectionId(),
+                    0,
+                    null,
+                    true
             )));
         }
 
@@ -182,15 +181,15 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                 existing.feedItemsPath(),
                 existing.feedKeyField(),
                 request.refreshMinutes() != null ? request.refreshMinutes() : existing.refreshMinutes(),
-                collectionId
+                collectionId,
+                existing.failedAttempts(),
+                existing.failedAt(),
+                request.enabled() != null ? request.enabled() : existing.enabled()
         );
         KnowledgeSource saved = repository.save(reindex ? updated.queuedForIndexing() : updated);
         audit(companyId, "KNOWLEDGE_SOURCE_UPDATE", saved);
         if (reindex) {
             indexingService.enqueue(saved);
-        } else {
-            // The passages did not change, but which agent may see them did.
-            knowledgeRetrievalUseCase.evictCompany(companyId);
         }
         return toRow(saved, agentNameOf(companyId, saved.agentId()));
     }
@@ -218,7 +217,6 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
         if (existing.storedFileId() != null) {
             fileStorageUseCase.delete(companyId, existing.storedFileId());
         }
-        knowledgeRetrievalUseCase.evictCompany(companyId);
         audit(companyId, "KNOWLEDGE_SOURCE_DELETE", existing);
     }
 
@@ -300,7 +298,8 @@ public class KnowledgeSourceService implements KnowledgeSourceUseCase {
                 source.feedItemsPath(),
                 source.feedKeyField(),
                 source.refreshMinutes(),
-                source.collectionId()
+                source.collectionId(),
+                source.enabled()
         );
     }
 }

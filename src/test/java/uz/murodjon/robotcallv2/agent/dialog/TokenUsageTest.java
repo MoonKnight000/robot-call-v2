@@ -47,6 +47,22 @@ class TokenUsageTest {
         assertThat(usage.completionTokens()).isEqualTo(5);
     }
 
+    @Test
+    void openAiCachedPromptIsCounted() {
+        // OpenAI's prompt_tokens_details.cached_tokens arrives as the generic cache-read count.
+        TokenUsage usage = new TokenUsage();
+        usage.add(new ChatResponse(List.of(), ChatResponseMetadata.builder()
+                .usage(new DefaultUsage(7214, 20, 7234, null, 7211L, null))
+                .build()));
+
+        assertThat(usage.cachedTokens()).isEqualTo(7211);
+    }
+
+    @Test
+    void cachedCountNeverExceedsThePrompt() {
+        assertThat(TokenUsage.cachedTokens(new DefaultUsage(100, 5, 105, null, 900L, null))).isEqualTo(100);
+    }
+
     private static ChatResponse chunk(int prompt, int completion) {
         return new ChatResponse(List.of(), ChatResponseMetadata.builder()
                 .usage(new DefaultUsage(prompt, completion, prompt + completion))

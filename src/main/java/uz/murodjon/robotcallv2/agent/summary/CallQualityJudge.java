@@ -21,6 +21,7 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
 
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -52,9 +53,12 @@ public class CallQualityJudge {
 
     private static final String RUBRIC = PromptText.text("call-quality-rubric.txt");
 
+    private static final String CRITERIA_RUBRIC = PromptText.text("success-criteria-judge.txt");
+
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final CallMetrics metrics;
     private final boolean enabled;
+    private final boolean callScoring;
     private final double sampleRate;
     private final String model;
     private final int maxTokens;
@@ -67,6 +71,7 @@ public class CallQualityJudge {
         this.chatModelProvider = chatModelProvider;
         this.metrics = metrics;
         this.enabled = qualityProperties.enabled();
+        this.callScoring = qualityProperties.callScoring();
         this.sampleRate = qualityProperties.sampleRate();
         this.model = qualityProperties.model();
         this.maxTokens = qualityProperties.maxTokens();
@@ -116,29 +121,12 @@ public class CallQualityJudge {
     }
 
     private QualityVerdict score(String transcript, ScenarioDefinition scenario, Disposition disposition) {
-        if (chatClient == null || transcript == null || transcript.isBlank()) {
+        if (!callScoring || chatClient == null || transcript == null || transcript.isBlank()) {
             return null;
         }
         try {
-            ChatModel cm = chatModelProvider.getIfAvailable();
-            boolean isOpenAi = (cm instanceof OpenAiChatModel)
-                    || (model != null && (model.startsWith("llama") || model.startsWith("mixtral")
-                    || model.startsWith("gpt-") || model.startsWith("qwen")));
-            ChatOptions options;
-            if (isOpenAi) {
-                options = OpenAiChatOptions.builder()
-                        .model(model)
-                        .maxTokens(maxTokens)
-                        .build();
-            } else {
-                options = GoogleGenAiChatOptions.builder()
-                        .model(model)
-                        .maxOutputTokens(maxTokens)
-                        .thinkingLevel(GoogleGenAiThinkingLevel.LOW)
-                        .build();
-            }
             Map<String, Object> raw = chatClient.prompt()
-                    .options(options.mutate())
+                    .options(options().mutate())
                     .system(RUBRIC + rules(scenario))
                     .user("CALL DISPOSITION: " + disposition + "\n\nTRANSCRIPT:\n" + transcript)
                     .call()
@@ -148,6 +136,52 @@ public class CallQualityJudge {
             log.warn("Call quality scoring failed: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * Whether a simulated call met a test case's success criteria, written in plain words — Retell's
+     * "Success Criteria". Only for agent evaluations: nothing is published to the QA metrics.
+     *
+     * @return the verdict, or {@code null} when the judge is off or failed
+     */
+    public CriteriaVerdict checkCriteria(String transcript, String criteria, LocalDate today) {
+        if (chatClient == null || transcript == null || transcript.isBlank() || criteria == null || criteria.isBlank()) {
+            return null;
+        }
+        try {
+            Map<String, Object> raw = chatClient.prompt()
+                    .options(options().mutate())
+                    .system(CRITERIA_RUBRIC)
+                    .user("TODAY: " + today + "\n\nSUCCESS CRITERIA:\n" + criteria + "\n\nTRANSCRIPT:\n" + transcript)
+                    .call()
+                    .entity(new MapOutputConverter());
+            if (raw == null) {
+                return null;
+            }
+            return new CriteriaVerdict(Boolean.TRUE.equals(raw.get("met")),
+                    raw.get("note") == null ? null : raw.get("note").toString());
+        } catch (Exception e) {
+            log.warn("Success criteria check failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private ChatOptions options() {
+        ChatModel cm = chatModelProvider.getIfAvailable();
+        boolean isOpenAi = (cm instanceof OpenAiChatModel)
+                || (model != null && (model.startsWith("llama") || model.startsWith("mixtral")
+                || model.startsWith("gpt-") || model.startsWith("qwen")));
+        if (isOpenAi) {
+            return OpenAiChatOptions.builder()
+                    .model(model)
+                    .maxTokens(maxTokens)
+                    .build();
+        }
+        return GoogleGenAiChatOptions.builder()
+                .model(model)
+                .maxOutputTokens(maxTokens)
+                .thinkingLevel(GoogleGenAiThinkingLevel.LOW)
+                .build();
     }
 
     /** Whether this call is one of the ones scored. */

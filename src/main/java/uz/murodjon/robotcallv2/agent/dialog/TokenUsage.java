@@ -33,6 +33,7 @@ public class TokenUsage {
 
     private static final Logger log = LoggerFactory.getLogger(TokenUsage.class);
 
+    private String model;
     private long prompt;
     private long completion;
     private long cached;
@@ -45,6 +46,14 @@ public class TokenUsage {
     public void add(ChatResponse response) {
         if (response == null || response.getMetadata() == null) {
             return;
+        }
+        // Which model answered — billed at that model's price. The first named one wins: the
+        // calls one TokenUsage sums (a turn and its tool follow-up) go to the same model.
+        if (model == null) {
+            String reported = response.getMetadata().getModel();
+            if (reported != null && !reported.isBlank()) {
+                model = reported;
+            }
         }
         Usage usage = response.getMetadata().getUsage();
         if (usage == null) {
@@ -80,6 +89,11 @@ public class TokenUsage {
         return prompt + completion;
     }
 
+    /** The model the provider answered with, or null when no response named one. */
+    public String model() {
+        return model;
+    }
+
     /** Prompt tokens, cached ones included. */
     public long promptTokens() {
         return prompt;
@@ -105,19 +119,26 @@ public class TokenUsage {
             return;
         }
         metrics.recordLlmUsage(prompt, completion, cached);
-        s.addTokenBreakdown(prompt, completion, cached);
+        s.addTokenBreakdown(model, prompt, completion, cached);
         // Info, not debug: next to "turn latency" it says what a slow first token was spent on —
         // thinking before the first word, or a prompt the cache did not cover.
         log.info("[{}] tokens: prompt={} (cached {}, {}%), completion={} (thinking {})",
                 s.channelId(), prompt, cached, prompt > 0 ? cached * 100 / prompt : 0, completion, thinking);
     }
 
-    /** The share of the prompt Gemini billed at the cached rate. */
-    private static long cachedTokens(Usage usage) {
+    /**
+     * The share of the prompt billed at the cached rate. Gemini reports it on its own usage type;
+     * OpenAI's {@code prompt_tokens_details.cached_tokens} arrives as the generic cache-read count —
+     * reading only Gemini's showed every GPT turn as "cached 0" and billed its cached prefix at the
+     * full rate. Capped at the prompt: a vendor that counts cache reads outside the prompt
+     * (Anthropic) must not make the cached share exceed the whole.
+     */
+    static long cachedTokens(Usage usage) {
         if (usage instanceof GoogleGenAiUsage google) {
             return value(google.getCachedContentTokenCount());
         }
-        return 0;
+        Long cacheRead = usage.getCacheReadInputTokens();
+        return cacheRead == null ? 0 : Math.max(0, Math.min(cacheRead, value(usage.getPromptTokens())));
     }
 
     /**

@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.callrecord.domain.entity;
 
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallReanalysisMode;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.CallReanalysisStatus;
 
 import java.time.Instant;
@@ -10,6 +11,7 @@ import java.time.Instant;
  * outcome. Nothing else a call set off — the CRM note, a callback, post-call webhooks — is
  * repeated.
  *
+ * @param mode           what is done with each call; {@code ANALYSIS} for jobs from before contact backfill
  * @param from           inclusive, on {@code call_attempt.started_at}
  * @param to             exclusive
  * @param totalCalls     the calls in range when the job was queued
@@ -24,6 +26,7 @@ public record CallReanalysisJob(
         Long id,
         long companyId,
         long aiAgentId,
+        CallReanalysisMode mode,
         Instant from,
         Instant to,
         CallReanalysisStatus status,
@@ -41,9 +44,14 @@ public record CallReanalysisJob(
         Instant finishedAt
 ) {
 
+    public CallReanalysisJob {
+        mode = mode == null ? CallReanalysisMode.ANALYSIS : mode;
+    }
+
     /** A new job, before the worker has seen it; the adapter stamps id and createdAt. */
-    public static CallReanalysisJob queued(long companyId, long aiAgentId, Instant from, Instant to, int totalCalls) {
-        return new CallReanalysisJob(null, companyId, aiAgentId, from, to, CallReanalysisStatus.QUEUED, totalCalls,
+    public static CallReanalysisJob queued(long companyId, long aiAgentId, CallReanalysisMode mode, Instant from,
+                                           Instant to, int totalCalls) {
+        return new CallReanalysisJob(null, companyId, aiAgentId, mode, from, to, CallReanalysisStatus.QUEUED, totalCalls,
                 0, 0, 0, 0, 0, 0, 0, null, null, null, null);
     }
 }

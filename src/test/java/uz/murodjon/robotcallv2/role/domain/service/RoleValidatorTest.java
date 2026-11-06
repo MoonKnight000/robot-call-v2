@@ -19,15 +19,15 @@ class RoleValidatorTest {
 
     @Test
     void allowsCreatingUpToTheLimit() {
-        assertThatCode(() -> RoleValidator.validateCreate(SOME_PERMISSIONS, RoleValidator.MAX_CUSTOM_ROLES - 1))
+        assertThatCode(() -> RoleValidator.validateCreate(SOME_PERMISSIONS, RoleValidator.MAX_ROLES - 1))
                 .doesNotThrowAnyException();
     }
 
     @Test
     void refusesTheEleventhRoleOfACompany() {
-        assertThatThrownBy(() -> RoleValidator.validateCreate(SOME_PERMISSIONS, RoleValidator.MAX_CUSTOM_ROLES))
+        assertThatThrownBy(() -> RoleValidator.validateCreate(SOME_PERMISSIONS, RoleValidator.MAX_ROLES))
                 .isInstanceOf(ConflictException.class)
-                .hasMessageContaining(String.valueOf(RoleValidator.MAX_CUSTOM_ROLES));
+                .hasMessageContaining(String.valueOf(RoleValidator.MAX_ROLES));
     }
 
     @Test
@@ -44,9 +44,35 @@ class RoleValidatorTest {
     }
 
     @Test
-    void refusesToEditASystemRole() {
-        assertThatThrownBy(() -> RoleValidator.validateEditable(systemRole(SystemRole.ADMIN)))
+    void aCompanyEditsEveryRoleExceptThePlatformManagedOne() {
+        assertThatCode(() -> RoleValidator.validateEditable(systemRole(SystemRole.ADMIN), false))
+                .doesNotThrowAnyException();
+        assertThatThrownBy(() -> RoleValidator.validateEditable(systemRole(SystemRole.DEVELOPER), false))
+                .isInstanceOf(ForbiddenException.class);
+        assertThatCode(() -> RoleValidator.validateEditable(systemRole(SystemRole.DEVELOPER), true))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void refusesToTakeUserEditFromTheLastActiveManagers() {
+        Role admin = systemRole(SystemRole.ADMIN);
+        Set<Permission> withoutUserEdit = Set.of(Permission.USER_READ);
+
+        assertThatThrownBy(() -> RoleValidator.validateKeepsUserManager(admin, withoutUserEdit, 1, 0))
                 .isInstanceOf(ConflictException.class);
+        assertThatCode(() -> RoleValidator.validateKeepsUserManager(admin, withoutUserEdit, 1, 1))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> RoleValidator.validateKeepsUserManager(admin, withoutUserEdit, 0, 0))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void theAdminTemplateKeepsUserAndRoleManagement() {
+        assertThatThrownBy(() -> RoleValidator.validateTemplatePermissions(SystemRole.ADMIN.name(), Set.of(Permission.USER_EDIT)))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining(Permission.ROLE_EDIT.name());
+        assertThatCode(() -> RoleValidator.validateTemplatePermissions(null, Set.of(Permission.CAMPAIGN_READ)))
+                .doesNotThrowAnyException();
     }
 
     @Test
@@ -92,10 +118,11 @@ class RoleValidatorTest {
     }
 
     private static Role systemRole(SystemRole systemRole) {
-        return new Role(1L, 1L, systemRole.name(), systemRole.label(), null, true, Set.of(), Instant.now());
+        return new Role(1L, 1L, systemRole.name(), systemRole.label(), null, systemRole.assignableByCompany(),
+                systemRole.resolvePermissions(), Instant.now());
     }
 
     private static Role customRole() {
-        return new Role(2L, 1L, null, "Sotuv menejeri", null, false, SOME_PERMISSIONS, Instant.now());
+        return new Role(2L, 1L, null, "Sotuv menejeri", null, true, SOME_PERMISSIONS, Instant.now());
     }
 }

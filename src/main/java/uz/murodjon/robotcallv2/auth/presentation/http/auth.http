@@ -68,6 +68,10 @@ Authorization: Bearer {{auth_token}}
 GET http://localhost:8080/api/auth/me
 Authorization: Bearer {{auth_token}}
 
+### My Sessions (current marked via refresh_token cookie)
+GET http://localhost:8080/api/auth/sessions
+Authorization: Bearer {{auth_token}}
+
 ### My Companies
 GET http://localhost:8080/api/companies
 Authorization: Bearer {{auth_token}}

@@ -72,6 +72,9 @@ class BillingServiceTest {
     @Mock
     private ChannelUsagePort channelUsagePort;
 
+    @Mock
+    private BillingLedgerRepository ledgerRepo;
+
     private BillingService service;
 
     @BeforeEach
@@ -80,6 +83,7 @@ class BillingServiceTest {
                 billingRepo,
                 usageRepo,
                 callBillingRepo,
+                ledgerRepo,
                 invoiceRepo,
                 topupRepo,
                 currentUser,

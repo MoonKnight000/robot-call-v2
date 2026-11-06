@@ -31,7 +31,9 @@ import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ReportService implements ReportUseCase {
@@ -116,6 +118,11 @@ public class ReportService implements ReportUseCase {
     @Override
     public List<PhoneCallHistoryEntry> findCallsForPhone(long companyId, String phone, int limit) {
         return callReportRepository.findCallsByPhone(companyId, phone, limit);
+    }
+
+    @Override
+    public Map<String, PhoneCallStats> findCallStatsByPhones(long companyId, Collection<String> phones) {
+        return phones.isEmpty() ? Map.of() : callReportRepository.findCallStatsByPhones(companyId, phones);
     }
 
     @Override

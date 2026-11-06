@@ -10,6 +10,8 @@ import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
+import java.util.List;
+
 @RestController
 public class KnowledgeBaseControllerImpl implements KnowledgeBaseController {
 
@@ -38,6 +40,11 @@ public class KnowledgeBaseControllerImpl implements KnowledgeBaseController {
     public ResponseEntity<ResponseData<Void>> delete(long companyId, long id) {
         knowledgeBaseUseCase.delete(companyId, id);
         return ResponseEntity.ok(ResponseData.ok(null));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<List<String>>> topics(long companyId) {
+        return ResponseEntity.ok(ResponseData.ok(knowledgeBaseUseCase.findTopics(companyId)));
     }
 
     @Override

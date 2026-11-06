@@ -1,5 +1,8 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
+import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
+
 import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -142,6 +145,112 @@ public final class SpeechSanitizer {
             return true;
         }
 
+        // One word written in two alphabets is never speech: the fast backup model greeted a simulated
+        // caller with "…qulaymi? рооg'iroq qilyapman." — the tail of another sentence, half Cyrillic.
+        return hasMixedScriptWord(trimmed);
+    }
+
+    /** Whether a word (split on spaces and hyphens) holds both Latin and Cyrillic letters. */
+    static boolean hasMixedScriptWord(String text) {
+        for (String word : text.split("[\\s\\-—–]+")) {
+            boolean latin = false;
+            boolean cyrillic = false;
+            for (int i = 0; i < word.length(); i++) {
+                Character.UnicodeScript script = Character.UnicodeScript.of(word.charAt(i));
+                latin |= script == Character.UnicodeScript.LATIN;
+                cyrillic |= script == Character.UnicodeScript.CYRILLIC;
+            }
+            if (latin && cyrillic) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether {@code reply} is written in the other alphabet from what the caller just said — Latin
+     * (Uzbek) to a caller speaking Cyrillic (Russian), or the other way round. Only when both sides are
+     * clearly one script: a short "ha"/"да" or a line that mixes a brand name in decides nothing. The
+     * fast backup model answered a Russian-speaking simulated caller in Uzbek, twice in a row.
+     *
+     * <p>Uzbek written in Cyrillic counts as the other language too: it carries letters Russian never
+     * has (ў қ ғ ҳ), and "Хайр, саломат бўлинг!" was said to a Russian caller (eval #20) because both
+     * sides were Cyrillic.
+     *
+     * @param clientLine what the caller last said, or null when the call has not heard them yet
+     */
+    static boolean isOtherScript(String reply, String clientLine) {
+        Character.UnicodeScript heard = findDominantScript(clientLine, MIN_SCRIPT_LETTERS_HEARD, 4, 5);
+        // Two thirds for the reply: "Нигина aka, yaxshimisiz?" — Uzbek with the client's name in
+        // Cyrillic, 70% Latin — went past an 80% bar to a Russian-speaking simulated caller.
+        Character.UnicodeScript said = findDominantScript(reply, MIN_SCRIPT_LETTERS_SAID, 2, 3);
+        if (heard == null || said == null) {
+            return false;
+        }
+        return heard != said || heard == Character.UnicodeScript.CYRILLIC
+                && hasUzbekCyrillic(reply) && !hasUzbekCyrillic(clientLine);
+    }
+
+    /** Whether the text has a letter only Uzbek Cyrillic uses. */
+    private static boolean hasUzbekCyrillic(String text) {
+        for (int i = 0; i < text.length(); i++) {
+            if (UZBEK_CYRILLIC_LETTERS.indexOf(text.charAt(i)) >= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static final String UZBEK_CYRILLIC_LETTERS = "ўЎқҚғҒҳҲ";
+
+    private static final int MIN_SCRIPT_LETTERS_HEARD = 6;
+    private static final int MIN_SCRIPT_LETTERS_SAID = 8;
+
+    /**
+     * Latin or Cyrillic when at least {@code num/den} of the text's (at least {@code minLetters}) letters
+     * are in it.
+     */
+    private static Character.UnicodeScript findDominantScript(String text, int minLetters, int num, int den) {
+        if (text == null) {
+            return null;
+        }
+        int latin = 0;
+        int cyrillic = 0;
+        for (int i = 0; i < text.length(); i++) {
+            Character.UnicodeScript script = Character.UnicodeScript.of(text.charAt(i));
+            if (script == Character.UnicodeScript.LATIN) {
+                latin++;
+            } else if (script == Character.UnicodeScript.CYRILLIC) {
+                cyrillic++;
+            }
+        }
+        int letters = latin + cyrillic;
+        if (letters < minLetters) {
+            return null;
+        }
+        if (latin * den >= letters * num) {
+            return Character.UnicodeScript.LATIN;
+        }
+        return cyrillic * den >= letters * num ? Character.UnicodeScript.CYRILLIC : null;
+    }
+
+    /**
+     * Whether {@code text} names one of the scenario's stages as written ({@code GREETING}). A
+     * one-word stage id has no underscore, so {@link #isUnspeakable} lets it through: a simulated
+     * call greeted with "…qulaymi? Lekin qoidalarga ko'ra, GREETING bosqichida faqat shuni aytish
+     * kerak." — the model reading its own instructions out. Case-sensitive and whole-word, so the
+     * ordinary word "greeting" or a company name in capitals that is not a stage id is untouched.
+     */
+    public static boolean namesStage(String text, ScenarioDefinition scenario) {
+        if (text == null || scenario == null || scenario.stages() == null) {
+            return false;
+        }
+        for (StageDef stage : scenario.stages()) {
+            String id = stage.id();
+            if (id != null && id.length() > 2 && Pattern.compile("\\b" + Pattern.quote(id) + "\\b").matcher(text).find()) {
+                return true;
+            }
+        }
         return false;
     }
 

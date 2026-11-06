@@ -12,3 +12,33 @@ Authorization: Bearer {{auth_token}}
   "preferredLanguage": "uz-UZ",
   "operatorNotes": "Kechqurun 18:00 dan keyin qo'ng'iroq qilish qulay"
 }
+
+### Set one fact by hand (marked as the operator's)
+PUT http://localhost:8080/api/memory/998901234567/facts/visitDay
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "value": "shanba kuni"
+}
+
+### Remove one fact
+DELETE http://localhost:8080/api/memory/998901234567/facts/visitDay
+Authorization: Bearer {{auth_token}}
+
+### Correct a remembered conversation (callId = recentCalls[].id)
+PATCH http://localhost:8080/api/memory/998901234567/calls/c3a91f0d2
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "summary": "Mijoz ertaga 18:00 dan keyin qayta qo'ng'iroq qilishni so'radi."
+}
+
+### Remove a remembered conversation (the call record itself stays)
+DELETE http://localhost:8080/api/memory/998901234567/calls/c3a91f0d2
+Authorization: Bearer {{auth_token}}
+
+### Forget everything about the client
+DELETE http://localhost:8080/api/memory/998901234567
+Authorization: Bearer {{auth_token}}

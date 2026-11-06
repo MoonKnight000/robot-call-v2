@@ -67,6 +67,16 @@ class DialogToolsTest {
     }
 
     @Test
+    void theSameLineCarriedByTwoToolsIsSaidOnce() {
+        session.setState("DEBT_NOTICE");
+
+        tools.transitionTo("Tushunarli. Sabab nimada?", "REASON_INQUIRY");
+        tools.transitionTo("Tushunarli. Sabab nimada?", "REASON_INQUIRY");
+
+        assertThat(session.toolReplies()).isEqualTo("Tushunarli. Sabab nimada?");
+    }
+
+    @Test
     void allowsStayingInCurrentStage() {
         session.setState("DEBT_NOTICE");
 
@@ -310,5 +320,14 @@ class DialogToolsTest {
 
         assertThat(session.isEnded()).isTrue();
         assertThat(session.disposition()).isEqualTo(Disposition.HUNG_UP);
+    }
+
+    @Test
+    void endCallRefusesAnOutcomeOnlyTheSystemSets() {
+        String result = tools.endCall(null, Disposition.FAILED);
+
+        assertThat(result).startsWith("ERROR:");
+        assertThat(session.isEnded()).isFalse();
+        assertThat(session.toolReplies()).isNull();
     }
 }

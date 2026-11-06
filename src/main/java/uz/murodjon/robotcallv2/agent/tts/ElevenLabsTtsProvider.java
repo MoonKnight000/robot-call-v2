@@ -95,7 +95,7 @@ public class ElevenLabsTtsProvider implements TtsProvider {
     public short[] synthesize(String text, String language, String voice, EffectiveVoiceSettings style,
                               String previousText) {
         List<short[]> chunks = new ArrayList<>();
-        stream(text, language, voice, previousText, chunks::add);
+        stream(text, language, voice, style, previousText, chunks::add);
 
         int total = 0;
         for (short[] chunk : chunks) {
@@ -113,10 +113,11 @@ public class ElevenLabsTtsProvider implements TtsProvider {
     @Override
     public void synthesizeStreaming(String text, String language, String requestedVoice,
                                     EffectiveVoiceSettings style, PcmChunkListener onChunk) {
-        stream(text, language, requestedVoice, null, onChunk);
+        stream(text, language, requestedVoice, style, null, onChunk);
     }
 
-    private void stream(String text, String language, String requestedVoice, String previousText,
+    private void stream(String text, String language, String requestedVoice, EffectiveVoiceSettings style,
+                        String previousText,
                         PcmChunkListener onChunk) {
         if (text == null || text.isBlank()) {
             return;
@@ -137,7 +138,7 @@ public class ElevenLabsTtsProvider implements TtsProvider {
                 .uri(URI.create(base + "/" + voice + "/stream?output_format=pcm_8000"))
                 .header("Content-Type", "application/json")
                 .header("xi-api-key", apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(requestBody(text, language, settings, previousText)))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody(text, language, settings, style, previousText)))
                 .timeout(Duration.ofSeconds(settings.connectTimeoutSeconds()))
                 .build();
 
@@ -262,6 +263,7 @@ public class ElevenLabsTtsProvider implements TtsProvider {
 
     /** {@code language_code} is ISO 639-1, so {@code uz-UZ} goes out as {@code uz}. */
     private String requestBody(String text, String language, ElevenLabsTtsProperties settings,
+                               EffectiveVoiceSettings style,
                                String previousText) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("text", text);
@@ -274,6 +276,7 @@ public class ElevenLabsTtsProvider implements TtsProvider {
         if (language != null && !language.isBlank()) {
             root.put("language_code", language.split("-")[0].toLowerCase(Locale.ROOT));
         }
+        VoiceStyleMapper.putElevenLabsVoiceSettings(root, style);
         return root.toString();
     }
 

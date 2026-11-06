@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.billing.presentation.controller;
 
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -9,6 +10,7 @@ import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -26,6 +28,18 @@ public interface BillingController {
     ResponseEntity<ResponseData<List<SpendMonthDto>>> getSpendChart(
             @CurrentCompanyId long companyId,
             @RequestParam(name = "months", defaultValue = "6") int months);
+
+    /**
+     * Everything spent in a period of days, split into its cost lines: tokens (input / output /
+     * cached), recognition, synthesis, realtime, line, platform fee, and the token charges
+     * outside calls (chat, copilot, questions, re-analysis). Defaults to this month so far.
+     */
+    @PreAuthorize("hasAuthority('BILLING_READ')")
+    @GetMapping("/costs")
+    ResponseEntity<ResponseData<CostReportResponse>> getCostReport(
+            @CurrentCompanyId long companyId,
+            @RequestParam(name = "from", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(name = "to", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to);
 
     @PreAuthorize("hasAuthority('BILLING_READ')")
     @GetMapping("/invoices")

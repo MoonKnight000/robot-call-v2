@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.junit.jupiter.api.Test;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoiceEmotion;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
@@ -106,14 +107,31 @@ class VoiceEmotionResolverTest {
 
     @Test
     void disabledEmotionAdaptiveVoicePreservesBaseSpeedAndRole() {
-        EffectiveVoiceSettings base = new EffectiveVoiceSettings("yandex", 1.2, 0.0, "strict");
+        EffectiveVoiceSettings base = new EffectiveVoiceSettings("yandex", 1.2, 0.0, "strict", null);
         DialogSession session = createSession("GREETING", "cheerful", "zamira", base, false);
         session.setLastCustomerSentiment(CustomerSentiment.FRUSTRATED);
 
         EffectiveVoiceSettings settings = resolver.resolve(session);
 
+        // The caller's mood does not touch an agent that did not ask to follow it: the stage's mood stays.
         assertThat(settings.speed()).isEqualTo(1.2);
-        assertThat(settings.role()).isEqualTo("friendly");
+        assertThat(settings.role()).isEqualTo("cheerful");
+    }
+
+    @Test
+    void aStageWithoutAMoodSpeaksInTheAgentsOwnMood() {
+        uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent base =
+                uz.murodjon.robotcallv2.aiagent.AiAgentFixtures.agent(1L, 1L, 1L, "uz-UZ", "zamira");
+        uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent friendly =
+                base.toBuilder().voice(base.voice().withEmotion(VoiceEmotion.FRIENDLY)).build();
+        DialogSession session = DialogSession.builder("chan-test", "uz-UZ")
+                .scenario(createSession("DEBT_NOTICE", null, "zamira", EffectiveVoiceSettings.NONE, false).scenario())
+                .agent(friendly)
+                .voiceSettings(EffectiveVoiceSettings.NONE)
+                .build();
+        session.setState("DEBT_NOTICE");
+
+        assertThat(resolver.resolve(session).role()).isEqualTo("friendly");
     }
 
     @Test

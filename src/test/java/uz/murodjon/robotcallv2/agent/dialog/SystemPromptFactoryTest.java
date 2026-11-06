@@ -91,9 +91,9 @@ class SystemPromptFactoryTest {
     void injectsMultiCallMemoryWhenPresent() {
         ClientMemory memory = new ClientMemory(1L, 1L, "+998901234567", "Aziz aka", null,
                 "Mijoz bilan xushmuomala gaplashing, aka deb murojaat qiling",
-                List.of(new RememberedCall(Instant.parse("2026-08-20T09:00:00Z"), "debt-collection",
-                        Disposition.PROMISE_TO_PAY, "O'tgan safar dushanba kuni to'lashga va'da bergandi")),
-                Map.of("promisedDate", "2026-08-25"), null);
+                List.of(new RememberedCall(null, Instant.parse("2026-08-20T09:00:00Z"), "debt-collection",
+                        Disposition.PROMISE_TO_PAY, "O'tgan safar dushanba kuni to'lashga va'da bergandi", null, null)),
+                Map.of("promisedDate", "2026-08-25"), Map.of(), null);
         CallContext contextWithMemory = new CallContext(Map.of("clientName", "Aziz Karimov"),
                 "To'lov sanasini kelishish.", memory);
 
@@ -113,7 +113,7 @@ class SystemPromptFactoryTest {
     @Test
     void injectsPreferredLanguageIntoMemoryBlockWhenPresent() {
         ClientMemory memory = new ClientMemory(1L, 1L, "+998901234567", "Ivan", "ru",
-                null, List.of(), Map.of(), null);
+                null, List.of(), Map.of(), Map.of(), null);
         CallContext contextWithMemory = new CallContext(Map.of(), "Goal", memory);
 
         String prompt = factory.stablePrefix(session(contextWithMemory, "ru-RU"));
@@ -127,7 +127,7 @@ class SystemPromptFactoryTest {
     @Test
     void fallsBackToMemoryPreferredNameWhenClientNameFactAbsent() {
         ClientMemory memory = new ClientMemory(1L, 1L, "+998901234567", "Sardor", null,
-                null, List.of(), Map.of(), null);
+                null, List.of(), Map.of(), Map.of(), null);
         CallContext contextWithMemory = new CallContext(Map.of(), "Goal", memory);
 
         String prompt = factory.stablePrefix(session(contextWithMemory, "uz-UZ"));
@@ -376,7 +376,7 @@ class SystemPromptFactoryTest {
         // "aytdimku uch xonali uy qidiryapman deb" was answered "Bir lahza. Tushunarli, uch xonali…".
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
                 .contains("aytdimku")
-                .contains("Kechirasiz, uch xonali dedingiz.")
+                .contains("say \"Kechirasiz\" and go on with what they said")
                 .contains("Never open with a waiting phrase")
                 .contains("Bir lahza")
                 .doesNotContain("я же сказал");
@@ -391,12 +391,12 @@ class SystemPromptFactoryTest {
         // A real DEBT_NOTICE turn stated the sum and the missed due date and then stopped.
         // The caller had nothing to answer, said one unintelligible word, and the call
         // never recovered — so "always end on a question" is a rule, not a stage's hope.
+        // Stated once, in the shared platform guardrails (ONE QUESTION AT A TIME), for every language.
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "uz-UZ")))
-                .contains("MUST end with a question")
+                .contains("ONE QUESTION AT A TIME")
                 .contains("bu haqda xabaringiz bormidi?");
         assertThat(factory.stablePrefix(session(ScenarioFixtures.fullContext(), "ru-RU")))
-                .contains("MUST end with a question")
-                .contains("вы в курсе?");
+                .contains("ONE QUESTION AT A TIME");
     }
 
     @Test
@@ -599,5 +599,31 @@ class SystemPromptFactoryTest {
         assertThat(botPrompt).doesNotContain("NATURAL FILLERS AND BRIDGES");
         assertThat(botPrompt).doesNotContain("«Xo'sh»");
         assertThat(botPrompt).contains("NO ECHOING");
+    }
+
+    /** "Juma" said on a Friday (2026-11-06) was booked as that same day (eval #23): the client is asked instead. */
+    @Test
+    void todaysWeekdayIsAskedAboutAndTheOthersHaveTheirDates() {
+        String anchors = SystemPromptFactory.weekdayAnchors(LocalDate.parse("2026-11-06"));
+
+        assertThat(anchors).contains("\"dushanba\" = 2026-11-09", "\"juma\" = 2026-11-13");
+        assertThat(anchors).contains("TODAY's weekday (\"juma\")", "today (2026-11-06) or next week (2026-11-13)");
+        assertThat(anchors).contains("Bugunmi yoki kelasi juma, 13-sanami?");
+    }
+
+    /** A promise whose day is behind today is a broken one; a pending or unreadable one is not. */
+    @Test
+    void anEarlierPromiseThatFellDueIsBroken() {
+        LocalDate today = LocalDate.of(2026, 11, 6);
+        assertThat(SystemPromptFactory.findBrokenPromise(memoryWithPromise("2026-11-01"), today))
+                .isEqualTo(LocalDate.of(2026, 11, 1));
+        assertThat(SystemPromptFactory.findBrokenPromise(memoryWithPromise("2026-11-06"), today)).isNull();
+        assertThat(SystemPromptFactory.findBrokenPromise(memoryWithPromise("oy oxirida"), today)).isNull();
+        assertThat(SystemPromptFactory.findBrokenPromise(null, today)).isNull();
+    }
+
+    private static ClientMemory memoryWithPromise(String promisedDate) {
+        return new ClientMemory(1, 1, "+998901234567", null, null, null, List.of(),
+                Map.of("promisedDate", promisedDate), Map.of(), null);
     }
 }

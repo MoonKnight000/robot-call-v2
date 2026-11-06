@@ -6,8 +6,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.CreateKnowledgeSourceRequest;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeSourceRow;
+import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeChunkRow;
+import uz.murodjon.robotcallv2.knowledgebase.application.dto.UpdateKnowledgeChunkRequest;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.UpdateKnowledgeSourceRequest;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeSourcePage;
 import uz.murodjon.robotcallv2.security.CurrentCompanyId;
+import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
 import java.util.List;
@@ -56,6 +60,33 @@ public interface KnowledgeSourceController {
     @PreAuthorize("hasAuthority('KNOWLEDGE_BASE_EDIT')")
     @DeleteMapping("/{id:\\d+}")
     ResponseEntity<ResponseData<Void>> delete(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id);
+
+    /** One page of the source's passages in document order; {@code size} is capped at 200. */
+    @PreAuthorize("hasAuthority('KNOWLEDGE_BASE_READ')")
+    @GetMapping("/{id:\\d+}/chunks")
+    ResponseEntity<ResponseData<PageableData<KnowledgeChunkRow>>> chunks(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String pageUrl,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size);
+
+    /** Corrects a passage's text or switches it off/on; both survive a refresh of the source. */
+    @PreAuthorize("hasAuthority('KNOWLEDGE_BASE_EDIT')")
+    @PatchMapping("/{id:\\d+}/chunks/{chunkId:\\d+}")
+    ResponseEntity<ResponseData<KnowledgeChunkRow>> updateChunk(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @PathVariable long chunkId,
+            @Valid @RequestBody UpdateKnowledgeChunkRequest request);
+
+    /** The pages a sitemap or URL source read, with their passage counts; empty for a file. */
+    @PreAuthorize("hasAuthority('KNOWLEDGE_BASE_READ')")
+    @GetMapping("/{id:\\d+}/pages")
+    ResponseEntity<ResponseData<List<KnowledgeSourcePage>>> pages(
             @CurrentCompanyId long companyId,
             @PathVariable long id);
 }

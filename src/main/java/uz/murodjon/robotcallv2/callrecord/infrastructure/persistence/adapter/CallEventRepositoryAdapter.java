@@ -3,12 +3,15 @@ package uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.adapter;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallEventRepository;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallEvent;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallEventType;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.CallEventEntity;
 import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.CallEventJpaRepository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -52,6 +55,15 @@ public class CallEventRepositoryAdapter implements CallEventRepository {
     @Override
     public List<CallEvent> findByChatSessionId(long companyId, long chatSessionId) {
         return jpaRepository.findByCompanyIdAndChatSessionIdOrderByAtAscIdAsc(companyId, chatSessionId).stream()
+                .map(this::toCallEvent)
+                .toList();
+    }
+
+    @Override
+    public List<CallEvent> findByCompanyIdAndType(long companyId, CallEventType type, Instant from, Instant to,
+                                                  int limit) {
+        return jpaRepository.findByCompanyIdAndTypeAndAtBetweenOrderByAtDesc(companyId, type, from, to,
+                        PageRequest.of(0, limit)).stream()
                 .map(this::toCallEvent)
                 .toList();
     }

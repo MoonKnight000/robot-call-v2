@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.agent.dialog.SimulatedCall;
 import uz.murodjon.robotcallv2.agent.dialog.SimulationPersona;
 import uz.murodjon.robotcallv2.agent.dialog.SimulationProperties;
 import uz.murodjon.robotcallv2.agent.summary.CallQualityJudge;
+import uz.murodjon.robotcallv2.agent.summary.CriteriaVerdict;
 import uz.murodjon.robotcallv2.agent.summary.QualityVerdict;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentEvalCaseSummary;
 import uz.murodjon.robotcallv2.aiagent.application.dto.AgentEvalRunDetail;
@@ -37,6 +38,7 @@ import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -235,6 +237,7 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
             if (verdict != null && verdict.guardrailViolation()) {
                 problems.add("guardrail: " + verdict.note());
             }
+            problems.addAll(criteriaProblems(testCase, call));
             return new AgentEvalResult(null, runId, testCase.id(), testCase.name(), problems.isEmpty(),
                     call.disposition() != null ? call.disposition().name() : null, call.stage(), problems,
                     call.transcriptText(), verdict != null ? verdict.score() : null,
@@ -258,15 +261,15 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
         }
         String agentSaid = call.transcript().stream()
                 .filter(line -> line.startsWith("AGENT: "))
-                .map(line -> line.toLowerCase(Locale.ROOT))
+                .map(AgentEvaluationService::matchable)
                 .collect(Collectors.joining("\n"));
         for (String phrase : testCase.mustSay()) {
-            if (isSet(phrase) && !agentSaid.contains(phrase.trim().toLowerCase(Locale.ROOT))) {
+            if (isSet(phrase) && !agentSaid.contains(matchable(phrase.trim()))) {
                 problems.add("never said: " + phrase.trim());
             }
         }
         for (String phrase : testCase.mustNotSay()) {
-            if (isSet(phrase) && agentSaid.contains(phrase.trim().toLowerCase(Locale.ROOT))) {
+            if (isSet(phrase) && agentSaid.contains(matchable(phrase.trim()))) {
                 problems.add("said what it must not: " + phrase.trim());
             }
         }
@@ -276,6 +279,26 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
             }
         }
         return problems;
+    }
+
+    /**
+     * The case's plain-word success criteria, judged over the transcript. A judge that could not answer
+     * fails the case: criteria that were never checked are not criteria that held.
+     */
+    private List<String> criteriaProblems(AgentTestCase testCase, SimulatedCall call) {
+        if (!isSet(testCase.successCriteria()) || call.transcript().isEmpty()) {
+            return List.of();
+        }
+        CriteriaVerdict verdict = judge.checkCriteria(call.transcriptText(), testCase.successCriteria(),
+                LocalDate.now(clock));
+        if (verdict == null) {
+            // Asked once more: one dropped judge request failed a call the agent had handled well.
+            verdict = judge.checkCriteria(call.transcriptText(), testCase.successCriteria(), LocalDate.now(clock));
+        }
+        if (verdict == null) {
+            return List.of("criteria: not judged (quality judge is off or failed)");
+        }
+        return verdict.met() ? List.of() : List.of("criteria: " + verdict.note());
     }
 
     private void requireTestCase(long companyId, long agentId, long caseId) {
@@ -289,7 +312,7 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
                 request.facts(), blankToNull(request.language()), blankToNull(request.expectDisposition()),
                 blankToNull(request.expectStage()), request.mustSay(), request.mustNotSay(),
                 request.maxTurns() != null ? request.maxTurns() : AgentTestCase.DEFAULT_MAX_TURNS, null,
-                withoutBlankMocks(request.toolMocks()), request.expectTools());
+                withoutBlankMocks(request.toolMocks()), request.expectTools(), blankToNull(request.successCriteria()));
     }
 
     /**
@@ -340,6 +363,14 @@ public class AgentEvaluationService implements AgentEvaluationUseCase {
             }
         });
         return clean;
+    }
+
+    /**
+     * Lower case, with digit-group separators dropped: a case asking for "1 250 000" passes when the
+     * agent wrote "1250000" or "1.250.000" — the same figure, which the line used to fail on.
+     */
+    private static String matchable(String text) {
+        return text.toLowerCase(Locale.ROOT).replaceAll("(?<=\\d)[\\s\\u00A0.,'](?=\\d{3}(?!\\d))", "");
     }
 
     private static boolean isSet(String value) {

@@ -6,7 +6,9 @@ import uz.murodjon.robotcallv2.chat.domain.entity.ChatAnalysis;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 public interface ChatSessionRepository {
 
@@ -48,4 +50,10 @@ public interface ChatSessionRepository {
 
     /** The post-chat analysis; null while there is none yet. */
     ChatAnalysis findAnalysis(long chatSessionId);
+
+    /** The latest line of each of these conversations, by conversation id; one without lines is absent. */
+    Map<Long, ChatMessage> findLastMessages(Collection<Long> chatSessionIds);
+
+    /** The post-chat analysis of each of these conversations that has one, by conversation id. */
+    Map<Long, ChatAnalysis> findAnalyses(Collection<Long> chatSessionIds);
 }

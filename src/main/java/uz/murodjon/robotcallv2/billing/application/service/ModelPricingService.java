@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.billing.domain.entity.BillingLlmRates;
 import uz.murodjon.robotcallv2.billing.domain.entity.BillingRates;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallCostBreakdown;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelPrice;
 import uz.murodjon.robotcallv2.billing.domain.service.CallCostCalculator;
 import uz.murodjon.robotcallv2.billing.infrastructure.config.BillingModelRateProperties;
 import uz.murodjon.robotcallv2.billing.infrastructure.config.BillingRateProperties;
@@ -19,17 +20,23 @@ public class ModelPricingService implements ModelPricingUseCase {
 
     private final BillingRateProperties billingRateProperties;
     private final BillingModelRateProperties billingModelRateProperties;
+    private final ModelPriceService modelPriceService;
 
     public ModelPricingService(BillingRateProperties billingRateProperties,
-                               BillingModelRateProperties billingModelRateProperties) {
+                               BillingModelRateProperties billingModelRateProperties,
+                               ModelPriceService modelPriceService) {
         this.billingRateProperties = billingRateProperties;
         this.billingModelRateProperties = billingModelRateProperties;
+        this.modelPriceService = modelPriceService;
     }
 
     @Override
     public CallCostBreakdown findCostBreakdown(CallUsage usage, String llmModel) {
         BillingRates rates = billingRateProperties.rates();
-        BillingLlmRates modelRates = llmModel == null ? null : billingModelRateProperties.llm().get(llmModel);
+        // The platform's price list first (/api/platform/model-prices), then billing.yml's model-rates.
+        ModelPrice price = llmModel == null ? null : modelPriceService.findPriceLookup().apply(llmModel);
+        BillingLlmRates modelRates = price != null ? price.llm()
+                : llmModel == null ? null : billingModelRateProperties.llm().get(llmModel);
         if (modelRates != null) {
             rates = new BillingRates(modelRates, rates.sttPerMinuteUzs(), rates.ttsPer1kCharsUzs(),
                     rates.realtimePerMinuteUzs(), rates.telephonyPerMinuteUzs(), rates.platformFeePerMinuteUzs(),

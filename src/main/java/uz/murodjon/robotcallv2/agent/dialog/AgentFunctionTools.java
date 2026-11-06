@@ -12,10 +12,12 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsContentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentSmsRecipient;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVariableType;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.memory.domain.entity.MemorySource;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ToolParamDef;
 import uz.murodjon.robotcallv2.tool.domain.entity.Tool;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -57,14 +59,14 @@ final class AgentFunctionTools {
                     : "Records values the conversation has given: "
                     + String.join(", ", function.extract().variables().stream().map(AgentFunctionVariable::name).toList());
             tools.add(ScenarioToolCallbackFactory.build(new ToolDef(function.name(), description, params), session,
-                    recorded -> remember(session, companyId, memory, recorded, remembered)));
+                    recorded -> remember(session, companyId, memory, function.name(), recorded, remembered)));
         }
         return tools;
     }
 
     /** Writes the recorded values of the {@code remembered} variables to the client's memory; never fails the call. */
     private static void remember(DialogOutcomeSink session, long companyId, ClientMemoryUseCase memory,
-                                 Map<String, Object> recorded, Set<String> remembered) {
+                                 String functionName, Map<String, Object> recorded, Set<String> remembered) {
         String phone = session.context() != null ? session.context().phone() : null;
         if (memory == null || phone == null || remembered.isEmpty()) {
             return;
@@ -75,7 +77,8 @@ final class AgentFunctionTools {
             return;
         }
         try {
-            memory.rememberFacts(companyId, phone, facts);
+            memory.rememberFacts(companyId, phone, facts,
+                    MemorySource.tool(functionName, session.callAttemptId(), session.chatSessionId(), Instant.now()));
         } catch (Exception e) {
             log.warn("[{}] could not remember {}: {}", session.channelId(), facts.keySet(), e.getMessage());
         }

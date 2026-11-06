@@ -23,7 +23,7 @@ public class CallScorecardEntityMapper {
                 entity.getReviewStatus(), entity.getReviewNote(), entity.getReviewedBy(), entity.getReviewedAt(),
                 entity.getAnswers().stream().map(CallScorecardEntityMapper::toAnswer).toList(),
                 entity.getPromptTokens(), entity.getCompletionTokens(), entity.getCachedTokens(),
-                entity.getCreatedAt());
+                entity.getCreatedAt(), entity.getModel());
     }
 
     /** Everything a re-score replaces: the judge's verdict, the whole set of answers, and any earlier review. */
@@ -39,6 +39,7 @@ public class CallScorecardEntityMapper {
         entity.setPromptTokens(scorecard.promptTokens());
         entity.setCompletionTokens(scorecard.completionTokens());
         entity.setCachedTokens(scorecard.cachedTokens());
+        entity.setModel(scorecard.model());
         entity.getAnswers().clear();
         for (CallScorecardAnswer answer : scorecard.answers()) {
             CallScorecardAnswerEntity row = new CallScorecardAnswerEntity();

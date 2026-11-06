@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserResponse;
 import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRoleRequest;
+import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 
 import java.util.List;
@@ -38,6 +39,13 @@ public interface PlatformUserController {
     ResponseEntity<ResponseData<InviteUserResponse>> invite(
             @PathVariable long companyId,
             @Valid @RequestBody InviteUserRequest request);
+
+    @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
+    @PutMapping("/users/{id}")
+    ResponseEntity<ResponseData<UserRow>> update(
+            @PathVariable long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdateUserRequest request);
 
     @PreAuthorize("hasAuthority('PLATFORM_ADMIN')")
     @PutMapping("/users/{id}/role")

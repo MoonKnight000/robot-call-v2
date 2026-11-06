@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
-import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoiceEmotion;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
 import uz.murodjon.robotcallv2.voice.domain.entity.EffectiveVoiceSettings;
@@ -55,7 +55,7 @@ public class VoiceEmotionResolver {
         log.debug("[{}] Resolved voice style: state={}, sentiment={}, emotion={}, role={}, speed={}",
                 s.channelId(), s.state(), s.lastCustomerSentiment(), emotion, role, effectiveSpeed);
 
-        return new EffectiveVoiceSettings(base.provider(), effectiveSpeed, base.pitch(), role);
+        return new EffectiveVoiceSettings(base.provider(), effectiveSpeed, base.pitch(), role, base.fallbackVoice());
     }
 
     /**
@@ -79,37 +79,29 @@ public class VoiceEmotionResolver {
      * Determines logical emotion based on customer sentiment and scenario stage.
      */
     public VoiceEmotion determineEmotion(DialogSession s) {
-        CustomerSentiment sentiment = s.lastCustomerSentiment();
-        if (sentiment == CustomerSentiment.FRUSTRATED) {
-            return VoiceEmotion.FRIENDLY;
-        }
-        if (sentiment == CustomerSentiment.CONFUSED) {
-            return VoiceEmotion.NEUTRAL;
-        }
-
-        String stageId = s.state();
-        if (stageId == null) {
-            return VoiceEmotion.NEUTRAL;
-        }
-
-        ScenarioDefinition scenario = s.scenario();
-        if (scenario != null && scenario.stages() != null) {
-            for (StageDef stage : scenario.stages()) {
-                if (stageId.equalsIgnoreCase(stage.id())) {
-                    if (stage.emotion() != null && !stage.emotion().isBlank()) {
-                        return parseEmotion(stage.emotion());
-                    }
-                    break;
-                }
+        // The caller's mood steers the voice only on an agent that asked for it (emotionAdaptive);
+        // it used to override every other choice whether or not the agent had.
+        if (s.emotionAdaptiveVoice()) {
+            CustomerSentiment sentiment = s.lastCustomerSentiment();
+            if (sentiment == CustomerSentiment.FRUSTRATED) {
+                return VoiceEmotion.FRIENDLY;
+            }
+            if (sentiment == CustomerSentiment.CONFUSED) {
+                return VoiceEmotion.NEUTRAL;
             }
         }
 
-        // Neutral unless the scenario asked for something else. Guessing the mood from
-        // the stage's name used to swing one call through cheerful (GREETING), strict
-        // (DEBT_NOTICE) and back to cheerful (CLOSING) — a voice that changes character
-        // three times in two minutes is heard as acting, not as a person, and a debt
-        // notice read "strict" is the worst possible moment for it.
-        return VoiceEmotion.NEUTRAL;
+        StageDef stage = SystemPromptFactory.stageOf(s.scenario(), s.state());
+        if (stage != null && stage.emotion() != null && !stage.emotion().isBlank()) {
+            return parseEmotion(stage.emotion());
+        }
+
+        // Otherwise the agent's own mood, the same for the whole call. Never guessed from the
+        // stage's name: that swung one call through cheerful (GREETING), strict (DEBT_NOTICE) and
+        // back to cheerful (CLOSING) — a voice that changes character three times in two minutes
+        // is heard as acting, not as a person.
+        AiAgent agent = s.agent();
+        return agent != null && agent.voice() != null ? agent.voice().emotion() : VoiceEmotion.NEUTRAL;
     }
 
     public VoiceEmotion parseEmotion(String text) {

@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeIndexingTask;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.*;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.CatalogItem;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeChunk;
@@ -16,16 +15,19 @@ import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeSource;
 import uz.murodjon.robotcallv2.knowledgebase.domain.enums.KnowledgeSourceType;
 import uz.murodjon.robotcallv2.knowledgebase.domain.service.CatalogItems;
 import uz.murodjon.robotcallv2.knowledgebase.domain.service.KnowledgeChunker;
+import uz.murodjon.robotcallv2.knowledgebase.infrastructure.config.KnowledgeBaseProperties;
 import uz.murodjon.robotcallv2.shared.exception.AppException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.PublicUrlGuard;
+import uz.murodjon.robotcallv2.shared.util.Tokens;
 import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
 import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
 
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -54,32 +56,32 @@ public class KnowledgeIndexingService {
     private final DocumentTextExtractorPort textExtractor;
     private final TextEmbedderPort textEmbedder;
     private final FileStorageUseCase fileStorage;
-    private final KnowledgeRetrievalUseCase knowledgeRetrievalUseCase;
     private final RabbitTemplate rabbitTemplate;
     private final CatalogFeedReaderPort feedReader;
     private final CatalogItemRepository catalogItemRepository;
     private final SitemapDiscoveryPort sitemapDiscovery;
+    private final KnowledgeBaseProperties knowledgeBaseProperties;
 
     public KnowledgeIndexingService(KnowledgeSourceRepository sourceRepository,
                                     KnowledgeChunkRepository chunkRepository,
                                     DocumentTextExtractorPort textExtractor,
                                     TextEmbedderPort textEmbedder,
                                     FileStorageUseCase fileStorage,
-                                    KnowledgeRetrievalUseCase knowledgeRetrievalUseCase,
                                     RabbitTemplate rabbitTemplate,
                                     CatalogFeedReaderPort feedReader,
                                     CatalogItemRepository catalogItemRepository,
-                                    SitemapDiscoveryPort sitemapDiscovery) {
+                                    SitemapDiscoveryPort sitemapDiscovery,
+                                    KnowledgeBaseProperties knowledgeBaseProperties) {
         this.sourceRepository = sourceRepository;
         this.chunkRepository = chunkRepository;
         this.textExtractor = textExtractor;
         this.textEmbedder = textEmbedder;
         this.fileStorage = fileStorage;
-        this.knowledgeRetrievalUseCase = knowledgeRetrievalUseCase;
         this.rabbitTemplate = rabbitTemplate;
         this.feedReader = feedReader;
         this.catalogItemRepository = catalogItemRepository;
         this.sitemapDiscovery = sitemapDiscovery;
+        this.knowledgeBaseProperties = knowledgeBaseProperties;
     }
 
     /**
@@ -131,30 +133,63 @@ public class KnowledgeIndexingService {
                 indexCatalog(source, startedAt);
                 return;
             }
-            String text = readText(source);
-            List<String> passages = KnowledgeChunker.chunk(text);
-            if (passages.isEmpty()) {
+            // Each page is chunked on its own, so a passage never runs from one page into the next and keeps
+            // the address it came from.
+            List<KnowledgeChunk> chunks = new ArrayList<>();
+            for (PageText page : readPages(source)) {
+                for (String passage : KnowledgeChunker.chunk(page.text())) {
+                    chunks.add(KnowledgeChunk.toIndex(source.id(), chunks.size(), passage, Tokens.hash(passage),
+                            page.url(), null));
+                }
+            }
+            if (chunks.isEmpty()) {
                 fail(source, ErrorCode.KNOWLEDGE_SOURCE_EMPTY.name(), ErrorCode.KNOWLEDGE_SOURCE_EMPTY.format());
                 return;
             }
 
-            List<float[]> vectors = textEmbedder.embedAll(passages);
-            List<KnowledgeChunk> chunks = new ArrayList<>(passages.size());
-            int embedded = 0;
-            for (int i = 0; i < passages.size(); i++) {
-                float[] vector = i < vectors.size() ? vectors.get(i) : null;
+            // What a person did to this source's passages survives the refresh: a passage that reads the same
+            // as before keeps its edit and its switch (matched by the text the indexer produced).
+            Map<String, KnowledgeChunk> curated = new HashMap<>();
+            for (KnowledgeChunk previous : chunkRepository.findCuratedBySourceId(source.id())) {
+                curated.putIfAbsent(previous.originalHash() != null ? previous.originalHash() : previous.contentHash(),
+                        previous);
+            }
+            for (int i = 0; i < chunks.size(); i++) {
+                KnowledgeChunk previous = curated.get(chunks.get(i).contentHash());
+                if (previous != null) {
+                    chunks.set(i, chunks.get(i).carrying(previous));
+                }
+            }
+
+            // A refresh embeds only the passages whose text changed — a sitemap re-read every few hours would
+            // otherwise spend the embedding quota on the same vectors all day.
+            Map<String, float[]> known = chunkRepository.findEmbeddingsBySourceId(source.id());
+            List<Integer> missing = new ArrayList<>();
+            for (int i = 0; i < chunks.size(); i++) {
+                if (chunks.get(i).embedding() != null) {
+                    continue;
+                }
+                float[] vector = known.get(chunks.get(i).contentHash());
                 if (vector != null) {
+                    chunks.set(i, chunks.get(i).withEmbedding(vector));
+                } else {
+                    missing.add(i);
+                }
+            }
+            List<float[]> vectors = textEmbedder.embedAll(missing.stream().map(i -> chunks.get(i).content()).toList());
+            int embedded = 0;
+            for (int j = 0; j < missing.size() && j < vectors.size(); j++) {
+                if (vectors.get(j) != null) {
+                    chunks.set(missing.get(j), chunks.get(missing.get(j)).withEmbedding(vectors.get(j)));
                     embedded++;
                 }
-                chunks.add(KnowledgeChunk.toIndex(source.id(), i, passages.get(i), vector));
             }
-            chunkRepository.replaceBySourceId(source.id(), chunks);
+            chunkRepository.replaceBySourceId(source.companyId(), source.id(), chunks);
             sourceRepository.save(source.indexed(chunks.size(), Instant.now()));
-            knowledgeRetrievalUseCase.evictCompany(source.companyId());
 
-            log.info("[company {}] Indexed knowledge source {} ('{}'): {} passages, {} embedded, {} ms",
-                    source.companyId(), source.id(), source.name(), chunks.size(), embedded,
-                    System.currentTimeMillis() - startedAt);
+            log.info("[company {}] Indexed knowledge source {} ('{}'): {} passages, {} reused, {} newly embedded, {} ms",
+                    source.companyId(), source.id(), source.name(), chunks.size(), chunks.size() - missing.size(),
+                    embedded, System.currentTimeMillis() - startedAt);
         } catch (AppException e) {
             fail(source, e.code().name(), e.getMessage());
         } catch (Exception e) {
@@ -209,39 +244,38 @@ public class KnowledgeIndexingService {
         return feedReader.parseRows(file.content(), file.meta().originalName());
     }
 
-    private String readText(KnowledgeSource source) {
+    /** The source's text, page by page: one page for a URL or a file, every readable page for a sitemap. */
+    private List<PageText> readPages(KnowledgeSource source) {
         if (source.sourceType() == KnowledgeSourceType.URL) {
-            return textExtractor.extractFromUrl(requirePublicUrl(source.url()));
+            URI uri = requirePublicUrl(source.url());
+            return List.of(new PageText(uri.toString(), textExtractor.extractFromUrl(uri)));
         }
         if (source.sourceType() == KnowledgeSourceType.SITEMAP) {
-            return readSitemapText(source);
+            return readSitemapPages(source);
         }
         DownloadableFile file = fileStorage.download(source.companyId(), source.storedFileId());
-        return textExtractor.extract(file.content(), source.sourceType());
+        return List.of(new PageText(null, textExtractor.extract(file.content(), source.sourceType())));
     }
 
-    private String readSitemapText(KnowledgeSource source) {
+    private List<PageText> readSitemapPages(KnowledgeSource source) {
         URI sitemapUri = requirePublicUrl(source.url());
-        List<URI> pageUris = sitemapDiscovery.discoverUrls(sitemapUri, 50);
-        if (pageUris.isEmpty()) {
-            return "";
-        }
-        StringBuilder combined = new StringBuilder();
+        List<URI> pageUris = sitemapDiscovery.discoverUrls(sitemapUri, knowledgeBaseProperties.sitemapMaxPages());
+        List<PageText> pages = new ArrayList<>();
         for (URI pageUri : pageUris) {
             try {
                 String pageText = textExtractor.extractFromUrl(pageUri);
                 if (pageText != null && !pageText.isBlank()) {
-                    if (!combined.isEmpty()) {
-                        combined.append("\n\n");
-                    }
-                    combined.append("=== Sahifa: ").append(pageUri).append(" ===\n")
-                            .append(pageText);
+                    pages.add(new PageText(pageUri.toString(), pageText));
                 }
             } catch (Exception e) {
                 log.warn("[company {}] Skipping sitemap page {}: {}", source.companyId(), pageUri, e.getMessage());
             }
         }
-        return combined.toString();
+        return pages;
+    }
+
+    /** One page's text and where it came from; {@code url} is null for an uploaded file. */
+    private record PageText(String url, String text) {
     }
 
     /**
@@ -263,11 +297,11 @@ public class KnowledgeIndexingService {
     private void fail(KnowledgeSource source, String failureCode, String failureMessage) {
         // The old passages go too: a source that no longer reads must stop answering with
         // what it used to say, or an operator who replaced a withdrawn price list would
-        // still hear the withdrawn prices on calls.
-        chunkRepository.deleteBySourceId(source.id());
+        // still hear the withdrawn prices on calls. A failed source is never searched, so the passages a
+        // person edited or switched off are kept — the next successful index carries them over.
+        chunkRepository.deleteUncuratedBySourceId(source.id());
         catalogItemRepository.deleteBySourceId(source.id());
-        sourceRepository.save(source.failed(failureCode, trim(failureMessage)));
-        knowledgeRetrievalUseCase.evictCompany(source.companyId());
+        sourceRepository.save(source.failed(failureCode, trim(failureMessage), Instant.now()));
         log.warn("[company {}] Knowledge source {} ('{}') failed to index: {} — {}",
                 source.companyId(), source.id(), source.name(), failureCode, failureMessage);
     }

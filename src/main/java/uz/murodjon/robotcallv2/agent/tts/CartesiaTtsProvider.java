@@ -149,6 +149,7 @@ public class CartesiaTtsProvider implements TtsProvider {
             output.put("container", "raw");
             output.put("encoding", "pcm_s16le");
             output.put("sample_rate", cartesia.sampleRate());
+            VoiceStyleMapper.putCartesiaGenerationConfig(root, cartesia.model(), style);
 
             CartesiaWebSocketClient socketClient = webSocketClient;
             if (socketClient != null) {

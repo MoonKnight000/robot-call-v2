@@ -104,7 +104,8 @@ public class StudioTestChat {
         // A test stays on the platform's model even for a company on its own LLM, as the widget chat does.
         EffectiveAiModelConfig aiModel = aiModelConfigUseCase.findEffectiveByCompanyId(companyId)
                 .withoutOwnLlm()
-                .withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens());
+                .withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens())
+                .withReasoningEffort(agent.reasoningEffort());
         Company company = companyUseCase.findById(companyId);
         Map<String, Object> facts = variables != null ? new LinkedHashMap<>(variables) : Map.of();
         DialogSession dialog = DialogSession.builder("test-" + agent.id(), agent.language())

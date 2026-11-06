@@ -19,6 +19,7 @@ import java.util.List;
  * @param reviewStatus     null for a call that was not flagged and nobody reviewed
  * @param reviewedBy       the reviewing user
  * @param promptTokens     what judging the call cost — charged to the call with its analysis
+ * @param model            the model id that judged the call; null when unknown (billed at the common rate)
  */
 public record CallScorecard(
         long callId,
@@ -37,8 +38,20 @@ public record CallScorecard(
         long promptTokens,
         long completionTokens,
         long cachedTokens,
-        Instant createdAt
+        Instant createdAt,
+        String model
 ) {
+
+    /** A scorecard whose judging model is not known. */
+    public CallScorecard(long callId, long companyId, Long operatorUserId, Integer score, Integer judgedScore,
+                         Sentiment sentiment, List<String> topics, boolean needsReview,
+                         ScorecardReviewStatus reviewStatus, String reviewNote, Long reviewedBy, Instant reviewedAt,
+                         List<CallScorecardAnswer> answers, long promptTokens, long completionTokens,
+                         long cachedTokens, Instant createdAt) {
+        this(callId, companyId, operatorUserId, score, judgedScore, sentiment, topics, needsReview, reviewStatus,
+                reviewNote, reviewedBy, reviewedAt, answers, promptTokens, completionTokens, cachedTokens, createdAt,
+                null);
+    }
 
     public CallScorecard {
         topics = topics == null ? List.of() : List.copyOf(topics);
@@ -53,7 +66,7 @@ public record CallScorecard(
                                        ScorecardVerdict verdict) {
         return new CallScorecard(callId, 0, operatorUserId, score, score, verdict.sentiment(), verdict.topics(), needsReview,
                 needsReview ? ScorecardReviewStatus.PENDING : null, null, null, null, verdict.answers(),
-                verdict.promptTokens(), verdict.completionTokens(), verdict.cachedTokens(), null);
+                verdict.promptTokens(), verdict.completionTokens(), verdict.cachedTokens(), null, verdict.model());
     }
 
     /** The same call as a supervisor left it: their answers, the score they give, and who and when. */
@@ -61,6 +74,6 @@ public record CallScorecard(
                                     ScorecardReviewStatus status, String note, Long userId, Instant at) {
         return new CallScorecard(callId, companyId, operatorUserId, reviewedScore, judgedScore, sentiment, topics,
                 needsReview, status, note, userId, at, reviewedAnswers, promptTokens, completionTokens,
-                cachedTokens, createdAt);
+                cachedTokens, createdAt, model);
     }
 }

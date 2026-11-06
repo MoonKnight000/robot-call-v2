@@ -3,10 +3,11 @@ package uz.murodjon.robotcallv2.aiagent.application.dto;
 import jakarta.validation.Valid;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentWebhookConfig;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoiceEmotion;
 
 /**
  * The "advanced" settings section. The groups are the same ones {@link AiAgentRow} carries;
- * of the voice only the two delivery switches belong here.
+ * of the voice only the delivery switches belong here.
  */
 public record AgentAdvancedDto(
         Boolean useRag,
@@ -14,6 +15,7 @@ public record AgentAdvancedDto(
         AgentWebhookConfig postCallWebhook,
         Boolean emotionAdaptiveVoice,
         SpeakingWarmth speakingWarmth,
+        VoiceEmotion voiceEmotion,
         AgentAmbienceDto ambience,
         @Valid AgentCallBehaviourDto callBehaviour,
         AgentDataPolicyDto dataPolicy

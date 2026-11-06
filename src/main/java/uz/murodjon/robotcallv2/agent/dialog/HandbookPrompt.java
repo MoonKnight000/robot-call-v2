@@ -42,9 +42,11 @@ final class HandbookPrompt {
             case PHONETIC_SPELLING -> "When you spell out letters — a name, email, street or an ID — say each letter "
                     + "together with a familiar word in the call's language (Uzbek: \"A — Anor\"; Russian: "
                     + "\"А — Анна\"), then read the whole spelling back and get a yes.";
-            case SPOKEN_NUMBERS -> "Write numbers, dates, times and amounts of money the way they are said aloud "
-                    + "in the call's language, in words rather than digits or symbols (\"2 500 000\" becomes "
-                    + "the spoken amount, \"15.03\" the spoken date), so the voice reads them naturally.";
+            // Digits, not words: SpeechTextNormalizer reads digits out in the call's language, and
+            // FactGuard checks an amount against FACTS by its digits — one written in words passes neither.
+            case SPOKEN_NUMBERS -> "Write numbers so the voice can read them: plain digits as in FACTS "
+                    + "(\"2500000 so'm\", \"15-mart\", \"14:30\"), never symbols or abbreviations "
+                    + "(\"$\", \"%\", \"2,5 mln\", \"15.03\").";
             case SMART_MATCHING -> "Treat near-variants of the same name, street, company or word as one thing — "
                     + "different spelling, Latin or Cyrillic script, a short or full form (Alisher/Алишер, "
                     + "ko'cha/улица). Do not treat them as a new person or place; ask only when it is "

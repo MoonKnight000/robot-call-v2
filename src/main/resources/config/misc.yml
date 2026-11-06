@@ -17,9 +17,25 @@ voice-agent:
   # LLM-as-judge call scoring (QualityProperties)
   quality:
     enabled: ${QUALITY_ENABLED:true}
+    # The QA score of every call and evaluated simulated call; false keeps the judge for eval success criteria only
+    call-scoring: ${QUALITY_CALL_SCORING:true}
     sample-rate: ${QUALITY_SAMPLE_RATE:1.0}
     model: ${QUALITY_MODEL:gemini-3.8-flash}
     max-tokens: ${QUALITY_MAX_TOKENS:512}
+
+  # Knowledge base limits (KnowledgeBaseProperties)
+  knowledge-base:
+    query-embed-timeout-ms: ${KB_QUERY_EMBED_TIMEOUT_MS:800}
+    auto-retry-max-attempts: ${KB_AUTO_RETRY_MAX_ATTEMPTS:3}
+    auto-retry-base-minutes: ${KB_AUTO_RETRY_BASE_MINUTES:5}
+    # A curated answer is read word for word: matched by meaning alone only this close (cosine, 768 dims).
+    item-min-score: ${KB_ITEM_MIN_SCORE:0.80}
+    sitemap-max-pages: ${KB_SITEMAP_MAX_PAGES:100}
+
+  # Client memory (ClientMemoryProperties): stored conversations per client (the prompt gets the newest 3) and facts.
+  memory:
+    kept-calls: ${MEMORY_KEPT_CALLS:10}
+    max-facts: ${MEMORY_MAX_FACTS:50}
 
   # TTS voice list sync (TtsVoiceSyncProperties)
   voice-sync:
@@ -68,6 +84,8 @@ voice-agent:
     publish-gate: ${AGENT_EVAL_PUBLISH_GATE:}
 
   # Engine bundles on the agent form (EngineProfileProperties)
+  # No max-output-tokens here: a cap on the agent replaces voice-agent.dialog.reply-limit, which
+  # adds the thinking reserve; a 200-300 cap held the thinking too and turns came back empty.
   engine-profiles:
     items:
       - id: fast
@@ -78,7 +96,6 @@ voice-agent:
         llm-model: gemini-3.5-flash-lite
         fast-llm-model: gemini-3.5-flash-lite
         temperature: 0.65
-        max-output-tokens: 200
       - id: balanced
         label: Muvozanatli
         description: Odatiy qo'ng'iroqlar uchun narx va aql muvozanati
@@ -87,7 +104,6 @@ voice-agent:
         llm-model: gemini-3.8-flash
         fast-llm-model: gemini-3.5-flash-lite
         temperature: 0.65
-        max-output-tokens: 300
       - id: fast
         label: Tez va arzon
         description: Qisqa javoblar, eng past narx va kechikish
@@ -96,7 +112,6 @@ voice-agent:
         llm-model: gpt-5.6-luna
         fast-llm-model: gpt-5.6-luna
         temperature: 0.65
-        max-output-tokens: 200
       - id: balanced
         label: Muvozanatli
         description: Odatiy qo'ng'iroqlar uchun narx va aql muvozanati
@@ -105,7 +120,6 @@ voice-agent:
         llm-model: gpt-5.6-terra
         fast-llm-model: gpt-5.6-luna
         temperature: 0.65
-        max-output-tokens: 300
       - id: quality
         label: Sifatli
         description: Murakkab suhbatlar uchun kuchliroq model, sekinroq va qimmatroq
@@ -114,7 +128,6 @@ voice-agent:
         llm-model: gpt-5.6-sol
         fast-llm-model: gpt-5.6-luna
         temperature: 0.65
-        max-output-tokens: 400
 
   # Success rate, turnaround SLO and speculation hit rate alerts (AlertingProperties)
   alerting:

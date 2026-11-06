@@ -115,18 +115,18 @@ public class TtsRouter {
                     ? r.provider().synthesize(speech, r.lang(), r.voiceName(), r.style())
                     : r.provider().synthesize(speech, r.lang(), r.voiceName(), r.style(), previousText);
         } catch (RuntimeException e) {
-            TtsProvider fallback = selector.findFallback(r.provider(), candidate -> candidate.supports(r.lang()));
+            Routed fallback = findFallback(r);
             if (fallback != null) {
-                log.warn("TTS provider '{}' failed ({}), attempting fallback to '{}'",
-                        r.provider().name(), e.getMessage(), fallback.name());
+                log.warn("TTS provider '{}' failed ({}), attempting fallback to '{}' (voice {})",
+                        r.provider().name(), e.getMessage(), fallback.provider().name(), fallback.voiceName());
                 try {
-                    pcm = fallback.synthesize(fallback.applyStressMarks(normalized), r.lang(), null,
-                            EffectiveVoiceSettings.NONE);
+                    pcm = fallback.provider().synthesize(fallback.provider().applyStressMarks(normalized), fallback.lang(),
+                            fallback.voiceName(), fallback.style());
                     fellBack = true;
                     metrics.ttsFailover();
                 } catch (RuntimeException fallbackEx) {
                     metrics.ttsError();
-                    log.error("TTS fallback provider '{}' also failed: {}", fallback.name(), fallbackEx.getMessage());
+                    log.error("TTS fallback provider '{}' also failed: {}", fallback.provider().name(), fallbackEx.getMessage());
                     throw fallbackEx;
                 }
             } else {
@@ -201,13 +201,13 @@ public class TtsRouter {
                 log.warn("TTS streaming provider '{}' gave no audio within {} ms",
                         r.provider().name(), streamProperties.firstChunkTimeoutMs());
             }
-            TtsProvider fallback = selector.findFallback(r.provider(), candidate -> candidate.supports(r.lang()));
+            Routed fallback = findFallback(r);
             if (fallback != null) {
-                log.warn("TTS streaming provider '{}' failed ({}) after {} chunk(s), falling back to '{}' (batch)",
-                        r.provider().name(), e.getMessage(), chunks.size(), fallback.name());
+                log.warn("TTS streaming provider '{}' failed ({}) after {} chunk(s), falling back to '{}' (voice {}, batch)",
+                        r.provider().name(), e.getMessage(), chunks.size(), fallback.provider().name(), fallback.voiceName());
                 try {
-                    short[] fallbackPcm = fallback.synthesize(fallback.applyStressMarks(normalized), r.lang(), null,
-                            EffectiveVoiceSettings.NONE);
+                    short[] fallbackPcm = fallback.provider().synthesize(fallback.provider().applyStressMarks(normalized),
+                            fallback.lang(), fallback.voiceName(), fallback.style());
                     metrics.ttsFailover();
                     // Played whole even if part of the primary's already went out: a repeated
                     // opening is better than a sentence (an amount, a date) that never finishes.
@@ -220,7 +220,7 @@ public class TtsRouter {
                     return; // the finally below stops the timer
                 } catch (RuntimeException fallbackEx) {
                     metrics.ttsError();
-                    log.error("TTS fallback provider '{}' also failed: {}", fallback.name(), fallbackEx.getMessage());
+                    log.error("TTS fallback provider '{}' also failed: {}", fallback.provider().name(), fallbackEx.getMessage());
                     throw fallbackEx;
                 }
             } else {
@@ -273,6 +273,27 @@ public class TtsRouter {
             throw new ExternalServiceException(ErrorCode.TTS_PROVIDER_UNAVAILABLE, "tts", lang);
         }
         return new Routed(provider, lang, null, settings);
+    }
+
+    /**
+     * Who speaks when {@code failed} could not: the agent's own fallback voice when it lives on
+     * another provider and speaks the call's language, else any other provider that speaks the
+     * language, with its default voice. Null when there is none. Neither inherits the failed
+     * voice's speed or pitch — those were tuned for that voice.
+     */
+    private Routed findFallback(Routed failed) {
+        String fallbackVoiceId = failed.style().fallbackVoice();
+        if (fallbackVoiceId != null && !fallbackVoiceId.isBlank()) {
+            TtsVoice voice = resolve(fallbackVoiceId, failed.lang());
+            TtsProvider provider = voice != null ? selector.tryFind(voice.provider()) : null;
+            if (provider != null && provider != failed.provider()) {
+                return new Routed(provider, failed.lang(), voice.name(), EffectiveVoiceSettings.NONE.withRole(voice.role()));
+            }
+            log.debug("Fallback voice '{}' cannot stand in for provider '{}' on a {} call — using automatic fallback",
+                    fallbackVoiceId, failed.provider().name(), failed.lang());
+        }
+        TtsProvider provider = selector.findFallback(failed.provider(), candidate -> candidate.supports(failed.lang()));
+        return provider != null ? new Routed(provider, failed.lang(), null, EffectiveVoiceSettings.NONE) : null;
     }
 
     /** Whether the chunk carries sound: any sample above the noise floor (about -50 dBFS). */

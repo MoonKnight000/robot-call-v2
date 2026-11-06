@@ -15,6 +15,7 @@ import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.Company
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,16 +54,18 @@ public class CallBillingRepositoryAdapter implements CallBillingRepository {
     }
 
     @Override
-    public void addSummaryCharge(long callAttemptId, CallUsage summaryUsage, long costUzs) {
+    public void addSummaryCharge(long callAttemptId, CallUsage summaryUsage, CallCostBreakdown cost) {
         jpaRepository.addSummaryCharge(callAttemptId, summaryUsage.promptTokens(), summaryUsage.completionTokens(),
-                summaryUsage.cachedTokens(), costUzs);
+                summaryUsage.cachedTokens(), cost.llmUzs(), cost.llmPromptUzs(), cost.llmCompletionUzs(),
+                cost.llmCachedUzs(), cost.totalUzs());
     }
 
     @Override
     public void addOperatorAnalysisCharge(long callAttemptId, CallUsage analysisUsage, CallCostBreakdown cost) {
         jpaRepository.addOperatorAnalysisCharge(callAttemptId, analysisUsage.promptTokens(),
                 analysisUsage.completionTokens(), analysisUsage.cachedTokens(), analysisUsage.extraSttSeconds(),
-                cost.llmUzs(), cost.sttUzs(), cost.totalUzs());
+                cost.llmUzs(), cost.llmPromptUzs(), cost.llmCompletionUzs(), cost.llmCachedUzs(),
+                cost.sttUzs(), cost.totalUzs());
     }
 
     @Override
@@ -102,6 +105,32 @@ public class CallBillingRepositoryAdapter implements CallBillingRepository {
         }
         Object[] row = rows.getFirst();
         return new PeriodUsage(number(row[0]), number(row[1]), number(row[2]), number(row[3]));
+    }
+
+    @Override
+    public CostTotals findCostTotals(long companyId, Instant from, Instant to) {
+        List<Object[]> rows = jpaRepository.findCostTotals(companyId, from, to);
+        if (rows.isEmpty()) {
+            return CostTotals.NONE;
+        }
+        Object[] row = rows.getFirst();
+        return new CostTotals(number(row[0]), number(row[1]), number(row[3]), number(row[2]),
+                number(row[4]), number(row[5]), number(row[6]), number(row[7]),
+                number(row[8]), number(row[9]), number(row[10]), number(row[11]),
+                number(row[12]), number(row[13]), number(row[14]), number(row[15]),
+                number(row[16]), number(row[17]));
+    }
+
+    @Override
+    public List<DailySpend> findDailySpend(long companyId, Instant from, Instant to) {
+        return jpaRepository.findDailySpend(companyId, from, to).stream()
+                .map(row -> new DailySpend(localDate(row[0]), number(row[1])))
+                .toList();
+    }
+
+    /** A native {@code date} column arrives as java.sql.Date or LocalDate depending on the driver path. */
+    private static LocalDate localDate(Object value) {
+        return value instanceof java.sql.Date date ? date.toLocalDate() : (LocalDate) value;
     }
 
     /** SUM over a bigint answers as BigInteger, over an int as Long — both arrive here. */

@@ -32,6 +32,14 @@ public class ClientMemoryRepositoryAdapter implements ClientMemoryRepository {
     }
 
     @Override
+    public ClientMemory lockByCompanyIdAndPhone(long companyId, String phone) {
+        jpaRepository.insertEmptyIfMissing(companyId, phone);
+        return jpaRepository.findByCompanyIdAndPhoneForUpdate(companyId, phone)
+                .map(mapper::toClientMemory)
+                .orElse(null);
+    }
+
+    @Override
     public ClientMemory upsert(long companyId, ClientMemory memory) {
         ClientMemoryEntity entity = jpaRepository.findByCompanyIdAndPhone(companyId, memory.phone()).orElseGet(() -> {
             ClientMemoryEntity fresh = new ClientMemoryEntity();
@@ -44,6 +52,11 @@ public class ClientMemoryRepositoryAdapter implements ClientMemoryRepository {
             entity.setUpdatedAt(Instant.now());
         }
         return mapper.toClientMemory(jpaRepository.save(entity));
+    }
+
+    @Override
+    public boolean deleteByCompanyIdAndPhone(long companyId, String phone) {
+        return jpaRepository.deleteByCompanyIdAndPhone(companyId, phone) > 0;
     }
 
     @Override

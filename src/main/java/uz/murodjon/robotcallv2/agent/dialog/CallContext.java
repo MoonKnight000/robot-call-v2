@@ -45,6 +45,12 @@ public record CallContext(Map<String, Object> facts, String goal, ClientMemory m
     /** A remembered call is the summary LLM's two or three sentences. */
     private static final int MAX_SUMMARY_CHARS = 400;
 
+    /**
+     * How many remembered conversations reach the prompt, newest first. The memory keeps more
+     * ({@code voice-agent.memory.kept-calls}) for the operator; the model needs the latest state, not the history.
+     */
+    static final int MAX_PROMPT_CALLS = 3;
+
     public CallContext {
         facts = sanitize(facts);
         goal = PromptSafeText.sanitize(goal, MAX_GOAL_CHARS);
@@ -115,14 +121,15 @@ public record CallContext(Map<String, Object> facts, String goal, ClientMemory m
             return null;
         }
         List<RememberedCall> calls = memory.recentCalls().stream()
-                .map(call -> new RememberedCall(call.at(), call.scenarioKey(), call.disposition(),
-                        PromptSafeText.sanitize(call.summary(), MAX_SUMMARY_CHARS)))
+                .limit(MAX_PROMPT_CALLS)
+                .map(call -> call.withSummary(PromptSafeText.sanitize(call.summary(), MAX_SUMMARY_CHARS)))
                 .toList();
-        return new ClientMemory(memory.id(), memory.companyId(), memory.phone(),
-                PromptSafeText.sanitize(memory.preferredName(), MAX_FACT_CHARS),
-                memory.preferredLanguage(),
-                PromptSafeText.sanitize(memory.operatorNotes(), MAX_GOAL_CHARS),
-                calls, sanitize(memory.facts()), memory.updatedAt());
+        return memory.toBuilder()
+                .preferredName(PromptSafeText.sanitize(memory.preferredName(), MAX_FACT_CHARS))
+                .operatorNotes(PromptSafeText.sanitize(memory.operatorNotes(), MAX_GOAL_CHARS))
+                .recentCalls(calls)
+                .facts(sanitize(memory.facts()))
+                .build();
     }
 
     /** Convenience lookup; {@code null} if this scenario has no such fact or it was never set. */

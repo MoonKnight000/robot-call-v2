@@ -11,6 +11,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.LlmFallbackMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.ReasoningEffort;
 
 import java.util.List;
 import java.util.Set;
@@ -37,6 +38,7 @@ public record CreateAiAgentRequest(
         LlmFallbackMode fallbackLlmMode,
         Double temperature,
         Integer maxOutputTokens,
+        ReasoningEffort reasoningEffort,
         AgentAmbienceDto ambience,
         @Valid AgentGreetingDto greeting,
         @Valid AgentCallBehaviourDto callBehaviour,

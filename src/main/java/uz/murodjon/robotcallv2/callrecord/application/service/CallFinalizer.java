@@ -19,6 +19,7 @@ import uz.murodjon.robotcallv2.agent.vad.VadProperties;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelTokens;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallFinalizationUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.RecordingStoragePort;
@@ -454,10 +455,14 @@ public class CallFinalizer implements CallFinalizationUseCase {
             if (scorecard == null && sttSeconds == 0) {
                 return;
             }
+            ModelTokens judged = scorecard == null || scorecard.model() == null ? null
+                    : new ModelTokens(scorecard.model(), scorecard.promptTokens(), scorecard.completionTokens(),
+                            scorecard.cachedTokens());
             callBilling.chargeOperatorAnalysis(companyId, callAttemptId, new CallUsage(0,
                     scorecard != null ? scorecard.promptTokens() : 0,
                     scorecard != null ? scorecard.completionTokens() : 0,
-                    scorecard != null ? scorecard.cachedTokens() : 0, 0, 0, sttSeconds));
+                    scorecard != null ? scorecard.cachedTokens() : 0, 0, 0, sttSeconds,
+                    judged == null ? List.of() : List.of(judged)));
         } catch (Exception e) {
             log.warn("[{}] operator analysis billing failed: {}", callAttemptId, e.getMessage());
         }
@@ -511,8 +516,13 @@ public class CallFinalizer implements CallFinalizationUseCase {
             // A call that ran on a speech-to-speech engine is priced on its minutes; its
             // tokens are recorded but not priced (CallCostCalculator).
             int realtimeSeconds = counted.engine() != null ? durationSec : 0;
+            // Each model the call ran on (agent model, fast model, fallback) is billed at its own price.
+            List<ModelTokens> byModel = counted.llmUsageByModel().stream()
+                    .map(m -> new ModelTokens(m.model(), m.promptTokens(), m.completionTokens(), m.cachedTokens()))
+                    .toList();
             CallUsage usage = new CallUsage(durationSec, counted.promptTokens(), counted.completionTokens(),
-                    counted.cachedTokens(), counted.ttsChars(), realtimeSeconds);
+                    counted.cachedTokens(), counted.ttsChars(), realtimeSeconds, 0, byModel,
+                    counted.engine() != null ? counted.llmModel() : null);
             // On the company's own LLM the tokens stay on the call record but off the bill.
             callBilling.settleCall(companyId, callAttemptId, targetId > 0 ? targetId : null,
                     counted.ownLlm() ? usage.withoutLlm() : usage);
@@ -531,8 +541,8 @@ public class CallFinalizer implements CallFinalizationUseCase {
             return;
         }
         try {
-            CallUsage usage = new CallUsage(0, summarized.promptTokens(), summarized.completionTokens(),
-                    summarized.cachedTokens(), 0);
+            CallUsage usage = CallUsage.ofModel(new ModelTokens(summarized.model(), summarized.promptTokens(),
+                    summarized.completionTokens(), summarized.cachedTokens()));
             callBilling.chargeSummary(companyId, callAttemptId, summarized.ownLlm() ? usage.withoutLlm() : usage);
         } catch (Exception e) {
             log.warn("[{}] summary billing failed: {}", callAttemptId, e.getMessage());

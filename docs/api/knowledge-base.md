@@ -4,12 +4,8 @@
 
 Kompaniyaning tez-tez so'raladigan savollariga tayyor javoblar katalogi: har bir yozuv —
 bitta mavzu, bitta savol turkumi va uch tildagi javob (o'zbek majburiy, rus/ingliz
-ixtiyoriy). Yozuv kalit so'zlar (`keywords`) orqali mijozning gapi bilan solishtiriladi.
-
-> ⚠️ `KnowledgeBaseUseCase.findRelevantAnswer(...)` metodini `agent/` da hech kim
-> chaqirmaydi — qo'ng'iroq paytida `KnowledgeBaseLookup.findRelevantKnowledge(...)` ishlaydi,
-> u ham shu jadvaldan o'qiydi. Ya'ni javoblar qo'ng'iroqqa tushadi, lekin ikkita bir xil
-> ishni qiladigan yo'l bor (§Javob qanday tanlanadi).
+ixtiyoriy). Yozuv mijozning gapi bilan kalit so'zlar (`keywords`) va ma'no (embedding) bo'yicha
+solishtiriladi (§Javob qanday tanlanadi).
 
 > ℹ️ Ikkalasi bir xil emas: **yozuv** topilsa uning matni AYNAN o'qib beriladi (tayyor,
 > tekshirilgan javob), **manba** parchasi esa modelga kontekst sifatida beriladi va model
@@ -148,22 +144,31 @@ o'chirilgan yozuvlar ham qaytadi (`active: false` bilan).
 
 ---
 
-## Javob qanday tanlanadi (`findRelevantAnswer`)
+## Javob qanday tanlanadi
 
-Ichki API (REST endpoint emas): kompaniyaning **faol** yozuvlari ketma-ket ko'rib
-chiqiladi va birinchi mos kelgani qaytadi.
+Ichki mantiq (REST endpoint emas, `KnowledgeRetrievalUseCase.findCuratedAnswer`). Agent ko'radigan **faol**
+yozuvlar (o'ziniki + kompaniya bo'ylab) ko'rib chiqiladi; yozuvning javobi so'zma-so'z o'qiladi, shuning uchun
+noto'g'ri tanlovdan ko'ra hech narsa tanlamaslik afzal.
 
-1. Mijoz gapi kichik harfga keltiriladi.
-2. Gapda yozuvning `key` i uchrasa — moslik.
-3. Yoki `keywords` dagi biror so'z gapda uchrasa — moslik.
-4. Til bo'yicha javob tanlanadi: `ru-*` → `answerRu`, `en-*` → `answerEn`, qolgan
-   hamma holatda `answerUz` (mos til bo'sh bo'lsa ham `answerUz` ga qaytadi).
+1. Mijoz gapi va kalit so'zlar normallashtiriladi: kichik harf, apostrof turlari olib tashlanadi
+   (`to'lov` = `tolov` = `toʻlov`), harf/raqam bo'lmagan belgilar — bo'shliq.
+2. **Kalit so'z bo'yicha:** `key` yoki `keywords` dagi biror so'z mijoz gapidagi **so'z boshida** turadi.
+   So'z ichida emas: `kim` endi `hokim` ga mos kelmaydi, lekin `to'lov` hali ham `to'lovni` ga mos keladi.
+   3 harfdan qisqa kalit so'zlar hisobga olinmaydi. `keywords` vergul, nuqta-vergul yoki bo'shliq bilan ajratiladi.
+3. **Ma'no bo'yicha:** har bir yozuv saqlanganda embedding qilinadi (sarlavha + key + keywords + barcha
+   tildagi javoblar). Mijoz savoli (faqat oxirgi gapi, oldingi suhbatsiz) unga kosinus bo'yicha solishtiriladi;
+   kalit so'z mos kelmasa ham o'xshashlik `KB_ITEM_MIN_SCORE` (standart **0.80**) dan yuqori bo'lsa yozuv tanlanadi.
+   Bu ostona manbalarnikidan (0.62) yuqori — javob o'qib beriladi.
+4. Tanlov: kalit so'z bo'yicha mos kelgan yozuv faqat ma'no bo'yicha mos kelgandan ustun; bir nechta kalit so'z
+   mosligi bo'lsa — ma'nosi yaqinrog'i, keyin uzunroq (aniqroq) kalit so'zlisi.
+5. Til bo'yicha javob: `ru-*` → `answerRu`, `en-*` → `answerEn`, qolgan hamma holatda `answerUz` (mos til bo'sh
+   bo'lsa ham `answerUz`).
 
-Bu **kalit so'z qidiruvi**, semantik (embedding) qidiruv emas — sinonim va noto'g'ri
-yozilgan so'z topilmaydi, shuning uchun `keywords` ga ikkala tildagi variantlarni ham
-yozing.
+Embedding modeli ishlamasa yoki yozuvning vektori hali yo'q bo'lsa — faqat kalit so'z bo'yicha tanlanadi;
+vektori yo'q yozuvlarni fon jarayoni har daqiqada to'ldiradi. Kompaniyada faol yozuv bo'lmasa embedding
+so'rovi umuman yuborilmaydi.
 
-> ℹ️ Qo'ng'iroqda yozuvlar (yuqoridagi kalit so'z qidiruvi) faqat shu navbatda bilim yoqilgan bo'lsagina
+> ℹ️ Qo'ng'iroqda yozuvlar faqat shu navbatda bilim yoqilgan bo'lsagina
 > tekshiriladi: agentda `useRag: true` yoki bosqichda `knowledgeSourceIds` bor (bosqichning
 > `overrides.knowledgeRetrieval` i buni almashtiradi). Mos yozuv topilsa model chaqirilmaydi va bu navbatda
 > manbalar bo'yicha qidiruv (embedding) ham bajarilmaydi. Tizimning ichiga o'rnatilgan tayyor javoblari (to'lov
@@ -189,15 +194,24 @@ mahsulot bo'ladi.
 3. Indekslovchi hujjatni o'qiydi (PDF — OpenPDF, DOCX/XLSX/XLS — Apache POI, TXT/CSV —
    UTF-8, URL — sahifa yuklab olinib teglardan tozalanadi), matnni ~900 belgilik
    parchalarga bo'ladi (150 belgi ustma-ust), har birini **Gemini embedding** modeli bilan
-   vektorga aylantiradi va `knowledge_chunk` jadvaliga yozadi. Status `PROCESSING` →
-   `INDEXED`, `chunkCount` to'ladi.
+   vektorga aylantiradi (768 o'lchov, pgvector) va `knowledge_chunk` jadvaliga yozadi. Status `PROCESSING` →
+   `INDEXED`, `chunkCount` to'ladi. Sitemap va URL manbada har parcha qaysi sahifadan olingani saqlanadi
+   (`pageUrl`); sitemap sahifalari alohida-alohida parchalanadi.
+   Qayta indekslashda (yangilanish yoki `/retry`) matni o'zgarmagan parchalar qayta embedding qilinmaydi —
+   eski vektori ishlatiladi.
 4. Qo'ng'iroq paytida mijozning savoli ham vektorga aylantiriladi va eng yaqin parchalar
    (kosinus o'xshashligi, ostona standart 0.62, agentda `ragMinScore` bilan o'zgaradi — [ai-agents.md](ai-agents.md)) modelning promptiga qo'yiladi. Model javobni o'z
-   so'zi bilan aytadi — matnni o'qib bermaydi.
+   so'zi bilan aytadi — matnni o'qib bermaydi. Qidiruv ma'lumotlar bazasida bajariladi (pgvector HNSW +
+   tsvector), shuning uchun manba o'zgarishi keyingi qidiruvdayoq ko'rinadi. Qayta indekslanayotgan manba
+   (`PENDING`/`PROCESSING`) eski parchalari bilan javob berishda davom etadi; `FAILED` manbaning faqat odam tahrirlagan yoki o'chirgan parchalari qoladi (qidiruvga tushmaydi).
    **Hybrid** (NEXT-PLAN A.3): shu bilan birga savol so'zlari bo'yicha kalit so'z reytingi ham
    tuziladi va ikkala reyting RRF (reciprocal rank fusion) bilan birlashtiriladi — embedding past
    baholagan, lekin mijoz aytgan shartnoma raqami, mahsulot kodi yoki ismni o'z ichiga olgan parcha
    ham yuqoriga chiqadi. Matni bir xil parcha bir marta sanaladi.
+   Savolni vektorga aylantirish ko'pi bilan `KB_QUERY_EMBED_TIMEOUT_MS` (standart 800 ms) kutiladi; oshsa,
+   shu navbat faqat kalit so'z qidiruvi bilan davom etadi — mijoz sekin embedding provayderini kutmaydi.
+   Har navbatdagi qidiruv natijasi qo'ng'iroq izida `KNOWLEDGE_RETRIEVED` hodisasi bo'lib ko'rinadi
+   ([reports.md](reports.md) → trace).
 
 > ℹ️ **Qidiruv faqat `useRag: true` agentlar uchun ishlaydi**
 > ([ai-agents.md](ai-agents.md) → Advanced). O'chirilgan bo'lsa manbalar saqlanadi, lekin
@@ -205,7 +219,13 @@ mahsulot bo'ladi.
 
 > ℹ️ Embedding modeli mavjud bo'lmasa (`GEMINI_API_KEY` yo'q) tizim yiqilmaydi: parchalar
 > vektorsiz saqlanadi va qidiruv kalit so'z bo'yicha ishlaydi. Sifati pastroq, lekin
-> ishlaydi. `retry` keyinchalik vektorlarni to'ldiradi.
+> ishlaydi. Vektorsiz parcha va yozuvlarni fon jarayoni model qaytgach har daqiqada (256 parcha / 64 yozuv)
+> o'zi to'ldiradi — `retry` shart emas.
+
+> ℹ️ **V52 migratsiyasi** eski vektorlarni (BYTEA, to'liq o'lchov) o'chiradi: deploy'dan keyin bir necha daqiqa
+> parchalar faqat kalit so'z bo'yicha topiladi, so'ng fon jarayoni hammasini qayta embedding qiladi. 768 o'lchovli
+> vektorlarda kosinus qiymatlari biroz farq qilishi mumkin — `ragMinScore` ni qo'ng'iroq izidagi
+> `KNOWLEDGE_RETRIEVED` ballariga qarab tekshiring.
 
 > ⚠️ Skanerlangan PDF ichida matn qatlami bo'lmaydi — bunday manba
 > `FAILED` + `KNOWLEDGE_SOURCE_EMPTY` bo'lib qoladi.
@@ -243,9 +263,9 @@ Huquq: **KNOWLEDGE_BASE_EDIT**. Bitta so'rovda bir nechta hujjat yuboriladi.
 | `documents[].originalFileName` | string | ❌ (≤255) | Foydalanuvchi yuklagan fayl nomi |
 | `documents[].feedItemsPath` | string | ❌ (≤200) | Faqat `STRUCTURED_FEED`: JSON javobdagi mahsulotlar massivining JSONPath'i (`$.data.items`). Bo'sh — butun javob massiv |
 | `documents[].feedKeyField` | string | ❌ (≤100) | Faqat `STRUCTURED_FEED`: kalit ustun (SKU). Standart `sku`, katta-kichik harf farqi yo'q |
-| `documents[].refreshMinutes` | int | ❌ (≥15) | URL'li `URL`, `SITEMAP` yoki `STRUCTURED_FEED`: manba necha daqiqada avtomatik qayta yuklanadi (oxirgi muvaffaqiyatli indekslashdan boshlab; `FAILED` manba qo'lda `/retry` kutadi) Bo'sh — faqat qo'lda (`/retry`) |
+| `documents[].refreshMinutes` | int | ❌ (≥15) | URL'li `URL`, `SITEMAP` yoki `STRUCTURED_FEED`: manba necha daqiqada avtomatik qayta yuklanadi (oxirgi muvaffaqiyatli indekslashdan boshlab; `FAILED` manba bu oraliqda yuklanmaydi — vaqtinchalik xatoda avtomatik qayta urinish, aks holda `/retry`) Bo'sh — faqat qo'lda (`/retry`) |
 
-`SITEMAP` turi berilgan sitemap XML yoki sitemap index manzilidan sahifalar havolalarini avtomatik ajratib oladi va har bir sahifa matnini indekslaydi.
+`SITEMAP` turi berilgan sitemap XML yoki sitemap index manzilidan sahifalar havolalarini avtomatik ajratib oladi va har bir sahifa matnini alohida indekslaydi — ko'pi bilan `KB_SITEMAP_MAX_PAGES` (standart 100) sahifa. Ochilmagan sahifa o'tkazib yuboriladi; birorta ham sahifa o'qilmasa — `FAILED` + `KNOWLEDGE_SOURCE_EMPTY`.
 `STRUCTURED_FEED` uchun `url` yoki `storedFileId` dan biri kerak — ikkalasi ham bo'lmasa `400 KNOWLEDGE_FEED_LOCATION_REQUIRED`.
 `KnowledgeSourceRow` javobida ham `feedItemsPath`, `feedKeyField`, `refreshMinutes` qaytadi; katalog uchun `chunkCount` — mahsulotlar soni.
 
@@ -284,7 +304,14 @@ soniyada qayta so'rab statusni kuzatadi.
 | `PENDING` | Navbatda, hali o'qilmagan |
 | `PROCESSING` | Hujjat o'qilib, parchalanib, vektorlanmoqda |
 | `INDEXED` | Tayyor — qo'ng'iroqda ishlatiladi. `chunkCount` nechta parcha chiqqanini aytadi |
-| `FAILED` | `errorCode` va `errorMessage` sababni aytadi. Tuzatib `/retry` chaqiring |
+| `FAILED` | `errorCode` va `errorMessage` sababni aytadi. Vaqtinchalik xato bo'lsa tizim o'zi qayta urinadi (pastda), aks holda tuzatib `/retry` chaqiring |
+
+**Avtomatik qayta urinish.** Xato vaqtinchalik bo'lsa — `KNOWLEDGE_SOURCE_FETCH_FAILED`,
+`KNOWLEDGE_SOURCE_FETCH_INTERRUPTED` yoki `INTERNAL_SERVER_ERROR` — manba o'zi qayta navbatga
+qo'yiladi: birinchisi 5 daqiqadan keyin, keyingilari 10, 20 daqiqadan keyin (har safar ikki baravar), ketma-ket
+ko'pi bilan 3 marta (`KB_AUTO_RETRY_MAX_ATTEMPTS`, `KB_AUTO_RETRY_BASE_MINUTES`; `0` — o'chiq). Muvaffaqiyatli
+indekslangach hisob nolga qaytadi. Doimiy xatolar (`KNOWLEDGE_SOURCE_EMPTY`, `KNOWLEDGE_SOURCE_UNREADABLE`,
+manzil xatolari) qo'lda `/retry` ni kutadi. Javob shakli o'zgarmagan — urinishlar hisobi API'da ko'rinmaydi.
 
 Eng ko'p uchraydigan `errorCode` lar: `KNOWLEDGE_SOURCE_EMPTY` (matn qatlami yo'q,
 odatda skanerlangan PDF), `KNOWLEDGE_SOURCE_UNREADABLE` (buzuq yoki qo'llab-quvvatlanmagan
@@ -326,8 +353,9 @@ yuboriladi, takroriy kalitdan birinchisi qoladi. Birorta qatorda ham kalit bo'lm
 feed hozircha qo'llab-quvvatlanmaydi (§6.1 dagi manzil tekshiruvi xuddi URL manbadagidek).
 
 **Yangilanish.** `refreshMinutes` berilgan URL feed shu oraliqda qayta yuklanadi (bir daqiqalik
-tekshiruv, ikki instance'da takrorlanmaydi). Faqat `INDEXED` feed yangilanadi. `FAILED` feed
-`/retry` ni kutadi, chunki xato qatorda yozilgan va har daqiqa urinish uni tuzatmaydi. Qayta
+tekshiruv, ikki instance'da takrorlanmaydi). Faqat `INDEXED` feed yangilanadi. `FAILED` feed har daqiqa
+yuklanmaydi: vaqtinchalik xatoda bir necha marta, oraliq oshib boradigan avtomatik qayta urinish bo'ladi
+(§`POST /api/knowledge-base/sources` → "Avtomatik qayta urinish"), qolgan holatda `/retry` kutiladi. Qayta
 yuklashda faqat matni o'zgargan qatorlar qayta vektorlanadi. Yuklash yiqilsa, eski mahsulotlar
 **o'chiriladi**: qo'ng'iroqda eskirgan narx aytilgandan ko'ra "topilmadi" yaxshiroq.
 
@@ -376,6 +404,10 @@ keyingi yangilanish vaqtini o'zgartiradi. `feedItemsPath` va `feedKeyField` tahr
 agent o'zgarsa parchalar o'sha-o'sha qoladi — bir xil vektorlarni qayta hisoblash
 embedding kvotasini behuda sarflaydi.
 
+`"enabled": false` — manba **o'chiriladi, lekin saqlanadi**: parchalari qoladi, lekin hech bir qidiruvga (qo'ng'iroq,
+chat, playground, katalog) tushmaydi va avtomatik yangilanmaydi. `"enabled": true` qayta yoqadi (qayta indekslashsiz).
+`KnowledgeSourceRow` da `enabled` (boolean) qaytadi; yangi manba doim `true`.
+
 ---
 
 ## `POST /api/knowledge-base/sources/{id}/retry` — qayta indekslash
@@ -396,6 +428,118 @@ qo'ng'iroqda gapirmaydi.
 
 > Manbaga yuklangan fayl ham (`stored_file` va MinIO obyekti) o'chiriladi. Bucket o'chirishni rad etsa qator qoladi — `/api/files` orqali
 > alohida o'chirish mumkin.
+
+---
+
+## Parchalar — `GET /api/knowledge-base/sources/{id}/chunks`
+
+Huquq: **KNOWLEDGE_BASE_READ**. Manba parchalarining bir sahifasi, hujjatdagi tartibda.
+
+| Parametr | Standart | Izoh |
+|---|---|---|
+| `search` | — | Faqat shu matnni o'z ichiga olgan parchalar (katta-kichik harf farqsiz) |
+| `pageUrl` | — | Faqat sitemap'ning shu sahifasidan olingan parchalar |
+| `page` | `0` | 0 dan boshlanadi |
+| `size` | `50` | 1–200 |
+
+**Javob:** `ResponseData<PageableData<KnowledgeChunkRow>>`:
+
+```json
+{ "id": 812, "sourceId": 14, "ordinal": 3, "content": "To'lovni Click yoki Payme orqali ...",
+  "pageUrl": "https://company.uz/tolov", "disabled": false, "edited": false }
+```
+
+`disabled` — o'chirilgan (saqlanadi, qidirilmaydi). `edited` — matnini odam o'zgartirgan.
+Xato: `404 KNOWLEDGE_SOURCE_NOT_FOUND`.
+
+## `PATCH /api/knowledge-base/sources/{id}/chunks/{chunkId}` — parchani tuzatish yoki o'chirish
+
+Huquq: **KNOWLEDGE_BASE_EDIT**. Tana: `{ "content": "...", "disabled": true }` — ikkalasi ixtiyoriy, `null` o'zgartirmaydi.
+
+- `content` (≤4000 belgi) parcha matnini almashtiradi va qayta embedding qiladi (model ishlamasa fon jarayoni
+  to'ldiradi). Bo'sh matn → `400 KNOWLEDGE_CHUNK_CONTENT_BLANK` (o'rniga `disabled: true` yuboring).
+- `disabled` parchani qidiruvdan chiqaradi yoki qaytaradi; vektori o'zgarmaydi.
+- **Refresh'dan omon qoladi:** URL/sitemap manba qayta yuklanganda, sahifada o'sha joy o'zgarmagan bo'lsa (indekslovchi
+  bir xil matn chiqarsa), odamning tahriri va o'chirishi saqlanadi. Sahifadagi matn o'zgargan bo'lsa — yangi parcha
+  tahrirsiz keladi. Manba `FAILED` bo'lsa ham tahrirlangan/o'chirilgan parchalar o'chirilmaydi.
+
+**Javob:** yangilangan `KnowledgeChunkRow`. Xato: `404 KNOWLEDGE_SOURCE_NOT_FOUND`, `404 KNOWLEDGE_CHUNK_NOT_FOUND`.
+Audit: `KNOWLEDGE_CHUNK_UPDATE`.
+
+## `GET /api/knowledge-base/sources/{id}/pages` — sitemap sahifalari
+
+Huquq: **KNOWLEDGE_BASE_READ**. Manba o'qigan sahifalar, o'qilgan tartibda: `[{ "pageUrl", "chunkCount", "disabledCount" }]`.
+Fayl manbasi uchun bo'sh ro'yxat. Sahifa bosilganda `.../chunks?pageUrl=...` bilan uning parchalari olinadi.
+
+---
+
+## Playground — `POST /api/knowledge-base/search`
+
+Huquq: **KNOWLEDGE_BASE_READ**. Savolni bilim bazasiga **qo'ng'iroq qanday bersa xuddi shunday** beradi va natijani
+ballari bilan qaytaradi — agent nima eshitishini qo'ng'iroqsiz tekshirish uchun.
+
+```json
+{ "question": "To'lovni qanday qilsam bo'ladi?", "agentId": 5, "limit": null, "minScore": null, "language": "uz-UZ" }
+```
+
+| Maydon | Izoh |
+|---|---|
+| `question` | ✅, ≤500 belgi |
+| `agentId` | Shu agent ko'radigan manbalar (o'ziniki + kompaniya bo'ylab + kolleksiyalari) va uning `ragTopK`/`ragMinScore` i. `null` — butun kompaniya, standart qiymatlar (3 / 0.62) |
+| `limit` | 1–10, agent `ragTopK` ini shu so'rov uchun almashtiradi |
+| `minScore` | 0–1, agent `ragMinScore` ini almashtiradi |
+| `language` | Q&A javobining tilini tanlaydi; `null` — o'zbekcha |
+
+**Javob (`KnowledgeSearchResponse`):**
+
+```json
+{
+  "curated": { "itemId": 9, "key": "payment-methods", "answer": "Click yoki Payme orqali ...", "score": 0.86, "byKeyword": false },
+  "passages": [
+    { "chunkId": 812, "sourceId": 14, "sourceName": "Ommaviy oferta", "content": "...", "score": 0.78,
+      "pageUrl": "https://company.uz/tolov" }
+  ],
+  "limit": 3, "minScore": 0.62, "durationMs": 241
+}
+```
+
+`curated` bo'lsa qo'ng'iroqda aynan shu javob o'qiladi va parchalar qidirilmaydi — bu yerda esa solishtirish uchun
+ikkalasi ham qaytadi. Farq: qo'ng'iroqda parchalar uchun oldingi suhbat va agentning `ragInstruction` i ham
+qo'shiladi, playground esa faqat savolni ishlatadi. Xato: `404 AI_AGENT_NOT_FOUND`.
+
+## Insights — `GET /api/knowledge-base/insights?days=30&agentId=5`
+
+Huquq: **KNOWLEDGE_BASE_READ**. Oxirgi `days` kun (1–90, standart 30) davomida qo'ng'iroq va chatlar bilim
+bazasidan nima so'ragani — qo'ng'iroq izlaridagi `KNOWLEDGE_RETRIEVED` hodisalaridan hisoblanadi
+([reports.md](reports.md)). `agentId` berilsa faqat shu agent.
+
+```json
+{
+  "from": "2026-10-07T12:00:00Z", "to": "2026-11-06T12:00:00Z",
+  "searches": 412, "answered": 351, "curatedAnswers": 120, "hitRate": 0.852,
+  "gaps": [ { "question": "Ofisingiz qayerda?", "count": 17, "lastAskedAt": "...", "lastCallAttemptId": 9031, "lastChatSessionId": 0 } ],
+  "topSources": [ { "sourceId": 14, "sourceName": "Ommaviy oferta", "hits": 188 } ],
+  "topItems": [ { "itemId": 9, "hits": 64, "byMeaning": 12 } ],
+  "truncated": false
+}
+```
+
+- `gaps` — hech narsa topilmagan savollar (bilim bo'shliqlari), eng ko'p so'ralgani birinchi, ko'pi bilan 50 ta.
+  Bir xil savol normallashtirilgan matni bo'yicha birlashtiriladi; bitta qo'ng'iroqda bir savol bir marta sanaladi.
+  `lastCallAttemptId` / `lastChatSessionId` — izini ochish uchun. Frontend "Q&A ga aylantirish" tugmasida
+  `POST /api/knowledge-base` formasini shu savol bilan to'ldiradi — alohida endpoint yo'q.
+- `topItems[].byMeaning` — yozuv kalit so'zsiz, faqat ma'no bo'yicha tanlangan holatlar; ko'p bo'lsa yozuvga kalit so'z qo'shing.
+- `truncated: true` — davrda 5000 dan ortiq qidiruv bo'lgan, raqamlar eng yangilari bo'yicha.
+- Statistika `KNOWLEDGE_RETRIEVED` hodisasi qo'shilganidan (Phase 0) keyingi qo'ng'iroqlardan boshlanadi;
+  `agentId` filtri esa hodisada `agentId` bor qo'ng'iroqlarnigina hisoblaydi (Phase 2 dan keyin). REALTIME
+  qo'ng'iroqlar bu hodisani yozmaydi.
+
+---
+
+## `GET /api/knowledge-base/topics` — mavzular
+
+Huquq: **KNOWLEDGE_BASE_READ**. Kompaniya yozuvlarida ishlatilgan mavzular, alifbo tartibida (`string[]`).
+Frontend mavzu tanlagichida shuni (va o'zi taklif qiladigan standart mavzularni) ko'rsatadi.
 
 ---
 

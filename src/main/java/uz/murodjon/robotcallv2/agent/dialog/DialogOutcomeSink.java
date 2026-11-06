@@ -30,6 +30,12 @@ public interface DialogOutcomeSink {
     /** The Asterisk channel this conversation belongs to — for logging. */
     String channelId();
 
+    /** The call this conversation is on — what a remembered fact points back to; 0 for a chat or a test run. */
+    long callAttemptId();
+
+    /** The chat this conversation is — what a remembered fact points back to; 0 on a call or a test run. */
+    long chatSessionId();
+
     /**
      * The line to speak alongside the tool call.
      *
@@ -142,6 +148,11 @@ public interface DialogOutcomeSink {
 
     /** What the caller said last, or null before they have said anything. */
     String findLastCallerText();
+
+    /** Whether this turn is a flow stage's own job, run with nobody having spoken (TurnRunner#scheduleStageAction). */
+    default boolean isInStageJob() {
+        return false;
+    }
 
     /** Keep the last catalog search's answer where the model will see it again ({@link CatalogTools}). */
     void rememberCatalogResult(String result);

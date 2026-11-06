@@ -7,17 +7,16 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.beans.factory.ObjectProvider;
+import uz.murodjon.robotcallv2.agent.provider.PortableChatOptions;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.EffectiveAiModelConfig;
 import uz.murodjon.robotcallv2.aimodel.domain.entity.OwnLlmEndpoint;
+import uz.murodjon.robotcallv2.shared.dialog.ReasoningEffort;
 
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -40,54 +39,33 @@ class TurnToolsTest {
     }
 
     @Test
-    void returnsOpenAiChatOptionsWhenModelIsOpenAi() {
-        EffectiveAiModelConfig aiModel = new EffectiveAiModelConfig(
-                "gpt-5.6-luna", 0.6, 120, 300, 100000L
-        );
+    void aTurnCarriesTheAgentsSettingsInNoVendorsShape() {
+        // The vendor's shape is RoutingChatModel's job; a vendor type here would lose its own fields
+        // in the ChatClient's merge (gpt-6-luna got max_tokens again).
+        EffectiveAiModelConfig aiModel = new EffectiveAiModelConfig("gpt-6-luna", 0.6, 120, 300, 100000L)
+                .withReasoningEffort(ReasoningEffort.MEDIUM);
         when(session.aiModel()).thenReturn(aiModel);
 
         ChatOptions options = turnTools.buildOptions(session, List.of());
 
-        assertThat(options).isInstanceOf(OpenAiChatOptions.class);
-        OpenAiChatOptions openAiOptions = (OpenAiChatOptions) options;
-        assertThat(openAiOptions.getModel()).isEqualTo("gpt-5.6-luna");
-        assertThat(openAiOptions.getTemperature()).isEqualTo(0.6);
-        assertThat(openAiOptions.getMaxTokens()).isEqualTo(120);
-        assertThat(openAiOptions.getFrequencyPenalty()).isEqualTo(0.4);
-        assertThat(openAiOptions.getPresencePenalty()).isEqualTo(0.3);
+        assertThat(options).isInstanceOf(PortableChatOptions.class);
+        PortableChatOptions portable = (PortableChatOptions) options;
+        assertThat(portable.getModel()).isEqualTo("gpt-6-luna");
+        assertThat(portable.getMaxTokens()).isEqualTo(120);
+        assertThat(portable.getTemperature()).isEqualTo(0.6);
+        assertThat(portable.getReasoningEffort()).isEqualTo(ReasoningEffort.MEDIUM);
     }
 
     @Test
-    void returnsOpenAiChatOptionsWhenChatModelIsOpenAiChatModel() {
-        OpenAiChatModel openAiChatModel = mock(OpenAiChatModel.class);
-        when(chatModelProvider.getIfAvailable()).thenReturn(openAiChatModel);
+    void withNoAgentLevelTheVendorDefaultIsLeftInPlace() {
+        when(session.aiModel()).thenReturn(new EffectiveAiModelConfig("gemini-2.5-flash", 0.7, 100, 300, 100000L));
 
-        EffectiveAiModelConfig aiModel = new EffectiveAiModelConfig(
-                "custom-model", 0.5, 200, 300, 100000L
-        );
-        when(session.aiModel()).thenReturn(aiModel);
+        PortableChatOptions options = (PortableChatOptions) turnTools.buildOptions(session, List.of());
 
-        ChatOptions options = turnTools.buildOptions(session, List.of());
-
-        assertThat(options).isInstanceOf(OpenAiChatOptions.class);
-        OpenAiChatOptions openAiOptions = (OpenAiChatOptions) options;
-        assertThat(openAiOptions.getModel()).isEqualTo("custom-model");
-    }
-
-    @Test
-    void returnsGoogleGenAiChatOptionsWhenModelIsGemini() {
-        EffectiveAiModelConfig aiModel = new EffectiveAiModelConfig(
-                "gemini-2.5-flash", 0.7, 100, 300, 100000L
-        );
-        when(session.aiModel()).thenReturn(aiModel);
-
-        ChatOptions options = turnTools.buildOptions(session, List.of());
-
-        assertThat(options).isInstanceOf(GoogleGenAiChatOptions.class);
-        GoogleGenAiChatOptions googleOptions = (GoogleGenAiChatOptions) options;
-        assertThat(googleOptions.getModel()).isEqualTo("gemini-2.5-flash");
-        assertThat(googleOptions.getTemperature()).isEqualTo(0.7);
-        assertThat(googleOptions.getMaxOutputTokens()).isEqualTo(100);
+        assertThat(options.getModel()).isEqualTo("gemini-2.5-flash");
+        assertThat(options.getTemperature()).isEqualTo(0.7);
+        assertThat(options.getMaxTokens()).isEqualTo(100);
+        assertThat(options.getReasoningEffort()).isNull();
     }
 
     @Test
@@ -116,8 +94,6 @@ class TurnToolsTest {
 
         ChatOptions options = turnTools.buildOptions(session, List.of());
 
-        assertThat(options).isInstanceOf(GoogleGenAiChatOptions.class);
-        GoogleGenAiChatOptions googleOptions = (GoogleGenAiChatOptions) options;
-        assertThat(googleOptions.getModel()).isEqualTo("gemini-3.8-flash");
+        assertThat(options.getModel()).isEqualTo("gemini-3.8-flash");
     }
 }

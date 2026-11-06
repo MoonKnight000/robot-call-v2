@@ -77,4 +77,4 @@ Tugagan suhbat bir daqiqa ichida tahlil qilinadi (`GET /api/chats/{id}` → `ana
 | 409 | `CHAT_DAILY_LIMIT_REACHED` | Agentning kunlik chat kvotasi tugadi |
 | 409 | `CHAT_SESSION_FULL` / `CHAT_SESSION_EXPIRED` | Xabarlar chegarasi tugadi / suhbat jim turib yopildi |
 | 409 | `CHAT_MODEL_NOT_CONFIGURED` | Serverda chat modeli sozlanmagan |
-| 502 | `CHAT_NO_REPLY` | Model javob bermadi |
+| 502 | `CHAT_NO_REPLY` | Model javob bermadi — bo'sh javob yoki provayder xatosi (kvota, xarajat chegarasi, tarmoq) |

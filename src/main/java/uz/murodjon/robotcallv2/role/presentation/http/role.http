@@ -39,3 +39,27 @@ Content-Type: application/json
 ### Delete it (409 while any user still holds it)
 DELETE {{host}}/api/roles/6
 Authorization: Bearer {{token}}
+
+### Platform: default role templates (copied into every new company)
+GET {{host}}/api/platform/role-templates
+Authorization: Bearer {{token}}
+
+### Platform: permission catalog for the template editor
+GET {{host}}/api/platform/role-templates/permissions
+Authorization: Bearer {{token}}
+
+### Platform: add a template
+POST {{host}}/api/platform/role-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Sotuv menejeri",
+  "description": "Kampaniya va kontaktlar",
+  "assignableByCompany": true,
+  "permissions": ["DASHBOARD_READ", "CAMPAIGN_READ", "CAMPAIGN_EDIT", "CONTACT_READ", "CONTACT_EDIT"]
+}
+
+### Platform: delete a template (409 for the ADMIN template)
+DELETE {{host}}/api/platform/role-templates/6
+Authorization: Bearer {{token}}

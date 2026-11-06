@@ -697,6 +697,9 @@ public class DialogSession implements DialogOutcomeSink {
         CallTraceLog trace = callTraceLog;
         if (trace != null && state != null && !java.util.Objects.equals(previousState, state)) {
             trace.recordStageEntered(this, companyId(), callAttemptId(), chatSessionId(), startedAt(), previousState, state);
+            if (previousState == null && context != null) {
+                trace.recordMemoryRecalled(companyId(), callAttemptId(), chatSessionId(), context.memory());
+            }
         }
         Consumer<DialogSession> listener = stageListener;
         if (listener != null) {
@@ -782,8 +785,11 @@ public class DialogSession implements DialogOutcomeSink {
 
     @Override
     public void setDisposition(Disposition disposition) {
+        Disposition previous = outcomeLedger.disposition();
         outcomeLedger.setDisposition(disposition);
-        if (disposition != null && outcomeTurn < 0) {
+        // A changed outcome (a refusal the caller turned into a promise) restarts the count,
+        // so the new outcome gets its own turn to be confirmed and said goodbye with.
+        if (disposition != null && (outcomeTurn < 0 || disposition != previous)) {
             outcomeTurn = turnState.turnCount();
         }
         publishVoicemailEvent(disposition);
@@ -860,6 +866,11 @@ public class DialogSession implements DialogOutcomeSink {
             }
         }
         return count;
+    }
+
+    @Override
+    public boolean isInStageJob() {
+        return stageActionStep > 0;
     }
 
     @Override
@@ -1344,9 +1355,14 @@ public class DialogSession implements DialogOutcomeSink {
         return usageLedger.tokensUsed();
     }
 
-    /** Add one turn's token breakdown to the call's running totals (§10.5 "Texnik" tab). */
-    public void addTokenBreakdown(long prompt, long completion, long cached) {
-        usageLedger.addTokenBreakdown(prompt, completion, cached);
+    /** Add one turn's token breakdown, under the model that spent it, to the call's running totals. */
+    public void addTokenBreakdown(String model, long prompt, long completion, long cached) {
+        usageLedger.addTokenBreakdown(model, prompt, completion, cached);
+    }
+
+    /** The call's tokens per model, for billing each at its own price. */
+    public List<LlmModelUsage> llmUsageByModel() {
+        return usageLedger.llmUsageByModel();
     }
 
     public long promptTokens() {

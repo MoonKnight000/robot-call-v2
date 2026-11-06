@@ -215,6 +215,24 @@ public class DialogMetrics {
         knowledgeBaseAnswers.increment();
     }
 
+    /**
+     * One knowledge search for a caller's turn: how long it held the turn, and whether it found anything — the
+     * miss rate is how much of what callers ask the knowledge base cannot answer.
+     */
+    public void knowledgeSearch(boolean found, long millis) {
+        String result = found ? "hit" : "miss";
+        Counter.builder("voice.dialog.knowledge.searches")
+                .description("knowledge searches run for a caller's turn")
+                .tag("result", result)
+                .register(registry)
+                .increment();
+        Timer.builder("voice.dialog.knowledge.search.latency")
+                .description("time a caller's turn waited on the knowledge search")
+                .tag("result", result)
+                .register(registry)
+                .record(millis, TimeUnit.MILLISECONDS);
+    }
+
     /** A short utterance over the bot was judged — from the words alone, or by the model. */
     public void floorDecided(boolean byRule) {
         (byRule ? floorDecidedByRule : floorDecidedByModel).increment();

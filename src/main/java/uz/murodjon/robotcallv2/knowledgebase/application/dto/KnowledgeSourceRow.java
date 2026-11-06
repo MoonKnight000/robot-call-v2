@@ -24,6 +24,7 @@ public record KnowledgeSourceRow(
         String feedItemsPath,
         String feedKeyField,
         Integer refreshMinutes,
-        Long collectionId
+        Long collectionId,
+        boolean enabled
 ) {
 }

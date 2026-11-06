@@ -108,6 +108,14 @@ public class KnowledgeSourceRepositoryAdapter implements KnowledgeSourceReposito
                 .toList();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<KnowledgeSource> findByStatus(KnowledgeSourceStatus status) {
+        return jpaRepository.findByStatus(status).stream()
+                .map(mapper::toKnowledgeSource)
+                .toList();
+    }
+
     /** Null for a company-wide source that every agent reads. */
     private AiAgentEntity aiAgentReference(Long id) {
         return id != null ? aiAgentJpaRepository.getReferenceById(id) : null;

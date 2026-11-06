@@ -87,8 +87,10 @@ public class SpringAiCopilotModelAdapter implements CopilotModelPort {
             throw new ExternalServiceException(ErrorCode.COPILOT_REPLY_FAILED, "llm", "empty answer");
         }
         Usage usage = response.getMetadata() != null ? response.getMetadata().getUsage() : null;
+        String reportedModel = response.getMetadata() != null ? response.getMetadata().getModel() : null;
         return new CopilotModelReply(text.strip(), tokens(usage == null ? null : usage.getPromptTokens()),
-                tokens(usage == null ? null : usage.getCompletionTokens()));
+                tokens(usage == null ? null : usage.getCompletionTokens()),
+                reportedModel != null && !reportedModel.isBlank() ? reportedModel : copilotProperties.model());
     }
 
     private ChatOptions options(ChatModel chatModel, List<ToolCallback> callbacks) {

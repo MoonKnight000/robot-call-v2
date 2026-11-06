@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * {@code GET /api/reports/calls/{callId}}: the call's line, its transcript, what the
@@ -22,6 +23,7 @@ public record CallDetail(
         boolean escalated,
         String errorMessage,
         CallTechnicalMetrics technical,
-        CallTalkMetrics talk
+        CallTalkMetrics talk,
+        Map<String, Object> outcome
 ) {
 }

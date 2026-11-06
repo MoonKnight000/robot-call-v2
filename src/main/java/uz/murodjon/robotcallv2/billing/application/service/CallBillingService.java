@@ -8,9 +8,11 @@ import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase
 import uz.murodjon.robotcallv2.billing.application.port.output.BillingLedgerRepository;
 import uz.murodjon.robotcallv2.billing.application.port.output.CallBillingRepository;
 import uz.murodjon.robotcallv2.billing.application.port.output.CompanyBillingRepository;
+import uz.murodjon.robotcallv2.billing.application.port.output.LlmUsageRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.*;
 import uz.murodjon.robotcallv2.billing.domain.enums.CallBillingStatus;
 import uz.murodjon.robotcallv2.billing.domain.enums.LedgerEntryType;
+import uz.murodjon.robotcallv2.billing.domain.enums.LlmUsagePurpose;
 import uz.murodjon.robotcallv2.billing.domain.service.CallCostCalculator;
 import uz.murodjon.robotcallv2.billing.infrastructure.config.BillingRateProperties;
 
@@ -41,20 +43,28 @@ public class CallBillingService implements CallBillingUseCase {
     private static final String CHAT_REFERENCE = "chat_session";
     private static final String CALL_QUESTION_REFERENCE = "call_attempt";
     private static final String TARGET_REFERENCE = "campaign_target";
+    /** A contact field merged after a call; the reference id is the call. Shown under OTHER_AI. */
+    private static final String CONTACT_FIELD_MERGE_REFERENCE = "contact_field_merge";
     private static final int MIN_AFFORDABLE_CALL_SECONDS = 60;
 
     private final CompanyBillingRepository companyBillingRepository;
     private final CallBillingRepository callBillingRepository;
     private final BillingLedgerRepository billingLedgerRepository;
+    private final LlmUsageRepository llmUsageRepository;
+    private final ModelPriceService modelPriceService;
     private final BillingRateProperties billingRateProperties;
 
     public CallBillingService(CompanyBillingRepository companyBillingRepository,
                               CallBillingRepository callBillingRepository,
                               BillingLedgerRepository billingLedgerRepository,
+                              LlmUsageRepository llmUsageRepository,
+                              ModelPriceService modelPriceService,
                               BillingRateProperties billingRateProperties) {
         this.companyBillingRepository = companyBillingRepository;
         this.callBillingRepository = callBillingRepository;
         this.billingLedgerRepository = billingLedgerRepository;
+        this.llmUsageRepository = llmUsageRepository;
+        this.modelPriceService = modelPriceService;
         this.billingRateProperties = billingRateProperties;
     }
 
@@ -165,7 +175,7 @@ public class CallBillingService implements CallBillingUseCase {
                 : callBillingRepository.findOpenHold(companyId, targetId))
                 .orElseGet(() -> CallBilling.unheld(callAttemptId, companyId, billingRateProperties.version()));
 
-        CallCostBreakdown cost = CallCostCalculator.calculate(usage, billingRateProperties.rates());
+        CallCostBreakdown cost = price(usage);
 
         // The ledger entry is the gate: if it was already written, this settlement is a
         // redelivery and must not move the balance a second time.
@@ -181,6 +191,7 @@ public class CallBillingService implements CallBillingUseCase {
 
         companyBillingRepository.charge(companyId, charge.reservedUzs(), chargedUzs);
         callBillingRepository.save(charge.settle(callAttemptId, usage, cost, billingRateProperties.version()));
+        saveLlmUsage(companyId, LlmUsagePurpose.CALL, CALL_REFERENCE, callAttemptId, cost);
 
         if (chargedUzs < cost.totalUzs()) {
             log.warn("[{}] company {} could cover {} of the call's {} UZS — the rest is written off",
@@ -197,12 +208,13 @@ public class CallBillingService implements CallBillingUseCase {
         if (summaryUsage == null || summaryUsage.promptTokens() + summaryUsage.completionTokens() == 0) {
             return;
         }
-        CallCostBreakdown cost = CallCostCalculator.calculate(summaryUsage, billingRateProperties.rates());
+        CallCostBreakdown cost = price(summaryUsage);
         long chargedUzs = chargeOnTop(companyId, callAttemptId, cost, "summary-charge:");
         if (chargedUzs < 0) {
             return;
         }
-        callBillingRepository.addSummaryCharge(callAttemptId, summaryUsage, cost.totalUzs());
+        callBillingRepository.addSummaryCharge(callAttemptId, summaryUsage, cost);
+        saveLlmUsage(companyId, LlmUsagePurpose.SUMMARY, CALL_REFERENCE, callAttemptId, cost);
         log.info("[{}] charged {} UZS to company {} for the summary ({} tokens)",
                 callAttemptId, chargedUzs, companyId, summaryUsage.promptTokens() + summaryUsage.completionTokens());
     }
@@ -214,12 +226,13 @@ public class CallBillingService implements CallBillingUseCase {
                 && analysisUsage.extraSttSeconds() == 0)) {
             return;
         }
-        CallCostBreakdown cost = CallCostCalculator.calculate(analysisUsage, billingRateProperties.rates());
+        CallCostBreakdown cost = price(analysisUsage);
         long chargedUzs = chargeOnTop(companyId, callAttemptId, cost, "analysis-charge:");
         if (chargedUzs < 0) {
             return;
         }
         callBillingRepository.addOperatorAnalysisCharge(callAttemptId, analysisUsage, cost);
+        saveLlmUsage(companyId, LlmUsagePurpose.ANALYSIS, CALL_REFERENCE, callAttemptId, cost);
         log.info("[{}] charged {} UZS to company {} for the operator call's analysis ({} tokens, {}s recognition)",
                 callAttemptId, chargedUzs, companyId, analysisUsage.promptTokens() + analysisUsage.completionTokens(),
                 analysisUsage.extraSttSeconds());
@@ -231,35 +244,50 @@ public class CallBillingService implements CallBillingUseCase {
         if (usage == null || usage.promptTokens() + usage.completionTokens() == 0) {
             return 0;
         }
-        CallCostBreakdown cost = CallCostCalculator.calculate(usage, billingRateProperties.rates());
+        CallCostBreakdown cost = price(usage);
         long chargedUzs = chargeOnTop(companyId, callAttemptId, cost, "reanalysis-charge:" + jobId + ":");
-        return Math.max(chargedUzs, 0);
+        if (chargedUzs < 0) {
+            return 0;
+        }
+        saveLlmUsage(companyId, LlmUsagePurpose.REANALYSIS, CALL_REFERENCE, callAttemptId, cost);
+        return chargedUzs;
     }
 
     @Override
     @Transactional
     public long chargeCopilotReply(long companyId, long messageId, CallUsage usage) {
-        return chargeTokens(companyId, usage, COPILOT_REFERENCE, messageId, "copilot-charge:" + messageId);
+        return chargeTokens(companyId, usage, LlmUsagePurpose.COPILOT, COPILOT_REFERENCE, messageId,
+                "copilot-charge:" + messageId);
     }
 
     @Override
     @Transactional
     public long chargeChatTurn(long companyId, long chatSessionId, String turnKey, CallUsage usage) {
-        return chargeTokens(companyId, usage, CHAT_REFERENCE, chatSessionId, "chat-charge:" + chatSessionId + ":" + turnKey);
+        return chargeTokens(companyId, usage, LlmUsagePurpose.CHAT, CHAT_REFERENCE, chatSessionId,
+                "chat-charge:" + chatSessionId + ":" + turnKey);
     }
 
     @Override
     @Transactional
     public long chargeCallQuestion(long companyId, long callId, String batchKey, CallUsage usage) {
-        return chargeTokens(companyId, usage, CALL_QUESTION_REFERENCE, callId, "call-question:" + callId + ":" + batchKey);
+        return chargeTokens(companyId, usage, LlmUsagePurpose.CALL_QUESTION, CALL_QUESTION_REFERENCE, callId,
+                "call-question:" + callId + ":" + batchKey);
+    }
+
+    @Override
+    @Transactional
+    public long chargeContactFieldMerge(long companyId, long callId, String fieldKey, CallUsage usage) {
+        return chargeTokens(companyId, usage, LlmUsagePurpose.CONTACT_FIELD_MERGE, CONTACT_FIELD_MERGE_REFERENCE, callId,
+                "contact-field-merge:" + callId + ":" + fieldKey);
     }
 
     /** Model tokens outside a call, as one AI_CHARGE ledger entry under {@code ledgerKey} — written once. */
-    private long chargeTokens(long companyId, CallUsage usage, String reference, long referenceId, String ledgerKey) {
+    private long chargeTokens(long companyId, CallUsage usage, LlmUsagePurpose purpose, String reference,
+                              long referenceId, String ledgerKey) {
         if (usage == null || usage.promptTokens() + usage.completionTokens() == 0) {
             return 0;
         }
-        CallCostBreakdown cost = CallCostCalculator.calculate(usage, billingRateProperties.rates());
+        CallCostBreakdown cost = price(usage);
         long balanceBefore = balanceOf(companyId);
         long chargedUzs = chargeableUzs(cost.totalUzs(), balanceBefore);
         boolean written = billingLedgerRepository.append(LedgerEntry.of(companyId,
@@ -269,12 +297,31 @@ public class CallBillingService implements CallBillingUseCase {
             return 0;
         }
         companyBillingRepository.charge(companyId, 0, chargedUzs);
+        saveLlmUsage(companyId, purpose, reference, referenceId, cost);
         return chargedUzs;
     }
 
     @Override
     public long findUsageCostUzs(CallUsage usage) {
-        return CallCostCalculator.calculate(usage, billingRateProperties.rates()).totalUzs();
+        return price(usage).totalUzs();
+    }
+
+    /** Each model's tokens at its own price when the price list has it, else at the common rate. */
+    private CallCostBreakdown price(CallUsage usage) {
+        return CallCostCalculator.calculate(usage, billingRateProperties.rates(), modelPriceService.findPriceLookup());
+    }
+
+    /**
+     * The per-model lines of a charge the ledger just took. They record the cost, not what was
+     * taken: a part the balance could not cover is written off as a whole, not per model.
+     */
+    private void saveLlmUsage(long companyId, LlmUsagePurpose purpose, String reference, long referenceId,
+                              CallCostBreakdown cost) {
+        int markup = billingRateProperties.rates().markupBasisPoints();
+        llmUsageRepository.saveAll(cost.llmByModel().stream()
+                .filter(line -> line.tokens().promptTokens() + line.tokens().completionTokens() > 0)
+                .map(line -> LlmUsageLine.of(companyId, purpose, reference, String.valueOf(referenceId), line, markup))
+                .toList());
     }
 
     /**

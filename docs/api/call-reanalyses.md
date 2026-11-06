@@ -7,6 +7,9 @@ shu sozlamalarni **eski qo'ng'iroqlarga** ham qo'llash mumkin. Tanlangan agentni
 `[from, to)` oralig'ida boshlangan qo'ng'iroqlari transkripti bo'yicha yana bir marta tahlil
 qilinadi va natijasi yangilanadi.
 
+Xuddi shu ish **kontaktlarni eski suhbatlardan to'ldiradi** (kontaktlar sahifasidagi "Backfill") — `mode`
+maydoni bilan, [6-bo'lim](#contact-backfill).
+
 ## 1. Nima o'zgaradi, nima o'zgarmaydi
 
 - **O'zgaradi:** har qo'ng'iroq `outcome` idagi faqat agent tahlili kalitlari — agentning
@@ -61,11 +64,14 @@ Ikkalasi ham bir xil body oladi:
 {
   "aiAgentId": 7,
   "from": "2026-10-01T00:00:00Z",
-  "to": "2026-10-09T00:00:00Z"
+  "to": "2026-10-09T00:00:00Z",
+  "mode": "ANALYSIS"
 }
 ```
 
-`from` kiradi, `to` kirmaydi; `call_attempt.started_at` bo'yicha.
+`from` kiradi, `to` kirmaydi; `call_attempt.started_at` bo'yicha. `mode` — `ANALYSIS` (yo'q yoki `null` bo'lsa ham),
+`CONTACTS_STORED`, `CONTACTS_REEXTRACT` ([6-bo'lim](#contact-backfill)). `CONTACTS_STORED` uchun `/preview` ning
+token va narx maydonlari `0`.
 
 `/preview` javobi:
 
@@ -99,6 +105,7 @@ Ikkalasi ham bir xil body oladi:
   "id": 3,
   "companyId": 1,
   "aiAgentId": 7,
+  "mode": "ANALYSIS",
   "from": "2026-10-01T00:00:00Z",
   "to": "2026-10-09T00:00:00Z",
   "status": "RUNNING",
@@ -122,7 +129,8 @@ Ikkalasi ham bir xil body oladi:
 | `status` | `QUEUED` → `RUNNING` → `COMPLETED`; yoki `CANCELLED` (paneldan), `FAILED` (balans tugadi yoki agent o'chirildi — `lastError`) |
 | `totalCalls` | Ish yaratilgandagi qo'ng'iroqlar soni. Shu orada qo'ng'iroq o'chirilsa, `processedCalls` undan kam bo'lib tugashi mumkin |
 | `processedCalls` | Ko'rib chiqilganlar, natijasidan qat'i nazar |
-| `updatedCalls` | `outcome` i yangilanganlar |
+| `mode` | `ANALYSIS` · `CONTACTS_STORED` · `CONTACTS_REEXTRACT`; eski ishlar — `ANALYSIS` |
+| `updatedCalls` | `outcome` i yangilanganlar; `CONTACTS_STORED` da — kontaktga qiymat berilganlar (qiymati yo'q qo'ng'iroq na `updated`, na `failed`) |
 | `failedCalls` | Model javob bermagan yoki xato bo'lganlar — `outcome` o'zgarmagan |
 | `chargedUzs` | Shu ish hozirgacha yechgan summa |
 | `lastCallId` | Worker'ning kursori: qo'ng'iroqlar id tartibida olinadi, qayta ishga tushganda shu yerdan davom etadi |
@@ -138,12 +146,39 @@ qilinganlari yangi natija bilan qoladi. Javob — yangilangan ish.
 |---|---|
 | `400 VALIDATION_FAILED` | `aiAgentId`, `from` yoki `to` yo'q |
 | `400 CALL_REANALYSIS_RANGE_INVALID` | `from >= to` yoki oraliq 90 kundan uzun |
-| `400 CALL_REANALYSIS_NOTHING_TO_ANALYSE` | Agentda `dataNeeded` ham, `dataEvaluation` ham yo'q |
+| `400 CALL_REANALYSIS_NOTHING_TO_ANALYSE` | `ANALYSIS`: agentda `dataNeeded` ham, `dataEvaluation` ham yo'q; `CONTACTS_REEXTRACT`: `dataNeeded` yo'q |
 | `400 CALL_REANALYSIS_NO_CALLS` | Oraliqda natija va transkripti bor qo'ng'iroq yo'q (faqat yaratishda) |
 | `400 CALL_REANALYSIS_TOO_MANY_CALLS` | Qo'ng'iroqlar 5000 dan ko'p (faqat yaratishda) |
 | `404 AI_AGENT_NOT_FOUND` | Agent yo'q yoki boshqa kompaniyaniki |
 | `404 CALL_REANALYSIS_NOT_FOUND` | Ish yo'q yoki boshqa kompaniyaniki |
 | `409 CALL_REANALYSIS_ALREADY_ACTIVE` | Kompaniyada boshqa ish `QUEUED` yoki `RUNNING` |
-| `409 CALL_REANALYSIS_NO_BALANCE` | Balans yetarli emas |
-| `409 CALL_REANALYSIS_UNAVAILABLE` | Serverda tahlil modeli sozlanmagan (`voice-agent.summary`) |
+| `409 CALL_REANALYSIS_NO_BALANCE` | Balans yetarli emas (`CONTACTS_STORED` da tekshirilmaydi) |
+| `409 CALL_REANALYSIS_UNAVAILABLE` | Serverda tahlil modeli sozlanmagan (`voice-agent.summary`); `CONTACTS_STORED` da tekshirilmaydi |
 | `409 CALL_REANALYSIS_NOT_ACTIVE` | Bekor qilinayotgan ish allaqachon tugagan yoki bekor qilingan |
+
+## 6. Kontakt backfill (`mode`) {#contact-backfill}
+
+Retell'dagi kontaktlar "Backfill": kompaniya kontakt maydonlari (`contacts.md#contact-fields`) eski
+qo'ng'iroqlardan to'ldiriladi — xuddi qo'ng'iroq hozir tugagandek
+([contacts.md#contact-fields-post-call](contacts.md#contact-fields-post-call)): `extractionKey` va agent
+`dataNeeded[].contactField` bo'yicha, har maydonning `updateMode` i bilan, telefon raqami bo'yicha kontaktga
+(yo'q bo'lsa — yaratiladi). Qo'ng'iroqlar **eskidan yangiga** (id tartibida) — oxirida eng yangi qo'ng'iroq qiymati qoladi.
+
+| `mode` | Nima qiladi | Narx |
+|---|---|---|
+| `ANALYSIS` | 1–5-bo'limlar: faqat qo'ng'iroq `outcome` i qayta tahlil qilinadi, kontakt o'zgarmaydi | pullik |
+| `CONTACTS_STORED` | Saqlangan `outcome` kontaktga yoziladi; modelga so'rov yo'q, `outcome` o'zgarmaydi | bepul* |
+| `CONTACTS_REEXTRACT` | `ANALYSIS` + yangi `outcome` kontaktga yoziladi (agentning hozirgi `dataNeeded` i bilan) | pullik, `ANALYSIS` bilan bir xil |
+
+\* `ACCUMULATE` maydonining birlashtirishi qo'ng'iroqdan keyingidek yechiladi (ledger
+`contact-field-merge:<callId>:<key>`); bir qo'ng'iroqning birlashtirishi **bir marta** yechiladi — shu qo'ng'iroq
+qayta backfill qilinsa, yana yechilmaydi.
+
+Eslatmalar:
+- Bitta ish — bitta agent (`aiAgentId` majburiy). Bir nechta agent — ketma-ket ishlar (kompaniyada bir vaqtda bitta faol ish).
+- `OVERWRITE` maydon oxirgi qo'ng'iroqdan keyin qo'lda o'zgartirilgan bo'lsa, backfill uni qo'ng'iroq qiymati bilan almashtiradi.
+- `ACCUMULATE` maydonni bir oraliqqa ikki marta backfill qilsangiz — saqlangan matn yangi qiymatni aynan o'z ichiga olgani
+  uchun odatda qayta qo'shilmaydi, lekin model birlashtirgan matn farq qilishi mumkin.
+- CRM'dan import qilingan kontaktlar o'zgarsa — `pushMappings` bo'yicha CRM'ga ham yoziladi
+  ([crm.md#contact-push](crm.md#contact-push)); katta backfill CRM'ga ko'p yozuv yuboradi.
+- Huquqlar `ANALYSIS` bilan bir xil (`AI_AGENT_READ` / `AI_AGENT_EDIT`).

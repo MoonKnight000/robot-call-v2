@@ -123,6 +123,15 @@ public class SummaryService {
      * @param tokens what the question took is added here, for whoever pays for it
      */
     public Map<String, Object> askAboutCall(long companyId, String system, String transcript, TokenUsage tokens) {
+        return askAboutCall(companyId, null, system, transcript, tokens);
+    }
+
+    /**
+     * As {@link #askAboutCall(long, String, String, TokenUsage)}, on {@code modelId} rather than the
+     * summary model ({@code null} — the summary model). A company on its own LLM is still asked there.
+     */
+    public Map<String, Object> askAboutCall(long companyId, String modelId, String system, String transcript,
+                                            TokenUsage tokens) {
         if (!enabled || transcript == null || transcript.isBlank()) {
             return null;
         }
@@ -136,7 +145,7 @@ public class SummaryService {
             }
             ChatOptions options = ownLlm != null
                     ? OpenAiChatOptions.builder().model(ownLlm.model()).maxTokens(maxTokens).build()
-                    : options(model);
+                    : options(modelId != null && !modelId.isBlank() ? modelId : model);
             return ask(client, options, system, transcript, tokens);
         } catch (Exception e) {
             log.warn("Question about a call failed (company {}): {}", companyId, e.getMessage());
@@ -218,7 +227,8 @@ public class SummaryService {
             }
             CallSummary summary = toCallSummary(raw, scenario, agent);
             return summary == null ? null : new SummarizedCall(summary,
-                    tokens.promptTokens(), tokens.completionTokens(), tokens.cachedTokens(), ownLlm != null);
+                    tokens.promptTokens(), tokens.completionTokens(), tokens.cachedTokens(), ownLlm != null,
+                    tokens.model());
         } catch (Exception e) {
             log.warn("Summary generation failed: {}", e.getMessage());
             return null;

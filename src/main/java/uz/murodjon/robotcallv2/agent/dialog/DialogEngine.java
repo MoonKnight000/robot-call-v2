@@ -178,12 +178,13 @@ public class DialogEngine implements CallDialog {
         EffectiveAiModelConfig configured = aiModelConfigUseCase.findEffectiveByCompanyId(companyId)
                 .withOverrides(agentLlmModel,
                         agent != null ? agent.temperature() : null,
-                        agent != null ? agent.maxOutputTokens() : null);
+                        agent != null ? agent.maxOutputTokens() : null)
+                .withReasoningEffort(agent != null ? agent.reasoningEffort() : null);
         if (AiModel.isRealtimeModel(configured.model())) {
             log.warn("[{}] Company configured model '{}' is a realtime model; resetting to default cascade chat model",
                     channelId, configured.model());
             configured = new EffectiveAiModelConfig(null, configured.temperature(), configured.maxOutputTokens(),
-                    configured.maxCallSeconds(), configured.maxTokensPerCall(), configured.ownLlm());
+                    configured.maxCallSeconds(), configured.maxTokensPerCall(), configured.ownLlm(), configured.reasoningEffort());
         }
         // With the balance enforced the call ends before it costs more than the company has.
         EffectiveAiModelConfig aiModel = configured.withMaxCallSeconds(CallLimits.capByBalance(
@@ -201,6 +202,9 @@ public class DialogEngine implements CallDialog {
         String agentTtsProvider = agent != null ? agent.speechEngine().ttsProvider() : null;
         if (agentTtsProvider != null && !agentTtsProvider.isBlank()) {
             voiceSettings = voiceSettings.withProvider(agentTtsProvider.trim());
+        }
+        if (agent != null) {
+            voiceSettings = voiceSettings.withFallbackVoice(agent.voice().fallbackVoice());
         }
         Company company = companyUseCase.findById(companyId);
         String companyName = company != null ? company.name() : null;
@@ -448,6 +452,19 @@ public class DialogEngine implements CallDialog {
         return inputGate.onBargeIn(session);
     }
 
+    /**
+     * Tokens a side model spent for this call (the LLM turn detector), added to what the call is
+     * billed for. Not counted against the per-call token budget: that bounds a dialog loop, and the
+     * detector's spend grows with how long the caller talks, not with the dialog.
+     */
+    public void recordSideLlmUsage(String channelId, String model, long prompt, long completion, long cached) {
+        DialogSession session = sessions.get(channelId);
+        if (session == null) {
+            return;
+        }
+        session.addTokenBreakdown(model, prompt, completion, cached);
+    }
+
     /** The caller kept talking over the bot after a barge-in ({@code VadProperties#sustainedSpeechMs}). */
     public void notifySustainedSpeech(String channelId) {
         DialogSession session = sessions.get(channelId);
@@ -488,7 +505,8 @@ public class DialogEngine implements CallDialog {
                 session.bargeIns(), session.watchdog() != null ? session.watchdog().prompts() : 0,
                 session.lowConfidenceInputs(),
                 session.ownChatClient() != null,
-                session.turnTimings());
+                session.turnTimings(),
+                session.llmUsageByModel());
     }
 
     /** The model the call ran on — the company's own endpoint's when it has one. */

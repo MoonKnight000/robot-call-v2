@@ -95,6 +95,19 @@ public class CompanyConfigService implements CompanyConfigUseCase {
     }
 
     @Override
+    public CompanyConfig updateScorecardReviewThreshold(long companyId, int threshold) {
+        CompanyConfig existing = requireConfig(companyId);
+        companyConfigRepository.update(companyId, CompanyConfig.settings(
+                existing.dialWindowStart(), existing.dialWindowEnd(), existing.timezone(),
+                existing.maxAttemptsPerPhonePerWeek(), existing.quietDaysAfterConversation(),
+                existing.respectPromisedDate(), existing.humanLikePersonaAllowed(),
+                threshold, existing.telephonyEngine()));
+        audit.record(companyId, "COMPANY_CONFIG_UPDATE", "company_config", String.valueOf(companyId),
+                "scorecardReviewThreshold=" + existing.scorecardReviewThreshold() + " -> " + threshold);
+        return requireConfig(companyId);
+    }
+
+    @Override
     public TelephonyEngineResponse findTelephonyEngine(long companyId) {
         return new TelephonyEngineResponse(requireConfig(companyId).telephonyEngine());
     }

@@ -2,6 +2,14 @@
 GET http://localhost:8080/api/billing/overview
 Authorization: Bearer {{auth_token}}
 
+### Cost report — this month so far, split into input / output / cached tokens and the other lines
+GET http://localhost:8080/api/billing/costs
+Authorization: Bearer {{auth_token}}
+
+### Cost report for a chosen period
+GET http://localhost:8080/api/billing/costs?from=2026-10-01&to=2026-10-31
+Authorization: Bearer {{auth_token}}
+
 ### Top up — 409 PAYMENT_METHOD_NOT_CONFIGURED until PAYME_ENABLED / PAYME_MERCHANT_ID / PAYME_KEY are set.
 # The answer's paymentId is what the callbacks below name as payment_id / merchant_trans_id.
 POST http://localhost:8080/api/billing/topup
@@ -88,4 +96,24 @@ click_trans_id=2003&service_id={{click_service_id}}&click_paydoc_id=1&merchant_t
 
 ### Free trial of a self-registered company (data is null when it never had one)
 GET http://localhost:8080/api/billing/trial
+Authorization: Bearer {{auth_token}}
+
+### Platform: per-model price list (PLATFORM_ADMIN)
+GET http://localhost:8080/api/platform/model-prices
+Authorization: Bearer {{auth_token}}
+
+### Platform: set one model's prices (UZS per 1M tokens, before markup)
+PUT http://localhost:8080/api/platform/model-prices/gemini-2.5-flash
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "inputPerMillionUzs": 3900,
+  "outputPerMillionUzs": 32000,
+  "cachedPerMillionUzs": 1000,
+  "note": "EXAMPLE numbers only — take real ones from the provider price page"
+}
+
+### Platform: remove a model's prices (falls back to the common rate)
+DELETE http://localhost:8080/api/platform/model-prices/gemini-2.5-flash
 Authorization: Bearer {{auth_token}}

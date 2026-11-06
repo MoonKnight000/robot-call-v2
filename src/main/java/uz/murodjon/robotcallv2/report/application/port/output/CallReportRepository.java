@@ -3,9 +3,12 @@ package uz.murodjon.robotcallv2.report.application.port.output;
 import uz.murodjon.robotcallv2.report.domain.entity.CallFilter;
 import uz.murodjon.robotcallv2.report.domain.entity.CallReport;
 import uz.murodjon.robotcallv2.report.domain.entity.PhoneCallHistoryEntry;
+import uz.murodjon.robotcallv2.report.domain.entity.PhoneCallStats;
 import uz.murodjon.robotcallv2.report.domain.entity.ReportedCall;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /** The call list, one call in full, and a number's call history — read-only. */
 public interface CallReportRepository {
@@ -34,4 +37,7 @@ public interface CallReportRepository {
 
     /** Calls to that number, newest first, at most {@code limit}. */
     List<PhoneCallHistoryEntry> findCallsByPhone(long companyId, String phone, int limit);
+
+    /** Call count and newest call per number; a number with no calls is absent from the map. */
+    Map<String, PhoneCallStats> findCallStatsByPhones(long companyId, Collection<String> phones);
 }

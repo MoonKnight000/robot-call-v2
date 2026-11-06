@@ -90,6 +90,34 @@ Javob — `PageableData<ScorecardCriterion>`.
 
 ---
 
+## `GET` / `PUT /api/scorecard-settings` — Tekshiruv chegarasi
+
+| Metod | Huquq | Tavsif |
+|---|---|---|
+| `GET` | `QUALITY_REVIEW_READ` | Kompaniyaning amaldagi chegarasi |
+| `PUT` | `QUALITY_REVIEW_EDIT` | Chegarani o'zgartirish |
+
+Operator qo'ng'irog'i bahosi shu balldan past bo'lsa, qo'ng'iroq tekshiruv inbox'iga tushadi (pastga
+qarang). Qiymat kompaniya konfiguratsiyasida (`CompanyConfig.scorecardReviewThreshold`,
+[companies.md](companies.md)) saqlanadi; bu endpoint faqat shu maydonni yozadi — konfiguratsiyaning
+qolgan qismi (`PUT /api/companies/{id}/config`) platforma admininiki bo'lib qoladi. Audit:
+`COMPANY_CONFIG_UPDATE` (`scorecardReviewThreshold=<eski> -> <yangi>`).
+
+Body (`UpdateScorecardSettingsRequest`) va javob (`ScorecardSettingsResponse`):
+
+```json
+{ "reviewThreshold": 60 }
+```
+
+| Maydon | Turi | Majburiymi | Izoh |
+|---|---|---|---|
+| `reviewThreshold` | `number` (0–100) | ✅ | Standart `60`. `0` — faqat norozi mijozli (`NEGATIVE`/`HOSTILE`) qo'ng'iroqlar tushadi |
+
+Yangi chegara keyingi baholangan qo'ng'iroqlardan boshlab qo'llanadi; avval baholanganlarning
+`needsReview` i o'zgarmaydi. Xato: `400 VALIDATION_FAILED` — qiymat yo'q yoki 0–100 dan tashqarida.
+
+---
+
 ## `GET /api/calls/{callId}/scorecard` — Qo'ng'iroq bahosi · `QUALITY_REVIEW_READ`
 
 Javob (`CallScorecard`):
@@ -141,7 +169,7 @@ Javob (`CallScorecard`):
 | `judgedScore` | LLM bergan ball; tuzatishdan keyin ham o'zgarmaydi (hakam qanchalik to'g'riligini ko'rish uchun) |
 | `sentiment` | Mijoz kayfiyati LLM o'qishicha: `POSITIVE` / `NEUTRAL` / `NEGATIVE` / `HOSTILE`; aytmasa `null` |
 | `topics` | Qo'ng'iroq nima haqida bo'lgani: LLM qo'ygan 1–3 ta qisqa teg (o'zbekcha, kichik harflarda); bo'lmasa `[]`. Hisobot — [reports.md](reports.md) §6 |
-| `needsReview` | Qo'ng'iroq tekshiruvga tushganmi — ball kompaniya chegarasidan past (`scorecardReviewThreshold`, [settings.md](settings.md)) yoki `sentiment` `NEGATIVE`/`HOSTILE` |
+| `needsReview` | Qo'ng'iroq tekshiruvga tushganmi — ball kompaniya chegarasidan past (pastdagi `/api/scorecard-settings`) yoki `sentiment` `NEGATIVE`/`HOSTILE` |
 | `reviewStatus` | `PENDING` — tekshiruv kutmoqda; `CONFIRMED` — supervisor LLM bilan rozi; `CORRECTED` — kamida bitta javob tuzatilgan; `null` — tekshiruvga tushmagan va hech kim ko'rmagan |
 | `reviewNote` / `reviewedBy` / `reviewedAt` | Oxirgi tekshiruv |
 | `answers[].id` | Tuzatish yuborishda shu id ishlatiladi |

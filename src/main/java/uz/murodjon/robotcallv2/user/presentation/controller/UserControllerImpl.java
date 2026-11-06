@@ -7,6 +7,7 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserResponse;
 import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRoleRequest;
+import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
@@ -35,6 +36,11 @@ public class UserControllerImpl implements UserController {
     @Override
     public ResponseEntity<ResponseData<InviteUserResponse>> invite(long companyId, InviteUserRequest request) {
         return ResponseEntity.ok(ResponseData.ok(userUseCase.invite(companyId, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<UserRow>> update(long companyId, long id, UpdateUserRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(userUseCase.update(companyId, id, request)));
     }
 
     @Override

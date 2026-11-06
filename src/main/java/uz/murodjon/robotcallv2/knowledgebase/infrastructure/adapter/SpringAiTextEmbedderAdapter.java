@@ -7,10 +7,17 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.TextEmbedderPort;
+import uz.murodjon.robotcallv2.knowledgebase.infrastructure.config.KnowledgeBaseProperties;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Embeds knowledge passages with whichever {@link EmbeddingModel} the configured AI
@@ -33,12 +40,18 @@ public class SpringAiTextEmbedderAdapter implements TextEmbedderPort {
      */
     private static final int BATCH_SIZE = 32;
 
+    /** Runs a question's embedding so the caller's thread can stop waiting on it; one virtual thread per query. */
+    private static final ExecutorService QUERY_EXECUTOR = Executors.newVirtualThreadPerTaskExecutor();
+
     private final ObjectProvider<EmbeddingModel> embeddingModelProvider;
+    private final KnowledgeBaseProperties knowledgeBaseProperties;
     /** Set after the first failure so an outage is reported once, not once per batch. */
     private volatile boolean failureLogged;
 
-    public SpringAiTextEmbedderAdapter(ObjectProvider<EmbeddingModel> embeddingModelProvider) {
+    public SpringAiTextEmbedderAdapter(ObjectProvider<EmbeddingModel> embeddingModelProvider,
+                                       KnowledgeBaseProperties knowledgeBaseProperties) {
         this.embeddingModelProvider = embeddingModelProvider;
+        this.knowledgeBaseProperties = knowledgeBaseProperties;
     }
 
     @Override
@@ -87,10 +100,22 @@ public class SpringAiTextEmbedderAdapter implements TextEmbedderPort {
         if (model == null) {
             return null;
         }
+        // A caller is waiting on this: past the timeout the search goes on with keywords alone
+        // rather than holding the turn on a slow embedding provider.
+        CompletableFuture<float[]> embedding = CompletableFuture.supplyAsync(() -> model.embed(text), QUERY_EXECUTOR);
         try {
-            return model.embed(text);
-        } catch (Exception e) {
-            logFailureOnce("embed a caller question", e);
+            return embedding.get(knowledgeBaseProperties.queryEmbedTimeoutMs(), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            embedding.cancel(true);
+            log.warn("Embedding a caller question took over {} ms — knowledge search uses keywords for this turn",
+                    knowledgeBaseProperties.queryEmbedTimeoutMs());
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            embedding.cancel(true);
+            return null;
+        } catch (ExecutionException e) {
+            logFailureOnce("embed a caller question", e.getCause() instanceof Exception cause ? cause : e);
             return null;
         }
     }

@@ -219,7 +219,7 @@ class AiAgentSettingsServiceTest {
         return new AgentAdvancedDto(
                 null,
                 null, null,
-                null, null,
+                null, null, null,
                 null,
                 new AgentCallBehaviourDto(null, null, null, null, null, null, null, null, transferQueueId, null, null, null, null),
                 new AgentDataPolicyDto(zeroPiiRetention, storeCallAudio, null, null));

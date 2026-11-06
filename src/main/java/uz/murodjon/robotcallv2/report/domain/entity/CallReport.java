@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.shared.dialog.ReasonCode;
 import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * One call in full: its report line plus the conversation it contained.
@@ -23,6 +24,7 @@ import java.util.List;
  * @param errorMessage  technical failure recorded on the attempt, if any
  * @param technical     "Texnik" tab (§10.5) — null for calls that predate {@code call_technical}
  * @param talk          who talked how much while an operator was on the call; null on calls without one
+ * @param outcome       what the agent collected, in the scenario's outcome fields; empty until summarised
  */
 public record CallReport(
         ReportedCall call,
@@ -34,6 +36,7 @@ public record CallReport(
         boolean escalated,
         String errorMessage,
         CallTechnicalMetrics technical,
-        CallTalkMetrics talk
+        CallTalkMetrics talk,
+        Map<String, Object> outcome
 ) {
 }

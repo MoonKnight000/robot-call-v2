@@ -90,7 +90,9 @@ public class AiAgentEntityMapper {
                         entity.getLanguageVoiceIds(),
                         read(voice.getVoiceSpeedPerLanguage(), SPEED_PER_LANGUAGE_TYPE, Map.of()),
                         voice.isEmotionAdaptiveVoice(),
-                        voice.getSpeakingWarmth()))
+                        voice.getSpeakingWarmth(),
+                        voice.getVoiceEmotion(),
+                        voice.getFallbackTtsVoice()))
                 .ambience(new AiAgentAmbience(
                         ambience.getAmbientSound(),
                         ambience.getAmbientSoundVolume(),
@@ -137,6 +139,7 @@ public class AiAgentEntityMapper {
                         ? new LlmFallback(entity.getFallbackLlmModel(), entity.getFallbackLlmMode()) : null)
                 .temperature(entity.getTemperature())
                 .maxOutputTokens(entity.getMaxOutputTokens())
+                .reasoningEffort(entity.getReasoningEffort())
                 .useRag(entity.isUseRag())
                 .dataNeeded(read(entity.getDataNeeded(), DATA_NEEDED_TYPE, List.of()))
                 .dataEvaluation(read(entity.getDataEvaluation(), DATA_EVALUATION_TYPE, List.of()))
@@ -190,6 +193,7 @@ public class AiAgentEntityMapper {
         entity.setFallbackLlmMode(agent.llmFallback() != null ? agent.llmFallback().mode() : null);
         entity.setTemperature(agent.temperature());
         entity.setMaxOutputTokens(agent.maxOutputTokens());
+        entity.setReasoningEffort(agent.reasoningEffort());
         entity.setUseRag(agent.useRag());
         entity.setDataNeeded(write(agent.dataNeeded(), "[]"));
         entity.setDataEvaluation(write(agent.dataEvaluation(), "[]"));
@@ -247,7 +251,9 @@ public class AiAgentEntityMapper {
                 voice.speed(),
                 voice.perLanguageSpeed().isEmpty() ? null : write(voice.perLanguageSpeed(), null),
                 voice.emotionAdaptive(),
-                voice.warmth());
+                voice.warmth(),
+                voice.emotion(),
+                voice.fallbackVoice());
     }
 
     private static AiAgentAmbienceEntity toAmbienceEntity(AiAgentAmbience ambience) {

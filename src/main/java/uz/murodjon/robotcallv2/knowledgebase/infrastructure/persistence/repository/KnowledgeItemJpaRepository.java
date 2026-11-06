@@ -29,4 +29,7 @@ public interface KnowledgeItemJpaRepository extends JpaRepository<KnowledgeItemE
                                                                  @Param("agentId") Long agentId);
 
     void deleteByIdAndCompanyId(Long id, Long companyId);
+
+    @Query("SELECT DISTINCT k.topic FROM KnowledgeItemEntity k WHERE k.company.id = :companyId ORDER BY k.topic")
+    List<String> findTopicsByCompanyId(@Param("companyId") Long companyId);
 }

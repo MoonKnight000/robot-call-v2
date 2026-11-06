@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.shared.api.ResponseData;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserResponse;
 import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRoleRequest;
+import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 
 import java.util.List;
@@ -34,6 +35,14 @@ public interface UserController {
     ResponseEntity<ResponseData<InviteUserResponse>> invite(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody InviteUserRequest request);
+
+    /** Corrects the user's name, login and email. Both login and email stay unique across the platform (409). */
+    @PreAuthorize("hasAuthority('USER_EDIT')")
+    @PutMapping("/{id}")
+    ResponseEntity<ResponseData<UserRow>> update(
+            @CurrentCompanyId long companyId,
+            @PathVariable long id,
+            @Valid @RequestBody UpdateUserRequest request);
 
     @PreAuthorize("hasAuthority('USER_EDIT')")
     @PutMapping("/{id}/role")

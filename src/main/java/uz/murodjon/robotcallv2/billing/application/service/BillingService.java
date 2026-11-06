@@ -26,7 +26,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
 
 @Service
@@ -35,6 +38,7 @@ public class BillingService implements BillingUseCase {
     private final CompanyBillingRepository companyBillingRepository;
     private final BillingUsageRepository billingUsageRepository;
     private final CallBillingRepository callBillingRepository;
+    private final BillingLedgerRepository billingLedgerRepository;
     private final InvoiceRepository invoiceRepository;
     private final PaymentTopupRepository paymentTopupRepository;
     private final CurrentUser currentUser;
@@ -49,6 +53,7 @@ public class BillingService implements BillingUseCase {
             CompanyBillingRepository companyBillingRepository,
             BillingUsageRepository billingUsageRepository,
             CallBillingRepository callBillingRepository,
+            BillingLedgerRepository billingLedgerRepository,
             InvoiceRepository invoiceRepository,
             PaymentTopupRepository paymentTopupRepository,
             CurrentUser currentUser,
@@ -62,6 +67,7 @@ public class BillingService implements BillingUseCase {
         this.companyBillingRepository = companyBillingRepository;
         this.billingUsageRepository = billingUsageRepository;
         this.callBillingRepository = callBillingRepository;
+        this.billingLedgerRepository = billingLedgerRepository;
         this.invoiceRepository = invoiceRepository;
         this.paymentTopupRepository = paymentTopupRepository;
         this.currentUser = currentUser;
@@ -112,12 +118,26 @@ public class BillingService implements BillingUseCase {
     @Override
     public List<SpendMonthDto> findSpendChart(long companyId, int months) {
         int limit = months <= 0 ? 6 : Math.min(months, 24);
-        // Oldest month first: this is a chart, and a company with no calls yet gets an
+        // Calls plus the token charges made outside them (chat, copilot, questions,
+        // re-analysis), which reach the balance only through the ledger — without them the
+        // chart showed less than was actually spent.
+        Map<String, long[]> byMonth = new TreeMap<>(Comparator.reverseOrder());
+        for (MonthlySpend month : callBillingRepository.findMonthlySpend(companyId, limit)) {
+            long[] sum = byMonth.computeIfAbsent(month.period(), key -> new long[2]);
+            sum[0] += month.spendUzs();
+            sum[1] += month.durationSec();
+        }
+        for (MonthlySpend month : billingLedgerRepository.findMonthlyExtraSpend(companyId, limit)) {
+            byMonth.computeIfAbsent(month.period(), key -> new long[2])[0] += month.spendUzs();
+        }
+        // Oldest month first: this is a chart, and a company with no spend yet gets an
         // empty one rather than the invented months it used to be shown.
-        return callBillingRepository.findMonthlySpend(companyId, limit).reversed().stream()
-                .map(month -> new SpendMonthDto(month.period(), month.spendUzs(),
-                        (int) ((month.durationSec() + 59) / 60)))
-                .toList();
+        return byMonth.entrySet().stream()
+                .limit(limit)
+                .map(month -> new SpendMonthDto(month.getKey(), month.getValue()[0],
+                        (int) ((month.getValue()[1] + 59) / 60)))
+                .toList()
+                .reversed();
     }
 
     @Override

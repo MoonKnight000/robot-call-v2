@@ -67,6 +67,9 @@ public interface UserRepository {
     void updateProfile(long companyId, long id, String name, String email, String phone, String position,
                        String sipExtension);
 
+    void updateAccount(long companyId, long id, String name, String username, String email, String phone,
+                       String position, String sipExtension);
+
     void updateAvatarFileId(long companyId, long id, Long avatarFileId);
 
     void updatePassword(long companyId, long id, String passwordHash);

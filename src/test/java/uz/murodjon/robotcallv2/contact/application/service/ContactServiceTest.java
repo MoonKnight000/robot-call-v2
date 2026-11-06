@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.audit.application.service.AuditService;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.OutboxMessageUseCase;
 import uz.murodjon.robotcallv2.contact.application.dto.ContactDncResponse;
+import uz.murodjon.robotcallv2.contact.application.dto.ContactRow;
 import uz.murodjon.robotcallv2.contact.application.dto.CreateContactRequest;
 import uz.murodjon.robotcallv2.contact.application.dto.UpdateContactRequest;
 import uz.murodjon.robotcallv2.contact.application.mapper.ContactMapper;
@@ -18,6 +19,7 @@ import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.domain.event.ContactOptOutEvent;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportUseCase;
+import uz.murodjon.robotcallv2.report.domain.entity.PhoneCallStats;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.storage.application.service.FileStorageService;
@@ -126,11 +128,28 @@ class ContactServiceTest {
         Contact c = sampleContact(1L, "Ali", "+998901112233");
 
         when(contactRepository.findPage(1L, filter)).thenReturn(PageableData.of(List.of(c), 0, 10, 1L));
+        Instant lastCall = Instant.parse("2026-11-01T10:00:00Z");
+        when(reportUseCase.findCallStatsByPhones(1L, List.of("+998901112233")))
+                .thenReturn(java.util.Map.of("+998901112233", new PhoneCallStats(3, lastCall)));
 
-        PageableData<Contact> result = contactService.list(1L, filter);
+        PageableData<ContactRow> result = contactService.list(1L, filter);
 
         assertThat(result.data()).hasSize(1);
         assertThat(result.totalElements()).isEqualTo(1L);
+        assertThat(result.data().get(0).callCount()).isEqualTo(3);
+        assertThat(result.data().get(0).lastCallAt()).isEqualTo(lastCall);
+    }
+
+    @Test
+    void listRowOfNeverCalledNumberHasZeroCalls() {
+        ContactFilter filter = new ContactFilter(0, 10, null, null);
+        when(contactRepository.findPage(1L, filter))
+                .thenReturn(PageableData.of(List.of(sampleContact(1L, "Ali", "+998901112233")), 0, 10, 1L));
+
+        ContactRow row = contactService.list(1L, filter).data().get(0);
+
+        assertThat(row.callCount()).isZero();
+        assertThat(row.lastCallAt()).isNull();
     }
 
     @Test
@@ -169,7 +188,9 @@ class ContactServiceTest {
                 mock(FileStorageService.class),
                 new ContactMapper(),
                 new uz.murodjon.robotcallv2.dialer.infrastructure.adapter.DefaultPhoneNumberScrubberAdapter(),
-                providerOf(dnc)
+                providerOf(dnc),
+                null,
+                null
         );
 
         uz.murodjon.robotcallv2.contact.application.dto.ContactScrubRequest req =

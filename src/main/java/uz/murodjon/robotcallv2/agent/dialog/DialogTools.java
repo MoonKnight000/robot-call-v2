@@ -28,10 +28,11 @@ public class DialogTools {
     private static final Logger log = LoggerFactory.getLogger(DialogTools.class);
 
     static final String REPLY_PARAM = "reply";
-    static final String REPLY_DESCRIPTION =
-            "fill this in only if you have NOT already written what you say to the client as plain text — "
-                    + "if you have, leave it empty and do not repeat the sentence. "
-                    + "English technical words or placeholders (e.g. dynamic_thought_or_fallback) are STRICTLY FORBIDDEN";
+    // Declared on nearly every tool, so every word here is paid ~12 times per request.
+    // Filled is what a tool-only turn needs: left empty, the turn paid a second LLM round trip to ask for the
+    // line (0.7–1 s on gemini-3.5/3.6-flash, 7–9 times in a five-call evaluation).
+    static final String REPLY_DESCRIPTION = "what you say to the client now, if you wrote no text before this call; "
+            + "leave empty if you already wrote your line as text — never repeat it here";
 
     /**
      * The tools that steer the call itself and so stay code. Every other tool a scenario
@@ -208,7 +209,11 @@ public class DialogTools {
         // A name that is no stage of the scenario would park the call in a state with no
         // prompt, tools or transitions; the scenario names no terminal state, calls end by endCall.
         ScenarioDefinition known = session.scenario();
-        if (known != null && known.stages() != null && known.findStage(nextStage) == null) {
+        StageDef resolvedTarget = known == null ? null : known.findStage(nextStage);
+        if (resolvedTarget != null) {
+            nextStage = resolvedTarget.id();
+        }
+        if (known != null && known.stages() != null && resolvedTarget == null) {
             log.warn("[{}] refused transition {} -> {}: no such stage", session.channelId(), session.state(), nextStage);
             return "ERROR: there is no stage " + nextStage + " in this conversation"
                     + (StageEntry.hasNowhereToTransition(known) ? ", it has a single stage"
@@ -411,18 +416,39 @@ public class DialogTools {
         return null;
     }
 
+    /**
+     * A flow stage's job turn runs with nobody having spoken, so nothing in it can be the caller saying they
+     * are someone else or must not be called. A simulated call's CREATE_TASK job, with its CRM tool not
+     * offered, called recordWrongPerson("24-may") and filed a promise to pay as WRONG_NUMBER.
+     */
+    private String refusedInStageJob(String tool, String detail) {
+        log.warn("[{}] refused {} in a stage job turn ({}): {}", session.channelId(), tool, session.state(), detail);
+        return "ERROR: " + tool + " records what the client said, and the client has said nothing in this step. "
+                + "Nothing was recorded.";
+    }
+
     @Tool(description = "Call when it turns out the person who answered is not the person being called")
     public String recordWrongPerson(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                     @ToolParam(description = "details") String detail) {
+        if (session.isInStageJob()) {
+            return refusedInStageJob("recordWrongPerson", detail);
+        }
         recordReply(reply);
         session.end(Disposition.WRONG_NUMBER);
         log.info("[{}] wrong person: {}", session.channelId(), detail);
         return "Marked as the wrong person. Apologise and say goodbye.";
     }
 
-    @Tool(description = "Call when the client firmly demands not to be called again or to have their number removed")
+    // The line goes out with the call and the call ends with it, so what it must say is told here: the
+    // result's "apologise" came too late, and the agent said "uzoqroq bezovta qilmaymiz" with no apology (evals #18, #21).
+    @Tool(description = "Call when the client firmly demands not to be called again or to have their number removed. "
+            + "Your line with it apologises for the trouble and says they will not be called again, "
+            + "e.g. \"Tushundim, bezovta qilganimiz uchun uzr. Boshqa qo'ng'iroq qilmaymiz, xayr!\"")
     public String recordDoNotCall(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                                   @ToolParam(description = "reason for the demand") String reason) {
+        if (session.isInStageJob()) {
+            return refusedInStageJob("recordDoNotCall", reason);
+        }
         recordReply(reply);
         session.setDoNotCallReason(reason);
         session.end(Disposition.DO_NOT_CALL);
@@ -489,11 +515,9 @@ public class DialogTools {
                 + "and do not mention the handover.";
     }
 
-    @Tool(description = "Call when the client has not finished speaking: they are thinking, made only a "
-            + "thinking sound, or their sentence broke off and is clearly to be continued. In that case "
-            + "say nothing and write no text — the bot stays silent and waits for the client to go on, "
-            + "and the rest arrives together with this sentence. If the client did not hear the question "
-            + "or asked you to repeat it, this is NOT the tool — briefly repeat your last question.")
+    @Tool(description = "Call when the client has not finished: a thinking sound or a sentence clearly to be "
+            + "continued. Write no text — the bot stays silent until they go on. Not for a client who did not "
+            + "hear you (then repeat your last point).")
     public String waitForCaller() {
         session.waitForCaller();
         log.info("[{}] model chose to keep listening", session.channelId());
@@ -517,21 +541,17 @@ public class DialogTools {
         return "Language switched to " + language + ". From now on speak only this language.";
     }
 
-    @Tool(description = "Call when you notice the client's mood has CHANGED: upset "
-            + "(FRUSTRATED), lost track of what this is about (CONFUSED), pleased (POSITIVE) or calm "
-            + "again (NEUTRAL). Not every turn — only when it changes. Write what you say to the client "
-            + "as plain text as usual; this tool only adjusts the voice's tone and the style of the next reply.")
+    @Tool(description = "Call only when the client's mood CHANGES: upset (FRUSTRATED), lost (CONFUSED), "
+            + "pleased (POSITIVE), calm again (NEUTRAL). Write your line as text as usual; this only sets the tone.")
     public String noteCallerMood(@ToolParam(description = "the client's current mood") CustomerSentiment mood) {
         session.noteCallerMood(mood);
         log.info("[{}] caller mood noted: {}", session.channelId(), mood);
         return "Noted.";
     }
 
-    @Tool(description = "Call when the client tells you something that will matter later in this call and that "
-            + "no other tool records: their situation, a constraint, who decides, when they get paid (e.g. "
-            + "situation = in hospital, salary_day = 15th). Short snake_case name, value of a few words. "
-            + "Only NEW information, never a fact you were given; the same name again replaces the value. "
-            + "Write what you say to the client as plain text as usual — this tool only remembers.")
+    @Tool(description = "Remembers something NEW the client said that matters later and no other tool records "
+            + "(situation = in hospital, salary_day = 15th). Never a fact you were given; the same name replaces "
+            + "the value. Write your line as text as usual.")
     public String noteClientFact(@ToolParam(description = "short snake_case name of the fact") String name,
                                  @ToolParam(description = "the fact in a few words") String value) {
         if (!session.noteClientFact(name, value)) {
@@ -544,9 +564,21 @@ public class DialogTools {
     @Tool(description = "Ends the conversation and records its outcome")
     public String endCall(@ToolParam(description = REPLY_DESCRIPTION, required = false) String reply,
                           @ToolParam(description = "why the call ends / its outcome") Disposition disposition) {
+        if (isSystemOnly(disposition)) {
+            // A cooperative caller's "bor, gapiravering" was hung up on as FAILED by the backup model.
+            log.warn("[{}] endCall({}) refused — only the system sets that outcome", session.channelId(), disposition);
+            return "ERROR: " + disposition + " is set by the system, not by you. The call was NOT ended; "
+                    + "carry on the conversation.";
+        }
         recordReply(reply);
         session.end(disposition);
         log.info("[{}] call ended with disposition: {}", session.channelId(), disposition);
         return "Call ended: " + disposition;
+    }
+
+    /** Outcomes the telephony sets (no answer, a failure) or a tool of their own (a transfer) — never the model's to pick. */
+    static boolean isSystemOnly(Disposition disposition) {
+        return disposition == Disposition.FAILED || disposition == Disposition.NO_ANSWER
+                || disposition == Disposition.CARRIER_REJECTED || disposition == Disposition.TRANSFERRED;
     }
 }

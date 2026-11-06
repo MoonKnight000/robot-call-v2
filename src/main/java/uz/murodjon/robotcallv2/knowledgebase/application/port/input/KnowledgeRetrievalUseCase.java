@@ -1,5 +1,6 @@
 package uz.murodjon.robotcallv2.knowledgebase.application.port.input;
 
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemMatch;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeQuery;
 
@@ -43,9 +44,12 @@ public interface KnowledgeRetrievalUseCase {
                                           KnowledgeQuery query, int limit);
 
     /**
-     * Drops whatever this company's passages were cached as, so the next call reads them
-     * again. Called by whoever changed the knowledge base — indexing a source, deleting
-     * one — because a call must not answer from text the operator has already removed.
+     * The curated answer to speak for the caller's words, or null. Matched by one of the item's keywords
+     * starting a word of {@code question}, or by meaning above the item threshold — never by meaning alone
+     * below it, because the answer is read out as written. Same guarantees as {@link #findRelevantPassages};
+     * a company with no active items costs no embedding call.
+     *
+     * @param language the call's language, which picks the answer's translation
      */
-    void evictCompany(long companyId);
+    KnowledgeItemMatch findCuratedAnswer(long companyId, Long agentId, String question, String language);
 }

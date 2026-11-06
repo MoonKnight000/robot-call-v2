@@ -41,7 +41,7 @@ class CustomUserDetailsServiceTest {
                 null, null, null, null, null);
 
         Role role = new Role(2L, 10L, null, "Custom Admin", "Custom Admin role",
-                false, Set.of(Permission.USER_READ, Permission.USER_EDIT), Instant.now());
+                true, Set.of(Permission.USER_READ, Permission.USER_EDIT), Instant.now());
 
         when(userRepository.findByUsername("johndoe")).thenReturn(Optional.of(user));
         when(roleUseCase.findRole(10L, 2L)).thenReturn(role);

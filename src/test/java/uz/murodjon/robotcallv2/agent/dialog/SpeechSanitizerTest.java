@@ -86,4 +86,34 @@ class SpeechSanitizerTest {
         assertThat(SpeechSanitizer.stripUnspeakableCharacters("2 xonali [taxminan] uy"))
                 .isEqualTo("2 xonali [taxminan] uy");
     }
+
+    /** The backup model's greeting tail on a simulated call: one word in two alphabets. */
+    @Test
+    void refusesAWordWrittenInTwoAlphabets() {
+        assertThat(SpeechSanitizer.isUnspeakable("Hozir gaplashishga qulaymi? рооg'iroq qilyapman.")).isTrue();
+        assertThat(SpeechSanitizer.isUnspeakable("Здравствуйте, Нигина! Это компания Uysot, по вашей квартире.")).isFalse();
+        assertThat(SpeechSanitizer.isUnspeakable("Нигина opa, yaxshimisiz?")).isFalse();
+    }
+
+    /** A Russian-speaking caller answered in Uzbek; a short "da" or a brand name decides nothing. */
+    @Test
+    void tellsAReplyInTheOtherAlphabetFromTheCallers() {
+        String russian = "да я помню про этот долг, были трудности";
+        assertThat(SpeechSanitizer.isOtherScript("Dushanba kuni to'layman dedingiz, qaysi sana?", russian)).isTrue();
+        assertThat(SpeechSanitizer.isOtherScript("Понимаю. Когда сможете оплатить?", russian)).isFalse();
+        assertThat(SpeechSanitizer.isOtherScript("Нигина aka, yaxshimisiz?", russian)).isTrue();
+        assertThat(SpeechSanitizer.isOtherScript("Здравствуйте, Murodjon! Это компания Uysot.", russian)).isFalse();
+        assertThat(SpeechSanitizer.isOtherScript("Понимаю. Когда сможете оплатить?", "keyingi oy to'layman")).isTrue();
+        assertThat(SpeechSanitizer.isOtherScript("Dushanba kuni to'layman dedingiz, qaysi sana?", "да")).isFalse();
+        assertThat(SpeechSanitizer.isOtherScript("Xo'p, Uysot kompaniyasi.", null)).isFalse();
+    }
+
+    /** Eval #20: Uzbek in Cyrillic to a Russian caller passed because both were Cyrillic. */
+    @Test
+    void uzbekInCyrillicIsAnotherLanguageToARussianCaller() {
+        String russian = "хорошо спасибо за понимание всего доброго до свидания";
+        assertThat(SpeechSanitizer.isOtherScript("Хайр, саломат бўлинг!", russian)).isTrue();
+        assertThat(SpeechSanitizer.isOtherScript("Всего доброго, до свидания!", russian)).isFalse();
+        assertThat(SpeechSanitizer.isOtherScript("Хайр, саломат бўлинг!", "раҳмат, хайр, ҳаммаси яхши")).isFalse();
+    }
 }

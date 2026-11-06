@@ -16,8 +16,8 @@ public class ChatModelConfiguration {
      */
     @Bean
     @Primary
-    public ChatModel routingChatModel(ChatModelRegistry chatModelRegistry) {
+    public ChatModel routingChatModel(ChatModelRegistry chatModelRegistry, VendorChatOptionsStrategies strategies) {
         ChatVendor defaultVendor = chatModelRegistry.findDefaultVendor();
-        return defaultVendor == null ? null : new RoutingChatModel(chatModelRegistry, defaultVendor);
+        return defaultVendor == null ? null : new RoutingChatModel(chatModelRegistry, strategies, defaultVendor);
     }
 }

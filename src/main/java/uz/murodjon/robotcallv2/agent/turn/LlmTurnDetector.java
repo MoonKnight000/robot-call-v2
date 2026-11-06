@@ -85,10 +85,11 @@ public class LlmTurnDetector {
      *
      * @param fastModel the agent's fast model, used in PROMPT mode when no model is configured
      * @param onVerdict told {@code (words judged, verdict)}; from an HTTP thread
+     * @param onUsage   told the tokens each answered question spent, so the call is billed for them
      */
     public BiConsumer<String, String> openCall(String channelId, String fastModel,
-                                               BiConsumer<String, TurnCue> onVerdict) {
-        return new CallJudge(channelId, modelOrDefault(fastModel), onVerdict);
+                                               BiConsumer<String, TurnCue> onVerdict, LlmUsageSink onUsage) {
+        return new CallJudge(channelId, modelOrDefault(fastModel), onVerdict, onUsage);
     }
 
     private String modelOrDefault(String fastModel) {
@@ -102,13 +103,16 @@ public class LlmTurnDetector {
         private final String channelId;
         private final String model;
         private final BiConsumer<String, TurnCue> onVerdict;
+        private final LlmUsageSink onUsage;
         private String lastAsked = "";
         private CompletableFuture<?> pending;
 
-        private CallJudge(String channelId, String model, BiConsumer<String, TurnCue> onVerdict) {
+        private CallJudge(String channelId, String model, BiConsumer<String, TurnCue> onVerdict,
+                          LlmUsageSink onUsage) {
             this.channelId = channelId;
             this.model = model;
             this.onVerdict = onVerdict;
+            this.onUsage = onUsage != null ? onUsage : LlmUsageSink.NONE;
         }
 
         @Override
@@ -184,14 +188,30 @@ public class LlmTurnDetector {
             try {
                 JsonNode root = objectMapper.readTree(response.body());
                 // Cerebrium wraps the OpenAI body in "result", as TEN's client allows for.
-                JsonNode choice = root.has("choices") ? root.path("choices").path(0)
-                        : root.path("result").path("choices").path(0);
-                return parse(choice.path("message").path("content").asText(""));
+                JsonNode body = root.has("choices") ? root : root.path("result");
+                reportUsage(body, model, onUsage);
+                return parse(body.path("choices").path(0).path("message").path("content").asText(""));
             } catch (Exception e) {
                 log.warn("[{}] LLM turn answer unreadable: {}", channelId, e.getMessage());
                 return TurnCue.UNKNOWN;
             }
         }
+    }
+
+    /**
+     * The OpenAI-shaped {@code usage} of one answer, to {@code sink} under the model that was asked —
+     * the id the price list knows, not the endpoint's spelling of it. A cancelled question (a newer
+     * interim superseded it) has no body and is not counted.
+     */
+    static void reportUsage(JsonNode body, String model, LlmUsageSink sink) {
+        JsonNode usage = body.path("usage");
+        long prompt = usage.path("prompt_tokens").asLong(0);
+        long completion = usage.path("completion_tokens").asLong(0);
+        if (prompt <= 0 && completion <= 0) {
+            return;
+        }
+        long cached = usage.path("prompt_tokens_details").path("cached_tokens").asLong(0);
+        sink.record(model, prompt, completion, cached);
     }
 
     /** By first letter, as TEN reads its token, so an answer cut short ("unf") still counts. */

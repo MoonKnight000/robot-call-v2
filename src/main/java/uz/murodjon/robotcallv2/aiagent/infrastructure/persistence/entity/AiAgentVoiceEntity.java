@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoiceEmotion;
 
 /**
  * The ai_agent columns behind {@code AiAgentVoice}. The per-language voices are a join table,
@@ -33,16 +34,27 @@ public class AiAgentVoiceEntity {
     @Column(name = "speaking_warmth", nullable = false, length = 16)
     private SpeakingWarmth speakingWarmth = SpeakingWarmth.BALANCED;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "voice_emotion", nullable = false, length = 16)
+    private VoiceEmotion voiceEmotion = VoiceEmotion.NEUTRAL;
+
+    /** tts_voice id spoken when the agent's own TTS provider fails; null — automatic fallback. */
+    @Column(name = "fallback_tts_voice")
+    private String fallbackTtsVoice;
+
     protected AiAgentVoiceEntity() {
     }
 
     public AiAgentVoiceEntity(String ttsVoice, Double voiceSpeed, String voiceSpeedPerLanguage,
-                              boolean emotionAdaptiveVoice, SpeakingWarmth speakingWarmth) {
+                              boolean emotionAdaptiveVoice, SpeakingWarmth speakingWarmth,
+                              VoiceEmotion voiceEmotion, String fallbackTtsVoice) {
         this.ttsVoice = ttsVoice;
         this.voiceSpeed = voiceSpeed;
         this.voiceSpeedPerLanguage = voiceSpeedPerLanguage;
         this.emotionAdaptiveVoice = emotionAdaptiveVoice;
         this.speakingWarmth = speakingWarmth;
+        this.voiceEmotion = voiceEmotion;
+        this.fallbackTtsVoice = fallbackTtsVoice;
     }
 
     public String getTtsVoice() {
@@ -63,5 +75,13 @@ public class AiAgentVoiceEntity {
 
     public SpeakingWarmth getSpeakingWarmth() {
         return speakingWarmth;
+    }
+
+    public VoiceEmotion getVoiceEmotion() {
+        return voiceEmotion;
+    }
+
+    public String getFallbackTtsVoice() {
+        return fallbackTtsVoice;
     }
 }

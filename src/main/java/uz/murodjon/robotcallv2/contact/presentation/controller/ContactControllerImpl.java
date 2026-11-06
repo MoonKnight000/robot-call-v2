@@ -24,7 +24,7 @@ public class ContactControllerImpl implements ContactController {
     }
 
     @Override
-    public ResponseEntity<ResponseData<PageableData<Contact>>> list(long companyId, ContactFilter filter) {
+    public ResponseEntity<ResponseData<PageableData<ContactRow>>> list(long companyId, ContactFilter filter) {
         return ResponseEntity.ok(ResponseData.ok(contactUseCase.list(companyId, filter)));
     }
 

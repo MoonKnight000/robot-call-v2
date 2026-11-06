@@ -30,12 +30,15 @@ public interface RoleUseCase {
      */
     Role findRole(long companyId, long roleId);
 
-    /** A system role by its code (DEVELOPER, ADMIN, …), or {@code null} if the company has none. */
+    /** The role copied from the template with this code (DEVELOPER, ADMIN, …), or {@code null} if the company has none. */
     Role findRoleByCode(long companyId, String code);
 
     /** Every role of the company that grants {@code permission} — e.g. "who can manage users". */
     List<Role> findRolesWithPermission(long companyId, Permission permission);
 
-    /** Seeds the system roles a company cannot exist without; safe to call repeatedly. */
-    void createSystemRoles(long companyId);
+    /** Gives a company with no roles a copy of every platform template; a company that has roles is left alone. */
+    void createRolesFromTemplates(long companyId);
+
+    /** One-time upgrade: writes down the permissions of roles that were computed from {@code SystemRole}. */
+    void materializeLegacySystemRoles();
 }

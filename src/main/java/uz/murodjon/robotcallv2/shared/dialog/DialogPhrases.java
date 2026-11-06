@@ -93,7 +93,7 @@ public final class DialogPhrases {
         if (english(language)) return "Understood, your number will be removed from our list. Sorry for the trouble.";
         return russian(language)
                 ? "Понятно, ваш номер исключен из базы. Извините за беспокойство."
-                : "Tushundim, raqamingiz ro'yxatdan chiqariladi. Bezovta qilganimiz uchun uzr.";
+                : "Tushundim, raqamingiz ro'yxatdan chiqariladi, boshqa qo'ng'iroq qilmaymiz. Bezovta qilganimiz uchun uzr.";
     }
 
     /** Spoken when the line has gone quiet. */

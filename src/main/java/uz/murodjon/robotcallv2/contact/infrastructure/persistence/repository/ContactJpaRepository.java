@@ -2,6 +2,7 @@ package uz.murodjon.robotcallv2.contact.infrastructure.persistence.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -27,4 +28,9 @@ public interface ContactJpaRepository extends JpaRepository<ContactEntity, Long>
 
     @Query("SELECT c.phone, c.name FROM ContactEntity c WHERE c.company.id = :companyId AND c.phone IN :phones")
     List<Object[]> findNamesByPhones(@Param("companyId") long companyId, @Param("phones") Collection<String> phones);
+
+    @Modifying
+    @Query(value = "UPDATE contact SET custom_fields = custom_fields - :key "
+            + "WHERE company_id = :companyId AND custom_fields ->> :key IS NOT NULL", nativeQuery = true)
+    int removeCustomFieldKey(@Param("companyId") long companyId, @Param("key") String key);
 }

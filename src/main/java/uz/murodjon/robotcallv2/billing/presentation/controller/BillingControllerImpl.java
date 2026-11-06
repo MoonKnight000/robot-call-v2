@@ -5,22 +5,32 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import uz.murodjon.robotcallv2.billing.application.dto.*;
+import uz.murodjon.robotcallv2.billing.application.port.input.BillingCostUseCase;
 import uz.murodjon.robotcallv2.billing.application.port.input.BillingUseCase;
 import uz.murodjon.robotcallv2.billing.application.port.input.TrialCreditUseCase;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
 public class BillingControllerImpl implements BillingController {
 
     private final BillingUseCase billingUseCase;
+    private final BillingCostUseCase billingCostUseCase;
     private final TrialCreditUseCase trialCreditUseCase;
 
-    public BillingControllerImpl(BillingUseCase billingUseCase, TrialCreditUseCase trialCreditUseCase) {
+    public BillingControllerImpl(BillingUseCase billingUseCase, BillingCostUseCase billingCostUseCase,
+                                 TrialCreditUseCase trialCreditUseCase) {
         this.billingUseCase = billingUseCase;
+        this.billingCostUseCase = billingCostUseCase;
         this.trialCreditUseCase = trialCreditUseCase;
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<CostReportResponse>> getCostReport(long companyId, LocalDate from, LocalDate to) {
+        return ResponseEntity.ok(ResponseData.ok(billingCostUseCase.findCostReport(companyId, from, to)));
     }
 
     @Override

@@ -7,6 +7,8 @@ import uz.murodjon.robotcallv2.auth.application.port.input.SessionUseCase;
 import uz.murodjon.robotcallv2.auth.application.port.output.UserSessionRepository;
 import uz.murodjon.robotcallv2.auth.domain.entity.UserSession;
 import uz.murodjon.robotcallv2.security.CurrentUser;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ForbiddenException;
 import uz.murodjon.robotcallv2.shared.util.Tokens;
 
 import java.time.Instant;
@@ -69,5 +71,11 @@ public class SessionService implements SessionUseCase {
         return repository.listActiveForUser(userId).stream()
                 .map(s -> UserSessionRow.of(s, currentHash != null && currentHash.equals(s.refreshTokenHash())))
                 .toList();
+    }
+
+    @Override
+    public List<UserSessionRow> listOwnSessions(String currentRefreshToken) {
+        long userId = currentUser.id().orElseThrow(() -> new ForbiddenException(ErrorCode.NO_USER_SESSION));
+        return listActiveSessions(userId, currentRefreshToken);
     }
 }

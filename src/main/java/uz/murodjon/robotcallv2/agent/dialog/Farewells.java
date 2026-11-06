@@ -27,6 +27,9 @@ final class Farewells {
             "xayr", "salomat bo ling", "kuningiz xayrli", "kuningiz xayrli o tsin",
             "yaxshi qoling", "sog bo ling", "omon bo ling", "xayrli kun",
             "до свидания", "всего доброго", "всего хорошего", "хорошего дня",
+            // With "вам" in the middle the phrases above did not match, and a call that had said goodbye
+            // got a second one from the closing path: "…хорошего вам дня!" then "…Всего вам доброго!".
+            "хорошего вам дня", "всего вам доброго", "всего вам хорошего", "хорошего вечера", "хорошего вам вечера",
             "будьте здоровы", "до встречи", "всего наилучшего",
             "goodbye", "good bye", "have a good day", "take care");
 

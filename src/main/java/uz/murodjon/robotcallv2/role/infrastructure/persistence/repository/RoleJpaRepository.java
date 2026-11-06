@@ -19,7 +19,10 @@ public interface RoleJpaRepository extends JpaRepository<RoleEntity, Long> {
 
     Optional<RoleEntity> findByCompanyIdAndCode(long companyId, String code);
 
-    long countByCompanyIdAndSystem(long companyId, boolean system);
+    long countByCompanyId(long companyId);
+
+    /** Legacy rows whose permissions were computed from the system role {@code code}. */
+    List<RoleEntity> findBySystemTrueAndCode(String code);
 
     @Query("SELECT COUNT(r) > 0 FROM RoleEntity r WHERE r.company.id = :companyId "
             + "AND LOWER(r.name) = LOWER(:name) AND (:excludeId IS NULL OR r.id <> :excludeId)")

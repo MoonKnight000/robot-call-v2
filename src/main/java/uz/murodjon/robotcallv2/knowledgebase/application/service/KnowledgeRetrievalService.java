@@ -4,27 +4,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
+import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeBaseRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeChunkRepository;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeCollectionRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.TextEmbedderPort;
-import uz.murodjon.robotcallv2.knowledgebase.domain.entity.IndexedChunk;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItem;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemMatch;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeQuery;
+import uz.murodjon.robotcallv2.knowledgebase.domain.service.KnowledgeItemMatcher;
+import uz.murodjon.robotcallv2.knowledgebase.infrastructure.config.KnowledgeBaseProperties;
 
 import java.util.*;
 
 /**
- * Finds the passages that answer a caller's question, during the call.
+ * Finds what answers a caller's question, during the call: the curated answer to speak as written, or the
+ * passages the model answers from.
  *
- * <p>Search is cosine similarity in this process, not in the database. A company's
- * knowledge base is thousands of passages, not millions: at that size scanning them is
- * a fraction of a millisecond, and doing it here is what lets the database stay a stock
- * Postgres with no vector extension. The chunks are read once per company and held in
- * {@link #cache}; indexing evicts the entry rather than letting a call see stale text.
+ * <p>Passages are searched in the database (pgvector, V52): the nearest by meaning and those sharing the
+ * caller's words, fused by reciprocal rank. Nothing is cached per company any more, so a source the operator
+ * changed or deleted is out of the next search, not out of the next cache eviction.
  *
- * <p>Everything degrades instead of failing. No embedding model, or a question that could
- * not be embedded, drops to keyword overlap; no chunks at all returns nothing and the turn
- * proceeds without knowledge context. A caller must never wait on this.
+ * <p>Everything degrades instead of failing. No embedding model, or a question that could not be embedded in
+ * time, drops to the keyword ranking; no passages at all returns nothing and the turn proceeds without
+ * knowledge context. A caller must never wait on this.
  */
 @Service
 public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
@@ -36,7 +38,7 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
      * thing in the document. Feeding those to the model is what makes it answer confidently
      * from the wrong paragraph, which on a debt call is worse than saying it does not know.
      */
-    private static final double MIN_SEMANTIC_SCORE = 0.62;
+    public static final double MIN_SEMANTIC_SCORE = 0.62;
     private static final double MIN_KEYWORD_SCORE = 0.20;
     /** A question is not a query below this; "ha", "yo'q", "mmm" match everything and nothing. */
     private static final int MIN_QUERY_CHARS = 8;
@@ -44,44 +46,36 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
     private static final int MIN_QUESTION_CHARS = 3;
     /** Reciprocal-rank fusion constant: the usual 60, so one list's top hit cannot drown the other list. */
     private static final int RRF_K = 60;
+    /** How many candidates each ranking brings to the fusion, at least; the fusion keeps {@code limit}. */
+    private static final int MIN_CANDIDATES = 20;
+    /** How many curated items are compared by meaning; the closest few are all that can win. */
+    private static final int ITEM_CANDIDATES = 10;
+    /**
+     * Recent question vectors by text. A turn can ask the same words twice (curated answer, then passages, or a
+     * speculative turn and the final one); the second ask costs nothing. Small: it is a turn's memory, not a store.
+     */
+    private static final int MAX_CACHED_VECTORS = 256;
 
     private final KnowledgeChunkRepository chunkRepository;
+    private final KnowledgeBaseRepository knowledgeBaseRepository;
     private final TextEmbedderPort textEmbedder;
-    private final KnowledgeCollectionRepository collectionRepository;
-    /** The collections attached to each agent; read once, forgotten whenever the company is evicted. */
-    private final Map<Long, Set<Long>> attachedCollections = new java.util.concurrent.ConcurrentHashMap<>();
-
-    /**
-     * How many companies' passages are held at once. Every entry is that company's whole
-     * knowledge base in memory, so this is the ceiling on what the cache can cost: past
-     * it the least recently used company is dropped and pays one query on its next call.
-     * Well above how many companies are ever dialling at the same time.
-     */
-    private static final int MAX_CACHED_COMPANIES = 64;
-
-    /**
-     * Company id → every indexed passage it owns. Keyed by company rather than by agent
-     * because the company-wide sources would otherwise be held once per agent; the
-     * per-agent narrowing is a filter over this list, not a second entry.
-     *
-     * <p>Access-ordered and bounded: without a bound this grows with the number of
-     * companies that have ever taken a call and never shrinks, which on a shared instance
-     * is every company. Synchronised because {@link LinkedHashMap} in access order
-     * restructures itself on a read, so even lookups cannot run concurrently.
-     */
-    private final Map<Long, List<IndexedChunk>> cache = Collections.synchronizedMap(
-            new LinkedHashMap<>(16, 0.75f, true) {
+    private final KnowledgeBaseProperties knowledgeBaseProperties;
+    private final Map<String, float[]> recentVectors = Collections.synchronizedMap(
+            new LinkedHashMap<>(64, 0.75f, true) {
                 @Override
-                protected boolean removeEldestEntry(Map.Entry<Long, List<IndexedChunk>> eldest) {
-                    return size() > MAX_CACHED_COMPANIES;
+                protected boolean removeEldestEntry(Map.Entry<String, float[]> eldest) {
+                    return size() > MAX_CACHED_VECTORS;
                 }
             });
 
-    public KnowledgeRetrievalService(KnowledgeChunkRepository chunkRepository, TextEmbedderPort textEmbedder,
-                                     KnowledgeCollectionRepository collectionRepository) {
+    public KnowledgeRetrievalService(KnowledgeChunkRepository chunkRepository,
+                                     KnowledgeBaseRepository knowledgeBaseRepository,
+                                     TextEmbedderPort textEmbedder,
+                                     KnowledgeBaseProperties knowledgeBaseProperties) {
         this.chunkRepository = chunkRepository;
+        this.knowledgeBaseRepository = knowledgeBaseRepository;
         this.textEmbedder = textEmbedder;
-        this.collectionRepository = collectionRepository;
+        this.knowledgeBaseProperties = knowledgeBaseProperties;
     }
 
     @Override
@@ -106,55 +100,62 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
                 || semanticText.trim().length() < MIN_QUERY_CHARS || limit <= 0) {
             return List.of();
         }
-        List<IndexedChunk> chunks = visibleChunks(companyId, agentId, extraSourceIds == null ? List.of() : extraSourceIds);
-        if (chunks.isEmpty()) {
-            return List.of();
-        }
+        List<Long> extra = extraSourceIds == null ? List.of() : extraSourceIds;
+        int candidates = Math.max(limit * 4, MIN_CANDIDATES);
 
         // Keywords stay on the latest words: earlier turns would make every passage that merely
         // shares a word with the conversation a keyword hit.
-        List<KnowledgePassage> keywordHits = byScore(scoreByKeywords(chunks, question));
-        float[] queryVector = textEmbedder.embedQuery(semanticText);
+        List<String> terms = findTerms(question);
+        List<KnowledgePassage> keywordHits = terms.isEmpty() ? List.of()
+                : scoreByKeywords(chunkRepository.findByTerms(companyId, agentId, extra, terms, candidates), terms);
+        float[] queryVector = embed(semanticText);
         if (queryVector == null) {
             return keywordHits.stream().limit(limit).toList();
         }
         double minScore = query.minSemanticScore() != null ? query.minSemanticScore() : MIN_SEMANTIC_SCORE;
+        List<KnowledgePassage> semanticHits = chunkRepository.findNearest(companyId, agentId, extra, queryVector, candidates)
+                .stream()
+                .filter(passage -> passage.score() >= minScore)
+                .toList();
         // Hybrid (NEXT-PLAN A.3): the passage an embedding ranks low — a contract number, a
         // product code, a name — is often exactly the one whose words the caller said.
-        return fuse(byScore(scoreBySimilarity(chunks, queryVector, minScore)), keywordHits, limit);
+        return fuse(semanticHits, keywordHits, limit);
     }
 
     @Override
-    public void evictCompany(long companyId) {
-        cache.remove(companyId);
-        attachedCollections.clear();
+    public KnowledgeItemMatch findCuratedAnswer(long companyId, Long agentId, String question, String language) {
+        if (question == null || question.trim().length() < MIN_QUESTION_CHARS) {
+            return null;
+        }
+        List<KnowledgeItem> items = knowledgeBaseRepository.findAllActiveByCompanyIdAndAgentId(companyId, agentId);
+        if (items.isEmpty()) {
+            return null;
+        }
+        // The caller's own words only, not the conversation: an answer read out verbatim must be about what
+        // was just asked, not about the topic two turns ago.
+        float[] vector = question.trim().length() >= MIN_QUERY_CHARS ? embed(question) : null;
+        Map<Long, Double> similarity = vector == null ? Map.of()
+                : knowledgeBaseRepository.findSimilarities(companyId, agentId, vector, ITEM_CANDIDATES);
+        KnowledgeItemMatch match = KnowledgeItemMatcher.findBest(question, items, similarity,
+                knowledgeBaseProperties.itemMinScore(), language);
+        if (match != null) {
+            log.debug("[company {}] Curated answer '{}' chosen ({}, score {})", companyId, match.key(),
+                    match.byKeyword() ? "keyword" : "meaning", String.format("%.2f", match.score()));
+        }
+        return match;
     }
 
-    private List<IndexedChunk> visibleChunks(long companyId, Long agentId, List<Long> extraSourceIds) {
-        // Read outside the map's lock rather than inside computeIfAbsent. The cache has to
-        // be guarded to stay access-ordered, and holding that guard across a query would
-        // stall every other call's lookup behind one company's read — on a path where a
-        // caller is waiting, that is the worse failure. Two calls arriving together on a
-        // cold company both query, which costs one extra read and nothing else.
-        List<IndexedChunk> all = cache.get(companyId);
-        if (all == null) {
-            all = chunkRepository.findIndexedByCompanyId(companyId);
-            log.info("[company {}] Knowledge search loaded {} passages", companyId, all.size());
-            cache.put(companyId, all);
+    /** The question's vector, from the recent ones when the same words were just embedded; null when unavailable. */
+    private float[] embed(String text) {
+        float[] cached = recentVectors.get(text);
+        if (cached != null) {
+            return cached;
         }
-        if (agentId == null || all.isEmpty()) {
-            return all;
+        float[] vector = textEmbedder.embedQuery(text);
+        if (vector != null) {
+            recentVectors.put(text, vector);
         }
-        Set<Long> attached = attachedCollections.computeIfAbsent(agentId, collectionRepository::findCollectionIdsByAgentId);
-        // The cache holds the whole company; narrowing to this agent's own sources plus
-        // the company-wide ones happens here, on a list that is already in memory.
-        return all.stream()
-                .filter(chunk -> chunk.visibleTo(agentId, attached) || extraSourceIds.contains(chunk.sourceId()))
-                .toList();
-    }
-
-    private static List<KnowledgePassage> byScore(List<KnowledgePassage> hits) {
-        return hits.stream().sorted(Comparator.comparingDouble(KnowledgePassage::score).reversed()).toList();
+        return vector;
     }
 
     /**
@@ -181,45 +182,26 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
                 .toList();
     }
 
-    private static List<KnowledgePassage> scoreBySimilarity(List<IndexedChunk> chunks, float[] query, double minScore) {
-        double queryNorm = norm(query);
-        if (queryNorm == 0.0) {
-            return List.of();
-        }
-        List<KnowledgePassage> hits = new ArrayList<>();
-        for (IndexedChunk chunk : chunks) {
-            float[] vector = chunk.embedding();
-            if (vector == null || vector.length != query.length) {
-                continue;
-            }
-            double score = cosine(query, vector, queryNorm);
-            if (score >= minScore) {
-                hits.add(new KnowledgePassage(chunk.sourceId(), chunk.sourceName(), chunk.content(), score));
-            }
-        }
-        return hits;
-    }
-
-    /**
-     * The fallback when there are no vectors: what share of the question's words the
-     * passage contains. Crude, and deliberately held to a higher bar than it looks —
-     * a fifth of a sentence's words is already a weak signal in an inflected language.
-     */
-    private static List<KnowledgePassage> scoreByKeywords(List<IndexedChunk> chunks, String question) {
-        String[] words = question.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}']+");
+    /** The question's words worth matching: four letters or more, apostrophes dropped as the text index does. */
+    private static List<String> findTerms(String question) {
         List<String> terms = new ArrayList<>();
-        for (String word : words) {
-            if (word.length() >= 4) {
+        for (String word : normalize(question).split(" ")) {
+            if (word.length() >= 4 && !terms.contains(word)) {
                 terms.add(word);
             }
         }
-        if (terms.isEmpty()) {
-            return List.of();
-        }
+        return terms;
+    }
 
+    /**
+     * The database found these by any shared word; the score is what share of the question's words the
+     * passage contains. Held to a higher bar than it looks — a fifth of a sentence's words is already a
+     * weak signal in an inflected language.
+     */
+    private static List<KnowledgePassage> scoreByKeywords(List<KnowledgePassage> candidates, List<String> terms) {
         List<KnowledgePassage> hits = new ArrayList<>();
-        for (IndexedChunk chunk : chunks) {
-            String content = chunk.content().toLowerCase(Locale.ROOT);
+        for (KnowledgePassage candidate : candidates) {
+            String content = normalize(candidate.content());
             int matched = 0;
             for (String term : terms) {
                 if (content.contains(term)) {
@@ -228,28 +210,17 @@ public class KnowledgeRetrievalService implements KnowledgeRetrievalUseCase {
             }
             double score = (double) matched / terms.size();
             if (score >= MIN_KEYWORD_SCORE) {
-                hits.add(new KnowledgePassage(chunk.sourceId(), chunk.sourceName(), chunk.content(), score));
+                hits.add(candidate.withScore(score));
             }
         }
+        hits.sort(Comparator.comparingDouble(KnowledgePassage::score).reversed());
         return hits;
     }
 
-    private static double cosine(float[] query, float[] candidate, double queryNorm) {
-        double dot = 0.0;
-        double candidateNorm = 0.0;
-        for (int i = 0; i < query.length; i++) {
-            dot += (double) query[i] * candidate[i];
-            candidateNorm += (double) candidate[i] * candidate[i];
-        }
-        candidateNorm = Math.sqrt(candidateNorm);
-        return candidateNorm == 0.0 ? 0.0 : dot / (queryNorm * candidateNorm);
-    }
-
-    private static double norm(float[] vector) {
-        double sum = 0.0;
-        for (float value : vector) {
-            sum += (double) value * value;
-        }
-        return Math.sqrt(sum);
+    private static String normalize(String text) {
+        return text.toLowerCase(Locale.ROOT)
+                .replaceAll("['`ʻʼ‘’]", "")
+                .replaceAll("[^\\p{L}\\p{N}]+", " ")
+                .trim();
     }
 }

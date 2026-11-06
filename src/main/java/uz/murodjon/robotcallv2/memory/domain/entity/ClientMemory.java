@@ -10,9 +10,10 @@ import java.util.Map;
  * rather than by campaign target, so the knowledge outlives the campaign that
  * produced it and is there when the client calls in.
  *
- * <p>{@code recentCalls} is newest first and capped at {@link #MAX_RECENT_CALLS};
+ * <p>{@code recentCalls} is newest first, as many as {@code voice-agent.memory.kept-calls};
  * {@code facts} carries the scenario outcome fields worth repeating next time
- * ({@code promisedDate}, {@code reasonCode}, ...), newest value winning.
+ * ({@code promisedDate}, {@code reasonCode}, ...), newest value winning, and {@code factSources}
+ * says who wrote each of them (a fact written before sources were kept has none).
  */
 public record ClientMemory(
         long id,
@@ -23,19 +24,27 @@ public record ClientMemory(
         String operatorNotes,
         List<RememberedCall> recentCalls,
         Map<String, Object> facts,
+        Map<String, MemorySource> factSources,
         Instant updatedAt
 ) {
-
-    public static final int MAX_RECENT_CALLS = 3;
 
     public ClientMemory {
         recentCalls = recentCalls == null ? List.of() : List.copyOf(recentCalls);
         facts = facts == null ? Map.of() : Map.copyOf(facts);
+        factSources = factSources == null ? Map.of() : Map.copyOf(factSources);
+    }
+
+    public static ClientMemoryBuilder builder() {
+        return new ClientMemoryBuilder();
+    }
+
+    public ClientMemoryBuilder toBuilder() {
+        return new ClientMemoryBuilder(this);
     }
 
     /** An empty memory for a phone nobody has talked to yet. */
     public static ClientMemory empty(long companyId, String phone) {
-        return new ClientMemory(0, companyId, phone, null, null, null, List.of(), Map.of(), null);
+        return builder().companyId(companyId).phone(phone).build();
     }
 
     public boolean isEmpty() {

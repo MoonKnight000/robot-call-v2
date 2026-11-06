@@ -128,7 +128,7 @@ public class OpenAiTtsProvider implements TtsProvider {
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(
-                        requestBody(text, resolveVoice(language, requestedVoice), settings)))
+                        requestBody(text, resolveVoice(language, requestedVoice), settings, style)))
                 .timeout(Duration.ofSeconds(settings.connectTimeoutSeconds()))
                 .build();
 
@@ -197,14 +197,24 @@ public class OpenAiTtsProvider implements TtsProvider {
         }
     }
 
-    private String requestBody(String text, String voice, OpenAiTtsProperties settings) {
+    private String requestBody(String text, String voice, OpenAiTtsProperties settings, EffectiveVoiceSettings style) {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("model", settings.model());
         root.put("input", text);
         root.put("voice", voice);
         root.put("response_format", "pcm");
-        if (settings.instructions() != null && !settings.instructions().isBlank()) {
-            root.put("instructions", settings.instructions().trim());
+        // The deployment's standing instructions, then this turn's mood; the pace goes as speed.
+        String tone = VoiceStyleMapper.findTone(style);
+        String instructions = settings.instructions() != null ? settings.instructions().trim() : "";
+        if (tone != null) {
+            instructions = (instructions.isEmpty() ? "" : instructions + " ") + "Speak in a " + tone + " tone.";
+        }
+        if (!instructions.isEmpty()) {
+            root.put("instructions", instructions);
+        }
+        Double speed = VoiceStyleMapper.findSpeed(style, 0.25, 4.0);
+        if (speed != null) {
+            root.put("speed", speed);
         }
         return root.toString();
     }

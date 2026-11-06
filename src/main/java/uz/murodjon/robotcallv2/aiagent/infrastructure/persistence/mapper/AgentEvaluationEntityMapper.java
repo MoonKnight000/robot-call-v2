@@ -35,7 +35,7 @@ public class AgentEvaluationEntityMapper {
                 entity.getExpectDisposition(), entity.getExpectStage(),
                 read(entity.getMustSay(), LIST_TYPE, List.of()), read(entity.getMustNotSay(), LIST_TYPE, List.of()),
                 entity.getMaxTurns(), entity.getCreatedAt(), read(entity.getToolMocks(), STRING_MAP_TYPE, Map.of()),
-                read(entity.getExpectTools(), LIST_TYPE, List.of()));
+                read(entity.getExpectTools(), LIST_TYPE, List.of()), entity.getSuccessCriteria());
     }
 
     public AgentEvalRun toAgentEvalRun(AgentEvalRunEntity entity) {

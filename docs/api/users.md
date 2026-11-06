@@ -32,7 +32,10 @@ Parametrsiz (kompaniyadagi foydalanuvchilar soni ixcham bo'lgani uchun to'liq ro
       "roleName": "Operator",
       "status": "ACTIVE",
       "lastLoginAt": "2026-08-02T07:00:00Z",
-      "createdAt": "2026-07-15T00:00:00Z"
+      "createdAt": "2026-07-15T00:00:00Z",
+      "phone": "+998901234567",
+      "position": "Operator",
+      "sipExtension": "101"
     }
   ],
   "message": null,
@@ -65,7 +68,10 @@ Path parametr: `id` (foydalanuvchi ID si). Faqat joriy kompaniyaga tegishli foyd
     "roleName": "Operator",
     "status": "ACTIVE",
     "lastLoginAt": "2026-08-02T07:00:00Z",
-    "createdAt": "2026-07-15T00:00:00Z"
+    "createdAt": "2026-07-15T00:00:00Z",
+    "phone": "+998901234567",
+    "position": "Operator",
+    "sipExtension": "101"
   },
   "message": null,
   "messageCode": null,
@@ -135,6 +141,50 @@ orqali parol qo'yib faollashtiradi. Token 7 kundan keyin muddati tugaydi.
 
 ---
 
+## `PUT /api/users/{id}` — xodim hisobini tahrirlash
+
+Huquq: `USER_EDIT`. Body (`UpdateUserRequest`):
+
+```json
+{
+  "name": "Aziz Bekmurodov",
+  "username": "aziz.bek",
+  "email": "aziz.bek@uysot.uz",
+  "phone": "+998901234567",
+  "position": "Katta operator",
+  "sipExtension": "101",
+  "newPassword": null
+}
+```
+
+| Maydon | Majburiy | Qoida |
+|---|---|---|
+| `name`, `username`, `email` | ha | `invite` bilan bir xil validatsiya |
+| `phone` | yo'q | E.164 (`+998901234567`); `null` — tozalanadi (bo'sh satr emas) |
+| `position` | yo'q | ≤ 120 belgi; `null`/bo'sh — tozalanadi |
+| `sipExtension` | yo'q | 2–8 raqam, kompaniya ichida unique; `null` — tozalanadi (bo'sh satr emas) |
+| `newPassword` | yo'q | `null` — parol o'zgarmaydi. Berilsa: 10–128 belgi, kamida bitta harf va bitta raqam |
+
+Rol va holat bu yerda o'zgarmaydi (ular uchun `/role`, `/block`, `/unblock`).
+
+**Yangi parol berilsa:** xodimning barcha sessiyalari bekor qilinadi (qayta kiradi). Xodim hali `INVITED`
+bo'lsa — hisob shu parol bilan `ACTIVE` bo'ladi va taklif havolasi o'chadi. Audit: `USER_PASSWORD_RESET_BY_ADMIN`.
+Faqat login/email o'zgarsa sessiyalar bekor qilinmaydi (token `sub` = foydalanuvchi id'si). Audit: `USER_UPDATE`.
+
+| Holat | Javob |
+|---|---|
+| Foydalanuvchi topilmadi / boshqa kompaniyaniki | `404 USER_NOT_FOUND` |
+| Email boshqa hisobda band | `409 USER_EMAIL_TAKEN` |
+| Login boshqa hisobda band | `409 USER_USERNAME_TAKEN` |
+| SIP ichki raqam kompaniyadagi boshqa xodimda | `409 USER_SIP_EXTENSION_TAKEN` |
+| Maydon bo'sh / format noto'g'ri / parol qoidasiga mos emas | `400 VALIDATION_FAILED` |
+
+O'z qiymatini qayta yuborish konflikt emas.
+
+**Javob** — yangilangan `UserRow` (`phone`, `position`, `sipExtension` bilan).
+
+---
+
 ## `PUT /api/users/{id}/role` — rol o'zgartirish
 
 Body (`UpdateUserRoleRequest`): `{ "roleId": 4 }`
@@ -180,6 +230,7 @@ Kompaniya `SUSPENDED`/`DELETED` bo'lsa ham ishlaydi.
 | `GET /api/companies/{companyId}/users/{id}` | `UserRow` |
 | `GET /api/companies/{companyId}/roles` | kompaniya rollari (`RoleRow[]`) — invite uchun `roleId` tanlash |
 | `POST /api/companies/{companyId}/users/invite` | body — `InviteUserRequest`, javob — `InviteUserResponse` (aktivatsiya tokeni) |
+| `PUT /api/companies/{companyId}/users/{id}` | body — `UpdateUserRequest` (ism, login, email, telefon, lavozim, SIP raqam, yangi parol) |
 | `PUT /api/companies/{companyId}/users/{id}/role` | body — `{ "roleId": 5 }` |
 | `PUT /api/companies/{companyId}/users/{id}/block` · `.../unblock` | body yo'q |
 

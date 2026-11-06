@@ -1,6 +1,11 @@
 package uz.murodjon.robotcallv2.chat.infrastructure.persistence.adapter;
 
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
@@ -11,6 +16,8 @@ import uz.murodjon.robotcallv2.chat.domain.entity.ChatFilter;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatMessage;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
 import uz.murodjon.robotcallv2.chat.domain.enums.ChatChannel;
+import uz.murodjon.robotcallv2.chat.domain.service.ChatParticipant;
+import uz.murodjon.robotcallv2.chat.infrastructure.persistence.entity.ChatMessageEntity;
 import uz.murodjon.robotcallv2.chat.infrastructure.persistence.entity.ChatSessionEntity;
 import uz.murodjon.robotcallv2.chat.infrastructure.persistence.mapper.ChatEntityMapper;
 import uz.murodjon.robotcallv2.chat.infrastructure.persistence.repository.ChatMessageJpaRepository;
@@ -18,7 +25,11 @@ import uz.murodjon.robotcallv2.chat.infrastructure.persistence.repository.ChatSe
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 @Component
 public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
@@ -122,6 +133,32 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
         return sessionJpaRepository.findById(chatSessionId).map(mapper::toChatAnalysis).orElse(null);
     }
 
+    @Override
+    public Map<Long, ChatMessage> findLastMessages(Collection<Long> chatSessionIds) {
+        if (chatSessionIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, ChatMessage> latest = new HashMap<>();
+        messageJpaRepository.findLatestByChatSessionIds(chatSessionIds).forEach(entity ->
+                latest.put(entity.getChatSessionId(), mapper.toChatMessage(entity)));
+        return latest;
+    }
+
+    @Override
+    public Map<Long, ChatAnalysis> findAnalyses(Collection<Long> chatSessionIds) {
+        if (chatSessionIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, ChatAnalysis> analyses = new HashMap<>();
+        sessionJpaRepository.findAllById(chatSessionIds).forEach(entity -> {
+            ChatAnalysis analysis = mapper.toChatAnalysis(entity);
+            if (analysis != null) {
+                analyses.put(entity.getId(), analysis);
+            }
+        });
+        return analyses;
+    }
+
     private static Specification<ChatSessionEntity> matching(long companyId, ChatFilter filter) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -152,7 +189,51 @@ public class ChatSessionRepositoryAdapter implements ChatSessionRepository {
             if (filter.needsFollowUp() != null) {
                 predicates.add(cb.equal(root.get("analysisNeedsFollowUp"), filter.needsFollowUp()));
             }
+            if (filter.takenOver() != null) {
+                predicates.add(filter.takenOver()
+                        ? cb.isNotNull(root.get("operatorUserId"))
+                        : cb.isNull(root.get("operatorUserId")));
+            }
+            if (filter.q() != null && !filter.q().isBlank()) {
+                predicates.add(matchingText(root, query, cb, filter.q().strip()));
+            }
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    /**
+     * A word from the transcript, the person's name or a piece of their number in the recorded
+     * values, or — when it is all digits — the conversation's id.
+     */
+    private static Predicate matchingText(Root<ChatSessionEntity> root, CriteriaQuery<?> query, CriteriaBuilder cb,
+                                          String text) {
+        String pattern = "%" + text.toLowerCase(Locale.ROOT)
+                .replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%";
+        List<Predicate> any = new ArrayList<>();
+
+        Subquery<Long> lines = query.subquery(Long.class);
+        Root<ChatMessageEntity> message = lines.from(ChatMessageEntity.class);
+        lines.select(message.get("id")).where(
+                cb.equal(message.get("chatSessionId"), root.get("id")),
+                cb.like(cb.lower(message.get("text")), pattern, '!'));
+        any.add(cb.exists(lines));
+
+        for (String key : ChatParticipant.NAME_KEYS) {
+            any.add(cb.like(cb.lower(outcomeValue(root, cb, key)), pattern, '!'));
+        }
+        String digits = text.replaceAll("\\D", "");
+        if (!digits.isEmpty()) {
+            for (String key : ChatParticipant.PHONE_KEYS) {
+                any.add(cb.like(outcomeValue(root, cb, key), "%" + digits + "%"));
+            }
+            if (digits.equals(text) && digits.length() <= 18) {
+                any.add(cb.equal(root.get("id"), Long.parseLong(digits)));
+            }
+        }
+        return cb.or(any.toArray(new Predicate[0]));
+    }
+
+    private static Expression<String> outcomeValue(Root<ChatSessionEntity> root, CriteriaBuilder cb, String key) {
+        return cb.function("jsonb_extract_path_text", String.class, root.get("outcome"), cb.literal(key));
     }
 }

@@ -98,7 +98,8 @@ public class ChatModelRegistry {
                             .apiKey(chatProviderProperties.openAiApiKey())
                             .baseUrl(chatProviderProperties.openAiBaseUrl())
                             .model("gpt-5.6-luna")
-                            .maxTokens(MAX_OUTPUT_TOKENS)
+                            // Merged into every request by ChatClient; gpt-5/6 answer 400 to max_tokens.
+                            .maxCompletionTokens(MAX_OUTPUT_TOKENS)
                             .build())
                     .build();
             case ANTHROPIC -> AnthropicChatModel.builder()

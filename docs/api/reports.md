@@ -38,18 +38,17 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 |---|---|---|
 | `page` / `size` | number | Standart `0` / `20`, maksimum `size` — `500` |
 | `orders` | map | Saralanadigan ustunlar: `CALL_ID`, `STARTED_AT`, `ENDED_AT`, `DURATION_SEC`, `DISPOSITION`. Standart: `CALL_ID DESC` |
-| `q` | string | Telefon raqami bo'yicha erkin qidiruv (raqam ichida uchrasa mos). `%` va `_` oddiy belgi sifatida qidiriladi, wildcard emas. **`search` emas** |
+| `q` | string | Telefon raqami yoki mijoz ismi (`clientName`, katta-kichik harf farqsiz) bo'yicha erkin qidiruv (ichida uchrasa mos). `%` va `_` oddiy belgi sifatida qidiriladi, wildcard emas. **`search` emas** |
 | `campaignId` | number | Kampaniya bo'yicha cheklash |
 | `disposition` | `Disposition` | Yakuniy natija bo'yicha filtr ([calls.md](calls.md#-qongiroq-yakuniy-natijalari-dispositions)) |
 | `dateFrom` / `dateTo` | ISO instant | Qo'ng'iroq boshlanish vaqti oralig'i. **`from`/`to` emas** |
 | `durationMinSec` / `durationMaxSec` | number | Suhbat davomiyligi oralig'i (soniya) |
 | `aiAgentId` | number | Faqat shu agent o'tkazgan qo'ng'iroqlar |
 | `sentiment` | `POSITIVE` · `NEUTRAL` · `NEGATIVE` · `HOSTILE` | Qo'ng'iroq xulosasidagi kayfiyat bo'yicha |
+| `inbound` | boolean | `true` — faqat kiruvchi liniya orqali kelgan qo'ng'iroqlar; `false` — qolganlari (kampaniya, qo'lda, test, operator); berilmasa — hammasi |
 | `randomSample` | boolean | `true` — eng yangilari emas, mos qo'ng'iroqlardan **tasodifiy** namuna (`size` ta); `page`, `orders`, `afterId` e'tiborga olinmaydi, `totalElements` — barcha moslar soni |
 | `ids` | `array<number>` | Aniq qo'ng'iroq id'lari (bulk oqimida tanlanganlarni qayta o'qish uchun). Berilsa, boshqa filtr maydonlari e'tiborga olinmaydi |
 | `afterId` | number \| null | Keyset kursori (`≥ 1`) — pastdagi ["Kursor bilan sahifalash"](#kursor-bilan-sahifalash-afterid) ga qarang. Eksportda e'tiborga olinmaydi |
-
-> ⚠️ `CallFilter` da `sentiment` filtri **yo'q**.
 
 **Response** (`PageableData<CallRow>`):
 
@@ -78,7 +77,15 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
         "crmNoteId": "f643bd38-00cb-436e-a7db-7c3c79834cf7",
         "clientName": "Sardor Alimov",
         "campaignName": "Kechikkan to'lovlar - Mart 2026",
-        "operatorName": null
+        "operatorName": null,
+        "aiAgentId": 3,
+        "agentName": "Qarzdorlik (cascade)",
+        "inbound": false,
+        "sentiment": "POSITIVE",
+        "qualityScore": 86,
+        "costUzs": 1450,
+        "avgTurnLatencyMs": 780,
+        "agentVersion": 4
       }
     ]
   },
@@ -96,6 +103,13 @@ Umumiy javob shakli, xatolar va pagination konventsiyasi uchun
 | `hangupCause` | Q.850 sababi. Skyline'da `18` — tarmoq nosozligi, `NO_ANSWER` emas |
 | `hasRecording` | `true` bo'lsa `GET /api/reports/calls/{callId}/recording` ishlaydi |
 | `operatorName` | Qo'ng'iroq operatorga uzatilgan bo'lsa — qabul qilgan xodim |
+| `aiAgentId` / `agentName` | Qo'ng'iroqni o'tkazgan AI agent; faqat operator qo'ng'irog'i yoki agent o'chirilgan bo'lsa `null` |
+| `inbound` | `true` — kiruvchi liniya orqali kelgan qo'ng'iroq |
+| `sentiment` | `POSITIVE` · `NEUTRAL` · `NEGATIVE` · `HOSTILE`; qo'ng'iroq xulosasi tayyor bo'lmaguncha `null` |
+| `qualityScore` | AI sifat bahosi (0–100, "Qo'ng'iroq sifati" sahifasidagi bilan bir xil); qo'ng'iroq baholanmagan bo'lsa (o'chirilgan, namunaga tushmagan, xato) `null` |
+| `costUzs` | Qo'ng'iroq uchun yechilgan summa (so'm), hisob yopilgandan keyin; ungacha yoki billing bo'lmasa `null` |
+| `avgTurnLatencyMs` | Mijoz gapirib bo'lgandan agent ovozigacha o'rtacha vaqt (ms); AI javob bermagan qo'ng'iroqda `null` |
+| `agentVersion` | Qo'ng'iroq gaplashgan agentning e'lon qilingan versiyasi; qoralama (web test) yoki agentsiz qo'ng'iroqda `null` |
 
 ---
 
@@ -226,7 +240,8 @@ doim qo'llanadi (`ids` berilganda ham).
       "rtpJitterMs": 6,
       "rtpMos": 4.28
     },
-    "talk": null
+    "talk": null,
+    "outcome": { "reasonCode": "NO_MONEY", "promisedDate": "2026-09-10", "promisedAmount": 1500000 }
   },
   "message": null,
   "messageCode": null,
@@ -247,6 +262,7 @@ qo'ng'iroqlarida transkript bo'lmaydi.
 | `needsFollowUp` / `followUpNote` | boolean / string | AI keyingi qadam kerakligini belgilaganmi |
 | `escalated` | boolean | Qo'ng'iroq operatorga eskalatsiya qilinganmi |
 | `errorMessage` | string \| null | Texnik nosozlik matni |
+| `outcome` | object | Agent yig'gan ma'lumotlar — ssenariyning `outcomeSchema` maydonlari (Retell'dagi "Custom Analysis"). Xulosa tayyor bo'lmaguncha `{}` |
 | `transcript[].role` | string | `"AGENT"` (bot), `"CLIENT"` (mijoz) yoki `"OPERATOR"` (operator) |
 | `transcript[].tsOffsetMs` | number | Qo'ng'iroq boshidan millisekund — audio pleyerni shu qatordan boshlash uchun |
 | `transcript[].confidence` | float \| null | STT ishonchi; `AGENT` qatorlarida `null` |
@@ -306,6 +322,12 @@ bytes=<start>-<end>` to'liq qo'llab-quvvatlanadi.
 
 Body — `CallFilter` (yuqoridagi shakl). Javob — **`calls.csv`** fayli (`byte[]`,
 `ResponseData` konvertisiz).
+
+Ustunlar: `call_id`, `target_id`, `phone`, `client_name`, `campaign_name`, `operator_name`, `language`,
+`started_at`, `ended_at`, `duration_sec`, `disposition`, `hangup_cause`, `has_recording`, `summary`,
+`promised_date`, `promised_amount`, `crm_note_id`, `agent_name`, `direction` (`inbound`/`outbound`),
+`sentiment`, `quality_score`, `cost_uzs`, `avg_turn_latency_ms` — oxirgi oltitasi yangi, eskilarining
+tartibi o'zgarmagan.
 
 `page`/`size` eksportda e'tiborga olinmaydi — filtrga mos **barcha** qo'ng'iroqlar `orders`
 tartibida chiqadi, eng ko'pi **50 000** ta. Filtr bundan ko'p qo'ng'iroqqa mos kelsa, fayl
@@ -992,6 +1014,7 @@ transkript qatorini blokka shu bo'yicha joylash mumkin (blok — o'zining `STAGE
 | `TOOL_CALLED` | Agent funksiya chaqirdi; `at` — javob qaytgan payt | Pastdagi jadval |
 | `TOOL_HTTP` | HTTP funksiya (kompaniya funksiyasi yoki integratsiya/CRM) so'rov yubordi va javob oldi; `at` — javob kelgan payt, shu funksiyaning `TOOL_CALLED` idan oldin | Pastdagi jadval |
 | `LLM_USAGE` | Bitta LLM so'rovi tugadi (CASCADE; REALTIME'da yo'q) | `stage`, `promptTokens` (kesh ichida), `cachedTokens`, `completionTokens` (thinking ichida), `thinkingTokens`, `offsetMs` |
+| `KNOWLEDGE_RETRIEVED` | Mijoz navbati uchun bilim bazasidan qidirildi (CASCADE; REALTIME'da qidiruv `searchKnowledgeBase` tool'i — `TOOL_CALLED`) | `agentId`, `stage`, `question` (mijoz gapi, PII yashirilgan), `curatedAnswer` (Q&A yozuvi topilib aynan o'qilgan bo'lsa — uning matni, aks holda yo'q), `curatedItemId`, `curatedMatchedBy` (`KEYWORD` / `MEANING`), `curatedScore` (kosinus, model so'ralmagan bo'lsa 0), `passages` (`[{chunkId, sourceId, sourceName, pageUrl?, score, preview}]`, eng yaxshisi birinchi; `pageUrl` — sitemap/URL manbada parcha olingan sahifa; `preview` — parchaning ≤300 belgisi), `found` (bool — `false` bo'lsa bilim bo'shlig'i), `limit` (top-k), `durationMs`, `offsetMs` |
 
 **`STAGE_ENTERED.via`** — blokka qanday kirildi (flow'dan o'qiladi):
 
@@ -1037,7 +1060,7 @@ funksiya (`waitForResult: false`) so'rovi `TOOL_CALLED` dan keyin keladi.
 Huquq: **CALL_DEBUG_READ** (qo'ng'iroq izi bilan bir xil — funksiyalarning CRM so'rov/javoblari shu yerda).
 `chatId` — `ChatRow.id` ([chat.md](chat.md)). Widget va Telegram suhbatlarida agent qo'ng'iroqdagi kabi
 bloklardan o'tadi va funksiya chaqiradi; javob shakli va hodisa turlari yuqoridagi `/calls/{callId}/trace`
-bilan bir xil (`STAGE_ENTERED`, `FACT_RECORDED`, `TOOL_CALLED`, `TOOL_HTTP`, `LLM_USAGE`).
+bilan bir xil (`STAGE_ENTERED`, `FACT_RECORDED`, `TOOL_CALLED`, `TOOL_HTTP`, `LLM_USAGE`, `KNOWLEDGE_RETRIEVED`).
 
 Farqlar:
 - `callAttemptId` — `0`, `chatSessionId` — chat id'si.
@@ -1109,6 +1132,7 @@ qaytaradi: call flow tugunlari, navbat, operatorga taklif, hold, uzatish, monito
 | `SURVEY_SCORE` | So'rovnoma bahosi qo'yildi | `score`, `userId` |
 | `MONITOR` | Supervayzer qo'shildi (telefoni jiringlagan payt) | `userId`, `mode` (`LISTEN` / `WHISPER` / `BARGE`) |
 | `TURN` | AI agent mijozga javob berdi — bitta turn bosqichma-bosqich (Audio Inspector). `at` — javobning birinchi audiosi chiqqan payt | Pastdagi jadval |
+| `MEMORY_RECALLED` | AI agent suhbati boshlandi va promptga mijoz xotirasi qo'shildi ("Agent nimani eslagan"). Xotira bo'sh bo'lsa yozilmaydi | `preferredName`, `preferredLanguage`, `operatorNotes`, `calls` (`[{id, at, scenarioKey, disposition, summary, callAttemptId?, chatSessionId?}]`, eng yangisi birinchi — faqat promptga tushgan 3 tasi), `facts` (`{nom: matn}`) — agent aynan shuni ko'rgan, keyin tahrirlangan bo'lsa ham |
 
 #### `TURN` — Audio Inspector uchun turn vaqtlari
 

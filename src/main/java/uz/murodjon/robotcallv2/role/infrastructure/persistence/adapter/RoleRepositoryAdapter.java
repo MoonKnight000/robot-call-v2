@@ -4,16 +4,20 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.repository.CompanyJpaRepository;
 import uz.murodjon.robotcallv2.role.application.port.output.RoleRepository;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
+import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.entity.RoleEntity;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.mapper.RoleEntityMapper;
 import uz.murodjon.robotcallv2.role.infrastructure.persistence.repository.RoleJpaRepository;
+import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
 import uz.murodjon.robotcallv2.user.infrastructure.persistence.repository.UserJpaRepository;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Component
 public class RoleRepositoryAdapter implements RoleRepository {
@@ -52,8 +56,8 @@ public class RoleRepositoryAdapter implements RoleRepository {
     }
 
     @Override
-    public long countCustomByCompanyId(long companyId) {
-        return jpaRepository.countByCompanyIdAndSystem(companyId, false);
+    public long countByCompanyId(long companyId) {
+        return jpaRepository.countByCompanyId(companyId);
     }
 
     @Override
@@ -63,10 +67,9 @@ public class RoleRepositoryAdapter implements RoleRepository {
         entity.setCode(role.code());
         entity.setName(role.name());
         entity.setDescription(role.description());
-        entity.setSystem(role.system());
-        // A system role's permissions are computed from its code on every read, so storing
-        // them would only create a second truth that can drift.
-        entity.setPermissions(role.system() ? new LinkedHashSet<>() : new LinkedHashSet<>(role.permissions()));
+        entity.setSystem(false);
+        entity.setAssignableByCompany(role.assignableByCompany());
+        entity.setPermissions(new LinkedHashSet<>(role.permissions()));
         entity.setCreatedAt(Instant.now());
         return mapper.toRole(jpaRepository.save(entity));
     }
@@ -107,5 +110,24 @@ public class RoleRepositoryAdapter implements RoleRepository {
     @Override
     public List<Long> findUserIdsByRoleId(long companyId, long roleId) {
         return userJpaRepository.findIdsByCompanyIdAndRoleId(companyId, roleId);
+    }
+
+    @Override
+    public long countActiveUsersByRoleIds(long companyId, Collection<Long> roleIds) {
+        if (roleIds.isEmpty()) {
+            return 0;
+        }
+        return userJpaRepository.countByCompanyIdAndRoleIdsAndStatus(companyId, roleIds, UserStatus.ACTIVE);
+    }
+
+    @Override
+    public int materializeLegacySystemRole(String code, Set<Permission> permissions) {
+        List<RoleEntity> legacy = jpaRepository.findBySystemTrueAndCode(code);
+        for (RoleEntity entity : legacy) {
+            entity.setPermissions(new LinkedHashSet<>(permissions));
+            entity.setSystem(false);
+        }
+        jpaRepository.saveAll(legacy);
+        return legacy.size();
     }
 }

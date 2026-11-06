@@ -91,11 +91,49 @@ class SpeculationManager {
         }
         String normSpec = TranscriptText.normalize(speculationText);
         String normAct = TranscriptText.normalize(actualText);
-        if (normSpec.equals(normAct)) {
+        // Compared without spaces: the final splits or joins words the interim wrote otherwise
+        // ("koʻramiz" → "ko ramiz"), and that missed a guess written for the very same words.
+        String compactSpec = normSpec.replace(" ", "");
+        String compactAct = normAct.replace(" ", "");
+        if (compactSpec.startsWith(compactAct)) {
             return true;
         }
-        return normAct.startsWith(normSpec) || normSpec.startsWith(normAct);
+        if (!compactAct.startsWith(compactSpec)) {
+            return false;
+        }
+        // The final goes on past the guess. Finishing the last word ("murodjon" → "murodjonman") or a
+        // bare "ha"/"да" adds nothing, but a new word may be the answer itself: a simulated caller's
+        // reason ("…были небольшие финансовые трудности") came after the guessed "да я помню про этот
+        // долг", the guess was adopted, and the agent asked for the reason it had just been given.
+        String tail = normAct.substring(indexAfterLetters(normAct, compactSpec.length()));
+        if (!tail.startsWith(" ")) {
+            int nextWord = tail.indexOf(' ');
+            tail = nextWord < 0 ? "" : tail.substring(nextWord);
+        }
+        for (String word : tail.trim().split("\\s+")) {
+            if (!word.isEmpty() && !TAIL_FILLERS.contains(word)) {
+                return false;
+            }
+        }
+        return true;
     }
+
+    /** The index in {@code spaced} just past its first {@code letters} non-space characters. */
+    private static int indexAfterLetters(String spaced, int letters) {
+        int seen = 0;
+        int i = 0;
+        while (i < spaced.length() && seen < letters) {
+            if (spaced.charAt(i) != ' ') {
+                seen++;
+            }
+            i++;
+        }
+        return i;
+    }
+
+    /** Words a final may add after the guessed text without saying anything new. */
+    private static final Set<String> TAIL_FILLERS = Set.of(
+            "ha", "a", "aha", "mm", "hm", "e", "ee", "xop", "da", "да", "ага", "угу", "а", "э", "ну");
 
     /**
      * The already-running reply stream for this turn, or {@code null} if there is none to

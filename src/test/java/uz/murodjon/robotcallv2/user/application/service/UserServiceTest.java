@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.user.application.service;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
@@ -25,7 +26,6 @@ import uz.murodjon.robotcallv2.user.domain.event.UserRoleChangedEvent;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -61,11 +61,13 @@ class UserServiceTest {
         when(roleUseCase.findRole(COMPANY_ID, OPERATOR_ROLE.id())).thenReturn(OPERATOR_ROLE);
         when(roleUseCase.findRole(COMPANY_ID, DEVELOPER_ROLE.id())).thenReturn(DEVELOPER_ROLE);
 
-        userService = new UserService(repository, roleUseCase, eventPublisher, currentUser, audit);
+        userService = new UserService(repository, roleUseCase, eventPublisher, currentUser, audit,
+                mock(PasswordEncoder.class));
     }
 
     private static Role systemRole(long id, SystemRole systemRole) {
-        return new Role(id, COMPANY_ID, systemRole.name(), systemRole.label(), null, true, Set.of(), Instant.now());
+        return new Role(id, COMPANY_ID, systemRole.name(), systemRole.label(), null, systemRole.assignableByCompany(),
+                systemRole.resolvePermissions(), Instant.now());
     }
 
     private static User sampleUser(long id, Role role, UserStatus status) {

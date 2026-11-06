@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.user.application.port.input;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.InviteUserResponse;
 import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRoleRequest;
+import uz.murodjon.robotcallv2.user.application.dto.UpdateUserRequest;
 import uz.murodjon.robotcallv2.user.application.dto.UserRow;
 import uz.murodjon.robotcallv2.user.domain.entity.User;
 import uz.murodjon.robotcallv2.user.domain.enums.UserStatus;
@@ -33,6 +34,9 @@ public interface UserUseCase {
     User findBySipExtension(long companyId, String extension);
 
     UserRow changeRole(long companyId, long id, UpdateUserRoleRequest request);
+
+    /** An admin correcting someone's name, login or email; the role and status stay untouched. */
+    UserRow update(long companyId, long id, UpdateUserRequest request);
 
     UserRow setStatus(long companyId, long id, UserStatus status);
 

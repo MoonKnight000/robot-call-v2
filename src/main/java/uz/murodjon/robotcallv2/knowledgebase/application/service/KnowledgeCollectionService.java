@@ -8,7 +8,6 @@ import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeCollection
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.KnowledgeSourceRow;
 import uz.murodjon.robotcallv2.knowledgebase.application.dto.SaveKnowledgeCollectionRequest;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeCollectionUseCase;
-import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeSourceUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeCollectionRepository;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.output.KnowledgeSourceRepository;
@@ -33,7 +32,6 @@ public class KnowledgeCollectionService implements KnowledgeCollectionUseCase {
     private final KnowledgeCollectionRepository repository;
     private final KnowledgeSourceRepository sourceRepository;
     private final KnowledgeSourceUseCase knowledgeSourceUseCase;
-    private final KnowledgeRetrievalUseCase knowledgeRetrievalUseCase;
     private final AiAgentUseCase aiAgentUseCase;
     private final AuditUseCase auditService;
     private final FileStorageUseCase fileStorageUseCase;
@@ -41,14 +39,12 @@ public class KnowledgeCollectionService implements KnowledgeCollectionUseCase {
     public KnowledgeCollectionService(KnowledgeCollectionRepository repository,
                                       KnowledgeSourceRepository sourceRepository,
                                       KnowledgeSourceUseCase knowledgeSourceUseCase,
-                                      KnowledgeRetrievalUseCase knowledgeRetrievalUseCase,
                                       AiAgentUseCase aiAgentUseCase,
                                       AuditUseCase auditService,
                                       FileStorageUseCase fileStorageUseCase) {
         this.repository = repository;
         this.sourceRepository = sourceRepository;
         this.knowledgeSourceUseCase = knowledgeSourceUseCase;
-        this.knowledgeRetrievalUseCase = knowledgeRetrievalUseCase;
         this.aiAgentUseCase = aiAgentUseCase;
         this.auditService = auditService;
         this.fileStorageUseCase = fileStorageUseCase;
@@ -63,7 +59,6 @@ public class KnowledgeCollectionService implements KnowledgeCollectionUseCase {
         requireAgents(companyId, agentIds);
         KnowledgeCollection saved = repository.save(new KnowledgeCollection(0L, companyId, name, Instant.now()));
         repository.replaceAgents(saved.id(), agentIds);
-        knowledgeRetrievalUseCase.evictCompany(companyId);
         audit(companyId, "KNOWLEDGE_COLLECTION_CREATE", saved);
         return toRow(saved, 0, agentIds.stream().distinct().toList());
     }
@@ -95,8 +90,6 @@ public class KnowledgeCollectionService implements KnowledgeCollectionUseCase {
         if (request.agentIds() != null) {
             requireAgents(companyId, request.agentIds());
             repository.replaceAgents(id, request.agentIds());
-            // Who may read the collection's passages changed, though the passages did not.
-            knowledgeRetrievalUseCase.evictCompany(companyId);
         }
         audit(companyId, "KNOWLEDGE_COLLECTION_UPDATE", saved);
         return findKnowledgeCollections(companyId).stream().filter(row -> row.id() == id).findFirst().orElseThrow();
@@ -113,7 +106,6 @@ public class KnowledgeCollectionService implements KnowledgeCollectionUseCase {
             }
         }
         repository.deleteByCompanyIdAndId(companyId, id);
-        knowledgeRetrievalUseCase.evictCompany(companyId);
         audit(companyId, "KNOWLEDGE_COLLECTION_DELETE", existing);
     }
 

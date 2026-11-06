@@ -59,7 +59,7 @@ public class PackMapper {
                         agent.firstMessage(), agent.scenario().rolePrompt()),
                 new AgentSpeechEngineDto(PACK_PIPELINE, null, null, null, null, null, null, null, null, null, null),
                 null,                                          // voice
-                null, null, null, null, null, null,            // llmModel, fastLlmModel, fallbackLlmModel, fallbackLlmMode, temperature, maxOutputTokens
+                null, null, null, null, null, null, null,            // llmModel, fastLlmModel, fallbackLlmModel, fallbackLlmMode, temperature, maxOutputTokens, reasoningEffort
                 null, null, null, null,                        // ambience, greeting, call behaviour, limits
                 // All four together or none: a pack that answers "what is kept" answers it whole
                 // (E.3), and one that stays silent leaves every part to the agent's defaults.
@@ -104,7 +104,7 @@ public class PackMapper {
         return new SaveAgentTestCaseRequest(testCase.name(), testCase.personaPrompt(), testCase.facts(),
                 testCase.language(), testCase.expectDisposition(), testCase.expectStage(),
                 testCase.mustSay(), testCase.mustNotSay(), testCase.maxTurns(), testCase.toolMocks(),
-                testCase.expectTools());
+                testCase.expectTools(), testCase.successCriteria());
     }
 
     public ConversionGoalRequest toConversionGoalRequest(ConversionGoal goal) {

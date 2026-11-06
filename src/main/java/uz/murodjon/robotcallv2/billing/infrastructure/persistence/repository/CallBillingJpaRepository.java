@@ -81,7 +81,8 @@ public interface CallBillingJpaRepository extends JpaRepository<CallBillingEntit
     @Query(value = """
             SELECT COALESCE(SUM(duration_sec), 0)                        AS duration_sec,
                    COALESCE(SUM(prompt_tokens + completion_tokens
-                                + summary_prompt_tokens + summary_completion_tokens), 0) AS tokens,
+                                + summary_prompt_tokens + summary_completion_tokens
+                                + analysis_prompt_tokens + analysis_completion_tokens), 0) AS tokens,
                    COALESCE(SUM(tts_chars), 0)                           AS tts_chars,
                    COALESCE(SUM(total_uzs), 0)                           AS spend_uzs
               FROM call_billing
@@ -91,20 +92,80 @@ public interface CallBillingJpaRepository extends JpaRepository<CallBillingEntit
             """, nativeQuery = true)
     List<Object[]> findUsageSince(@Param("companyId") Long companyId, @Param("from") Instant from);
 
-    /** The post-call summary, added to the call's settled row (V5). */
+    /**
+     * Usage and cost of the calls settled in {@code [from, to)}, as one row. Tokens are the
+     * ones that were priced: a realtime call's own tokens are audio tokens billed through the
+     * engine's minutes, so only its summary and analysis tokens count here. Input tokens are
+     * the prompt tokens less the cached ones, which have their own column.
+     */
+    @Query(value = """
+            SELECT COUNT(*)                                                                     AS calls,
+                   COALESCE(SUM(duration_sec), 0)                                               AS duration_sec,
+                   COALESCE(SUM(realtime_seconds), 0)                                           AS realtime_sec,
+                   COALESCE(SUM(CASE WHEN realtime_seconds > 0 THEN 0 ELSE duration_sec END)
+                            + SUM(analysis_stt_seconds), 0)                                     AS stt_sec,
+                   COALESCE(SUM(GREATEST(
+                            CASE WHEN realtime_seconds > 0 THEN 0 ELSE prompt_tokens - cached_tokens END
+                            + summary_prompt_tokens - summary_cached_tokens
+                            + analysis_prompt_tokens - analysis_cached_tokens, 0)), 0)          AS input_tokens,
+                   COALESCE(SUM(CASE WHEN realtime_seconds > 0 THEN 0 ELSE completion_tokens END
+                            + summary_completion_tokens + analysis_completion_tokens), 0)       AS output_tokens,
+                   COALESCE(SUM(CASE WHEN realtime_seconds > 0 THEN 0 ELSE cached_tokens END
+                            + summary_cached_tokens + analysis_cached_tokens), 0)               AS cached_tokens,
+                   COALESCE(SUM(tts_chars), 0)                                                  AS tts_chars,
+                   COALESCE(SUM(llm_prompt_cost_uzs), 0)                                        AS llm_prompt_uzs,
+                   COALESCE(SUM(llm_completion_cost_uzs), 0)                                    AS llm_completion_uzs,
+                   COALESCE(SUM(llm_cached_cost_uzs), 0)                                        AS llm_cached_uzs,
+                   COALESCE(SUM(llm_cost_uzs), 0)                                               AS llm_uzs,
+                   COALESCE(SUM(stt_cost_uzs), 0)                                               AS stt_uzs,
+                   COALESCE(SUM(tts_cost_uzs), 0)                                               AS tts_uzs,
+                   COALESCE(SUM(realtime_cost_uzs), 0)                                          AS realtime_uzs,
+                   COALESCE(SUM(telephony_cost_uzs), 0)                                         AS telephony_uzs,
+                   COALESCE(SUM(platform_fee_uzs), 0)                                           AS platform_fee_uzs,
+                   COALESCE(SUM(total_uzs), 0)                                                  AS total_uzs
+              FROM call_billing
+             WHERE company_id = :companyId
+               AND status = 'SETTLED'
+               AND settled_at >= :from
+               AND settled_at < :to
+            """, nativeQuery = true)
+    List<Object[]> findCostTotals(@Param("companyId") long companyId, @Param("from") Instant from,
+                                  @Param("to") Instant to);
+
+    /** What the calls settled in {@code [from, to)} cost, per Tashkent calendar day, oldest first. */
+    @Query(value = """
+            SELECT CAST(settled_at AT TIME ZONE 'Asia/Tashkent' AS date) AS day,
+                   COALESCE(SUM(total_uzs), 0)                           AS spend_uzs
+              FROM call_billing
+             WHERE company_id = :companyId
+               AND status = 'SETTLED'
+               AND settled_at >= :from
+               AND settled_at < :to
+             GROUP BY day
+             ORDER BY day
+            """, nativeQuery = true)
+    List<Object[]> findDailySpend(@Param("companyId") long companyId, @Param("from") Instant from,
+                                  @Param("to") Instant to);
+
+    /** The post-call summary, added to the call's settled row (V5); its price goes to the LLM line and its split (V41). */
     @Modifying @Transactional
     @Query(value = """
             UPDATE call_billing
                SET summary_prompt_tokens     = :promptTokens,
                    summary_completion_tokens = :completionTokens,
                    summary_cached_tokens     = :cachedTokens,
-                   llm_cost_uzs              = llm_cost_uzs + :costUzs,
-                   total_uzs                 = total_uzs + :costUzs
+                   llm_cost_uzs              = llm_cost_uzs + :llmCostUzs,
+                   llm_prompt_cost_uzs       = llm_prompt_cost_uzs + :llmPromptCostUzs,
+                   llm_completion_cost_uzs   = llm_completion_cost_uzs + :llmCompletionCostUzs,
+                   llm_cached_cost_uzs       = llm_cached_cost_uzs + :llmCachedCostUzs,
+                   total_uzs                 = total_uzs + :totalCostUzs
              WHERE call_attempt_id = :callAttemptId
             """, nativeQuery = true)
     int addSummaryCharge(@Param("callAttemptId") long callAttemptId, @Param("promptTokens") long promptTokens,
                          @Param("completionTokens") long completionTokens, @Param("cachedTokens") long cachedTokens,
-                         @Param("costUzs") long costUzs);
+                         @Param("llmCostUzs") long llmCostUzs, @Param("llmPromptCostUzs") long llmPromptCostUzs,
+                         @Param("llmCompletionCostUzs") long llmCompletionCostUzs,
+                         @Param("llmCachedCostUzs") long llmCachedCostUzs, @Param("totalCostUzs") long totalCostUzs);
 
     /** An operator call's analysis — scorecard tokens and the operator side's recognition — added to its settled row (V24). */
     @Modifying @Transactional
@@ -115,6 +176,9 @@ public interface CallBillingJpaRepository extends JpaRepository<CallBillingEntit
                    analysis_cached_tokens     = :cachedTokens,
                    analysis_stt_seconds       = :sttSeconds,
                    llm_cost_uzs               = llm_cost_uzs + :llmCostUzs,
+                   llm_prompt_cost_uzs        = llm_prompt_cost_uzs + :llmPromptCostUzs,
+                   llm_completion_cost_uzs    = llm_completion_cost_uzs + :llmCompletionCostUzs,
+                   llm_cached_cost_uzs        = llm_cached_cost_uzs + :llmCachedCostUzs,
                    stt_cost_uzs               = stt_cost_uzs + :sttCostUzs,
                    total_uzs                  = total_uzs + :totalCostUzs
              WHERE call_attempt_id = :callAttemptId
@@ -122,6 +186,8 @@ public interface CallBillingJpaRepository extends JpaRepository<CallBillingEntit
     int addOperatorAnalysisCharge(@Param("callAttemptId") long callAttemptId, @Param("promptTokens") long promptTokens,
                                   @Param("completionTokens") long completionTokens,
                                   @Param("cachedTokens") long cachedTokens, @Param("sttSeconds") int sttSeconds,
-                                  @Param("llmCostUzs") long llmCostUzs, @Param("sttCostUzs") long sttCostUzs,
-                                  @Param("totalCostUzs") long totalCostUzs);
+                                  @Param("llmCostUzs") long llmCostUzs, @Param("llmPromptCostUzs") long llmPromptCostUzs,
+                                  @Param("llmCompletionCostUzs") long llmCompletionCostUzs,
+                                  @Param("llmCachedCostUzs") long llmCachedCostUzs,
+                                  @Param("sttCostUzs") long sttCostUzs, @Param("totalCostUzs") long totalCostUzs);
 }

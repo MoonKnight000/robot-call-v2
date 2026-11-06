@@ -46,6 +46,11 @@ public class ClientMemoryEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     private String facts;
 
+    /** Fact name -> who wrote it ({@code MemorySource}). */
+    @Column(name = "fact_sources", nullable = false)
+    @JdbcTypeCode(SqlTypes.JSON)
+    private String factSources;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -118,6 +123,14 @@ public class ClientMemoryEntity {
 
     public void setFacts(String facts) {
         this.facts = facts;
+    }
+
+    public String getFactSources() {
+        return factSources;
+    }
+
+    public void setFactSources(String factSources) {
+        this.factSources = factSources;
     }
 
     public Instant getCreatedAt() {

@@ -14,6 +14,12 @@ public interface ChatMessageJpaRepository extends JpaRepository<ChatMessageEntit
     /** The transcript in the order it was written — the id is the order. */
     List<ChatMessageEntity> findByChatSessionIdOrderByIdAsc(Long chatSessionId);
 
+    /** The latest line of each conversation — the highest id is the latest. */
+    @Query("""
+            SELECT m FROM ChatMessageEntity m WHERE m.id IN (
+                SELECT MAX(l.id) FROM ChatMessageEntity l WHERE l.chatSessionId IN :sessionIds GROUP BY l.chatSessionId)""")
+    List<ChatMessageEntity> findLatestByChatSessionIds(@Param("sessionIds") Collection<Long> sessionIds);
+
     @Modifying
     @Query("DELETE FROM ChatMessageEntity m WHERE m.chatSessionId IN :sessionIds")
     int deleteByChatSessionIds(@Param("sessionIds") Collection<Long> sessionIds);

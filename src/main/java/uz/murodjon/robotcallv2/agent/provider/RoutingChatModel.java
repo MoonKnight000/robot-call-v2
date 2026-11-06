@@ -4,7 +4,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import reactor.core.publisher.Flux;
 
 /**
@@ -12,19 +11,24 @@ import reactor.core.publisher.Flux;
  * that serves the model id it names — Gemini, OpenAI or Claude — so an agent, a stage or the
  * fast-reply model can be on any of them without any caller knowing.
  *
- * <p>The request's options are carried over by the same merge Spring AI's own ChatClient uses
- * ({@code combineWith}): model, token cap, temperature and tool callbacks cross vendors, and a
- * vendor's own settings (Gemini's thinking level) survive when the request was built for that
- * vendor. Callers that pick a vendor by model id therefore need no change when a vendor is
- * added. A request naming no model, or one no vendor recognises, runs on the default vendor.
+ * <p>A request in {@link PortableChatOptions} — every dialog turn, and whatever a ChatClient
+ * built on this model sends, since {@link #getOptions} is of that type — is turned into the
+ * vendor's own options by that vendor's {@link VendorChatOptionsStrategy}: the token-cap field
+ * it reads, its thinking setting, what it refuses. A request already in one vendor's options
+ * keeps the old merge ({@code combineWith}): the common fields cross vendors, the vendor's own
+ * survive only on that vendor. A request naming no model, or one no vendor recognises, runs on
+ * the default vendor.
  */
 public class RoutingChatModel implements ChatModel {
 
     private final ChatModelRegistry chatModelRegistry;
+    private final VendorChatOptionsStrategies strategies;
     private final ChatVendor defaultVendor;
 
-    public RoutingChatModel(ChatModelRegistry chatModelRegistry, ChatVendor defaultVendor) {
+    public RoutingChatModel(ChatModelRegistry chatModelRegistry, VendorChatOptionsStrategies strategies,
+                            ChatVendor defaultVendor) {
         this.chatModelRegistry = chatModelRegistry;
+        this.strategies = strategies;
         this.defaultVendor = defaultVendor;
     }
 
@@ -41,16 +45,16 @@ public class RoutingChatModel implements ChatModel {
     }
 
     /**
-     * The default vendor's own model and token cap, in the options type the vendors' builders
-     * merge into — what a ChatClient starts from before the request's options are laid over it.
-     * A model id left blank by a caller is read from here.
+     * The default vendor's own model and token cap, in the vendor-neutral type — what a ChatClient
+     * starts from before the request's options are laid over it, and the type that keeps a turn's
+     * thinking level through that merge. A model id left blank by a caller is read from here.
      */
     @Override
     public ChatOptions getOptions() {
         ChatOptions defaults = chatModelRegistry.findByVendor(defaultVendor).getOptions();
-        return GoogleGenAiChatOptions.builder()
+        return PortableChatOptions.builder()
                 .model(defaults.getModel())
-                .maxOutputTokens(defaults.getMaxTokens())
+                .maxTokens(defaults.getMaxTokens())
                 .build();
     }
 
@@ -58,17 +62,24 @@ public class RoutingChatModel implements ChatModel {
         ChatOptions requested = prompt.getOptions();
         ChatVendor vendor = requested == null ? null : ChatVendor.ofModel(requested.getModel());
         boolean routable = chatModelRegistry.isAvailable(vendor);
-        ChatModel model = chatModelRegistry.findByVendor(routable ? vendor : defaultVendor);
+        ChatVendor target = routable ? vendor : defaultVendor;
+        ChatModel model = chatModelRegistry.findByVendor(target);
         if (requested == null) {
             return new Routed(model, prompt);
         }
-        ChatOptions.Builder<?> overrides = requested.mutate();
-        if (!routable) {
+        ChatOptions options;
+        if (requested instanceof PortableChatOptions portable) {
             // The id names a vendor this deployment has no key for (or nobody): the default
             // vendor answers on its own model rather than being sent an id it does not know.
-            overrides.model(null);
+            PortableChatOptions request = routable ? portable : portable.mutate().model(null).build();
+            options = strategies.findByVendor(target).toVendorOptions(model.getOptions(), request);
+        } else {
+            ChatOptions.Builder<?> overrides = requested.mutate();
+            if (!routable) {
+                overrides.model(null);
+            }
+            options = model.getOptions().mutate().combineWith(overrides).build();
         }
-        ChatOptions options = model.getOptions().mutate().combineWith(overrides).build();
         return new Routed(model, prompt.mutate().chatOptions(options).build());
     }
 

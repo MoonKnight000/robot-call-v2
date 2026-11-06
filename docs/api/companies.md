@@ -290,7 +290,8 @@ yaratilganda avtomatik config oladi.
 
 ## `PUT /api/companies/{id}/config` — sozlamalarni yangilash
 
-`ADMIN`, faqat o'z kompaniyasi (yuqoridagi kabi scoping).
+Faqat `PLATFORM_ADMIN`. Kompaniya o'zi faqat `scorecardReviewThreshold` ni o'zgartira oladi —
+`PUT /api/scorecard-settings` orqali (`QUALITY_REVIEW_EDIT`, [scorecards.md](scorecards.md)).
 
 **Request body** (`UpdateCompanyConfigRequest`):
 
@@ -306,7 +307,7 @@ yaratilganda avtomatik config oladi.
 | `quietDaysAfterConversation` | ❌ | `0..90`; `null` — o'zgarmaydi |
 | `respectPromisedDate` | ❌ | `null` — o'zgarmaydi |
 | `humanLikePersonaAllowed` | ❌ | `null` — o'zgarmaydi. Qiymatni faqat platform admin o'zgartira oladi, aks holda `403 HUMAN_LIKE_PERSONA_PLATFORM_ONLY`. O'zgarishi audit log'ga yoziladi |
-| `scorecardReviewThreshold` | ❌ | `0..100`, standart `60`; `null` — o'zgarmaydi. Operator qo'ng'irog'i bahosi shundan past bo'lsa, tekshiruv inbox'iga tushadi ([scorecards.md](scorecards.md)). `0` — faqat norozi mijozli qo'ng'iroqlar tushadi |
+| `scorecardReviewThreshold` | ❌ | `0..100`, standart `60`; `null` — o'zgarmaydi. Operator qo'ng'irog'i bahosi shundan past bo'lsa, tekshiruv inbox'iga tushadi ([scorecards.md](scorecards.md)); kompaniya uni `PUT /api/scorecard-settings` bilan o'zi o'zgartiradi. `0` — faqat norozi mijozli qo'ng'iroqlar tushadi |
 
 **Response** — yangilangan `CompanyConfig`.
 

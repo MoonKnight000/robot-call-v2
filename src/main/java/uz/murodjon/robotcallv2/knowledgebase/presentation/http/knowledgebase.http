@@ -113,3 +113,49 @@ Authorization: Bearer {{token}}
 ### 12. Delete a source
 DELETE http://localhost:8080/api/knowledge-base/sources/1
 Authorization: Bearer {{token}}
+
+### 13. A source's passages (search, one sitemap page, paging)
+GET http://localhost:8080/api/knowledge-base/sources/1/chunks?search=click&page=0&size=50
+Authorization: Bearer {{token}}
+
+### 14. Correct a passage, or switch it off
+PATCH http://localhost:8080/api/knowledge-base/sources/1/chunks/10
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "content": "To'lovni Click, Payme yoki Uzum orqali qilishingiz mumkin.",
+  "disabled": false
+}
+
+### 15. The pages a sitemap source read
+GET http://localhost:8080/api/knowledge-base/sources/1/pages
+Authorization: Bearer {{token}}
+
+### 16. Switch a source off without deleting it
+PUT http://localhost:8080/api/knowledge-base/sources/1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "enabled": false
+}
+
+### 17. Playground: ask as agent 1 would hear it
+POST http://localhost:8080/api/knowledge-base/search
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "question": "To'lovni qanday qilsam bo'ladi?",
+  "agentId": 1,
+  "language": "uz-UZ"
+}
+
+### 18. Insights: hit rate and knowledge gaps over 30 days
+GET http://localhost:8080/api/knowledge-base/insights?days=30&agentId=1
+Authorization: Bearer {{token}}
+
+### 19. Topics used by the company's items
+GET http://localhost:8080/api/knowledge-base/topics
+Authorization: Bearer {{token}}

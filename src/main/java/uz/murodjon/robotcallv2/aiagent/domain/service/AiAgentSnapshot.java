@@ -1,13 +1,18 @@
 package uz.murodjon.robotcallv2.aiagent.domain.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
+import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
+import uz.murodjon.robotcallv2.shared.exception.ValidationException;
 import uz.murodjon.robotcallv2.shared.util.Tokens;
+
+import java.util.Map;
 
 /**
  * An {@link AiAgent} as the JSON snapshot a published version stores — also the text a
@@ -65,6 +70,20 @@ public final class AiAgentSnapshot {
         } catch (JsonProcessingException e) {
             // The scenario is a record of plain values.
             throw new IllegalStateException("Agent " + agent.id() + " cannot be fingerprinted", e);
+        }
+    }
+
+    /** The agent as plain maps and lists — how an export file carries it (the same fields as {@link #toJson}). */
+    public static Map<String, Object> toMap(AiAgent agent) {
+        return JSON.convertValue(agent.withPublishedVersion(null).withVersion(0), new TypeReference<>() {});
+    }
+
+    /** An agent from an export file's {@code agent} object; a shape that does not read as one is the caller's mistake. */
+    public static AiAgent fromMap(Map<String, Object> agent) {
+        try {
+            return JSON.convertValue(agent, AiAgent.class);
+        } catch (IllegalArgumentException e) {
+            throw new ValidationException(ErrorCode.AI_AGENT_IMPORT_INVALID, e.getMessage());
         }
     }
 

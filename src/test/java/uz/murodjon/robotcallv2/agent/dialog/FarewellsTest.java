@@ -16,6 +16,8 @@ class FarewellsTest {
         assertThat(Farewells.saidByAgent("Rahmat, kuningiz xayrli o'tsin!")).isTrue();
         assertThat(Farewells.saidByAgent("Salomat bo'ling, Murodjon aka. Xayr!")).isTrue();
         assertThat(Farewells.saidByAgent("Спасибо за ваше время, до свидания.")).isTrue();
+        // A simulated call said this and then got a second goodbye from the closing path.
+        assertThat(Farewells.saidByAgent("Договорились, зафиксировала оплату на 9-ноября. Спасибо, хорошего вам дня!")).isTrue();
     }
 
     @Test

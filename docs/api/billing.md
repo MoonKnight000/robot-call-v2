@@ -104,9 +104,14 @@ Authorization: Bearer <accessToken>
 |---|---|---|---|
 | `months` | `number` | `6` | Necha oylik tarix qaytarilishi (masalan, 3, 6, 12). Maksimal 24 |
 
-> ℹ️ Faqat **hisoblangan qo'ng'iroqlar** bo'lgan oylar qaytadi, eskisidan yangisiga.
-> Hali qo'ng'iroq qilinmagan bo'lsa — **bo'sh massiv**. Ilgari bu holatda o'ylab
+> ℹ️ Faqat **sarf bo'lgan** oylar qaytadi, eskisidan yangisiga.
+> Hali hech narsa sarflanmagan bo'lsa — **bo'sh massiv**. Ilgari bu holatda o'ylab
 > topilgan oylar qaytarilardi.
+>
+> `totalSpendUzs` — qo'ng'iroqlar (`call_billing`) **va** qo'ng'iroqdan tashqari token
+> yechimlari (chat, Copilot, qo'ng'iroqqa savol, qayta tahlil — faqat ledger'da bo'ladi)
+> yig'indisi. Ilgari faqat qo'ng'iroqlar qo'shilardi va sarf kam ko'rinardi. `callMinutes` —
+> faqat qo'ng'iroqlar.
 
 ### Response (`List<SpendMonthDto>`)
 ```json
@@ -134,6 +139,131 @@ Authorization: Bearer <accessToken>
   "errors": null
 }
 ```
+
+---
+
+## 2a. `GET /api/billing/costs` — Davr bo'yicha xarajatlar tafsiloti
+
+Rol: `BILLING_READ`. Davrda sarflangan har bir so'm — qaysi qatorga ketgani bilan.
+Kiruvchi (input), chiquvchi (output) va keshlangan tokenlar **alohida narxda** hisoblanadi
+va alohida qatorda qaytadi.
+
+### Request
+```http
+GET /api/billing/costs?from=2026-11-01&to=2026-11-30
+Authorization: Bearer <accessToken>
+```
+
+| Parametr | Turi | Standart | Izoh |
+|---|---|---|---|
+| `from` | `yyyy-MM-dd` | joriy oyning 1-kuni | Birinchi kun (Toshkent), shu kun ham kiradi |
+| `to` | `yyyy-MM-dd` | bugun | Oxirgi kun, shu kun ham kiradi |
+
+`to` < `from` — `400 DATE_RANGE_INVALID`; davr 366 kundan uzun — `400 BILLING_COST_RANGE_TOO_LONG`.
+
+### Response (`CostReportResponse`)
+```json
+{
+  "accept": true,
+  "data": {
+    "from": "2026-11-01",
+    "to": "2026-11-06",
+    "totalUzs": 184250,
+    "usage": {
+      "calls": 212,
+      "callSeconds": 41820,
+      "sttSeconds": 41820,
+      "realtimeSeconds": 0,
+      "inputTokens": 820400,
+      "outputTokens": 96100,
+      "cachedTokens": 2310000,
+      "ttsChars": 91200
+    },
+    "components": [
+      { "key": "LLM_INPUT",     "uzs": 1871 },
+      { "key": "LLM_OUTPUT",    "uzs": 876 },
+      { "key": "LLM_CACHED",    "uzs": 1317 },
+      { "key": "STT",           "uzs": 62730 },
+      { "key": "TTS",           "uzs": 5472 },
+      { "key": "REALTIME",      "uzs": 0 },
+      { "key": "TELEPHONY",     "uzs": 158916 },
+      { "key": "PLATFORM_FEE",  "uzs": 69700 },
+      { "key": "CHAT",          "uzs": 2100, "count": 37 },
+      { "key": "COPILOT",       "uzs": 640,  "count": 12 },
+      { "key": "CALL_QUESTION", "uzs": 0,    "count": 0 },
+      { "key": "REANALYSIS",    "uzs": 310,  "count": 4 },
+      { "key": "OTHER_AI",      "uzs": 0,    "count": 0 }
+    ],
+    "rates": {
+      "version": "2026-09-v1",
+      "inputPerMillionUzs": 2280,
+      "outputPerMillionUzs": 9120,
+      "cachedPerMillionUzs": 570,
+      "sttPerMinuteUzs": 90,
+      "ttsPer1kCharsUzs": 60,
+      "realtimePerMinuteUzs": 480,
+      "telephonyPerMinuteUzs": 228,
+      "platformFeePerMinuteUzs": 100
+    },
+    "daily": [
+      { "date": "2026-11-01", "uzs": 0 },
+      { "date": "2026-11-02", "uzs": 31400 }
+    ],
+    "models": [
+      {
+        "model": "gemini-2.5-flash",
+        "listed": true,
+        "inputTokens": 640000,
+        "outputTokens": 80000,
+        "cachedTokens": 2100000,
+        "inputUzs": 1400,
+        "outputUzs": 700,
+        "cachedUzs": 1200,
+        "totalUzs": 3300,
+        "uzsByPurpose": { "CALL": 2900, "SUMMARY": 400 }
+      },
+      {
+        "model": null,
+        "listed": false,
+        "inputTokens": 12000,
+        "outputTokens": 900,
+        "cachedTokens": 0,
+        "inputUzs": 27,
+        "outputUzs": 8,
+        "cachedUzs": 0,
+        "totalUzs": 35,
+        "uzsByPurpose": { "COPILOT": 35 }
+      }
+    ]
+  },
+  "message": null,
+  "messageCode": null,
+  "errors": null
+}
+```
+
+- **`components`** — har doim hammasi, `0` lilari ham, shu tartibda. `totalUzs` — ularning yig'indisi.
+  - `LLM_INPUT` / `LLM_OUTPUT` / `LLM_CACHED` — qo'ng'iroq, uning summary'si va operator tahlili tokenlari,
+    har biri o'z narxida (`rates`). Uchalasi qo'ng'iroqning LLM qatoriga teng.
+  - `STT`, `TTS`, `REALTIME`, `TELEPHONY`, `PLATFORM_FEE` — §6.2 dagi qatorlar.
+  - `CHAT`, `COPILOT`, `CALL_QUESTION`, `REANALYSIS`, `OTHER_AI` (shu jumladan kontakt maydonini `ACCUMULATE` birlashtirish — `contacts.md`) — qo'ng'iroq qatoridan tashqari yechilgan
+    token pullari (ledger'dan). Ularning token soni saqlanmaydi, faqat summa va `count` (necha marta yechilgan).
+- **`usage`** — qo'ng'iroq qatorlari nimaga qarab narxlangani. Tokenlar — narxlanganlari: `inputTokens` =
+  prompt − cached; realtime qo'ng'iroqning o'z audio tokenlari kirmaydi (ular engine daqiqasida narxlangan),
+  summary/tahlil tokenlari kiradi. `sttSeconds` — cascade qo'ng'iroqlar + operator tahlilining STT soniyalari.
+- **`rates`** — **hozirgi** tarif, kompaniya to'laydigan ko'rinishda (ustama qo'shilgan; platforma to'lovida
+  ustama yo'q). O'tgan qo'ng'iroqlar o'z vaqtidagi tarif (`call_billing.rate_version`) bilan hisoblangan.
+- **`daily`** — davrning har kuni (bo'sh kun `0`), qo'ng'iroqlar + tashqi token yechimlari.
+- **`models`** — LLM xarajati model bo'yicha (`llm_usage` jadvalidan), eng qimmati birinchi. `model` —
+  narx ro'yxatidagi id (sanali nom asosiy nomga tushgan) yoki ro'yxatda yo'q bo'lsa provayder nomi; `null` —
+  model noma'lum. `listed: false` — umumiy tarifda hisoblangan. `uzsByPurpose` — shu summa nima uchun
+  sarflanganiga ko'ra (`CALL`, `SUMMARY`, `ANALYSIS`, `REANALYSIS`, `CHAT`, `COPILOT`, `CALL_QUESTION`, `CONTACT_FIELD_MERGE`;
+  faqat sarfi borlari). Summalar yechilish vaqtidagi narx bilan, balans yetmay hisobdan chiqarilgan qism ham
+  kiradi. Yozuvlar V43 dan keyingi yechimlar uchungina bor, shuning uchun eski davrlarda `models` yig'indisi
+  LLM + tashqi AI qatorlaridan kam bo'lishi mumkin. Realtime engine daqiqalari bu yerga kirmaydi.
+- Davr Toshkent kunlari bo'yicha; qo'ng'iroq `settled_at` kuni bo'yicha sanaladi.
+- V41 dan oldin hisoblangan qo'ng'iroqlarda LLM qatori input / output / cached ga standart tarif nisbatida
+  bo'lib to'ldirilgan (jami o'zgarmagan).
 
 ---
 
@@ -299,10 +429,10 @@ oldin band qilinadi, o'shanda `call_attempt` qatori hali yo'q.
 
 | Resurs | Nimaga qarab | Izoh |
 |---|---|---|
-| LLM | prompt / completion / cached tokenlar | Cached tokenlar alohida, arzonroq narxda |
+| LLM | prompt / completion / cached tokenlar, **har model o'z narxida** | Cached tokenlar alohida, arzonroq narxda. Javobdagi model id ([platform-model-prices.md](platform-model-prices.md)) narx ro'yxatida bo'lsa — o'sha model narxi, bo'lmasa `billing.yml` dagi umumiy `llm` tarifi. Bitta qo'ng'iroqda ikki model ishlasa (agent + `fastLlmModel`), har biri alohida narxlanadi; model ajratilmagan qolgan tokenlar umumiy tarifda. Har bir model qatori `llm_usage` jadvaliga yoziladi (maqsad, model, tokenlar, ishlatilgan narx, ustama, summa) |
 | STT | qo'ng'iroq davomiyligi | VAD gating tejagan qism platformaning marjasi (`voice.stt.audio.seconds.skipped`) |
 | TTS | sintezga so'ralgan belgilar | Cache'dan kelgani ham sanaladi — cache platformaning marjasi (`voice.tts.chars.saved`) |
-| Realtime engine | engine ishlagan daqiqalar (`realtime-per-minute-uzs`) | Faqat `REALTIME` qo'ng'iroqlarda. Bunday qo'ng'iroqda LLM/STT/TTS qatorlari `0` — tanish, o'ylash va gapirish bitta vendor ichida bo'lgan. Engine xabar qilgan tokenlar `call_billing` ga yoziladi, lekin narxlanmaydi (audio tokenlar matn-LLM narxiga to'g'ri kelmaydi) |
+| Realtime engine | engine ishlagan daqiqalar (engine modelining `realtimePerMinuteUzs` narxi — [platform-model-prices.md](platform-model-prices.md); bo'lmasa `realtime-per-minute-uzs`) | Faqat `REALTIME` qo'ng'iroqlarda. Bunday qo'ng'iroqda LLM/STT/TTS qatorlari `0` — tanish, o'ylash va gapirish bitta vendor ichida bo'lgan. Engine xabar qilgan tokenlar `call_billing` ga yoziladi, lekin narxlanmaydi (audio tokenlar matn-LLM narxiga to'g'ri kelmaydi) |
 | Telefoniya | qo'ng'iroq davomiyligi | Trunk narxi |
 | Platforma | qo'ng'iroq davomiyligi | Ustama qo'llanilmaydi |
 | Post-call summary | summary so'rovining prompt / completion / cached tokenlari | Suhbatdan keyingi alohida LLM so'rovi, har qanday qo'ng'iroqda (realtime'da ham) matn-LLM narxida. Qo'ng'iroq hisoblangandan keyin alohida ledger yozuvi (`summary-charge:<callAttemptId>`) bilan yechiladi va `call_billing` qatorining LLM qatori va jamisiga qo'shiladi; tokenlar `summary_*_tokens` ustunlarida. `metrics.aiTokens` ularni ham sanaydi |

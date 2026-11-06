@@ -118,6 +118,14 @@ public interface CallBillingUseCase {
      */
     long chargeCallQuestion(long companyId, long callId, String batchKey, CallUsage usage);
 
+    /**
+     * Charges one ACCUMULATE contact field merge made after a call, as its own ledger entry
+     * ({@code contact-field-merge:<callId>:<fieldKey>}), so a re-run of the same call is charged once.
+     *
+     * @return what was taken off the balance; 0 when nothing was — no tokens, or already charged
+     */
+    long chargeContactFieldMerge(long companyId, long callId, String fieldKey, CallUsage usage);
+
     /** What {@code usage} costs at the current rates, in UZS. Charges nothing — for an estimate. */
     long findUsageCostUzs(CallUsage usage);
 

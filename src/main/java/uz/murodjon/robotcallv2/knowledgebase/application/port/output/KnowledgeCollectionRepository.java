@@ -6,7 +6,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 public interface KnowledgeCollectionRepository {
 
@@ -30,6 +29,4 @@ public interface KnowledgeCollectionRepository {
 
     /** Makes exactly {@code agentIds} the agents attached to the collection. */
     void replaceAgents(long collectionId, Collection<Long> agentIds);
-
-    Set<Long> findCollectionIdsByAgentId(long agentId);
 }

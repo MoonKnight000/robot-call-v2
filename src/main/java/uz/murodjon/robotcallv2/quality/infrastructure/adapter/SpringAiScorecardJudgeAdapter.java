@@ -59,7 +59,7 @@ public class SpringAiScorecardJudgeAdapter implements ScorecardJudgePort {
 
     @Override
     public ScorecardVerdict findVerdict(List<ScorecardCriterion> criteria, String transcript) {
-        if (!qualityProperties.enabled() || !sampled()) {
+        if (!qualityProperties.enabled() || !qualityProperties.callScoring() || !sampled()) {
             return null;
         }
         ChatModel chatModel = chatModelProvider.getIfAvailable();
@@ -78,7 +78,8 @@ public class SpringAiScorecardJudgeAdapter implements ScorecardJudgePort {
             tokens.add(answer.response());
             Map<String, Object> raw = answer.entity();
             return new ScorecardVerdict(answers(criteria, raw), sentimentOf(raw), topicsOf(raw),
-                    tokens.promptTokens(), tokens.completionTokens(), tokens.cachedTokens());
+                    tokens.promptTokens(), tokens.completionTokens(), tokens.cachedTokens(),
+                    tokens.model() != null ? tokens.model() : qualityProperties.model());
         } catch (Exception e) {
             log.warn("Operator call scoring failed: {}", e.getMessage());
             return null;

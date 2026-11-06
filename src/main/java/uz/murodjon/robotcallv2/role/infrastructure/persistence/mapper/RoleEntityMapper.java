@@ -18,7 +18,7 @@ public class RoleEntityMapper {
                 entity.getCode(),
                 entity.getName(),
                 entity.getDescription(),
-                entity.isSystem(),
+                entity.isAssignableByCompany(),
                 entity.getPermissions(),
                 entity.getCreatedAt()
         );

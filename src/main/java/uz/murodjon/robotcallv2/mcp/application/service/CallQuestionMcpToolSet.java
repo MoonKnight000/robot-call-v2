@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.agent.summary.SummaryService;
 import uz.murodjon.robotcallv2.aimodel.application.port.input.AiModelConfigUseCase;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelTokens;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallTranscriptUseCase;
 import uz.murodjon.robotcallv2.mcp.domain.entity.CallQuestionAnswer;
 import uz.murodjon.robotcallv2.report.application.dto.CallRow;
@@ -135,7 +136,8 @@ public class CallQuestionMcpToolSet implements McpToolSet {
             if (!ownLlm) {
                 TokenUsage usage = usages.get(i);
                 charged += callBillingUseCase.chargeCallQuestion(companyId, callId, batchKey,
-                        new CallUsage(0, usage.promptTokens(), usage.completionTokens(), 0, 0, 0));
+                        CallUsage.ofModel(new ModelTokens(usage.model(), usage.promptTokens(),
+                                usage.completionTokens(), 0)));
             }
         }
         return new CallQuestionAnswer(question, picked.size(), counts, callIds, evidence, charged);

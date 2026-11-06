@@ -24,6 +24,9 @@ public interface ContactRepository {
 
     void delete(long companyId, long id);
 
+    /** Drops {@code key} from the custom fields of every contact of the company. */
+    void removeCustomFieldKey(long companyId, String key);
+
     /** One page of the filter's contacts together with the total, from one list query and at most one count. */
     PageableData<Contact> findPage(long companyId, ContactFilter filter);
 }

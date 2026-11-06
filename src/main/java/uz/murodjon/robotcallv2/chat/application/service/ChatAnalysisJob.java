@@ -14,6 +14,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelTokens;
 import uz.murodjon.robotcallv2.chat.application.port.output.ChatSessionRepository;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatAnalysis;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatMessage;
@@ -110,8 +111,8 @@ public class ChatAnalysisJob {
         }
         if (!summarized.ownLlm()) {
             callBillingUseCase.chargeChatTurn(session.companyId(), session.id(), "analysis",
-                    new CallUsage(0, summarized.promptTokens(), summarized.completionTokens(),
-                            summarized.cachedTokens(), 0, 0));
+                    CallUsage.ofModel(new ModelTokens(summarized.model(), summarized.promptTokens(),
+                            summarized.completionTokens(), summarized.cachedTokens())));
         }
         CallSummary summary = summarized.summary();
         return new ChatAnalysis(summary.summary(), summary.sentiment(), summary.needsFollowUp(), summary.outcome(),

@@ -13,6 +13,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @param enabled    when false no call is scored. Off by default — it is one more LLM call
  *                   per call, worth paying for around a change you want to watch rather
  *                   than as a standing cost
+ * @param callScoring the QA score itself — of every finished call and every evaluated simulated
+ *                   call. False keeps the judge for an evaluation's success criteria only: an eval
+ *                   still says pass/fail without paying for a rubric score per call
  * @param sampleRate share of finished calls to score, 0..1. Turn it down once a change has
  *                   settled and the scores stop moving
  * @param model      chat model that does the scoring
@@ -21,6 +24,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "voice-agent.quality")
 public record QualityProperties(
         boolean enabled,
+        boolean callScoring,
         double sampleRate,
         String model,
         int maxTokens

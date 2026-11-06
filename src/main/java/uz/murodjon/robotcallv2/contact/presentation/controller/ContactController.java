@@ -29,7 +29,7 @@ public interface ContactController {
 
     @PreAuthorize("hasAuthority('CONTACT_READ')")
     @PostMapping({"/contacts/list", "/contacts/filter"})
-    ResponseEntity<ResponseData<PageableData<Contact>>> list(
+    ResponseEntity<ResponseData<PageableData<ContactRow>>> list(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody ContactFilter filter);
 

@@ -22,7 +22,7 @@ class TranscriptRendererTest {
                 100L, 10L, "+998901234567", "uz-UZ",
                 Instant.now(), Instant.now().plusSeconds(65), 65,
                 Disposition.PROMISE_TO_PAY, "NORMAL_CLEARING", true, "To'lovga va'da berdi",
-                null, null, null, "Ali Valiyev", "Qarz Undirish", "Robot");
+                null, null, null, "Ali Valiyev", "Qarz Undirish", "Robot", null, null, false, null, null, null, null, null);
 
         List<TranscriptLine> lines = List.of(
                 new TranscriptLine(1, "AGENT", "Assalomu alaykum, Ali aka.", "GREETING", 500, null),
@@ -30,7 +30,7 @@ class TranscriptRendererTest {
                 new TranscriptLine(3, "AGENT", "Qarzdorlik bo'yicha bezovta qilmoqdamiz.", "DEBT_NOTICE", 65000, null)
         );
 
-        CallDetail detail = new CallDetail(callRow, lines, null, null, false, null, false, null, null, null);
+        CallDetail detail = new CallDetail(callRow, lines, null, null, false, null, false, null, null, null, java.util.Map.of());
 
         String content = new String(renderer.renderBytes(detail), StandardCharsets.UTF_8);
 

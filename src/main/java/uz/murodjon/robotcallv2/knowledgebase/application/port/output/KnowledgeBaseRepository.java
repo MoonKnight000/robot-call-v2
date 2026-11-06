@@ -5,6 +5,7 @@ import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemFilter;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface KnowledgeBaseRepository {
@@ -25,4 +26,19 @@ public interface KnowledgeBaseRepository {
     PageableData<KnowledgeItem> findPageByCompanyId(long companyId, KnowledgeItemFilter filter);
 
     void deleteByIdAndCompanyId(long id, long companyId);
+
+    /** The distinct topics of the company's items, alphabetically. */
+    List<String> findTopicsByCompanyId(long companyId);
+
+    /** Stores the item's vector; null clears it, and the backfill fills it in later. */
+    void updateEmbedding(long itemId, float[] embedding);
+
+    /**
+     * Item id → cosine to {@code query}, for the active items this agent may answer from that have a vector,
+     * the {@code limit} closest. Items with no vector are absent.
+     */
+    Map<Long, Double> findSimilarities(long companyId, Long agentId, float[] query, int limit);
+
+    /** Items with no vector yet, oldest first. */
+    List<KnowledgeItem> findWithoutEmbedding(int limit);
 }

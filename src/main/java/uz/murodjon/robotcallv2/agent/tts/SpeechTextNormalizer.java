@@ -151,7 +151,9 @@ public final class SpeechTextNormalizer {
             }
             int flags = rule.caseSensitive() ? 0 : Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE;
             String regex = "\\b" + Pattern.quote(rule.word().trim()) + "\\b";
-            result = Pattern.compile(regex, flags).matcher(result).replaceAll(rule.replacement().trim());
+            // Quoted: the replacement is an operator's text, and a "$" or "\" in it is a character, not a group reference.
+            result = Pattern.compile(regex, flags).matcher(result)
+                    .replaceAll(Matcher.quoteReplacement(rule.replacement().trim()));
         }
         return result;
     }

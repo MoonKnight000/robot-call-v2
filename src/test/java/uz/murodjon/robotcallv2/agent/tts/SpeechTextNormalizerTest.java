@@ -3,6 +3,9 @@ package uz.murodjon.robotcallv2.agent.tts;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import uz.murodjon.robotcallv2.aiagent.domain.entity.PronunciationRule;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -87,5 +90,28 @@ class SpeechTextNormalizerTest {
                 .isEqualTo("Карта: восемьдесят шесть ноль ноль, двенадцать тридцать четыре, пятьдесят шесть семьдесят восемь, девяносто двенадцать");
         assertThat(SpeechTextNormalizer.normalize("1.5 миллиона", "ru-RU"))
                 .isEqualTo("полтора миллиона");
+    }
+
+    @Test
+    void aPronunciationRuleReplacesTheWholeWordInItsOwnLanguageOnly() {
+        // "Gold House" was read as Uzbek letters; the rule gives the voice the spoken form.
+        List<PronunciationRule> rules = List.of(
+                new PronunciationRule("house", "xaus", false, "uz-UZ"),
+                new PronunciationRule("house", "хаус", false, "ru-RU"));
+
+        assertThat(SpeechTextNormalizer.applyPronunciationRules("Gold House YJM", "uz-UZ", rules))
+                .isEqualTo("Gold xaus YJM");
+        assertThat(SpeechTextNormalizer.applyPronunciationRules("ЖК Gold House", "ru-RU", rules))
+                .isEqualTo("ЖК Gold хаус");
+        assertThat(SpeechTextNormalizer.applyPronunciationRules("Townhouses", "uz-UZ", rules))
+                .isEqualTo("Townhouses");
+    }
+
+    @Test
+    void aReplacementWithADollarSignIsTakenLiterally() {
+        List<PronunciationRule> rules = List.of(new PronunciationRule("USD", "$1 dollar", false, "*"));
+
+        assertThat(SpeechTextNormalizer.applyPronunciationRules("100 USD", "uz-UZ", rules))
+                .isEqualTo("100 $1 dollar");
     }
 }

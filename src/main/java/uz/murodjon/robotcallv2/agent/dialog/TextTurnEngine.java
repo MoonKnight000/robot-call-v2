@@ -72,10 +72,20 @@ public class TextTurnEngine {
                 .call()
                 .chatResponse();
 
-        turnTools.run(session, tools, turnTools.extractCalls(response));
+        String toolNote = turnTools.run(session, tools, turnTools.extractCalls(response));
         String line = textOf(response);
         if (line == null || line.isBlank()) {
             line = session.toolReplies(); // a tool-only turn carries its line in the tool call
+        }
+        if ((line == null || line.isBlank()) && !session.isEnded() && !session.isWaitingForCaller()) {
+            // A call asks again for the spoken line (LlmTurnClient#retryForSpokenLine); without the same
+            // retry here a greeting that only called transitionTo left every evaluation case silent.
+            line = textOf(chatClient.prompt()
+                    .system(systemPrefix(session))
+                    .messages(LlmTurnClient.spokenLineRetry(messages, toolNote))
+                    .options(turnTools.buildOptions(session, List.of()).mutate())
+                    .call()
+                    .chatResponse());
         }
         if (line == null || line.isBlank()) {
             return new TextTurn(null, List.of());

@@ -17,11 +17,15 @@ spring:
 
     # OpenAI itself, not an OpenAI-compatible vendor (see TurnTools#buildOptions)
     openai:
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
       api-key: ${OPENAI_API_KEY:disabled}
       chat:
         model: ${LLM_DIALOG_MODEL:gpt-5.6-luna}
-        max-tokens: 1024
+        # No max-tokens here: these defaults are merged into every request, and GPT-5/6 reject
+        # max_tokens (400) — TurnTools#buildOptions sends max_completion_tokens instead.
+        # none / low / medium / high (minimal is rejected by gpt-5.6/6). Unset, gpt-6-luna took
+        # 4.5–6.4 s to its first token; low 1.0–1.4 s (curl probe 2026-11-06).
+        reasoning-effort: ${OPENAI_REASONING_EFFORT:low}
 
     # Claude
     anthropic:
@@ -36,7 +40,7 @@ voice-agent:
     default-provider: ${LLM_CHAT_PROVIDER:google-genai}
     gemini-api-key: ${GEMINI_API_KEY:}
     open-ai-api-key: ${OPENAI_API_KEY:}
-    open-ai-base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+    open-ai-base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
     anthropic-api-key: ${ANTHROPIC_API_KEY:}
 
   # Panel AI copilot (CopilotProperties)
@@ -101,7 +105,9 @@ voice-agent:
       token-gap-ms: ${DIALOG_LLM_TOKEN_GAP_TIMEOUT_MS:5000}
       queue-drain-ms: ${DIALOG_LLM_QUEUE_DRAIN_TIMEOUT_MS:30000}
       call-timeout-ms: ${DIALOG_LLM_CALL_TIMEOUT_MS:15000}
-      backup-after-ms: ${DIALOG_LLM_BACKUP_AFTER_MS:1000}
+      # Above the main model's usual first token (~1.9 s on gemini-3.8-flash): at 1000 the fast backup
+      # won almost every turn and brought typed-out tool calls and wrong-language lines (eval #10–#13).
+      backup-after-ms: ${DIALOG_LLM_BACKUP_AFTER_MS:2500}
     tuning:
       drain-timeout-ms: ${DIALOG_DRAIN_TIMEOUT_MS:30000}
       farewell-grace-ms: ${DIALOG_FAREWELL_GRACE_MS:15000}

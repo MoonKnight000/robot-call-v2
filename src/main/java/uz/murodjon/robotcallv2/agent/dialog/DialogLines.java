@@ -121,6 +121,12 @@ final class DialogLines {
         return agent != null && sameLanguage(agent.language(), s.language()) ? agent.phrases() : null;
     }
 
+    /** Whether the call still speaks its agent's language — the one the agent's and scenario's fixed lines are written in. */
+    static boolean speaksAgentLanguage(DialogSession s) {
+        AiAgent agent = s.agent();
+        return agent == null || agent.language() == null || sameLanguage(agent.language(), s.language());
+    }
+
     /** Same language by its primary subtag: "uz-UZ" and "uz" are one language, "uz" and "ru" are not. */
     private static boolean sameLanguage(String a, String b) {
         return a != null && b != null && primary(a).equals(primary(b));

@@ -3,6 +3,8 @@ package uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.adapter
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import uz.murodjon.robotcallv2.aiagent.infrastructure.persistence.entity.AiAgentEntity;
@@ -17,9 +19,12 @@ import uz.murodjon.robotcallv2.knowledgebase.infrastructure.persistence.reposito
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.util.LikePatterns;
 
+import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Component
@@ -29,15 +34,21 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
     private final KnowledgeItemEntityMapper mapper;
     private final CompanyJpaRepository companyJpaRepository;
     private final AiAgentJpaRepository aiAgentJpaRepository;
+    private final JdbcClient jdbcClient;
+    private final JdbcTemplate jdbcTemplate;
 
     public KnowledgeBaseRepositoryAdapter(KnowledgeItemJpaRepository jpaRepository,
                                           KnowledgeItemEntityMapper mapper,
                                           CompanyJpaRepository companyJpaRepository,
-                                          AiAgentJpaRepository aiAgentJpaRepository) {
+                                          AiAgentJpaRepository aiAgentJpaRepository,
+                                          JdbcClient jdbcClient,
+                                          JdbcTemplate jdbcTemplate) {
         this.jpaRepository = jpaRepository;
         this.mapper = mapper;
         this.companyJpaRepository = companyJpaRepository;
         this.aiAgentJpaRepository = aiAgentJpaRepository;
+        this.jdbcClient = jdbcClient;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -115,6 +126,54 @@ public class KnowledgeBaseRepositoryAdapter implements KnowledgeBaseRepository {
     @Transactional
     public void deleteByIdAndCompanyId(long id, long companyId) {
         jpaRepository.deleteByIdAndCompanyId(id, companyId);
+    }
+
+    @Override
+    public List<String> findTopicsByCompanyId(long companyId) {
+        return jpaRepository.findTopicsByCompanyId(companyId);
+    }
+
+    /** The vector lives in a pgvector column the entity does not map, so it is written and read with plain SQL. */
+    @Override
+    public void updateEmbedding(long itemId, float[] embedding) {
+        jdbcTemplate.update("UPDATE knowledge_base_item SET embedding = CAST(? AS vector) WHERE id = ?",
+                CatalogItemRepositoryAdapter.toVectorLiteral(embedding), itemId);
+    }
+
+    /** Same narrowing as {@code findAllActiveByCompanyIdAndAgentId}: the agent's own items and the company-wide ones. */
+    @Override
+    public Map<Long, Double> findSimilarities(long companyId, Long agentId, float[] query, int limit) {
+        String vector = CatalogItemRepositoryAdapter.toVectorLiteral(query);
+        if (vector == null || limit <= 0) {
+            return Map.of();
+        }
+        Map<Long, Double> similarities = new HashMap<>();
+        jdbcClient.sql("""
+                        SELECT id, 1 - (embedding <=> CAST(:query AS vector)) AS score
+                          FROM knowledge_base_item
+                         WHERE company_id = :companyId AND is_active AND embedding IS NOT NULL
+                           AND (agent_id IS NULL OR CAST(:agentId AS BIGINT) IS NULL OR agent_id = :agentId)
+                         ORDER BY embedding <=> CAST(:query AS vector)
+                         LIMIT :limit
+                        """)
+                .param("companyId", companyId)
+                .param("agentId", agentId, Types.BIGINT)
+                .param("query", vector)
+                .param("limit", limit)
+                .query((rs, rowNum) -> Map.entry(rs.getLong("id"), rs.getDouble("score")))
+                .list()
+                .forEach(entry -> similarities.put(entry.getKey(), entry.getValue()));
+        return similarities;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<KnowledgeItem> findWithoutEmbedding(int limit) {
+        List<Long> ids = jdbcClient.sql("SELECT id FROM knowledge_base_item WHERE embedding IS NULL ORDER BY id LIMIT :limit")
+                .param("limit", limit)
+                .query(Long.class)
+                .list();
+        return jpaRepository.findAllById(ids).stream().map(mapper::toKnowledgeItem).toList();
     }
 
     /** Null for a company-wide item that every agent reads. */

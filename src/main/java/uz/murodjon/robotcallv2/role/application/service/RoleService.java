@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.role.application.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.audit.application.port.input.AuditUseCase;
@@ -7,9 +9,11 @@ import uz.murodjon.robotcallv2.role.application.dto.CreateRoleRequest;
 import uz.murodjon.robotcallv2.role.application.dto.PermissionGroupRow;
 import uz.murodjon.robotcallv2.role.application.dto.RoleRow;
 import uz.murodjon.robotcallv2.role.application.dto.UpdateRoleRequest;
+import uz.murodjon.robotcallv2.role.application.port.input.RoleTemplateUseCase;
 import uz.murodjon.robotcallv2.role.application.port.input.RoleUseCase;
 import uz.murodjon.robotcallv2.role.application.port.output.RoleRepository;
 import uz.murodjon.robotcallv2.role.domain.entity.Role;
+import uz.murodjon.robotcallv2.role.domain.entity.RoleTemplate;
 import uz.murodjon.robotcallv2.role.domain.enums.Permission;
 import uz.murodjon.robotcallv2.role.domain.enums.PermissionGroup;
 import uz.murodjon.robotcallv2.role.domain.enums.PermissionScope;
@@ -29,15 +33,19 @@ import java.util.Map;
 @Service
 public class RoleService implements RoleUseCase {
 
+    private static final Logger log = LoggerFactory.getLogger(RoleService.class);
+
     private final RoleRepository repository;
+    private final RoleTemplateUseCase roleTemplateUseCase;
     /** Sessions belong to auth, which depends on this feature — it hears of an edited role by event. */
     private final ApplicationEventPublisher eventPublisher;
     private final AuditUseCase audit;
     private final CurrentUser currentUser;
 
-    public RoleService(RoleRepository repository, ApplicationEventPublisher eventPublisher,
-                       AuditUseCase audit, CurrentUser currentUser) {
+    public RoleService(RoleRepository repository, RoleTemplateUseCase roleTemplateUseCase,
+                       ApplicationEventPublisher eventPublisher, AuditUseCase audit, CurrentUser currentUser) {
         this.repository = repository;
+        this.roleTemplateUseCase = roleTemplateUseCase;
         this.eventPublisher = eventPublisher;
         this.audit = audit;
         this.currentUser = currentUser;
@@ -59,7 +67,7 @@ public class RoleService implements RoleUseCase {
 
     @Override
     public RoleRow create(long companyId, CreateRoleRequest request) {
-        RoleValidator.validateCreate(request.permissions(), repository.countCustomByCompanyId(companyId));
+        RoleValidator.validateCreate(request.permissions(), repository.countByCompanyId(companyId));
         RoleValidator.validateGrantable(request.permissions(), currentUser::hasPermission);
         requireNameFree(companyId, request.name(), null);
         Role created = repository.create(companyId,
@@ -71,13 +79,17 @@ public class RoleService implements RoleUseCase {
     @Override
     public RoleRow update(long companyId, long id, UpdateRoleRequest request) {
         Role existing = requireRole(companyId, id);
-        RoleValidator.validateEditable(existing);
+        RoleValidator.validateEditable(existing, isPlatformAdmin());
         RoleValidator.validatePermissions(request.permissions());
         RoleValidator.validateGrantable(request.permissions(), currentUser::hasPermission);
         requireNameFree(companyId, request.name(), id);
+        RoleValidator.validateKeepsUserManager(existing, request.permissions(),
+                repository.countActiveUsersByRoleIds(companyId, List.of(id)),
+                countOtherActiveUserManagers(companyId, id));
+        // The code stays: it is how the company's ADMIN role is still found after a rename.
         Role updated = repository.update(companyId,
-                new Role(id, companyId, null, request.name(), request.description(), false,
-                        request.permissions(), existing.createdAt()));
+                new Role(id, companyId, existing.code(), request.name(), request.description(),
+                        existing.assignableByCompany(), request.permissions(), existing.createdAt()));
         // Permissions travel inside the access token, so a token issued a minute ago still
         // carries the old set — the only honest way to apply a narrowed role immediately is
         // to make its holders log in again.
@@ -89,7 +101,7 @@ public class RoleService implements RoleUseCase {
     @Override
     public void delete(long companyId, long id) {
         Role existing = requireRole(companyId, id);
-        RoleValidator.validateEditable(existing);
+        RoleValidator.validateEditable(existing, isPlatformAdmin());
         RoleValidator.validateNotInUse(existing, repository.countUsersByRole(companyId).getOrDefault(id, 0L));
         repository.delete(companyId, id);
         audit.record(companyId, "ROLE_DELETE", "role", String.valueOf(id), existing.name());
@@ -128,12 +140,39 @@ public class RoleService implements RoleUseCase {
     }
 
     @Override
-    public void createSystemRoles(long companyId) {
-        for (SystemRole systemRole : SystemRole.values()) {
-            if (repository.findByCode(companyId, systemRole.name()) == null) {
-                repository.create(companyId, Role.ofSystemRole(systemRole));
-            }
+    public void createRolesFromTemplates(long companyId) {
+        // Only a company with no roles at all: one that has them has already been seeded and may
+        // have deleted a template's copy on purpose.
+        if (repository.countByCompanyId(companyId) > 0) {
+            return;
         }
+        for (RoleTemplate template : roleTemplateUseCase.findTemplates()) {
+            repository.create(companyId, Role.fromTemplate(template));
+        }
+    }
+
+    @Override
+    public void materializeLegacySystemRoles() {
+        int changed = 0;
+        for (SystemRole systemRole : SystemRole.values()) {
+            changed += repository.materializeLegacySystemRole(systemRole.name(), systemRole.resolvePermissions());
+        }
+        if (changed > 0) {
+            log.info("Wrote down the permissions of {} code-computed role(s); they are editable now", changed);
+        }
+    }
+
+    private boolean isPlatformAdmin() {
+        return currentUser.hasPermission(Permission.PLATFORM_ADMIN);
+    }
+
+    /** Active users who could still manage users without the role {@code excludeRoleId}. */
+    private long countOtherActiveUserManagers(long companyId, long excludeRoleId) {
+        List<Long> roleIds = findRolesWithPermission(companyId, Permission.USER_EDIT).stream()
+                .map(Role::id)
+                .filter(roleId -> roleId != excludeRoleId)
+                .toList();
+        return repository.countActiveUsersByRoleIds(companyId, roleIds);
     }
 
     private Role requireRole(long companyId, long id) {

@@ -5,6 +5,10 @@ import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.callrecord.application.port.input.CallEventUseCase;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.CallEventType;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemMatch;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
+import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
+import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageBranch;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
@@ -13,6 +17,7 @@ import uz.murodjon.robotcallv2.scenario.domain.service.StageBranchEvaluator;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,6 +40,7 @@ public class CallTraceLog {
 
     /** A search result can run to pages; the trace shows the head of it. */
     private static final int MAX_RESULT_CHARS = 4000;
+    private static final int PASSAGE_PREVIEW_CHARS = 300;
 
     private final CallEventUseCase callEventUseCase;
     private final ObjectMapper objectMapper;
@@ -157,6 +163,70 @@ public class CallTraceLog {
                 "offsetMs", offsetMs(s.startedAt()));
     }
 
+    /**
+     * What the knowledge base gave this turn: the curated answer spoken verbatim, or the passages the model was
+     * handed (each with its source and score, the text cut to a preview) — or nothing, which is the gap to fill.
+     */
+    public void recordKnowledgeRetrieval(DialogSession s, String question, KnowledgeItemMatch curated,
+                                         List<KnowledgePassage> passages, int limit, long durationMs) {
+        List<Map<String, Object>> found = new ArrayList<>();
+        for (KnowledgePassage passage : passages) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("chunkId", passage.chunkId());
+            row.put("sourceId", passage.sourceId());
+            row.put("sourceName", passage.sourceName());
+            if (passage.pageUrl() != null) {
+                row.put("pageUrl", passage.pageUrl());
+            }
+            row.put("score", round(passage.score()));
+            row.put("preview", preview(passage.content()));
+            found.add(row);
+        }
+        write(s.companyId(), s.callAttemptId(), s.chatSessionId(), CallEventType.KNOWLEDGE_RETRIEVED,
+                "agentId", s.agent() != null ? s.agent().id() : null,
+                "stage", s.state(),
+                "question", PiiRedactor.redact(question, s.agent()),
+                "curatedAnswer", curated != null ? curated.answer() : null,
+                "curatedItemId", curated != null ? curated.itemId() : null,
+                "curatedMatchedBy", curated == null ? null : curated.byKeyword() ? "KEYWORD" : "MEANING",
+                "curatedScore", curated != null ? round(curated.score()) : null,
+                "passages", found,
+                "found", curated != null || !found.isEmpty(),
+                "limit", limit,
+                "durationMs", durationMs,
+                "offsetMs", offsetMs(s.startedAt()));
+    }
+
+    /**
+     * What the agent was told about the client before it said a word — the memory block of its prompt, as it
+     * stood when the conversation started: the newest conversations it heard about, the facts and the notes.
+     */
+    public void recordMemoryRecalled(long companyId, long callAttemptId, long chatSessionId, ClientMemory memory) {
+        if (memory == null || memory.isEmpty()) {
+            return;
+        }
+        List<Map<String, Object>> calls = new ArrayList<>();
+        for (RememberedCall call : memory.recentCalls()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", call.id());
+            row.put("at", call.at() != null ? call.at().toString() : null);
+            row.put("scenarioKey", call.scenarioKey());
+            row.put("disposition", call.disposition() != null ? call.disposition().name() : null);
+            row.put("summary", call.summary());
+            row.put("callAttemptId", call.callAttemptId());
+            row.put("chatSessionId", call.chatSessionId());
+            calls.add(row);
+        }
+        Map<String, Object> facts = new LinkedHashMap<>();
+        memory.facts().forEach((key, value) -> facts.put(key, value != null ? value.toString() : null));
+        write(companyId, callAttemptId, chatSessionId, CallEventType.MEMORY_RECALLED,
+                "preferredName", memory.preferredName(),
+                "preferredLanguage", memory.preferredLanguage(),
+                "operatorNotes", memory.operatorNotes(),
+                "calls", calls,
+                "facts", facts);
+    }
+
     /** Onto the call's trace, else the chat's; a session with neither is a test run and keeps nothing. */
     private void write(long companyId, long callAttemptId, long chatSessionId, CallEventType type, Object... keyValues) {
         if (callAttemptId != 0) {
@@ -164,6 +234,16 @@ public class CallTraceLog {
         } else if (chatSessionId != 0) {
             callEventUseCase.recordForChat(companyId, chatSessionId, type, keyValues);
         }
+    }
+
+    private static double round(double score) {
+        return Math.round(score * 1000) / 1000.0;
+    }
+
+    /** A passage in the trace is there to be recognised, not read: its opening words are enough. */
+    private static String preview(String content) {
+        return content != null && content.length() > PASSAGE_PREVIEW_CHARS
+                ? content.substring(0, PASSAGE_PREVIEW_CHARS) + "…" : content;
     }
 
     private static String cut(String text) {

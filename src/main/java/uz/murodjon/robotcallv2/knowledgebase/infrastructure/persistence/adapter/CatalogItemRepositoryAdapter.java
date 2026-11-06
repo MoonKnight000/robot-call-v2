@@ -49,6 +49,7 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
              JOIN knowledge_source s ON s.id = ci.source_id
             WHERE ci.company_id = :companyId
               AND s.status = 'INDEXED'
+              AND s.enabled
               AND (CAST(:agentId AS BIGINT) IS NULL
                    OR (s.collection_id IS NULL AND (s.agent_id IS NULL OR s.agent_id = :agentId))
                    OR s.collection_id IN (SELECT k.collection_id FROM ai_agent_knowledge_collection k
@@ -198,7 +199,7 @@ public class CatalogItemRepositoryAdapter implements CatalogItemRepository {
         return literal.append(']').toString();
     }
 
-    private static float[] fromVectorLiteral(String literal) {
+    static float[] fromVectorLiteral(String literal) {
         String body = literal.substring(literal.indexOf('[') + 1, literal.lastIndexOf(']'));
         String[] values = body.split(",");
         float[] vector = new float[values.length];

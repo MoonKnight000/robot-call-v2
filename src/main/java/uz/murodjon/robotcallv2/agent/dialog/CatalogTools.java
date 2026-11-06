@@ -7,7 +7,9 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.CatalogSearchUseCase;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.CatalogMatch;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.memory.domain.entity.MemorySource;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -97,7 +99,8 @@ public class CatalogTools {
             memory.rememberFacts(companyId, phone, Map.of(
                     PRODUCT_INTEREST_FACT, PromptSafeText.sanitize(query.trim(), MAX_ROW_CHARS),
                     PRODUCT_SKUS_FACT, String.join(", ", matches.stream()
-                            .map(match -> PromptSafeText.sanitize(match.sku(), MAX_SKU_CHARS)).toList())));
+                            .map(match -> PromptSafeText.sanitize(match.sku(), MAX_SKU_CHARS)).toList())),
+                    MemorySource.tool("searchCatalog", session.callAttemptId(), session.chatSessionId(), Instant.now()));
         } catch (Exception e) {
             log.warn("[{}] could not remember product interest: {}", session.channelId(), e.getMessage());
         }

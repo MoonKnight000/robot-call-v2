@@ -6,6 +6,11 @@ import uz.murodjon.robotcallv2.billing.domain.entity.BillingLlmRates;
 import uz.murodjon.robotcallv2.billing.domain.entity.BillingRates;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallCostBreakdown;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelLlmCost;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelPrice;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelTokens;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,6 +67,9 @@ class CallCostCalculatorTest {
                 new CallUsage(0, 1_000_000, 200_000, 900_000, 0), PLAIN);
 
         assertThat(cost.llmUzs()).isEqualTo(100 + 90 + 2000);
+        assertThat(cost.llmPromptUzs()).isEqualTo(100);
+        assertThat(cost.llmCachedUzs()).isEqualTo(90);
+        assertThat(cost.llmCompletionUzs()).isEqualTo(2000);
     }
 
     @Test
@@ -106,6 +114,64 @@ class CallCostCalculatorTest {
         assertThat(cost.telephonyUzs()).isEqualTo(360);
         assertThat(cost.platformFeeUzs()).isEqualTo(240);
         assertThat(cost.totalUzs()).isEqualTo(600 + 360 + 240);
+    }
+
+    /**
+     * Two models in one call: the listed one at its own price, the unlisted one at the common
+     * rate, and the LLM lines are the sums of the two.
+     */
+    @Test
+    void pricesEachModelAtItsOwnPrice() {
+        ModelPrice flash = new ModelPrice("gemini-2.5-flash", new BillingLlmRates(500, 4000, 50), null, null, null);
+        CallUsage usage = new CallUsage(0, 300_000, 30_000, 0, 0, 0, 0, List.of(
+                new ModelTokens("gemini-2.5-flash-001", 200_000, 20_000, 0),
+                new ModelTokens("some-other-model", 100_000, 10_000, 0)));
+
+        CallCostBreakdown cost = CallCostCalculator.calculate(usage, PLAIN,
+                model -> model.startsWith("gemini-2.5-flash") ? flash : null);
+
+        // flash: 200k @ 500/M = 100, 20k @ 4000/M = 80. other at the common rate: 100k @ 1000/M = 100, 10k @ 10 000/M = 100.
+        assertThat(cost.llmByModel()).hasSize(2);
+        ModelLlmCost listed = cost.llmByModel().get(0);
+        assertThat(listed.listed()).isTrue();
+        assertThat(listed.model()).isEqualTo("gemini-2.5-flash");
+        assertThat(listed.promptUzs()).isEqualTo(100);
+        assertThat(listed.completionUzs()).isEqualTo(80);
+        ModelLlmCost unlisted = cost.llmByModel().get(1);
+        assertThat(unlisted.listed()).isFalse();
+        assertThat(unlisted.promptUzs()).isEqualTo(100);
+        assertThat(unlisted.completionUzs()).isEqualTo(100);
+        assertThat(cost.llmPromptUzs()).isEqualTo(200);
+        assertThat(cost.llmCompletionUzs()).isEqualTo(180);
+        assertThat(cost.llmUzs()).isEqualTo(380);
+        assertThat(cost.totalUzs()).isEqualTo(380);
+    }
+
+    /** A realtime engine whose model has its own per-minute price is billed at that price. */
+    @Test
+    void pricesARealtimeCallAtItsEngineModelsOwnRate() {
+        ModelPrice live = new ModelPrice("gpt-realtime", new BillingLlmRates(0, 0, 0), 900L, null, null);
+        CallUsage usage = new CallUsage(120, 0, 0, 0, 0, 120, 0, List.of(), "gpt-realtime-2025-08-28");
+
+        CallCostBreakdown cost = CallCostCalculator.calculate(usage, PLAIN,
+                model -> model.startsWith("gpt-realtime") ? live : null);
+
+        // 2 minutes @ 900 instead of the common 300.
+        assertThat(cost.realtimeUzs()).isEqualTo(1800);
+    }
+
+    /** Tokens the per-model split does not account for are still billed, at the common rate. */
+    @Test
+    void billsTokensOutsideTheSplitAtTheCommonRate() {
+        CallUsage usage = new CallUsage(0, 300_000, 0, 0, 0, 0, 0, List.of(
+                new ModelTokens("gemini-2.5-flash", 200_000, 0, 0)));
+
+        CallCostBreakdown cost = CallCostCalculator.calculate(usage, PLAIN, model -> null);
+
+        // 200k + the 100k remainder, all at 1000/M.
+        assertThat(cost.llmByModel()).hasSize(2);
+        assertThat(cost.llmByModel().get(1).model()).isNull();
+        assertThat(cost.llmPromptUzs()).isEqualTo(300);
     }
 
     @Test

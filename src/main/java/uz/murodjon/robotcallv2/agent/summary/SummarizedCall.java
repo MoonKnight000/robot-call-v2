@@ -13,12 +13,20 @@ import uz.murodjon.robotcallv2.agent.dialog.CallSummary;
  * @param cachedTokens     of {@code promptTokens}, how many the provider served cached
  * @param ownLlm           whether it ran on the company's own LLM, which the company pays its
  *                         provider for — then nothing is billed for it
+ * @param model            the model the provider answered with, billed at that model's price;
+ *                         null when not known (the common rate applies)
  */
 public record SummarizedCall(CallSummary summary, long promptTokens, long completionTokens, long cachedTokens,
-                             boolean ownLlm) {
+                             boolean ownLlm, String model) {
 
     /** Made on the platform's model. */
     public SummarizedCall(CallSummary summary, long promptTokens, long completionTokens, long cachedTokens) {
-        this(summary, promptTokens, completionTokens, cachedTokens, false);
+        this(summary, promptTokens, completionTokens, cachedTokens, false, null);
+    }
+
+    /** Without the model's name — billed at the common rate. */
+    public SummarizedCall(CallSummary summary, long promptTokens, long completionTokens, long cachedTokens,
+                          boolean ownLlm) {
+        this(summary, promptTokens, completionTokens, cachedTokens, ownLlm, null);
     }
 }

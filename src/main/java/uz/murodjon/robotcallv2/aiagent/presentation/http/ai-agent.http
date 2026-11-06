@@ -454,3 +454,32 @@ Authorization: Bearer {{auth_token}}
   "clientText": "Ha, eshitaman",
   "variables": { "clientName": "Aziz", "debtAmount": 450000 }
 }
+
+### Webhook "Test" button: a sample CALL_INITIATED payload, sent once (docs/api/ai-agents.md §14.4a)
+POST http://localhost:8080/api/ai-agents/1/webhook-test
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "kind": "INITIATION",
+  "webhookUrl": "https://httpbin.org/post",
+  "timeoutSeconds": 5
+}
+
+### Export an agent as a file (§14.6)
+GET http://localhost:8080/api/ai-agents/1/export
+Authorization: Bearer {{auth_token}}
+
+### Import an exported agent as a new draft (§14.6) — body is the export's "data"
+POST http://localhost:8080/api/ai-agents/import
+Content-Type: application/json
+Authorization: Bearer {{auth_token}}
+
+{
+  "kind": "robotcall.ai-agent",
+  "format": 1,
+  "agent": {
+    "name": "Imported agent",
+    "language": "uz-UZ"
+  }
+}

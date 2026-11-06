@@ -136,7 +136,7 @@ public class AgentInsightService implements AgentInsightUseCase {
         String persona = requireSuggestion(insight);
         long caseId = agentEvaluationUseCase.createTestCase(companyId, insight.aiAgentId(),
                 new SaveAgentTestCaseRequest(insight.title(), persona, null, null, null, null,
-                        List.of(), List.of(), null, null, null)).id();
+                        List.of(), List.of(), null, null, null, null)).id();
         return repository.save(insight.accepted("Test holati " + caseId + " yaratildi", userId, now));
     }
 

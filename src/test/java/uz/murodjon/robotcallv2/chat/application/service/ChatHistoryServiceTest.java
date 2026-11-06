@@ -6,12 +6,14 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.chat.application.dto.ChatDetail;
 import uz.murodjon.robotcallv2.chat.application.dto.ChatRow;
 import uz.murodjon.robotcallv2.chat.application.port.output.ChatSessionRepository;
+import uz.murodjon.robotcallv2.chat.domain.entity.ChatAnalysis;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatFilter;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatMessage;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
 import uz.murodjon.robotcallv2.chat.domain.enums.ChatChannel;
 import uz.murodjon.robotcallv2.chat.domain.enums.ChatRole;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
+import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import uz.murodjon.robotcallv2.shared.exception.NotFoundException;
 
 import java.time.Instant;
@@ -41,7 +43,7 @@ class ChatHistoryServiceTest {
 
     @Test
     void listsBothChannelsWithAgentNames() {
-        ChatFilter filter = new ChatFilter(0, 20, null, null, null, null, null, null, null, null);
+        ChatFilter filter = new ChatFilter(0, 20, null, null, null, null, null, null, null, null, null, null);
         when(repository.findAll(eq(1L), any())).thenReturn(List.of(widgetChat(10L), telegramChat(11L)));
         when(repository.count(eq(1L), any())).thenReturn(2L);
         when(aiAgentUseCase.findNamesByIds(anyCollection())).thenReturn(Map.of(42L, "Shop agent"));
@@ -52,6 +54,27 @@ class ChatHistoryServiceTest {
         assertThat(page.data()).extracting(ChatRow::channel)
                 .containsExactly(ChatChannel.WIDGET, ChatChannel.TELEGRAM);
         assertThat(page.data()).extracting(ChatRow::agentName).containsOnly("Shop agent");
+    }
+
+    @Test
+    void rowCarriesPersonLatestLineAndAnalysis() {
+        ChatFilter filter = new ChatFilter(0, 20, null, null, null, null, null, null, null, null, null, null);
+        ChatSession chat = new ChatSession(12L, "cht_t12", 1L, 42L, null, 3L, "987", "uz-UZ", "ORDER",
+                Map.of("phone", "+998901234567", "clientName", "Aziz Karimov"), null, false, 4, AT, AT);
+        when(repository.findAll(eq(1L), any())).thenReturn(List.of(chat));
+        when(repository.findLastMessages(anyCollection())).thenReturn(Map.of(12L,
+                new ChatMessage(9L, 12L, ChatRole.CLIENT, "  Buyurtma\n qachon keladi?  ", AT)));
+        when(repository.findAnalyses(anyCollection())).thenReturn(Map.of(12L,
+                new ChatAnalysis("Kutmoqda", Sentiment.NEGATIVE, true, Map.of(), AT)));
+
+        ChatRow row = service.findChats(1L, filter).data().getFirst();
+
+        assertThat(row.clientName()).isEqualTo("Aziz Karimov");
+        assertThat(row.clientPhone()).isEqualTo("+998901234567");
+        assertThat(row.lastMessageText()).isEqualTo("Buyurtma qachon keladi?");
+        assertThat(row.lastMessageRole()).isEqualTo(ChatRole.CLIENT);
+        assertThat(row.sentiment()).isEqualTo(Sentiment.NEGATIVE);
+        assertThat(row.needsFollowUp()).isTrue();
     }
 
     @Test

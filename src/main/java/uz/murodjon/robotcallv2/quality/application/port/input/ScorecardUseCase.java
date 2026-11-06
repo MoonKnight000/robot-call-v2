@@ -2,6 +2,8 @@ package uz.murodjon.robotcallv2.quality.application.port.input;
 
 import uz.murodjon.robotcallv2.quality.application.dto.ReviewScorecardRequest;
 import uz.murodjon.robotcallv2.quality.application.dto.SaveScorecardCriterionRequest;
+import uz.murodjon.robotcallv2.quality.application.dto.ScorecardSettingsResponse;
+import uz.murodjon.robotcallv2.quality.application.dto.UpdateScorecardSettingsRequest;
 import uz.murodjon.robotcallv2.quality.domain.entity.CallScorecard;
 import uz.murodjon.robotcallv2.quality.domain.entity.CallScorecardFilter;
 import uz.murodjon.robotcallv2.quality.domain.entity.ScorecardCriterion;
@@ -20,6 +22,11 @@ public interface ScorecardUseCase {
     ScorecardCriterion requireCriterion(long companyId, long id);
 
     PageableData<ScorecardCriterion> listCriteria(long companyId, ScorecardCriterionFilter filter);
+
+    /** The company's review threshold — the one company-editable setting of the scorecard. */
+    ScorecardSettingsResponse findSettings(long companyId);
+
+    ScorecardSettingsResponse updateSettings(long companyId, UpdateScorecardSettingsRequest request);
 
     CallScorecard requireCallScorecard(long companyId, long callId);
 

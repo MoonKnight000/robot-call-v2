@@ -65,6 +65,9 @@ public class CallScorecardEntity {
     @Column(name = "cached_tokens", nullable = false)
     private long cachedTokens;
 
+    @Column(name = "model", length = 128)
+    private String model;
+
     @OneToMany(mappedBy = "scorecard", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("id")
     private List<CallScorecardAnswerEntity> answers = new ArrayList<>();
@@ -186,6 +189,14 @@ public class CallScorecardEntity {
 
     public void setCachedTokens(long cachedTokens) {
         this.cachedTokens = cachedTokens;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public void setModel(String model) {
+        this.model = model;
     }
 
     public List<CallScorecardAnswerEntity> getAnswers() {

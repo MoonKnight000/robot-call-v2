@@ -11,9 +11,11 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
+import uz.murodjon.robotcallv2.agent.metrics.DialogMetrics;
 import uz.murodjon.robotcallv2.agent.metrics.LlmMetrics;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AgentFunction;
 import uz.murodjon.robotcallv2.knowledgebase.application.port.input.KnowledgeRetrievalUseCase;
+import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgeItemMatch;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageDef;
 import uz.murodjon.robotcallv2.scenario.domain.entity.StageOverrides;
@@ -87,6 +89,8 @@ public class TurnRunner {
     private final BargeInRecovery bargeInRecovery;
     private final FactBlockRecovery factBlockRecovery;
     private final TurnShortcuts turnShortcuts;
+    private final DialogMetrics dialogMetrics;
+    private final CallTraceLog callTraceLog;
 
     public TurnRunner(DialogProperties dialogProperties,
                       SystemPromptFactory promptFactory,
@@ -102,7 +106,9 @@ public class TurnRunner {
                       SpeculationManager speculationManager,
                       BargeInRecovery bargeInRecovery,
                       FactBlockRecovery factBlockRecovery,
-                      TurnShortcuts turnShortcuts) {
+                      TurnShortcuts turnShortcuts,
+                      DialogMetrics dialogMetrics,
+                      CallTraceLog callTraceLog) {
         this.dialogProperties = dialogProperties;
         this.promptFactory = promptFactory;
         this.metrics = metrics;
@@ -118,6 +124,8 @@ public class TurnRunner {
         this.bargeInRecovery = bargeInRecovery;
         this.factBlockRecovery = factBlockRecovery;
         this.turnShortcuts = turnShortcuts;
+        this.dialogMetrics = dialogMetrics;
+        this.callTraceLog = callTraceLog;
     }
 
     /** Whether a turn could run at all right now. */
@@ -219,7 +227,10 @@ public class TurnRunner {
             // agreed, so the call is over whatever the model thinks: on a real call it
             // recorded the promise, confirmed it out loud, and then simply kept the line
             // open until the caller hung up. end(null) keeps the outcome that was recorded.
-            if (s.turnsSinceOutcome() >= 2) {
+            // A refusal is not an agreement: a caller who hears the consequences often comes
+            // back with a date, and closing here hung up on that promise. The turn, duration
+            // and token caps above still bound a model that keeps talking after a refusal.
+            if (s.turnsSinceOutcome() >= 2 && s.disposition() != Disposition.REFUSED) {
                 closeOnLimit(s, "outcome recorded and the model did not close the call");
                 return;
             }
@@ -253,12 +264,15 @@ public class TurnRunner {
             String system = llmTurnClient.resolveSystemPrefix(s);
             // A curated question-and-answer item that matches is spoken below instead of the LLM turn, so
             // the passages are not searched for such a turn: that is an embedding round trip for nothing.
-            String curatedAnswer = turnShortcuts.findKnowledgeItemAnswer(s, clientText, fromClient, isKnowledgeEnabled(s));
+            KnowledgeItemMatch curated = turnShortcuts.findKnowledgeItemAnswer(s, clientText, fromClient, isKnowledgeEnabled(s));
+            String curatedAnswer = curated != null ? curated.answer() : null;
             // Looked up before the annex is built, because that is where the passages go.
             if (curatedAnswer == null) {
                 retrieveKnowledge(s, clientText, fromClient);
             } else {
                 s.setKnowledgePassages(List.of());
+                String question = clientText;
+                executors.submit(() -> callTraceLog.recordKnowledgeRetrieval(s, question, curated, List.of(), 0, 0));
             }
             // The state block goes after the history, not into the system message, so
             // the cached prefix stays append-only (see SystemPromptFactory).
@@ -387,6 +401,13 @@ public class TurnRunner {
                             s.channelId(), s.state());
                 }
                 speech.speakChunk(s, DialogLines.fallback(s));
+            } else if (!result.spoken() && s.isEnded() && !s.isLineGone() && !stageActionTurn
+                    && !s.isFarewellSaid() && !Farewells.saidByAgent(s.lastAgentText())) {
+                // The model closed the call with a tool and no line of its own: a simulated caller who
+                // asked to be taken off the list was hung up on in silence.
+                log.info("[{}] call closed by a tool with nothing said — speaking the closing line", s.channelId());
+                speech.speakWaitingLine(s, s.disposition() == Disposition.DO_NOT_CALL
+                        ? DialogLines.doNotCallReply(s) : DialogLines.farewell(s));
             }
             // Not from inside a silent stage job: the flow still has its jobs ahead. Closing here lost them — on a
             // recorded call the reply that heard the date moved to RECORD_PROMISE and said goodbye in one breath,
@@ -501,6 +522,13 @@ public class TurnRunner {
             closeAfterFarewell(s);
             return true;
         }
+        String doneJobStage = StageEntry.findDoneInlineJobStage(s.scenario(), stage, s::isDoneTool);
+        if (doneJobStage != null) {
+            // The reply did the job of a stage ahead but never moved there: the flow moves on as if it had.
+            log.info("[{}] stage {} job was done in {} without moving there — moving now", s.channelId(), doneJobStage, stage.id());
+            s.setState(doneJobStage);
+            return scheduleStageAction(s, toolNote);
+        }
         if (!StageEntry.needsModelAction(stage) || s.stageActionStep() >= StageEntry.countModelSteps(stage)) {
             return false;
         }
@@ -515,6 +543,19 @@ public class TurnRunner {
             // The reply that moved here did the job too (StageEntry#describeInlineJobs): no silent turn for it.
             log.info("[{}] stage {} job {} was done in the reply that moved here", s.channelId(), stage.id(), jobTool);
             s.setStageActionStep(1);
+            String onward = StageEntry.findSoleWayOn(s.scenario(), stage);
+            if (onward != null && !StageEntry.needsModelAction(s.scenario().findStage(onward))
+                    && endsWithQuestion(findLastAgentLine(s.history()))) {
+                // That reply already asked the next stage's question (the reason heard, the date asked). A second
+                // model turn here, inside the silent job stage, re-ran the job and said nothing, and the call stayed
+                // in the job stage swallowing every answer: eval #31's caller gave the date five times to silence.
+                // Move on and wait for the answer instead. A reply that asked nothing (a refusal heard, CLOSING
+                // ahead) still gets the turn that writes the next stage's line — the goodbye.
+                s.setState(onward);
+                log.info("[{}] dialog state -> {} (the only way on from {} — its line was already spoken)",
+                        s.channelId(), onward, stage.id());
+                return false;
+            }
             return scheduleStageAction(s, INLINE_JOB_NOTE);
         }
         if (step == 1 && detachStageJob(s, stage)) {
@@ -531,10 +572,45 @@ public class TurnRunner {
             closeAfterFarewell(s);
             return true;
         }
+        if (step == 2 && speakNextStaticLine(s, stage, toolNote)) {
+            return true;
+        }
         s.setStageActionStep(step);
-        String note = "[SYSTEM: " + StageEntry.describeTask(s.scenario(), stage, step, StageEntry.variables(s)) + "]";
+        String note = "[SYSTEM: " + StageEntry.describeTask(s.scenario(), stage, step, StageEntry.variables(s))
+                + (step == 2 ? describeLineJustSpoken(findLastAgentLine(s.history())) : "") + "]";
         executors.submit(() -> advance(s, note, false));
         return true;
+    }
+
+    /** Whether the agent's line ends on a question — the caller owes an answer. */
+    static boolean endsWithQuestion(String line) {
+        return line != null && line.strip().endsWith("?");
+    }
+
+    /**
+     * What step 2 — the line after a silent job — is told about the line the caller heard just before the job.
+     * The scenario's "do not repeat the date" rule was not enough: in eval #32 every promise was confirmed twice in a
+     * row ("Bo'ldi, 13-noyabrga yozib qo'ydim." then "Kelishdik, 13-noyabr kuni to'lov qilasiz. Xayr!"), because the
+     * model wrote the next stage's line without seeing that the confirmation had just been spoken.
+     */
+    static String describeLineJustSpoken(String line) {
+        if (line == null || line.isBlank()) {
+            return "";
+        }
+        return " You have just said, and the caller heard: \"" + line.strip() + "\". Do not repeat it or any date,"
+                + " sum or confirmation in it — say only what is new, often just the goodbye.";
+    }
+
+    /** The text of the newest assistant message in the history, or null when there is none with text. */
+    static String findLastAgentLine(List<Message> history) {
+        List<Message> snapshot = new ArrayList<>(history); // the session's list may be trimmed meanwhile
+        for (int i = snapshot.size() - 1; i >= 0; i--) {
+            if (snapshot.get(i) instanceof AssistantMessage assistant
+                    && assistant.getText() != null && !assistant.getText().isBlank()) {
+                return assistant.getText();
+            }
+        }
+        return null;
     }
 
     /**
@@ -605,6 +681,50 @@ public class TurnRunner {
     }
 
     /** Ends a call whose goodbye was said on the way into its jobs ({@link DialogSession#markFarewellSaid}). */
+    /**
+     * Pipecat's {@code tts_say} / Retell's "static sentence": when a finished job's one way on is a
+     * conversation stage with a {@code staticLine}, the engine says that line itself — facts filled in —
+     * instead of asking the model to write it. The model, asked for it, paraphrased it, repeated the
+     * confirmation just spoken (eval #32, every promise confirmed twice) and cost a full LLM round trip
+     * before the goodbye. A stage that can only end the call is closed after its line.
+     *
+     * @return whether the line was taken over here
+     */
+    private boolean speakNextStaticLine(DialogSession s, StageDef stage, String toolNote) {
+        if (toolNote != null && (toolNote.contains("ERROR") || toolNote.contains(ToolConfirmation.CONFIRMATION_REQUIRED))) {
+            return false; // the job did not go through: what to say next needs reading
+        }
+        String onward = StageEntry.findSoleWayOn(s.scenario(), stage);
+        StageDef next = onward != null ? s.scenario().findStage(onward) : null;
+        if (next == null || StageEntry.needsModelAction(next)) {
+            return false;
+        }
+        String line = SystemPromptFactory.renderStaticLine(next, StageEntry.variables(s));
+        if (line == null || line.isBlank() || line.contains("{{")) {
+            return false; // no line, or a placeholder this call has no value for — never said aloud
+        }
+        if (!DialogLines.speaksAgentLanguage(s)) {
+            // The line is written in the agent's language and the call switched to another: a closing
+            // stage gets the goodbye in the call's language, anything else is left to the model.
+            if (!StageEntry.onlyEndsCall(next)) {
+                return false;
+            }
+            line = DialogLines.farewell(s);
+        }
+        s.setState(onward);
+        log.info("[{}] dialog state -> {} (the only way on from {} — its static line said by the engine)",
+                s.channelId(), onward, stage.id());
+        if (speech.speakChunk(s, line)) {
+            s.history().add(new AssistantMessage(line));
+            transcript.recordAgentLine(s, line);
+        }
+        if (StageEntry.onlyEndsCall(next)) {
+            s.end(null);
+            speech.finishWhenSpoken(s);
+        }
+        return true;
+    }
+
     private void closeAfterFarewell(DialogSession s) {
         log.info("[{}] the jobs after the goodbye are done — closing the call in {}", s.channelId(), s.state());
         s.end(null);
@@ -652,6 +772,7 @@ public class TurnRunner {
         int limit = overrides != null && overrides.knowledgePassages() != null
                 ? overrides.knowledgePassages()
                 : s.agent().ragTopK() != null ? s.agent().ragTopK() : dialogProperties.knowledgePassages();
+        long startedAt = System.currentTimeMillis();
         try {
             List<KnowledgePassage> passages = knowledgeRetrieval.searchPassages(
                     s.companyId(), TurnShortcuts.findAgentId(s), stageSources,
@@ -659,6 +780,10 @@ public class TurnRunner {
                             s.history(), clientText),
                     limit);
             s.setKnowledgePassages(passages);
+            long elapsed = System.currentTimeMillis() - startedAt;
+            dialogMetrics.knowledgeSearch(!passages.isEmpty(), elapsed);
+            // Off the turn: the trace is a database write, and the caller is waiting on this turn.
+            executors.submit(() -> callTraceLog.recordKnowledgeRetrieval(s, clientText, null, passages, limit, elapsed));
             if (!passages.isEmpty()) {
                 log.debug("[{}] knowledge base contributed {} passages (best {})",
                         s.channelId(), passages.size(), String.format("%.2f", passages.getFirst().score()));

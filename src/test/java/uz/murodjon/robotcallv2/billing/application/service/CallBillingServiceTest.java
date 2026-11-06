@@ -5,11 +5,14 @@ import org.mockito.ArgumentCaptor;
 import uz.murodjon.robotcallv2.billing.application.port.output.BillingLedgerRepository;
 import uz.murodjon.robotcallv2.billing.application.port.output.CallBillingRepository;
 import uz.murodjon.robotcallv2.billing.application.port.output.CompanyBillingRepository;
+import uz.murodjon.robotcallv2.billing.application.port.output.LlmUsageRepository;
 import uz.murodjon.robotcallv2.billing.domain.entity.*;
 import uz.murodjon.robotcallv2.billing.domain.enums.CallBillingStatus;
+import uz.murodjon.robotcallv2.billing.domain.enums.LlmUsagePurpose;
 import uz.murodjon.robotcallv2.billing.infrastructure.config.BillingAutoRecharge;
 import uz.murodjon.robotcallv2.billing.infrastructure.config.BillingRateProperties;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -31,6 +34,8 @@ class CallBillingServiceTest {
     private final CompanyBillingRepository companyBilling = mock(CompanyBillingRepository.class);
     private final CallBillingRepository callBilling = mock(CallBillingRepository.class);
     private final BillingLedgerRepository ledger = mock(BillingLedgerRepository.class);
+    private final LlmUsageRepository llmUsage = mock(LlmUsageRepository.class);
+    private final ModelPriceService modelPrices = mock(ModelPriceService.class);
 
     private static BillingRateProperties rates(boolean enforce) {
         return new BillingRateProperties("test-v1", enforce, 5000,
@@ -39,7 +44,8 @@ class CallBillingServiceTest {
     }
 
     private CallBillingService service(boolean enforce) {
-        return new CallBillingService(companyBilling, callBilling, ledger, rates(enforce));
+        when(modelPrices.findPriceLookup()).thenReturn(model -> null);
+        return new CallBillingService(companyBilling, callBilling, ledger, llmUsage, modelPrices, rates(enforce));
     }
 
     @Test
@@ -183,7 +189,19 @@ class CallBillingServiceTest {
         assertThat(entry.getValue().idempotencyKey()).isEqualTo("summary-charge:" + CALL);
         assertThat(entry.getValue().amountUzs()).isEqualTo(-200L);
         verify(companyBilling).charge(COMPANY, 0L, 200L);
-        verify(callBilling).addSummaryCharge(CALL, summary, 200L);
+        ArgumentCaptor<CallCostBreakdown> cost = ArgumentCaptor.forClass(CallCostBreakdown.class);
+        verify(callBilling).addSummaryCharge(eq(CALL), eq(summary), cost.capture());
+        assertThat(cost.getValue().llmPromptUzs()).isEqualTo(100);
+        assertThat(cost.getValue().llmCompletionUzs()).isEqualTo(100);
+        assertThat(cost.getValue().totalUzs()).isEqualTo(200);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<LlmUsageLine>> lines = ArgumentCaptor.forClass(List.class);
+        verify(llmUsage).saveAll(lines.capture());
+        assertThat(lines.getValue()).singleElement().satisfies(line -> {
+            assertThat(line.purpose()).isEqualTo(LlmUsagePurpose.SUMMARY);
+            assertThat(line.referenceId()).isEqualTo(String.valueOf(CALL));
+            assertThat(line.cost().promptUzs() + line.cost().completionUzs()).isEqualTo(200);
+        });
     }
 
     /** A summary is added to the call's charge; with no charge to add it to, nothing is billed. */
@@ -207,7 +225,7 @@ class CallBillingServiceTest {
         service(true).chargeSummary(COMPANY, CALL, new CallUsage(0, 100_000, 10_000, 0, 0));
 
         verify(companyBilling, never()).charge(anyLong(), anyLong(), anyLong());
-        verify(callBilling, never()).addSummaryCharge(anyLong(), any(), anyLong());
+        verify(callBilling, never()).addSummaryCharge(anyLong(), any(), any());
     }
 
     /** An operator call's analysis: the scorecard's tokens at the LLM rate, and the extra recognition at the STT rate. */

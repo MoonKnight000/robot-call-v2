@@ -32,7 +32,7 @@ public class RoleEntity {
     @Column(name = "company_id", insertable = false, updatable = false)
     private Long companyId;
 
-    /** Set only for a system role (DEVELOPER, ADMIN, …); null for a role the company defined. */
+    /** The template this role was copied from (DEVELOPER, ADMIN, …); null for a role the company defined. */
     @Column(name = "code")
     private String code;
 
@@ -42,8 +42,15 @@ public class RoleEntity {
     @Column(name = "description")
     private String description;
 
+    /**
+     * Legacy: true only on rows created before roles became editable, whose permissions were computed
+     * from {@code SystemRole}. RoleBootstrap writes those permissions down and clears the flag.
+     */
     @Column(name = "is_system", nullable = false)
     private boolean system;
+
+    @Column(name = "assignable_by_company", nullable = false)
+    private boolean assignableByCompany = true;
 
     // Eager on purpose: a role is never useful without its permissions, and a company has
     // at most a handful of them. SUBSELECT: all listed roles' permissions in one query.
@@ -107,6 +114,14 @@ public class RoleEntity {
 
     public void setSystem(boolean system) {
         this.system = system;
+    }
+
+    public boolean isAssignableByCompany() {
+        return assignableByCompany;
+    }
+
+    public void setAssignableByCompany(boolean assignableByCompany) {
+        this.assignableByCompany = assignableByCompany;
     }
 
     public Set<Permission> getPermissions() {

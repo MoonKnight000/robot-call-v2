@@ -58,6 +58,9 @@ public class AgentTestCaseEntity {
     @Column(name = "expect_tools", nullable = false, columnDefinition = "jsonb")
     private String expectTools;
 
+    @Column(name = "success_criteria")
+    private String successCriteria;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -159,6 +162,14 @@ public class AgentTestCaseEntity {
 
     public void setExpectTools(String expectTools) {
         this.expectTools = expectTools;
+    }
+
+    public String getSuccessCriteria() {
+        return successCriteria;
+    }
+
+    public void setSuccessCriteria(String successCriteria) {
+        this.successCriteria = successCriteria;
     }
 
     public int getMaxTurns() {

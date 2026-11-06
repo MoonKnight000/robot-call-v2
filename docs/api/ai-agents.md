@@ -87,7 +87,10 @@ Tizimda AI Agentlar **QuickVoice** arxitekturasi asosida to'liq yangilandi. Endi
 | `DELETE` | `/api/ai-agents/{id}/rollout` | `AI_AGENT_EDIT` | Rolloutni bekor qilish |
 | `GET` | `/api/ai-agents/{id}/estimate` | `AI_AGENT_READ` | Bir daqiqa suhbat narxi (so'm), kechikish va tokenlar — studiyaning yuqori qatori (§14.3) |
 | `POST` | `/api/ai-agents/{id}/test-chat` | `AI_AGENT_EDIT` yoki `AGENT_EVAL_RUN` | Studiyaning "LLM test"i: agent qoralamasi bilan matnli suhbatning bitta navbati (§14.4) |
+| `POST` | `/api/ai-agents/{id}/webhook-test` | `AI_AGENT_EDIT` | Webhook "Test" tugmasi: namuna payload'ni berilgan URL'ga bir marta yuboradi (§14.4a) |
 | `POST` | `/api/ai-agents/{id}/clone` | `AI_AGENT_EDIT` | Nusxa olish (sozlamalar + tool bog'lanishlari) |
+| `GET` | `/api/ai-agents/{id}/export` | `AI_AGENT_READ` | Agentni JSON fayl sifatida olish (§14.6) |
+| `POST` | `/api/ai-agents/import` | `AI_AGENT_EDIT` | Eksport faylidan yangi qoralama agent (§14.6) |
 | `POST` | `/api/ai-agents/{id}/convert` | `AI_AGENT_EDIT` | Bitta prompt'li yoki chat agentga aylantirilgan nusxa (§14.5) |
 | `GET`/`POST`/`PUT`/`DELETE` | `/api/ai-agents/{id}/test-cases[/{caseId}]` | `AI_AGENT_READ`/`EDIT` | Eval test holatlari (§15) |
 | `POST` | `/api/ai-agents/{id}/evaluate` | `AI_AGENT_EDIT` | Evalni boshlash (§15) |
@@ -162,7 +165,7 @@ bo'lsa profil ro'yxatda chiqmaydi).
       "llmModel": "gemini-3.8-flash",
       "fastLlmModel": "gemini-3.5-flash-lite",
       "temperature": 0.65,
-      "maxOutputTokens": 300
+      "maxOutputTokens": null
     }
   ]
 }
@@ -225,7 +228,9 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
     },
     "perLanguageSpeed": { "ru-RU": 1.1 },
     "emotionAdaptive": true,
-    "warmth": "BALANCED"
+    "warmth": "BALANCED",
+    "emotion": "FRIENDLY",
+    "fallbackVoice": null
   },
   "llmModel": "gemini-3.8-flash",
   "fastLlmModel": "gemini-3.5-flash-lite",
@@ -233,6 +238,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
   "fallbackLlmMode": "SEQUENTIAL",
   "temperature": 0.6,
   "maxOutputTokens": 300,
+  "reasoningEffort": "LOW",
   "ambience": {
     "background": "OFFICE",
     "backgroundVolume": 0.35,
@@ -327,7 +333,7 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > | `ttsVoice` | `voice.defaultVoice` |
 > | `voiceSpeed` | `voice.speed` |
 > | `languageVoices`, `languageVoiceSpeeds` | `voice.perLanguage`, `voice.perLanguageSpeed` |
-> | `emotionAdaptiveVoice`, `speakingWarmth` | `voice.emotionAdaptive`, `voice.warmth` |
+> | `emotionAdaptiveVoice`, `speakingWarmth`, `voiceEmotion` | `voice.emotionAdaptive`, `voice.warmth`, `voice.emotion` |
 > | `ambientSound`, `ambientSoundVolume`, `ambientSoundFadeInSeconds` | `ambience.background`, `ambience.backgroundVolume`, `ambience.backgroundFadeInSeconds` |
 > | `thinkingSound`, `thinkingSoundVolume` | `ambience.thinking`, `ambience.thinkingVolume` |
 > | `noiseCancellationEnabled`, `noiseCancellationMode` | `ambience.<o'sha nom>` |
@@ -336,8 +342,23 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > | `zeroPiiRetention`, `storeCallAudio`, `conversationRetentionDays`, `realtimeFactsDelivery` | `dataPolicy.<o'sha nom>` |
 >
 > Yuqori darajada qolganlar: `name`, `description`, `language`, `persona`, `engineProfileId`,
-> `llmModel`, `fastLlmModel`, `fallbackLlmModel`, `fallbackLlmMode`, `temperature`, `maxOutputTokens`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
-> `postCallWebhook`, `handbook`, `timezone`, `enabled` (`PUT` da yana `version`). Javobda qo'shimcha:
+> `llmModel`, `fastLlmModel`, `fallbackLlmModel`, `fallbackLlmMode`, `temperature`, `maxOutputTokens`, `reasoningEffort`, `useRag`, `dataNeeded`, `dataEvaluation`, `initiationWebhook`,
+> `postCallWebhook`, `handbook`, `timezone`, `enabled` (`PUT` da yana `version`).
+> `maxOutputTokens` — ixtiyoriy, default **`null`**: kompaniya cheki, u ham yo'q bo'lsa platformaning
+> `reply-limit` i (javob 70 token + Gemini fikrlashi uchun 768 token zaxira). Berilgan son fikrlash
+> tokenlarini ham o'z ichiga oladi — 300 dan past qiymat bo'sh javoblarga olib keladi.
+> `PUT` da `null` — o'zgarmaydi; standartga qaytarish — `clearFields: ["MAX_OUTPUT_TOKENS"]`.
+> `reasoningEffort` — ixtiyoriy, default **`null`**: model javobdan oldin qancha o'ylashi —
+> `NONE` | `MINIMAL` | `LOW` | `MEDIUM` | `HIGH`. Bitta sozlama barcha provayderlar uchun; backend uni
+> provayderning o'z parametriga o'giradi va model qabul qiladigan eng yaqin darajaga suradi (xato bermaydi):
+> Gemini 3 — `thinkingLevel` (3.7/3.8 Flash `MINIMAL` ni qabul qilmaydi → `LOW`; Pro — faqat `LOW`/`HIGH`;
+> Gemini 2.5 — yuborilmaydi), OpenAI gpt-5/6/o — `reasoning_effort` (gpt-6 da `NONE`/`MINIMAL` → `low`, tool bilan so'rovda esa doim `none` — OpenAI Chat Completions gpt-6 da tool + fikrlashni qabul qilmaydi;
+> gpt-5.x da → `none`; boshqa modellarga yuborilmaydi), Claude — `NONE`..`LOW` fikrlashsiz, `MEDIUM`/`HIGH`
+> 1024/4096 tokenli thinking budget (temperature yuborilmaydi). `null` — har bir provayderning deployment
+> defaulti (`LLM_REASONING_EFFORT` / `OPENAI_REASONING_EFFORT`). Qo'ng'iroqda `LOW` yoki pastrog'i
+> tavsiya etiladi: har bir daraja birinchi so'zni kechiktiradi. Asosiy va tez (`fastLlmModel`) modelga
+> birdek qo'llanadi. `PUT` da `null` — o'zgarmaydi; defaultga qaytarish — `clearFields: ["REASONING_EFFORT"]`.
+> Javobda qo'shimcha:
 > `id`, `companyId`, `disclosureEnabled`, `scenarioName`, `pronunciationRules`, `postCallActions`, `preCallFunctions`,
 > `createdAt`, `createdBy`, `createdByName`, `publishedVersion`, `hasDraftChanges`, `version`.
 
@@ -360,6 +381,22 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > | `PROTECT_INSTRUCTIONS` | Ishonch va xavfsizlik | Ko'rsatmalari, tool'lari yoki skript bo'yicha ishlashini hech qachon oshkor qilmaydi |
 > | `STAY_ON_TOPIC` | Ishonch va xavfsizlik | Mavzudan tashqari so'rovni bir gap bilan rad etib, qo'ng'iroq maqsadiga qaytadi |
 > | `NO_PROFESSIONAL_ADVICE` | Ishonch va xavfsizlik | Kompaniya shartlaridan tashqari tibbiy, yuridik yoki moliyaviy maslahat bermaydi |
+>
+> **`voice.emotion`** (`NEUTRAL` standart / `CHEERFUL` / `FRIENDLY` / `STRICT` / `WHISPER` / `SAD`) — agent
+> qaysi kayfiyatda gapirishi, provayderdan mustaqil bitta nom. Har dvigatel o'zi qila oladigan narsaga
+> o'giradi: Yandex — ovozning roli (o'zbekcha `zamira`/`nigora` da rol yo'q, faqat so'z tanlovi va tezlik);
+> ElevenLabs — `voice_settings` (stability/style/speed); Cartesia sonic-3 — `generation_config.emotion/speed`;
+> Gemini TTS — "Say in a … tone:" ko'rsatmasi; OpenAI TTS — `instructions` + `speed`. Xuddi shu kayfiyat LLM
+> promptiga ham bir qator bo'lib tushadi (so'z tanlovi ovozga mos bo'lsin). Ustuvorlik: mijoz kayfiyati (faqat
+> `emotionAdaptive: true` bo'lsa) → bosqichning `emotion` i → `voice.emotion`. `PUT /api/ai-agents/{id}/advanced`
+> da `voiceEmotion` nomi bilan.
+>
+> **`voice.fallbackVoice`** (Retell'ning "Fallback Voice ID") — agentning TTS provayderi qo'ng'iroq o'rtasida
+> yiqilsa (xato yoki birinchi audio kechiksa), gap shu ovoz bilan aytiladi. `tts_voice` id'si (`GET /api/ai-agents/voices`,
+> kaskad ovozi); noma'lum bo'lsa — `400 TTS_VOICE_UNKNOWN`. Faqat **boshqa provayderdagi** va qo'ng'iroq tilida
+> gapiradigan ovoz ishlaydi; aks holda (yoki `null` bo'lsa) avtomatik zaxira: tilni biladigan istalgan boshqa
+> provayder o'zining standart ovozi bilan. Zaxira ovoz asosiy ovozning tezligi/balandligini olmaydi. Realtime
+> agentga ta'sir qilmaydi. `PUT` da `null` — o'zgarmaydi; olib tashlash — `clearFields: ["FALLBACK_VOICE"]`.
 >
 > Ohang — alohida qoida emas, mavjud `voice.warmth` (`RESERVED` / `BALANCED` / `WARM`). Tabiiy
 > to'ldiruvchi so'zlar («Qarang...», «Xo'sh...», «Kelishdik») va yuqori hamdardlik (`HIGH_EMPATHY`) faqat **`persona == HUMAN_LIKE`** («Insondek»)
@@ -430,7 +467,9 @@ har safar hisoblanadi: profil `misc.yml` da o'zgarsa, eski agentlar `null` bo'li
 > - `transcriptionMode` — server `voice-agent.stt.transcription-modes.<provayder>.fast|accurate` da shu
 >   provayder uchun model nomini bergan bo'lsagina; berilmagan bo'lsa ta'siri yo'q. Aniq `sttModel` agent
 >   rejimidan ustun (blok rejimi esa undan ham ustun).
-> - `boostedKeywords` — hozircha faqat `openai` STT provayderida eshitiladi; qo'ng'iroqning o'z atamalari bilan
+> - `boostedKeywords` — `openai` (transcription prompt), `gemini` (lug'at), `elevenlabs` (`keyterms`, ko'pi bilan
+>   50 ta, har biri ≤20 belgi) STT provayderlarida eshitiladi. **`yandex`, `deepgram`, `aisha` e'tiborga olmaydi**
+>   (Yandex v3 API'da bunday maydon yo'q). Qo'ng'iroqning o'z atamalari va talaffuz qoidalari so'zlari bilan
 >   birga ko'pi bilan 65 ta so'z, kalit so'zlar birinchi. Blok rejimi yoki so'zlari o'zgarsa, STT oqimi bir marta
 >   qayta ulanadi.
 
@@ -681,6 +720,8 @@ faqat `PUT`):
 | `VOICEMAIL_MESSAGE` | `callBehaviour.voicemailMessage` |
 | `FAST_LLM_MODEL` | `fastLlmModel` |
 | `FALLBACK_LLM_MODEL` | `fallbackLlmModel` va `fallbackLlmMode` (zaxira modelsiz qoladi) |
+| `MAX_OUTPUT_TOKENS` | `maxOutputTokens` (`null` — kompaniya cheki yoki platformaning `reply-limit` i) |
+| `REASONING_EFFORT` | `reasoningEffort` (`null` — har bir provayderning deployment defaulti) |
 | `GREETING_PAUSE` | `greeting.pauseBeforeSpeakingMs` (platform defaultiga qaytadi) |
 | `SPEECH_LANGUAGES` | `speechLanguages` (faqat agentning asosiy tili qoladi — bitta til rejimi) |
 | `RESPONSE_WAIT_MS` | `callBehaviour.responseWaitMs` (o'rnatma standartiga qaytadi) |
@@ -694,6 +735,7 @@ faqat `PUT`):
 | `RING_DURATION_SECONDS` | `callBehaviour.ringDurationSeconds` (o'rnatma standartiga qaytadi) |
 | `RAG_MIN_SCORE` | `ragMinScore` (standart `0.62` ga qaytadi) |
 | `LLM_TURN_DETECTION` | `callBehaviour.llmTurnDetection` (o'rnatma standartiga qaytadi) |
+| `FALLBACK_VOICE` | `voice.fallbackVoice` (avtomatik zaxiraga qaytadi) |
 
 Bir xil so'rovda maydonga qiymat berib, uni `clearFields` ga ham qo'shish —
 `400 AI_AGENT_CLEAR_FIELD_CONFLICT` (hech narsa yozilmaydi). Ro'yxatda yo'q maydonlar avvalgidek
@@ -894,7 +936,7 @@ QuickVoice uslubidagi mustaqil `Analysis` bo'limi. Agent butun konfiguratsiyasin
 |---|---|
 | `formatExamples` | Javob ko'rinishiga namunalar (`["+998 90 123 45 67"]`) — modelga ko'rsatiladi. Eng ko'pi 5 ta, har biri 1–200 belgi, aks holda `400 AI_AGENT_DATA_FIELD_FORMAT_EXAMPLES_INVALID`. Standart `[]` |
 | `required` | `true` — maydon bo'sh qolmasligi kerak (Retell "Allow empty value" o'chiq). Birinchi javobda bo'sh/yaroqsiz bo'lsa, model bir marta qayta so'raladi; yana bo'sh bo'lsa natijaga kirmaydi (xato emas). Standart `false` — avvalgidek, noma'lum qiymat bo'sh qoladi |
-| `contactField` | Qiymat qo'ng'iroqdan keyin mijoz kontaktining shu nomli maxsus maydoniga ham yoziladi (`contacts.md` — `customFields`); kontakt bo'lmasa yaratiladi. Bo'sh qolgan qiymat yozilmaydi (avvalgisi qoladi). `zeroPiiRetention` agentida `dataNeeded` qiymatlari saqlanmagani uchun kontaktga ham yozilmaydi. Nom harf yoki `_` bilan boshlanadi, harf/raqam/`_`, 64 gacha — aks holda `400 AI_AGENT_DATA_FIELD_CONTACT_FIELD_INVALID`. `null` — faqat qo'ng'iroq natijasida |
+| `contactField` | Qiymat qo'ng'iroqdan keyin mijoz kontaktining shu nomli maxsus maydoniga ham yoziladi (`contacts.md` — `customFields`); kontakt bo'lmasa yaratiladi. Kompaniya kontakt maydoni (`contacts.md` — contact fields) shu kalitni `extractionKey` orqali to'ldirsa — o'sha ustun va uning `updateMode` i ishlaydi. Bo'sh qolgan qiymat yozilmaydi (avvalgisi qoladi). `zeroPiiRetention` agentida `dataNeeded` qiymatlari saqlanmagani uchun kontaktga ham yozilmaydi. Nom harf yoki `_` bilan boshlanadi, harf/raqam/`_`, 64 gacha — aks holda `400 AI_AGENT_DATA_FIELD_CONTACT_FIELD_INVALID`. `null` — faqat qo'ng'iroq natijasida |
 `enum` maydonida `options: ["A", "B"]` berilsa, javob shulardan biri bo'lishi shart (katta-kichik harf farqsiz, ro'yxatdagi yozuvda saqlanadi); boshqa qiymat yozilmaydi va kaliti `extractionErrors` ga tushadi. `options` bo'sh bo'lsa — avvalgidek, variantlar `description` da. Boshqa turda `options` — `400 AI_AGENT_DATA_FIELD_OPTIONS_INVALID`.
 `phone` qiymati UZ mahalliy raqami yoki xalqaro E.164 raqami sifatida, `email` esa odatiy email sintaksisi bo'yicha tekshiriladi.
 Noto'g'ri format topilsa, modeldan bir marta qayta ajratish so'raladi; qiymat yana yaroqsiz bo'lsa, natijaga kiritilmaydi va kaliti `extractionErrors` ro'yxatiga yoziladi.
@@ -1800,6 +1842,48 @@ Javob (`ResponseData` ichida):
 agent suhbatni qanday yakunlagani. Server'da LLM sozlanmagan bo'lsa — `409 AGENT_TEST_CHAT_UNAVAILABLE`;
 model bo'sh javob qaytarsa — `502 CHAT_NO_REPLY`.
 
+### 14.4a. `POST /api/ai-agents/{id}/webhook-test` — webhook'ni sinash
+
+Studiyadagi webhook URL yonidagi "Test" tugmasi. Namuna payload berilgan manzilga **bir marta**
+yuboriladi — qo'ng'iroqdagi kabi: `{{secrets.KEY}}` to'ldiriladi, kompaniyaning imzo kaliti bo'lsa
+`X-RobotCall-Signature` qo'yiladi, faqat ochiq (public) manzilga. Hech narsa saqlanmaydi, qayta
+urinilmaydi, jonli webhook oqimiga chiqmaydi. Sozlama **saqlanmagan bo'lsa ham** sinaladi — URL so'rovda
+keladi. Ruxsat: `AI_AGENT_EDIT`.
+
+So'rov:
+
+```json
+{
+  "kind": "INITIATION",
+  "webhookUrl": "https://crm.example.uz/hooks/call-start?key={{secrets.CRM_KEY}}",
+  "headers": { "Authorization": "Bearer {{secrets.CRM_TOKEN}}" },
+  "timeoutSeconds": 5
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `kind` | `INITIATION` (namuna `event: CALL_INITIATED`, javobi JSON bo'lib o'qiladi) yoki `POST_CALL` (`event: CALL_COMPLETED`, javob tanasi o'qilmaydi) |
+| `webhookUrl` | Majburiy. Ochiq http(s) manzil bo'lmasa — `400 WEBHOOK_URL_INVALID` |
+| `headers` | Ixtiyoriy, qiymatlarda `{{secrets.KEY}}` ishlaydi |
+| `timeoutSeconds` | 1–30, faqat `INITIATION` uchun; `null` — standart 5 soniya |
+
+Namuna payload'da `"test": true`, `callAttemptId: 0`, `phone: "+998901234567"` va agentning `agentId`/`agentName`
+bor — qabul qiluvchi `test` bo'yicha uni o'tkazib yuborishi mumkin.
+
+Javob (`ResponseData` ichida) — endpoint ishlamasa ham **200**, natija `ok` da:
+
+```json
+{ "ok": true, "latencyMs": 184, "reply": { "variables": { "clientName": "Aziz" } }, "error": null }
+```
+
+| Maydon | Izoh |
+|---|---|
+| `ok` | Endpoint 2xx qaytardi (`INITIATION` da — JSON yoki bo'sh tana bilan) |
+| `latencyMs` | Yuborishdan javobgacha |
+| `reply` | Faqat `INITIATION`: endpoint qaytargan JSON (`variables`, `firstMessage`); boshqa holatda `null` |
+| `error` | `ok: false` bo'lsa — transport xabari (masalan `404 Not Found: "…"`), sir qiymatlari `***` bilan yashirilgan, ≤ 500 belgi |
+
 ### `POST /api/ai-agents/{id}/clone`
 
 Qoralamaning nusxasi: `"<nom> (nusxa)"`, e'lon qilinmagan, o'sha tool bog'lanishlari bilan.
@@ -1853,6 +1937,67 @@ Javob — yangi agentning `AiAgentRow`i. Audit: `AI_AGENT_CONVERT`.
 | 409 | `AI_AGENT_ALREADY_SINGLE_PROMPT` | `SINGLE_PROMPT`, lekin agentda flow (`scenarioId`/`definition`) yo'q |
 | 409 | `AI_AGENT_ALREADY_CHAT` | `CHAT`, lekin agent allaqachon `channel: CHAT` |
 
+### 14.6. Eksport / import — `GET /api/ai-agents/{id}/export`, `POST /api/ai-agents/import`
+
+Agent sozlamalarini JSON faylga olib, boshqa kompaniyaga yoki serverga ko'chirish.
+
+**Eksport** (`AI_AGENT_READ`) — agentning qoralamasi fayl ko'rinishida. Faqat sozlamalar:
+qo'ng'iroqlar, versiyalar tarixi, bilim bazasi fayllari, kalitlar (secret) kirmaydi.
+Agent umumiy ssenariyga (`script.scenarioId`) ishora qilsa, o'sha ssenariy
+`script.definition` sifatida faylning ichiga yoziladi — fayl o'zi yetarli bo'ladi.
+`id`, `companyId`, `createdBy`, `createdAt` — `null`.
+
+```json
+{
+  "success": true,
+  "data": {
+    "kind": "robotcall.ai-agent",
+    "format": 1,
+    "exportedAt": "2026-11-05T10:00:00Z",
+    "agent": { "name": "Qarz eslatma", "language": "uz-UZ", "voice": { "defaultVoice": "..." }, "script": { "...": "..." }, "...": "..." }
+  }
+}
+```
+
+Frontend `data` ni o'zgartirmasdan `<nom>.agent.json` qilib saqlaydi.
+
+**Import** (`AI_AGENT_EDIT`) — body: eksport faylining o'zi (`data` qismi). Yangi **qoralama**
+agent yaratiladi (e'lon qilinmagan, nomi fayldagidek). Eksport qilgan kompaniyaga bog'liq
+narsalar olib tashlanadi va `removed` ro'yxatida qaytadi — foydalanuvchi ularni qayta sozlaydi:
+
+| `removed` qiymati | Nima olib tashlandi |
+|---|---|
+| `script.scenarioId` | Umumiy ssenariy havolasi (eski fayllar uchun; yangi eksportda ssenariy ichida bo'ladi) |
+| `callBehaviour.transferQueueId` | Operator navbati |
+| `callBehaviour.preConversationAudioFileId` | Yuklangan audio fayl |
+| `functions.<nom>` | Kompaniya HTTP tool'iga (`toolId`) bog'langan yoki `AGENT_TRANSFER` funksiya |
+| `postCallActions.<nom>` | Telegram bot'ga bog'langan post-call harakat |
+| `stages.<id>.knowledgeSourceIds` | Bosqichning bilim manbalari |
+| `stages.<id>.action.targetAgentId` | Bosqich boshqa agentga o'tkazadi — maqsad agentni qayta tanlash kerak |
+| `stages.<id>.action.mcpConnectionId` | Bosqichning MCP ulanishi |
+
+Tool bog'lanishlari (`/api/ai-agents/{id}/tools`) va bilim bazasi ham ko'chmaydi.
+Ovoz, model, STT/TTS provayder shu serverda bo'lishi va persona kompaniyada ruxsat etilgan
+bo'lishi kerak — aks holda agent yaratish bilan bir xil xatolar.
+
+```json
+{
+  "success": true,
+  "data": {
+    "agent": { "id": 42, "name": "Qarz eslatma", "...": "AiAgentRow" },
+    "removed": ["callBehaviour.transferQueueId", "functions.lookupOrder"]
+  }
+}
+```
+
+| Status | `messageCode` | Qachon |
+|---|---|---|
+| 400 | `AI_AGENT_IMPORT_INVALID` | `kind` ≠ `robotcall.ai-agent`, `format` ≠ 1 yoki `agent` agent sifatida o'qilmaydi |
+| 400 | `VALIDATION_FAILED` | `agent` yo'q |
+| 400 | `TTS_VOICE_UNKNOWN`, `TTS_VOICE_LANGUAGE_MISMATCH`, `AI_MODEL_UNKNOWN`, `REALTIME_MODEL_PROVIDER_MISMATCH`, `ENGINE_*` | Fayldagi ovoz/model/provayder bu serverda yo'q |
+| 400 | agent validatori kodlari | Sozlamalar agent qoidalaridan o'tmaydi (masalan, `maxCallSeconds` kompaniya limitidan katta) |
+| 409 | `AI_AGENT_HUMAN_LIKE_NOT_ALLOWED` | `HUMAN_LIKE` persona kompaniyada o'chirilgan |
+
 ### Qoralamani sinash
 
 `POST /api/calls/web-test` `{ "campaignId": 12, "agentVersion": null }` — kampaniya
@@ -1896,7 +2041,8 @@ haqiqiy CRM'ga so'rov yubormaydi. Promptni e'lon qilishdan oldin qoralamani teks
   "mustNotSay": ["chegirma beramiz", "50%"],
   "maxTurns": 12,
   "toolMocks": { "crm_lookup": "{\"debt\": 1500000, \"dueDate\": \"2026-09-30\"}" },
-  "expectTools": ["crm_lookup"]
+  "expectTools": ["crm_lookup"],
+  "successCriteria": "Mijoz aytgan sanani qayta so'ramaydi. Mijoz aytmagan sabab yoki faktni uning nomidan aytmaydi."
 }
 ```
 
@@ -1910,12 +2056,13 @@ haqiqiy CRM'ga so'rov yubormaydi. Promptni e'lon qilishdan oldin qoralamani teks
 | `maxTurns` | 1–30, standart 12 |
 | `toolMocks` | Agentning kompaniya tool'i nomi → simulyatsiyada qaytaradigan javob matni (≤ 20 ta, javob ≤ 4000 belgi). Faqat `TEXT` rejimda |
 | `expectTools` | Agent qo'ng'iroq davomida chaqirishi shart bo'lgan tool nomlari (≤ 20 ta) |
+| `successCriteria` | Yaxshi qo'ng'iroq qanday bo'lishi oddiy so'z bilan (Retell'dagi "Success Criteria", ≤ 2000 belgi). Simulyatsiyadan keyin LLM-hakam transkript bo'yicha tekshiradi; `null` — tekshirilmaydi |
 
 ### Holat qachon o'tadi
 
 Hammasi bajarilsa: kutilgan `disposition`/`stage`, har bir `mustSay` aytilgan, birorta
 `mustNotSay` aytilmagan, har bir `expectTools` tool'i chaqirilgan, FactGuard faktlarda yo'q raqamni ushlamagan, va sifat hakami
-(`CallQualityJudge`, har holatda, namunasiz) guardrail buzilishini topmagan. Hakamning
+(`CallQualityJudge`, har holatda, namunasiz) guardrail buzilishini topmagan, va `successCriteria` berilgan bo'lsa — hakam uni bajarilgan deb topgan. Mezon bajarilmasa `problems` ga `criteria: …` (buzgan AGENT gapi bilan) yoziladi; hakam o'chiq yoki javob bermagan bo'lsa holat `criteria: not judged …` bilan yiqiladi. Hakamning
 `score` bahosi natijaga yoziladi; eval ishlab chiqarish QA metrikalariga ta'sir qilmaydi.
 
 ### Tool mock

@@ -5,8 +5,11 @@ import uz.murodjon.robotcallv2.agent.metrics.TurnTiming;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicLongArray;
 
 /**
  * What one call has spent and how fast it answered: LLM tokens, synthesized characters,
@@ -40,6 +43,8 @@ class UsageLedger {
     private final AtomicLong promptTokens = new AtomicLong();
     private final AtomicLong completionTokens = new AtomicLong();
     private final AtomicLong cachedTokens = new AtomicLong();
+    /** Model id ("" when unknown) → prompt, completion, cached — what each model spent, for billing. */
+    private final Map<String, AtomicLongArray> tokensByModel = new ConcurrentHashMap<>();
     /**
      * Characters this call asked a synthesizer for — what the call is billed for.
      *
@@ -70,8 +75,18 @@ class UsageLedger {
         return tokensUsed.get();
     }
 
-    /** Add one turn's token breakdown to the call's running totals (§10.5 "Texnik" tab). */
-    void addTokenBreakdown(long prompt, long completion, long cached) {
+    /**
+     * Add one turn's token breakdown to the call's running totals (§10.5 "Texnik" tab) and to
+     * its model's — a fast model's or a fallback's tokens cost what that model costs.
+     */
+    void addTokenBreakdown(String model, long prompt, long completion, long cached) {
+        if (prompt > 0 || completion > 0 || cached > 0) {
+            AtomicLongArray perModel = tokensByModel.computeIfAbsent(model == null ? "" : model,
+                    key -> new AtomicLongArray(3));
+            perModel.addAndGet(0, Math.max(prompt, 0));
+            perModel.addAndGet(1, Math.max(completion, 0));
+            perModel.addAndGet(2, Math.max(cached, 0));
+        }
         if (prompt > 0) {
             promptTokens.addAndGet(prompt);
         }
@@ -81,6 +96,14 @@ class UsageLedger {
         if (cached > 0) {
             cachedTokens.addAndGet(cached);
         }
+    }
+
+    /** The call's tokens per model; a model-less entry (the response named none) has a null model. */
+    List<LlmModelUsage> llmUsageByModel() {
+        List<LlmModelUsage> usage = new ArrayList<>();
+        tokensByModel.forEach((model, tokens) -> usage.add(new LlmModelUsage(model.isEmpty() ? null : model,
+                tokens.get(0), tokens.get(1), tokens.get(2))));
+        return usage;
     }
 
     long promptTokens() {

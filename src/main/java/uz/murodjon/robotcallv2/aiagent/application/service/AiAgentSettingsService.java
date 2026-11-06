@@ -140,6 +140,7 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                 agent.postCallWebhook(),
                 agent.voice().emotionAdaptive(),
                 agent.voice().warmth(),
+                agent.voice().emotion(),
                 AgentAmbienceDto.of(agent.ambience()),
                 AgentCallBehaviourDto.of(agent.callBehaviour()),
                 AgentDataPolicyDto.of(agent.dataPolicy())
@@ -163,7 +164,8 @@ public class AiAgentSettingsService implements AiAgentSettingsUseCase {
                 dataPolicy,
                 voice.withEmotionAdaptive(
                         request.emotionAdaptiveVoice() != null ? request.emotionAdaptiveVoice() : voice.emotionAdaptive())
-                        .withWarmth(request.speakingWarmth() != null ? request.speakingWarmth() : voice.warmth()),
+                        .withWarmth(request.speakingWarmth() != null ? request.speakingWarmth() : voice.warmth())
+                        .withEmotion(request.voiceEmotion() != null ? request.voiceEmotion() : voice.emotion()),
                 request.useRag() != null ? request.useRag() : existing.useRag(),
                 request.initiationWebhook() != null ? request.initiationWebhook() : existing.initiationWebhook(),
                 request.postCallWebhook() != null ? request.postCallWebhook() : existing.postCallWebhook()

@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
+import uz.murodjon.robotcallv2.memory.domain.entity.MemorySource;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.memory.infrastructure.persistence.entity.ClientMemoryEntity;
 
@@ -14,8 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Entity to domain and back, including the two JSONB columns ({@code recent_calls},
- * {@code facts}). A column that fails to parse is read as empty rather than failing
+ * Entity to domain and back, including the three JSONB columns ({@code recent_calls},
+ * {@code facts}, {@code fact_sources}). A column that fails to parse is read as empty rather than failing
  * the call that wanted the memory: a corrupt note must never block dialing.
  */
 @Component
@@ -27,21 +28,25 @@ public class ClientMemoryEntityMapper {
     };
     private static final TypeReference<Map<String, Object>> FACTS = new TypeReference<>() {
     };
+    private static final TypeReference<Map<String, MemorySource>> SOURCES = new TypeReference<>() {
+    };
 
     public ClientMemory toClientMemory(ClientMemoryEntity entity) {
         if (entity == null) {
             return null;
         }
-        return new ClientMemory(
-                entity.getId(),
-                entity.getCompanyId(),
-                entity.getPhone(),
-                entity.getPreferredName(),
-                entity.getPreferredLanguage(),
-                entity.getOperatorNotes(),
-                read(entity.getRecentCalls(), CALLS, List.of()),
-                read(entity.getFacts(), FACTS, Map.of()),
-                entity.getUpdatedAt());
+        return ClientMemory.builder()
+                .id(entity.getId())
+                .companyId(entity.getCompanyId())
+                .phone(entity.getPhone())
+                .preferredName(entity.getPreferredName())
+                .preferredLanguage(entity.getPreferredLanguage())
+                .operatorNotes(entity.getOperatorNotes())
+                .recentCalls(read(entity.getRecentCalls(), CALLS, List.of()))
+                .facts(read(entity.getFacts(), FACTS, Map.of()))
+                .factSources(read(entity.getFactSources(), SOURCES, Map.of()))
+                .updatedAt(entity.getUpdatedAt())
+                .build();
     }
 
     public void applyToEntity(ClientMemory memory, ClientMemoryEntity entity) {
@@ -51,6 +56,7 @@ public class ClientMemoryEntityMapper {
         entity.setOperatorNotes(memory.operatorNotes());
         entity.setRecentCalls(write(memory.recentCalls(), "[]"));
         entity.setFacts(write(memory.facts(), "{}"));
+        entity.setFactSources(write(memory.factSources(), "{}"));
         entity.setUpdatedAt(memory.updatedAt());
     }
 

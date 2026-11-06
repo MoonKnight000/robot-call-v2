@@ -4,6 +4,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentChannel;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.ReasoningEffort;
 
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +41,7 @@ public class AiAgentBuilder {
     private LlmFallback llmFallback;
     private Double temperature;
     private Integer maxOutputTokens;
+    private ReasoningEffort reasoningEffort;
     private boolean useRag;
     private List<DataExtractionField> dataNeeded;
     private List<DataEvaluationCriterion> dataEvaluation;
@@ -92,6 +94,7 @@ public class AiAgentBuilder {
         this.llmFallback = source.llmFallback();
         this.temperature = source.temperature();
         this.maxOutputTokens = source.maxOutputTokens();
+        this.reasoningEffort = source.reasoningEffort();
         this.useRag = source.useRag();
         this.dataNeeded = source.dataNeeded();
         this.dataEvaluation = source.dataEvaluation();
@@ -229,6 +232,11 @@ public class AiAgentBuilder {
 
     public AiAgentBuilder maxOutputTokens(Integer maxOutputTokens) {
         this.maxOutputTokens = maxOutputTokens;
+        return this;
+    }
+
+    public AiAgentBuilder reasoningEffort(ReasoningEffort reasoningEffort) {
+        this.reasoningEffort = reasoningEffort;
         return this;
     }
 
@@ -381,6 +389,7 @@ public class AiAgentBuilder {
                 llmFallback,
                 temperature,
                 maxOutputTokens,
+                reasoningEffort,
                 useRag,
                 dataNeeded,
                 dataEvaluation,

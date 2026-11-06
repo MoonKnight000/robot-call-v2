@@ -46,7 +46,7 @@ public class VoiceSettingsService implements VoiceSettingsUseCase {
     public EffectiveVoiceSettings findEffectiveByCompanyId(long companyId) {
         String provider = ttsProperties.provider();
         VoiceSettings row = voiceSettingsRepository.findByCompanyId(companyId);
-        return row == null ? new EffectiveVoiceSettings(provider, null, null, null)
-                : new EffectiveVoiceSettings(provider, row.speed(), row.pitch(), null);
+        return row == null ? new EffectiveVoiceSettings(provider, null, null, null, null)
+                : new EffectiveVoiceSettings(provider, row.speed(), row.pitch(), null, null);
     }
 }

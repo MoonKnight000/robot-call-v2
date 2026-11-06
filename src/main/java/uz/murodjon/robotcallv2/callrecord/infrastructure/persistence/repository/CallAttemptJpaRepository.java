@@ -227,6 +227,9 @@ public interface CallAttemptJpaRepository extends JpaRepository<CallAttemptEntit
             + "  LEFT JOIN ai_agent cag ON cag.id = cp.ai_agent_id"
             + "  LEFT JOIN ai_agent ag ON ag.id = a.ai_agent_id"
             + "  WHERE a.ended_at >= :endedAfter AND a.finalize_attempts < :maxAttempts"
+            // An agent evaluation's simulated call (VoiceCallSimulator) is judged by the evaluation itself:
+            // summarizing it only billed an LLM call per test case, and retried it every sweep when that failed.
+            + "    AND a.phone IS DISTINCT FROM 'VOICE-SIM'"
             + "    AND (a.summary_lease_until IS NULL OR a.summary_lease_until <= :now)"
             + "    AND COALESCE(ag.scenario_id, cag.scenario_id) IS NOT NULL"
             + "    AND COALESCE(ag.id, cag.id) IS NOT NULL"

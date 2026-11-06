@@ -28,13 +28,17 @@ public class AiAgentControllerImpl implements AiAgentController {
     private final AgentEvaluationUseCase evaluationUseCase;
     private final AiAgentEstimateUseCase aiAgentEstimateUseCase;
     private final AgentTestChatUseCase agentTestChatUseCase;
+    private final AgentWebhookTestUseCase agentWebhookTestUseCase;
+    private final AiAgentPortabilityUseCase aiAgentPortabilityUseCase;
 
     public AiAgentControllerImpl(AiAgentUseCase aiAgentUseCase, AiAgentVersionUseCase aiAgentVersionUseCase,
                                  AiAgentSettingsUseCase aiAgentSettingsUseCase,
                                  AiAgentCatalogUseCase aiAgentCatalogUseCase, ToolUseCase toolUseCase,
                                  AgentEvaluationUseCase evaluationUseCase,
                                  AiAgentEstimateUseCase aiAgentEstimateUseCase,
-                                 AgentTestChatUseCase agentTestChatUseCase) {
+                                 AgentTestChatUseCase agentTestChatUseCase,
+                                 AgentWebhookTestUseCase agentWebhookTestUseCase,
+                                 AiAgentPortabilityUseCase aiAgentPortabilityUseCase) {
         this.aiAgentUseCase = aiAgentUseCase;
         this.aiAgentVersionUseCase = aiAgentVersionUseCase;
         this.aiAgentSettingsUseCase = aiAgentSettingsUseCase;
@@ -43,6 +47,8 @@ public class AiAgentControllerImpl implements AiAgentController {
         this.evaluationUseCase = evaluationUseCase;
         this.aiAgentEstimateUseCase = aiAgentEstimateUseCase;
         this.agentTestChatUseCase = agentTestChatUseCase;
+        this.agentWebhookTestUseCase = agentWebhookTestUseCase;
+        this.aiAgentPortabilityUseCase = aiAgentPortabilityUseCase;
     }
 
     @Override
@@ -153,6 +159,22 @@ public class AiAgentControllerImpl implements AiAgentController {
     public ResponseEntity<ResponseData<AgentTestChatResponse>> testChat(long companyId, long id,
                                                                        AgentTestChatRequest request) {
         return ResponseEntity.ok(ResponseData.ok(agentTestChatUseCase.replyTestChat(companyId, id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AgentWebhookTestResponse>> testWebhook(long companyId, long id,
+                                                                             AgentWebhookTestRequest request) {
+        return ResponseEntity.ok(ResponseData.ok(agentWebhookTestUseCase.testWebhook(companyId, id, request)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AgentExportFile>> exportAgent(long companyId, long id) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentPortabilityUseCase.exportAgent(companyId, id)));
+    }
+
+    @Override
+    public ResponseEntity<ResponseData<AgentImportResponse>> importAgent(long companyId, AgentExportFile request) {
+        return ResponseEntity.ok(ResponseData.ok(aiAgentPortabilityUseCase.importAgent(companyId, request)));
     }
 
     @Override

@@ -52,6 +52,14 @@ public interface AuthController {
             @RequestBody(required = false) RefreshTokenRequest request,
             @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshTokenCookie);
 
+    /**
+     * The caller's active sessions. Lives under {@code /api/auth} because only this path
+     * receives the {@code refresh_token} cookie, which is what marks the {@code current} row.
+     */
+    @GetMapping("/auth/sessions")
+    ResponseEntity<ResponseData<List<UserSessionRow>>> sessions(
+            @CookieValue(name = RefreshTokenCookie.NAME, required = false) String refreshTokenCookie);
+
     @GetMapping("/auth/me")
     ResponseEntity<ResponseData<CurrentUserResponse>> me(@CurrentCompanyId long companyId);
 

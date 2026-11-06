@@ -3,6 +3,7 @@ package uz.murodjon.robotcallv2.report.application.dto;
 import com.fasterxml.jackson.annotation.JsonFormat;
 
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import uz.murodjon.robotcallv2.shared.util.DateTimeProperties;
 
 import java.math.BigDecimal;
@@ -30,6 +31,14 @@ public record CallRow(
         String crmNoteId,
         String clientName,
         String campaignName,
-        String operatorName
+        String operatorName,
+        Long aiAgentId,
+        String agentName,
+        boolean inbound,
+        Sentiment sentiment,
+        Integer qualityScore,
+        Long costUzs,
+        Integer avgTurnLatencyMs,
+        Integer agentVersion
 ) {
 }

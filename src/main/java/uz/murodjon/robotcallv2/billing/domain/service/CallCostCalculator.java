@@ -1,11 +1,18 @@
 package uz.murodjon.robotcallv2.billing.domain.service;
 
+import uz.murodjon.robotcallv2.billing.domain.entity.BillingLlmRates;
 import uz.murodjon.robotcallv2.billing.domain.entity.BillingRates;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallCostBreakdown;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelLlmCost;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelPrice;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelTokens;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
 
 /**
  * Prices a finished call against a price list.
@@ -31,23 +38,34 @@ public final class CallCostCalculator {
     private CallCostCalculator() {
     }
 
+    /** Every model's tokens at the common LLM rate. */
     public static CallCostBreakdown calculate(CallUsage usage, BillingRates rates) {
+        return calculate(usage, rates, model -> null);
+    }
+
+    /**
+     * @param priceOf the price-list row a reported model id belongs to, or null — that model's
+     *                tokens are then priced at {@code rates.llm()}, the common rate
+     */
+    public static CallCostBreakdown calculate(CallUsage usage, BillingRates rates,
+                                              Function<String, ModelPrice> priceOf) {
         if (usage == null || rates == null) {
             return CallCostBreakdown.FREE;
         }
 
         BigDecimal minutes = minutes(usage.durationSec());
 
-        BigDecimal llm = BigDecimal.ZERO;
+        List<ModelLlmCost> llmByModel = new ArrayList<>();
         BigDecimal stt = BigDecimal.ZERO;
         BigDecimal tts = BigDecimal.ZERO;
         BigDecimal realtime = BigDecimal.ZERO;
         if (usage.realtime()) {
-            realtime = minutes(usage.realtimeSeconds()).multiply(BigDecimal.valueOf(rates.realtimePerMinuteUzs()));
+            realtime = minutes(usage.realtimeSeconds())
+                    .multiply(BigDecimal.valueOf(realtimePerMinuteUzs(usage.realtimeModel(), rates, priceOf)));
         } else {
-            llm = perMillion(usage.billablePromptTokens(), rates.llm().promptPerMillionUzs())
-                    .add(perMillion(usage.completionTokens(), rates.llm().completionPerMillionUzs()))
-                    .add(perMillion(usage.cachedTokens(), rates.llm().cachedPromptPerMillionUzs()));
+            for (ModelTokens tokens : usage.tokensToPrice()) {
+                llmByModel.add(priceModel(tokens, rates, priceOf));
+            }
             stt = minutes.multiply(BigDecimal.valueOf(rates.sttPerMinuteUzs()));
             tts = BigDecimal.valueOf(usage.ttsChars())
                     .divide(CHARS_PER_THOUSAND, 6, RoundingMode.HALF_UP)
@@ -56,7 +74,12 @@ public final class CallCostCalculator {
         stt = stt.add(minutes(usage.extraSttSeconds()).multiply(BigDecimal.valueOf(rates.sttPerMinuteUzs())));
         BigDecimal telephony = minutes.multiply(BigDecimal.valueOf(rates.telephonyPerMinuteUzs()));
 
-        long llmUzs = withMarkup(llm, rates.markupBasisPoints());
+        // Each model's token lines rounded on their own and the LLM line summed from them, so the
+        // per-model and input / output / cached split shown to a company adds up to it exactly.
+        long llmPromptUzs = llmByModel.stream().mapToLong(ModelLlmCost::promptUzs).sum();
+        long llmCompletionUzs = llmByModel.stream().mapToLong(ModelLlmCost::completionUzs).sum();
+        long llmCachedUzs = llmByModel.stream().mapToLong(ModelLlmCost::cachedUzs).sum();
+        long llmUzs = llmPromptUzs + llmCompletionUzs + llmCachedUzs;
         long sttUzs = withMarkup(stt, rates.markupBasisPoints());
         long ttsUzs = withMarkup(tts, rates.markupBasisPoints());
         long realtimeUzs = withMarkup(realtime, rates.markupBasisPoints());
@@ -67,7 +90,28 @@ public final class CallCostCalculator {
         // adds up by hand has to reach the same total.
         long total = llmUzs + sttUzs + ttsUzs + realtimeUzs + telephonyUzs + platformFeeUzs;
 
-        return new CallCostBreakdown(llmUzs, sttUzs, ttsUzs, realtimeUzs, telephonyUzs, platformFeeUzs, total);
+        return new CallCostBreakdown(llmUzs, llmPromptUzs, llmCompletionUzs, llmCachedUzs,
+                sttUzs, ttsUzs, realtimeUzs, telephonyUzs, platformFeeUzs, total, llmByModel);
+    }
+
+    /** One model's tokens at its own price when the list has it, else at the common rate. */
+    private static ModelLlmCost priceModel(ModelTokens tokens, BillingRates rates,
+                                           Function<String, ModelPrice> priceOf) {
+        ModelPrice price = tokens.model() == null ? null : priceOf.apply(tokens.model());
+        BillingLlmRates llm = price != null ? price.llm() : rates.llm();
+        String model = price != null ? price.model() : ModelPriceMatcher.normalize(tokens.model());
+        int markup = rates.markupBasisPoints();
+        return new ModelLlmCost(model, price != null, tokens, llm,
+                withMarkup(perMillion(tokens.billablePromptTokens(), llm.promptPerMillionUzs()), markup),
+                withMarkup(perMillion(tokens.completionTokens(), llm.completionPerMillionUzs()), markup),
+                withMarkup(perMillion(tokens.cachedTokens(), llm.cachedPromptPerMillionUzs()), markup));
+    }
+
+    /** The engine model's own per-minute price when the list has one, else the common realtime rate. */
+    private static long realtimePerMinuteUzs(String model, BillingRates rates, Function<String, ModelPrice> priceOf) {
+        ModelPrice price = model == null ? null : priceOf.apply(model);
+        return price != null && price.realtimePerMinuteUzs() != null
+                ? price.realtimePerMinuteUzs() : rates.realtimePerMinuteUzs();
     }
 
     /**
@@ -82,6 +126,11 @@ public final class CallCostCalculator {
         long engine = realtime ? rates.realtimePerMinuteUzs() : rates.sttPerMinuteUzs();
         return withMarkup(BigDecimal.valueOf(rates.telephonyPerMinuteUzs() + engine), rates.markupBasisPoints())
                 + rates.platformFeePerMinuteUzs();
+    }
+
+    /** A provider rate as the company pays it: with the markup, rounded to whole UZS. */
+    public static long applyMarkup(long providerRateUzs, int markupBasisPoints) {
+        return withMarkup(BigDecimal.valueOf(providerRateUzs), markupBasisPoints);
     }
 
     private static BigDecimal minutes(int seconds) {

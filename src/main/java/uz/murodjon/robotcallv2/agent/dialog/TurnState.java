@@ -392,7 +392,8 @@ class TurnState {
 
     /** Record the line a tool call carried; a blank one is no line at all. */
     void addToolReply(String reply) {
-        if (reply != null && !reply.isBlank()) {
+        // The same line in two tools' "reply" (transitionTo and a recording tool of one turn) is said once.
+        if (reply != null && !reply.isBlank() && !toolReplies.contains(reply.trim())) {
             toolReplies.add(reply.trim());
         }
     }

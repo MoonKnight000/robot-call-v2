@@ -1,7 +1,5 @@
 package uz.murodjon.robotcallv2.contact.application.service;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -11,15 +9,21 @@ import uz.murodjon.robotcallv2.callrecord.application.port.input.OutboxMessageUs
 import uz.murodjon.robotcallv2.contact.application.dto.*;
 import uz.murodjon.robotcallv2.contact.application.mapper.ContactMapper;
 import uz.murodjon.robotcallv2.contact.application.port.input.ContactUseCase;
+import uz.murodjon.robotcallv2.contact.application.port.output.ContactCrmLinkRepository;
+import uz.murodjon.robotcallv2.contact.application.port.output.ContactFieldRepository;
 import uz.murodjon.robotcallv2.contact.application.port.output.ContactPrivacyRepository;
 import uz.murodjon.robotcallv2.contact.application.port.output.ContactRepository;
 import uz.murodjon.robotcallv2.contact.domain.entity.Contact;
+import uz.murodjon.robotcallv2.contact.domain.entity.ContactCrmLink;
+import uz.murodjon.robotcallv2.contact.domain.entity.ContactField;
 import uz.murodjon.robotcallv2.contact.domain.entity.ContactFilter;
 import uz.murodjon.robotcallv2.contact.domain.event.ContactOptOutEvent;
+import uz.murodjon.robotcallv2.contact.domain.service.ContactFieldValidator;
 import uz.murodjon.robotcallv2.contact.domain.service.ContactValidator;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.report.application.port.input.ReportUseCase;
+import uz.murodjon.robotcallv2.report.domain.entity.PhoneCallStats;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.csv.CsvRowError;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
@@ -31,6 +35,7 @@ import uz.murodjon.robotcallv2.shared.util.PhoneNumbers;
 import uz.murodjon.robotcallv2.shared.util.Tokens;
 import uz.murodjon.robotcallv2.storage.application.port.input.FileStorageUseCase;
 
+import java.time.Instant;
 import java.util.*;
 
 /**
@@ -39,7 +44,6 @@ import java.util.*;
 @Service
 public class ContactService implements ContactUseCase {
 
-    private static final Logger log = LoggerFactory.getLogger(ContactService.class);
     private static final int CALL_HISTORY_LIMIT = 50;
 
     private final ContactRepository contactRepository;
@@ -59,6 +63,10 @@ public class ContactService implements ContactUseCase {
     private final ContactMapper contactMapper;
     private final uz.murodjon.robotcallv2.dialer.application.port.input.PhoneNumberScrubberUseCase phoneNumberScrubber;
     private final ObjectProvider<uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase> doNotCallUseCaseProvider;
+    /** The company's typed field definitions, which a contact's custom field values must fit. */
+    private final ContactFieldRepository contactFieldRepository;
+    /** Which CRM record each contact was imported from, for the table's external id column. */
+    private final ContactCrmLinkRepository contactCrmLinkRepository;
 
     public ContactService(ContactRepository contactRepository,
                           ObjectProvider<ReportUseCase> reportUseCaseProvider,
@@ -73,6 +81,8 @@ public class ContactService implements ContactUseCase {
         this(contactRepository, reportUseCaseProvider, applicationEventPublisher, auditService,
                 privacyRepository, clientMemoryUseCase, callTranscriptUseCase, outboxMessageUseCase,
                 fileStorageService, contactMapper,
+                null,
+                null,
                 null,
                 null);
     }
@@ -89,7 +99,11 @@ public class ContactService implements ContactUseCase {
                           FileStorageUseCase fileStorageService,
                           ContactMapper contactMapper,
                           uz.murodjon.robotcallv2.dialer.application.port.input.PhoneNumberScrubberUseCase phoneNumberScrubber,
-                          ObjectProvider<uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase> doNotCallUseCaseProvider) {
+                          ObjectProvider<uz.murodjon.robotcallv2.donotcall.application.port.input.DoNotCallUseCase> doNotCallUseCaseProvider,
+                          ContactFieldRepository contactFieldRepository,
+                          ContactCrmLinkRepository contactCrmLinkRepository) {
+        this.contactFieldRepository = contactFieldRepository;
+        this.contactCrmLinkRepository = contactCrmLinkRepository;
         this.privacyRepository = privacyRepository;
         this.clientMemoryUseCase = clientMemoryUseCase;
         this.callTranscriptUseCase = callTranscriptUseCase;
@@ -109,6 +123,7 @@ public class ContactService implements ContactUseCase {
         String phone = PhoneNumbers.require(request.phone());
         ContactValidator.validatePhone(phone);
         ContactValidator.validateCustomFields(request.customFields());
+        ContactFieldValidator.validateValues(findFields(companyId), request.customFields());
         if (contactRepository.existsByPhone(companyId, phone)) {
             throw new ConflictException(ErrorCode.CONTACT_PHONE_EXISTS, phone);
         }
@@ -121,10 +136,15 @@ public class ContactService implements ContactUseCase {
     @Override
     public Contact update(long companyId, long id, UpdateContactRequest request) {
         ContactValidator.validateCustomFields(request.customFields());
+        ContactFieldValidator.validateValues(findFields(companyId), request.customFields());
         Contact existing = requireContact(companyId, id);
         Map<String, String> customFields = request.customFields() != null ? request.customFields() : existing.customFields();
         contactRepository.update(companyId, id, Contact.profile(request.name(), request.address(), request.tags(), request.notes(),
                 customFields));
+        if (contactCrmLinkRepository != null && !existing.customFields().equals(customFields)) {
+            // An imported contact's CRM record is told of the edit (only the mapped fields are written there).
+            contactCrmLinkRepository.requestPush(companyId, id, Instant.now());
+        }
         auditService.record(companyId, "CONTACT_UPDATE", "contact", String.valueOf(id), existing.phone());
         return requireContact(companyId, id);
     }
@@ -137,8 +157,19 @@ public class ContactService implements ContactUseCase {
     }
 
     @Override
-    public PageableData<Contact> list(long companyId, ContactFilter filter) {
-        return contactRepository.findPage(companyId, filter);
+    public PageableData<ContactRow> list(long companyId, ContactFilter filter) {
+        PageableData<Contact> page = contactRepository.findPage(companyId, filter);
+        Map<String, PhoneCallStats> stats = reportUseCaseProvider.getObject().findCallStatsByPhones(companyId,
+                page.data().stream().map(Contact::phone).toList());
+        Map<Long, ContactCrmLink> links = contactCrmLinkRepository != null
+                ? contactCrmLinkRepository.findByContactIds(companyId, page.data().stream().map(Contact::id).toList())
+                : Map.of();
+        return page.map(contact -> contactMapper.toContactRow(contact, stats.get(contact.phone()), links.get(contact.id())));
+    }
+
+    /** The company's typed fields; none when the service was built without the field port (unit tests). */
+    private List<ContactField> findFields(long companyId) {
+        return contactFieldRepository != null ? contactFieldRepository.findAllByCompanyId(companyId) : List.of();
     }
 
     @Override
@@ -328,48 +359,5 @@ public class ContactService implements ContactUseCase {
                 "scrubbed " + request.phones().size() + " numbers (" + validCount + " valid, " + invalidCount + " invalid, " + dncCount + " dnc)");
 
         return new ContactScrubResponse(request.phones().size(), validCount, invalidCount, dncCount, items);
-    }
-
-    /**
-     * Runs after a call with nobody to report to, so nothing here throws on bad input: an
-     * unusable number, invalid key or blank value is dropped and logged instead.
-     */
-    @Override
-    public void saveCustomFieldsByPhone(long companyId, String phone, Map<String, String> values) {
-        String normalized = PhoneNumbers.normalize(phone);
-        if (normalized == null || values == null || values.isEmpty()) {
-            return;
-        }
-        Map<String, String> valid = new LinkedHashMap<>();
-        values.forEach((key, value) -> {
-            if (value == null || value.isBlank()) {
-                return;
-            }
-            String trimmed = value.strip();
-            if (ContactValidator.isValidCustomField(key, trimmed)) {
-                valid.put(key, trimmed);
-            } else {
-                log.debug("Dropping invalid contact custom field '{}' for company {}", key, companyId);
-            }
-        });
-        if (valid.isEmpty()) {
-            return;
-        }
-        Contact existing = contactRepository.findByPhone(companyId, normalized);
-        Map<String, String> merged = new LinkedHashMap<>(existing != null ? existing.customFields() : Map.of());
-        valid.forEach((key, value) -> {
-            if (merged.containsKey(key) || merged.size() < ContactValidator.MAX_CUSTOM_FIELDS) {
-                merged.put(key, value);
-            } else {
-                log.debug("Dropping contact custom field '{}' for company {}: the contact already has {} fields",
-                        key, companyId, ContactValidator.MAX_CUSTOM_FIELDS);
-            }
-        });
-        if (existing == null) {
-            contactRepository.create(companyId, Contact.of(normalized, normalized, null, null, null, merged));
-        } else {
-            contactRepository.update(companyId, existing.id(),
-                    Contact.profile(existing.name(), existing.address(), existing.tags(), existing.notes(), merged));
-        }
     }
 }

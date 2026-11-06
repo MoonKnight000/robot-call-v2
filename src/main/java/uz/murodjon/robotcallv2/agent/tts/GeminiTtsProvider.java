@@ -134,7 +134,10 @@ public class GeminiTtsProvider implements TtsProvider {
 
         String voiceName = resolveVoice(language, requestedVoice);
         String endpoint = buildEndpointUri(apiKey);
-        String requestBody = buildRequestBody(text, voiceName);
+        // Gemini TTS takes its delivery from the text it is given ("Say in a warm tone: …"); the
+        // direction is read, not spoken.
+        String direction = VoiceStyleMapper.findGeminiDirection(style);
+        String requestBody = buildRequestBody(direction == null ? text : direction + text, voiceName);
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))

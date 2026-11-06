@@ -18,22 +18,34 @@ Backendda har bir endpoint aynan bitta permissionga bog'langan
 (`@PreAuthorize("hasAuthority('CAMPAIGN_EDIT')")`), URL naqshiga emas. Huquq yetmasa —
 `403` va `messageCode: "PERMISSION_DENIED"`.
 
-**Rol** — bitta kompaniya ichidagi permissionlar to'plami. Ikki xili bor:
+**Rol** — bitta kompaniya ichidagi permissionlar to'plami. **Kompaniyaning barcha rollari o'ziniki**:
+permissionlari `app_role_permission` jadvalida saqlanadi va admin istalgan rolni tahrirlaydi yoki o'chiradi.
 
-| Tur | `code` | `system` | Permissionlari |
+| Tur | `code` | `system` | Qayerdan keladi |
 |---|---|---|---|
-| Tizim roli | `DEVELOPER`, `ADMIN`, `OPERATOR`, `SUPERVISOR`, `VIEWER`, `SUPERADMIN` | `true` | Kodda hisoblanadi (`SystemRole.java`), DB da saqlanmaydi — shuning uchun yangi permission qo'shilsa avtomatik qamrab oladi |
-| Kompaniyaning o'z roli | `null` | `false` | `app_role_permission` jadvalida saqlanadi, admin o'zi tanlaydi |
+| Standart rol | `DEVELOPER`, `ADMIN`, `OPERATOR`, … | `true` | Kompaniya yaratilganda platformaning **rol shablonlaridan** nusxalanadi ([platform-role-templates.md](platform-role-templates.md)) |
+| Kompaniyaning o'z roli | `null` | `false` | Admin o'zi yaratadi |
 
-Tizim rollari har bir kompaniyaga avtomatik seed qilinadi va **tahrirlab ham, o'chirib ham
-bo'lmaydi** (`409 ROLE_SYSTEM_READONLY`). Kompaniya ularning ustiga **eng ko'pi 10 ta** o'z
-rolini yaratadi (`409 ROLE_LIMIT_EXCEEDED`).
+`system` endi faqat "shablondan nusxalangan" degani — bunday rol ham boshqasi kabi tahrirlanadi va o'chiriladi.
+`code` nomi o'zgarsa ham saqlanadi (kod "kompaniyaning ADMIN roli"ni shu bilan topadi). Shablon keyin
+o'zgarsa, mavjud kompaniyaning nusxasi **o'zgarmaydi**; yangi qo'shilgan permission ham mavjud rollarga
+o'zi tushmaydi — admin kerakli rolga qo'shadi.
 
-**Tizim rollari nimani beradi:**
+**Istisno — `assignableByCompany = false`** (bugun `DEVELOPER`): bunday rolni kompaniya admini xodimga bera
+olmaydi (`403 ROLE_NOT_ASSIGNABLE`), tahrirlay va o'chira ham olmaydi (`403 ROLE_PLATFORM_MANAGED`) —
+buni faqat platforma admini qiladi.
+
+Bitta kompaniyada jami **15 tagacha** rol (standartlari bilan birga) — `409 ROLE_LIMIT_EXCEEDED`.
+
+**Yangilanish (2026-11-06):** bundan oldin tizim rollarining permissionlari kodda hisoblanardi. Ilova birinchi
+marta ishga tushganda mavjud kompaniyalardagi shu rollarning o'sha paytdagi permissionlari DB ga yozib qo'yiladi
+va ular tahrirlanadigan bo'ladi — hech kimning huquqi o'zgarmaydi.
+
+**Standart shablonlar boshlang'ich holatda nimani beradi** (platforma admini o'zgartirishi mumkin):
 
 | Rol | Qamrovi |
 |---|---|
-| `DEVELOPER` | Kompaniyadagi **barcha** permissionlar, doimiy — kelajakda qo'shiladigan yangi permissionlar ham. Faqat platforma xodimi bera oladi |
+| `DEVELOPER` | Kompaniyadagi **barcha** permissionlar (seed paytidagi). Faqat platforma xodimi bera oladi va tahrirlaydi |
 | `ADMIN` | `ENGINE_EDIT` dan tashqari hammasi (speech engine sozlamasi noto'g'ri bo'lsa butun kompaniya qo'ng'irog'i buziladi — u DEVELOPER da qoladi) |
 | `OPERATOR` | Kundalik ish: kampaniya, qo'ng'iroq, jonli monitoring, operator paneli, kontakt, DNC, javobsiz qo'ng'iroqlar (READ+EDIT); dashboard, stsenariy, agent, bilim bazasi, hisobot, kiruvchi marshrutlar, operatorlar navbati, ovoz — faqat READ |
 | `SUPERVISOR` | Operatorlar zalini boshqaradi: `OPERATOR` ning hammasi + `CALL_MONITOR` (boshqaning jonli qo'ng'irog'ini tinglash/whisper/barge), `CALL_QUEUE_EDIT` (navbatlar va a'zolar), `CALL_FLOW_READ`, `USER_READ`, `QUALITY_REVIEW_READ` / `QUALITY_REVIEW_EDIT` (qo'ng'iroq review inbox'i). `CALL_DEBUG_READ` (AI qo'ng'iroqning bloklar izi — funksiyalarga yuborilgan va qaytgan ma'lumot, [reports.md](reports.md)). `USER_EDIT` yo'q — SIP akkaunt bera olmaydi |
@@ -71,6 +83,7 @@ Parametrsiz — bitta kompaniyada ko'pi bilan 15 ta rol bo'ladi.
       "name": "Administrator",
       "description": null,
       "system": true,
+      "assignableByCompany": true,
       "permissions": ["DASHBOARD_READ", "CAMPAIGN_READ", "CAMPAIGN_EDIT", "..."],
       "userCount": 1,
       "createdAt": "2026-09-05T10:00:00Z"
@@ -81,6 +94,7 @@ Parametrsiz — bitta kompaniyada ko'pi bilan 15 ta rol bo'ladi.
       "name": "Sotuv menejeri",
       "description": "Kampaniya va kontaktlar, sozlamalarsiz",
       "system": false,
+      "assignableByCompany": true,
       "permissions": ["DASHBOARD_READ", "CAMPAIGN_READ", "CAMPAIGN_EDIT", "CONTACT_READ", "CONTACT_EDIT", "REPORT_READ"],
       "userCount": 4,
       "createdAt": "2026-09-05T12:30:00Z"
@@ -150,12 +164,12 @@ Body (`CreateRoleRequest`):
 ```
 
 `name` — kompaniya ichida unique (registrga bog'liq emas). `code` yuborilmaydi: u faqat
-tizim rollarida bo'ladi.
+shablondan nusxalangan rollarda bo'ladi.
 
 | Holat | Javob |
 |---|---|
 | Nom band | `409 ROLE_NAME_TAKEN` |
-| Kompaniyada allaqachon 10 ta o'z roli bor | `409 ROLE_LIMIT_EXCEEDED` |
+| Kompaniyada allaqachon 15 ta rol bor | `409 ROLE_LIMIT_EXCEEDED` |
 | `permissions` bo'sh | `400 ROLE_PERMISSIONS_EMPTY` |
 | `permissions` ichida `PLATFORM_ADMIN` | `400 ROLE_PERMISSION_NOT_GRANTABLE` |
 
@@ -168,7 +182,14 @@ tizim rollarida bo'ladi.
 Body (`UpdateRoleRequest`) — `POST` bilan bir xil; permission ro'yxati **to'liq
 almashtiriladi** (delta emas).
 
-Tizim roli tahrirlanmaydi — `409 ROLE_SYSTEM_READONLY`.
+Har qanday rol tahrirlanadi, standartlari ham. Nom o'zgarsa ham `code` saqlanadi.
+
+| Holat | Javob |
+|---|---|
+| `assignableByCompany = false` rol (DEVELOPER), chaqiruvchi platforma admini emas | `403 ROLE_PLATFORM_MANAGED` |
+| O'zingizda yo'q permissionni qo'shish | `403 ROLE_PERMISSION_NOT_HELD` |
+| Roldan `USER_EDIT` olinsa va kompaniyada foydalanuvchilarni boshqara oladigan faol xodim qolmasa | `409 ROLE_EDIT_LOCKS_OUT_ADMINS` |
+| Nom band | `409 ROLE_NAME_TAKEN` |
 
 **Yon ta'siri:** shu rolni ushlab turgan barcha foydalanuvchilarning sessiyasi bekor
 qilinadi — ularning tokenidagi eski permission kodlari kuchini yo'qotadi va keyingi
@@ -182,7 +203,7 @@ so'rovda `401` olib, qayta login qiladilar.
 
 | Holat | Javob |
 |---|---|
-| Tizim roli | `409 ROLE_SYSTEM_READONLY` |
+| `assignableByCompany = false` rol, chaqiruvchi platforma admini emas | `403 ROLE_PLATFORM_MANAGED` |
 | Rolni hali kimdir ushlab turibdi | `409 ROLE_IN_USE` (avval o'sha foydalanuvchilarni boshqa rolga o'tkazing) |
 | Muvaffaqiyat | `data: null`, `accept: true` |
 

@@ -90,7 +90,8 @@ public class RealtimeSystemPromptFactory {
                     .append("- If the client asks 'Sen robotsanmi?', 'AI bilan gaplashyapmanmi?', answer warmly: ")
                     .append("\"Yo'q, men ").append(companyName != null ? companyName.trim() : "kompaniya")
                     .append(" mutaxassisi ").append(personaName).append("man, siz bilan jonli gaplashyapman. Sizga qanday yordam bera olaman?\"\n")
-                    .append("- ANSWERING QUESTIONS: whatever the client asks, answer as independently, fully and warmly as you can within what you know and the scenario.\n\n");
+                    .append("- ANSWERING QUESTIONS: whatever the client asks, answer as independently, fully and warmly as you can within what you know and the scenario.\n")
+                    .append(SystemPromptFactory.HUMAN_SPEECH).append('\n');
         } else {
             sb.append("PERSONA AND ROLE (ARTIFICIAL INTELLIGENCE / AI ASSISTANT):\n")
                     .append("- You are the official AI voice assistant (a robot) of ")
@@ -143,10 +144,8 @@ public class RealtimeSystemPromptFactory {
             }
         }
         for (String rule : SystemPromptFactory.findPlatformGuardrails(transferOffered)) {
-            if (persona != AgentPersona.HUMAN_LIKE) {
-                if (rule.startsWith("NATURAL FILLERS AND BRIDGES") || rule.startsWith("NATURAL CONVERSATIONAL TONE")) {
-                    continue;
-                }
+            if (persona != AgentPersona.HUMAN_LIKE && rule.startsWith("NATURAL FILLERS AND BRIDGES")) {
+                continue;
             }
             sb.append("- ").append(languageRuleOf(rule, languageRestriction)).append('\n');
         }
@@ -173,6 +172,11 @@ public class RealtimeSystemPromptFactory {
                         .append("if they are warm — be a little warmer too. No staged sympathy (\"juda afsusdaman\").\n");
             }
         }
+        // A realtime model speaks in its own voice, so the agent's mood reaches it only through this line.
+        String emotionLine = SystemPromptFactory.emotionStyleLine(s.agent());
+        if (emotionLine != null) {
+            sb.append(emotionLine).append('\n');
+        }
         if (!russian) {
             sb.append("ADDRESS AND IDENTITY CHECK (STRICT): \n")
                     .append("STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\", \"Siz falonchimisiz?\". It sounds robotic and rude. \n")
@@ -180,7 +184,7 @@ public class RealtimeSystemPromptFactory {
                     .append("\"Assalomu alaykum, [Ism] aka, yaxshimisiz?\" (add \"opa\" for a woman, \"aka\" for a man). ")
                     .append("A reply that takes the name without objecting (\"va alaykum assalom\", \"rahmat, yaxshi\") already confirms it. \n")
                     .append("When addressing someone by name, always add the respectful Uzbek \"aka\"/\"opa\" (e.g. \"Murodjon aka\"); never say the surname. ")
-                    .append("Say the name in the greeting and then only now and then — never in two replies in a row. ")
+                    .append("Say the name in the greeting and at most once more when saying goodbye — never in the middle of the call. ")
                     .append("If the name is unknown, ask it once after the greeting: \"Ismingizni bilsam bo'ladimi?\".\n")
                     .append("IDENTITY CONFIRMATION: if the client says «ha», «ha shunday», «shunday», «albatta», «eshitaman», «menman», «ha menman», «eshityapman», «labay», «to'g'ri» or a similar confirmation — the identity is confirmed. NEVER take this for a foreign language (Chinese, Hindi), never insist on «ovoz yaxshi eshitilmadi», do not call recordWrongPerson — ")
                     .append(singleStage ? "carry on with the call.\n"

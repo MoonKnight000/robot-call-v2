@@ -69,6 +69,15 @@ public class CallBillingEntity {
     @Column(name = "llm_cost_uzs", nullable = false)
     private Long llmCostUzs;
 
+    @Column(name = "llm_prompt_cost_uzs", nullable = false)
+    private Long llmPromptCostUzs;
+
+    @Column(name = "llm_completion_cost_uzs", nullable = false)
+    private Long llmCompletionCostUzs;
+
+    @Column(name = "llm_cached_cost_uzs", nullable = false)
+    private Long llmCachedCostUzs;
+
     @Column(name = "stt_cost_uzs", nullable = false)
     private Long sttCostUzs;
 
@@ -131,6 +140,12 @@ public class CallBillingEntity {
     public void setTtsChars(Long ttsChars) { this.ttsChars = ttsChars; }
     public Long getLlmCostUzs() { return llmCostUzs; }
     public void setLlmCostUzs(Long llmCostUzs) { this.llmCostUzs = llmCostUzs; }
+    public Long getLlmPromptCostUzs() { return llmPromptCostUzs; }
+    public void setLlmPromptCostUzs(Long llmPromptCostUzs) { this.llmPromptCostUzs = llmPromptCostUzs; }
+    public Long getLlmCompletionCostUzs() { return llmCompletionCostUzs; }
+    public void setLlmCompletionCostUzs(Long llmCompletionCostUzs) { this.llmCompletionCostUzs = llmCompletionCostUzs; }
+    public Long getLlmCachedCostUzs() { return llmCachedCostUzs; }
+    public void setLlmCachedCostUzs(Long llmCachedCostUzs) { this.llmCachedCostUzs = llmCachedCostUzs; }
     public Long getSttCostUzs() { return sttCostUzs; }
     public void setSttCostUzs(Long sttCostUzs) { this.sttCostUzs = sttCostUzs; }
     public Long getTtsCostUzs() { return ttsCostUzs; }

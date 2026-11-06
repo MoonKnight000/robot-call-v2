@@ -10,6 +10,8 @@ package uz.murodjon.robotcallv2.aiagent.domain.enums;
  * - {@link #VOICEMAIL_MESSAGE}: what the agent says to an answering machine.
  * - {@link #FAST_LLM_MODEL}: the optional second, faster model.
  * - {@link #FALLBACK_LLM_MODEL}: the fallback model and its mode.
+ * - {@link #MAX_OUTPUT_TOKENS}: the reply token cap, back to the platform reply limit.
+ * - {@link #REASONING_EFFORT}: the thinking level, back to the deployment default of each vendor.
  * - {@link #GREETING_PAUSE}: the agent's own pause before speaking, back to the platform default.
  * - {@link #SPEECH_LANGUAGES}: additional speech languages, back to single-language mode.
  * - {@link #RESPONSE_WAIT_MS}, {@link #TRANSCRIPTION_MODE}: back to the deployment default.
@@ -17,6 +19,7 @@ package uz.murodjon.robotcallv2.aiagent.domain.enums;
  * - {@link #REMINDER_AFTER_SECONDS}, {@link #REMINDER_MAX_COUNT}, {@link #DTMF_TIMEOUT_MS}, {@link #DTMF_TERMINATION_KEY},
  *   {@link #DTMF_DIGIT_LIMIT}, {@link #RING_DURATION_SECONDS}, {@link #RAG_MIN_SCORE}, {@link #LLM_TURN_DETECTION}:
  *   back to the deployment default.
+ * - {@link #FALLBACK_VOICE}: the voice spoken when the TTS provider fails, back to automatic fallback.
  */
 public enum AgentClearableField {
     INITIATION_WEBHOOK,
@@ -26,6 +29,8 @@ public enum AgentClearableField {
     VOICEMAIL_MESSAGE,
     FAST_LLM_MODEL,
     FALLBACK_LLM_MODEL,
+    MAX_OUTPUT_TOKENS,
+    REASONING_EFFORT,
     GREETING_PAUSE,
     SPEECH_LANGUAGES,
     RESPONSE_WAIT_MS,
@@ -38,5 +43,6 @@ public enum AgentClearableField {
     DTMF_DIGIT_LIMIT,
     RING_DURATION_SECONDS,
     RAG_MIN_SCORE,
-    LLM_TURN_DETECTION
+    LLM_TURN_DETECTION,
+    FALLBACK_VOICE
 }

@@ -14,6 +14,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.ScenarioMode;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 import uz.murodjon.robotcallv2.scenario.infrastructure.persistence.entity.ScenarioEntity;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.ReasoningEffort;
 import uz.murodjon.robotcallv2.voice.infrastructure.persistence.entity.TtsVoiceEntity;
 
 import java.time.Instant;
@@ -136,7 +137,11 @@ public class AiAgentEntity {
     private Double temperature = 0.65;
 
     @Column(name = "max_output_tokens")
-    private Integer maxOutputTokens = 300;
+    private Integer maxOutputTokens;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "reasoning_effort")
+    private ReasoningEffort reasoningEffort;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "data_needed", columnDefinition = "jsonb")
@@ -439,6 +444,14 @@ public class AiAgentEntity {
 
     public void setMaxOutputTokens(Integer maxOutputTokens) {
         this.maxOutputTokens = maxOutputTokens;
+    }
+
+    public ReasoningEffort getReasoningEffort() {
+        return reasoningEffort;
+    }
+
+    public void setReasoningEffort(ReasoningEffort reasoningEffort) {
+        this.reasoningEffort = reasoningEffort;
     }
 
     public String getDataNeeded() {

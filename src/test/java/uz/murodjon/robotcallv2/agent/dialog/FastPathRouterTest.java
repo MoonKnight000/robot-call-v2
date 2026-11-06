@@ -83,7 +83,10 @@ class FastPathRouterTest {
             "telefon qilmang",
             "qaytib qilmang",
             "iltimos bezovta qilmang",
-            "bu spam"
+            "bu spam",
+            // As the recognizer writes it (U+02BB), from eval #24.
+            "menga boshqa umuman qoʻngʻiroq qilmanglar",
+            "nomerimni bazangizdan oʻchirib tashlang"
     })
     void matchesDoNotCallUzbek(String phrase) {
         when(session.language()).thenReturn("uz-UZ");
@@ -119,6 +122,7 @@ class FastPathRouterTest {
     })
     void matchesTransferUzbek(String phrase) {
         when(session.language()).thenReturn("uz-UZ");
+        when(session.isTransferTargetAvailable()).thenReturn(true);
 
         FastPathResult result = router.evaluate(session, phrase);
 
@@ -135,11 +139,62 @@ class FastPathRouterTest {
         when(behaviour.transferMessage()).thenReturn("  Hozir mutaxassisimizga ulayman.  ");
         when(agent.callBehaviour()).thenReturn(behaviour);
         when(session.agent()).thenReturn(agent);
+        when(session.isTransferTargetAvailable()).thenReturn(true);
 
         FastPathResult result = router.evaluate(session, "operatorga ulang");
 
         assertThat(result.disposition()).isEqualTo(Disposition.TRANSFERRED);
         assertThat(result.reply()).isEqualTo("Hozir mutaxassisimizga ulayman.");
+    }
+
+    /** How a simulated caller actually asked, three times, before the model filed the call as COMPLETED. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "meni tushunadigan tirik operatoringizga ulang",
+            "menga buni tushuntirib beradigan birorta operatorni ulab bering",
+            "meni zudlik bilan operator bilan ulang"
+    })
+    void matchesAnInflectedTransferRequest(String phrase) {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.isTransferTargetAvailable()).thenReturn(true);
+
+        assertThat(router.evaluate(session, phrase).disposition()).isEqualTo(Disposition.TRANSFERRED);
+    }
+
+    @Test
+    void matchesAnInflectedTransferRequestInRussian() {
+        when(session.language()).thenReturn("ru-RU");
+        when(session.isTransferTargetAvailable()).thenReturn(true);
+
+        assertThat(router.evaluate(session, "Соедините меня, пожалуйста, с оператором").disposition())
+                .isEqualTo(Disposition.TRANSFERRED);
+        assertThat(router.evaluate(session, "переключите на живого человека").disposition())
+                .isEqualTo(Disposition.TRANSFERRED);
+    }
+
+    @Test
+    void doesNotTakeTellingAboutAnOperatorForAsking() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.isTransferTargetAvailable()).thenReturn(true);
+
+        assertThat(router.evaluate(session, "operator bilan gaplashgandim u boshqa summa aytgan"))
+                .isEqualTo(FastPathResult.NOT_HANDLED);
+    }
+
+    @Test
+    void leavesATransferRequestToTheModelWhenNoOneCanTakeTheCall() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.isTransferTargetAvailable()).thenReturn(false);
+
+        assertThat(router.evaluate(session, "operatorga ulang")).isEqualTo(FastPathResult.NOT_HANDLED);
+    }
+
+    @Test
+    void doesNotTakeABareMentionOfAnOperatorForATransferRequest() {
+        when(session.language()).thenReturn("uz-UZ");
+        when(session.isTransferTargetAvailable()).thenReturn(true);
+
+        assertThat(router.evaluate(session, "summa noto'g'ri, operator boshqacha aytgandi")).isEqualTo(FastPathResult.NOT_HANDLED);
     }
 
     @ParameterizedTest
@@ -308,19 +363,15 @@ class FastPathRouterTest {
     }
 
     @Test
-    void matchesPurposeUzbek() {
+    void aPurposeQuestionIsLeftToTheModel() {
         when(session.language()).thenReturn("uz-UZ");
         uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition def = mock(uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition.class);
-        when(def.callPurpose()).thenReturn("qarzdorlik to'lovi");
+        when(def.callPurpose()).thenReturn("Maqsad — qarzni yumshoq eslatish.");
         when(session.scenario()).thenReturn(def);
-        when(session.lastAgentText()).thenReturn("Eshityapsizmi?");
 
-        FastPathResult result = router.evaluate(session, "nega telefon qildingiz?");
+        FastPathResult result = router.evaluate(session, "tinchlikmi?");
 
-        assertThat(result.handled()).isTrue();
-        assertThat(result.endCall()).isFalse();
-        assertThat(result.reply()).contains("qarzdorlik to'lovi masalasida bog'lanyapman.");
-        assertThat(result.reply()).endsWith("Eshityapsizmi?");
+        assertThat(result.handled()).isFalse();
     }
 
     @ParameterizedTest

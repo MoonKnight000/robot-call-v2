@@ -591,8 +591,18 @@ model gapni so'zma-so'z aytadi:
 - cascade'da keyingi bosqichlarning tayyor gapi annex'da: `DEBT_NOTICE ga o'tsangiz, gapingiz AYNAN shu bo'lsin: «…»`;
 - realtime'da bosqichlar ro'yxatida: `Birinchi gap (AYNAN shu): «…»`.
 
-> ⚠️ Gapni kod emas, model aytadi: pipeline'da bosqich gapi o'tish bilan bir turnda tuziladi.
+> ⚠️ Odatda gapni model aytadi: pipeline'da bosqich gapi o'tish bilan bir turnda tuziladi.
 > Pul summalarini baribir `FactGuard` tekshiradi. Start bosqichida ruxsat yo'q — uni agentning `firstMessage` i ochadi.
+
+**Istisno — jim ishdan keyingi bosqich (cascade, 2026-11-06).** `FUNCTION` bosqichining yagona yo'li
+`staticLine` li suhbat bosqichi bo'lsa (masalan `CREATE_TASK → CONFIRMATION`), gapni **kodning o'zi** aytadi
+(Pipecat'ning `tts_say`, Retell'ning "Static Sentence" kabi) — model chaqirilmaydi. Qo'shimcha shartlar:
+- bosqichning yagona yo'li `END_CALL` bo'lsa, gapdan keyin qo'ng'iroq yopiladi;
+- qo'ng'iroq agent tilidan boshqa tilga o'tgan bo'lsa, yopuvchi bosqichda gap o'rniga agentning shu tildagi
+  xayrlashuvi aytiladi, boshqa bosqichda gapni model yozadi;
+- ish xato bilan tugasa yoki `{{fact}}` ning qiymati bo'lmasa — gapni model yozadi.
+
+Bu tasdiqni ikki marta aytishni yo'qotadi va xayrlashuvdan oldingi LLM chaqiruvini tejaydi.
 
 **`fallbackLine`** (ixtiyoriy, `{{fact}}` bilan) — model shu bosqichda aytishga hech narsa bermagan turnda
 (bo'sh javob, ikkinchi urinish ham bo'sh) **kod** so'zma-so'z aytadigan gap. Odatda bosqich savolining o'zi:

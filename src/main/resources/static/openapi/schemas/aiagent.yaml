@@ -15,6 +15,10 @@ AgentAdvancedDto:
       type: string
       enum: [RESERVED, BALANCED, WARM]
       description: how much warmth the agent's wording carries; BALANCED by default
+    voiceEmotion:
+      type: string
+      enum: [NEUTRAL, CHEERFUL, FRIENDLY, STRICT, WHISPER, SAD]
+      description: the mood the agent speaks in by default; NEUTRAL by default
     ambience:
       $ref: '#/AgentAmbienceDto'
     callBehaviour:
@@ -123,6 +127,7 @@ AgentClearableField:
   - VOICEMAIL_MESSAGE
   - FAST_LLM_MODEL
   - FALLBACK_LLM_MODEL
+  - MAX_OUTPUT_TOKENS
   - GREETING_PAUSE
   - SPEECH_LANGUAGES
   - RESPONSE_WAIT_MS
@@ -269,6 +274,10 @@ AgentVoiceDto:
     warmth:
       type: string
       enum: [RESERVED, BALANCED, WARM]
+    emotion:
+      type: string
+      enum: [NEUTRAL, CHEERFUL, FRIENDLY, STRICT, WHISPER, SAD]
+      description: the mood the agent speaks in by default (TTS controls + LLM wording); NEUTRAL by default
 AgentAnalysisDto:
   type: object
   properties:
@@ -1265,6 +1274,7 @@ UpdateAiAgentRequest:
       format: double
     maxOutputTokens:
       type: integer
+      description: Reply token cap, thinking included; omitted keeps the current value, clearFields MAX_OUTPUT_TOKENS returns to the platform default.
       format: int32
     ambience:
       $ref: '#/AgentAmbienceDto'

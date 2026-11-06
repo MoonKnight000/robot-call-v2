@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelTokens;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyConfigUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.CompanyConfig;
 import uz.murodjon.robotcallv2.copilot.application.dto.AskCopilotRequest;
@@ -102,7 +103,7 @@ public class CopilotService implements CopilotUseCase {
 
         CopilotMessage answer = repository.createMessage(companyId, CopilotMessage.assistant(session.id(), reply));
         long chargedUzs = callBillingUseCase.chargeCopilotReply(companyId, answer.id(),
-                new CallUsage(0, reply.promptTokens(), reply.completionTokens(), 0, 0));
+                CallUsage.ofModel(new ModelTokens(reply.model(), reply.promptTokens(), reply.completionTokens(), 0)));
         repository.updateMessageCharge(answer.id(), chargedUzs);
         repository.touchSession(session.id());
         return new CopilotReplyResponse(session.id(), answer.withCharge(chargedUzs), invoker.calls);
@@ -147,7 +148,7 @@ public class CopilotService implements CopilotUseCase {
 
                 CopilotMessage answer = repository.createMessage(companyId, CopilotMessage.assistant(session.id(), reply));
                 long chargedUzs = callBillingUseCase.chargeCopilotReply(companyId, answer.id(),
-                        new CallUsage(0, reply.promptTokens(), reply.completionTokens(), 0, 0));
+                        CallUsage.ofModel(new ModelTokens(reply.model(), reply.promptTokens(), reply.completionTokens(), 0)));
                 repository.updateMessageCharge(answer.id(), chargedUzs);
                 repository.touchSession(session.id());
 

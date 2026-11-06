@@ -11,6 +11,7 @@ public class CallReanalysisJobEntityMapper {
         CallReanalysisJobEntity entity = new CallReanalysisJobEntity();
         entity.setCompanyId(job.companyId());
         entity.setAiAgentId(job.aiAgentId());
+        entity.setMode(job.mode());
         entity.setRangeFrom(job.from());
         entity.setRangeTo(job.to());
         entity.setStatus(job.status());
@@ -36,6 +37,7 @@ public class CallReanalysisJobEntityMapper {
                 entity.getId(),
                 entity.getCompanyId(),
                 entity.getAiAgentId(),
+                entity.getMode(),
                 entity.getRangeFrom(),
                 entity.getRangeTo(),
                 entity.getStatus(),

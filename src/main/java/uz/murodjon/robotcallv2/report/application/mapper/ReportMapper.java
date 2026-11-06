@@ -12,13 +12,14 @@ public class ReportMapper {
         return new CallRow(call.callId(), call.targetId(), call.phone(), call.language(), call.startedAt(),
                 call.endedAt(), call.durationSec(), call.disposition(), call.hangupCause(), call.hasRecording(),
                 call.summary(), call.promisedDate(), call.promisedAmount(), call.crmNoteId(), call.clientName(),
-                call.campaignName(), call.operatorName());
+                call.campaignName(), call.operatorName(), call.aiAgentId(), call.agentName(), call.inbound(),
+                call.sentiment(), call.qualityScore(), call.costUzs(), call.avgTurnLatencyMs(), call.agentVersion());
     }
 
     public CallDetail toCallDetail(CallReport report) {
         return new CallDetail(toCallRow(report.call()), report.transcript(), report.reasonCode(), report.sentiment(),
                 report.needsFollowUp(), report.followUpNote(), report.escalated(), report.errorMessage(),
-                report.technical(), report.talk());
+                report.technical(), report.talk(), report.outcome());
     }
 
     public CampaignComparisonRow toCampaignComparisonRow(CampaignComparison comparison) {

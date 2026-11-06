@@ -6,6 +6,7 @@ import uz.murodjon.robotcallv2.aiagent.domain.enums.AiAgentMode;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.HandbookRule;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.LlmFallbackMode;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
+import uz.murodjon.robotcallv2.shared.dialog.ReasoningEffort;
 
 import java.time.Instant;
 import java.util.List;
@@ -39,6 +40,7 @@ public record AiAgentRow(
         LlmFallbackMode fallbackLlmMode,
         Double temperature,
         Integer maxOutputTokens,
+        ReasoningEffort reasoningEffort,
         AgentAmbienceDto ambience,
         AgentGreetingDto greeting,
         AgentCallBehaviourDto callBehaviour,
@@ -112,6 +114,7 @@ public record AiAgentRow(
                 agent.llmFallback() != null ? agent.llmFallback().mode() : null,
                 agent.temperature(),
                 agent.maxOutputTokens(),
+                agent.reasoningEffort(),
                 AgentAmbienceDto.of(agent.ambience()),
                 AgentGreetingDto.of(agent.greeting()),
                 AgentCallBehaviourDto.of(agent.callBehaviour()),

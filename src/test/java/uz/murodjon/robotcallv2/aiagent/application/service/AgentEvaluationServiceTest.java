@@ -126,7 +126,7 @@ class AgentEvaluationServiceTest {
 
     private static AgentTestCase testCase(Map<String, String> toolMocks, List<String> expectTools) {
         return new AgentTestCase(11L, COMPANY_ID, AGENT_ID, "qarz so'raydi", "Siz qarzdorsiz", Map.of(), null,
-                null, null, List.of(), List.of(), 6, NOW, toolMocks, expectTools);
+                null, null, List.of(), List.of(), 6, NOW, toolMocks, expectTools, null);
     }
 
     private static AgentEvalRun run() {

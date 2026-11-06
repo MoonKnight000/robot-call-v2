@@ -182,19 +182,34 @@ public class AgentSimulator {
                     .maxTokens(200)
                     .build();
         } else {
+            // Gemini counts its thinking against this cap; at 200 a caller line was cut mid-word ("Bu").
             options = GoogleGenAiChatOptions.builder()
                     .model(personaModel)
-                    .maxOutputTokens(200)
+                    .maxOutputTokens(1024)
                     .thinkingLevel(GoogleGenAiThinkingLevel.LOW)
                     .build();
         }
         ChatResponse response = caller.prompt()
                 .system(PERSONA_RULES + "\nYOUR ROLE:\n" + persona.prompt())
-                .messages(callerHistory)
+                .messages(asPersonaSees(callerHistory))
                 .options(options.mutate())
                 .call()
                 .chatResponse();
         return textOf(response);
+    }
+
+    /**
+     * The history from the persona model's side: the agent is the one it answers (user), its own
+     * lines are its replies (assistant). Sent as kept, the request ended on a model turn and Gemini
+     * rejected every caller turn ("Requests ending with a model turn are not supported").
+     */
+    private static List<Message> asPersonaSees(List<Message> callerHistory) {
+        List<Message> flipped = new ArrayList<>(callerHistory.size());
+        for (Message message : callerHistory) {
+            flipped.add(message instanceof AssistantMessage
+                    ? new UserMessage(message.getText()) : new AssistantMessage(message.getText()));
+        }
+        return flipped;
     }
 
     /**
@@ -206,7 +221,8 @@ public class AgentSimulator {
         // A simulation stays on the platform's model even for a company on its own LLM (3.14 covers calls).
         EffectiveAiModelConfig aiModel = aiModelConfigUseCase.findEffectiveByCompanyId(companyId).withoutOwnLlm();
         if (agent != null) {
-            aiModel = aiModel.withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens());
+            aiModel = aiModel.withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens())
+                    .withReasoningEffort(agent.reasoningEffort());
         }
         // No endpoint, no watchdog and no hangup: nothing here plays audio or ends a
         // channel, and every path that would touch one is guarded against null.

@@ -210,6 +210,20 @@ class StageEntryTest {
     }
 
     @Test
+    void aJobsSoleWayOnIsFoundWhateverKindOfStageItIs() {
+        ScenarioDefinition scenario = flow(
+                action("RECORD", StageType.FUNCTION, "CONFIRMATION", null),
+                StageDef.builder().id("CONFIRMATION").staticLine("Salomat bo'ling!")
+                        .allowedTransitions(List.of("END_CALL")).build(),
+                StageDef.builder().id("ASK").allowedTransitions(List.of("RECORD", "END_CALL")).build());
+
+        assertThat(StageEntry.findSoleWayOn(scenario, scenario.findStage("RECORD"))).isEqualTo("CONFIRMATION");
+        assertThat(StageEntry.findSoleWayOn(scenario, scenario.findStage("ASK"))).isNull();
+        assertThat(StageEntry.onlyEndsCall(scenario.findStage("CONFIRMATION"))).isTrue();
+        assertThat(StageEntry.onlyEndsCall(scenario.findStage("ASK"))).isFalse();
+    }
+
+    @Test
     void aJobThatFailedOrHasAChoiceToMakeIsLeftToTheModel() {
         ScenarioDefinition scenario = flow(
                 action("RECORD", StageType.FUNCTION, "PROFILE", null),

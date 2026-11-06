@@ -61,6 +61,12 @@ public class CallEventService implements CallEventUseCase {
         return repository.findByChatSessionId(companyId, chatSessionId);
     }
 
+    @Override
+    public List<CallEvent> findByCompanyIdAndType(long companyId, CallEventType type, Instant from, Instant to,
+                                                  int limit) {
+        return repository.findByCompanyIdAndType(companyId, type, from, to, limit);
+    }
+
     private static Map<String, Object> payloadOf(Object... keyValues) {
         Map<String, Object> payload = new LinkedHashMap<>();
         for (int i = 0; i + 1 < keyValues.length; i += 2) {

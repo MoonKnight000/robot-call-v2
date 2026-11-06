@@ -19,7 +19,10 @@ public record UserRow(
         UserStatus status,
         UserType type,
         Instant lastLoginAt,
-        Instant createdAt
+        Instant createdAt,
+        String phone,
+        String position,
+        String sipExtension
 ) {
 
     public UserRow(
@@ -37,11 +40,12 @@ public record UserRow(
     ) {
         this(id, companyId, name, username, email, roleId, roleCode, roleName, status,
                 companyId == null ? UserType.PLATFORM_ADMIN : UserType.COMPANY_USER,
-                lastLoginAt, createdAt);
+                lastLoginAt, createdAt, null, null, null);
     }
 
     public static UserRow of(User u) {
         return new UserRow(u.id(), u.companyId(), u.name(), u.username(), u.email(), u.roleId(), u.roleCode(),
-                u.roleName(), u.status(), u.type(), u.lastLoginAt(), u.createdAt());
+                u.roleName(), u.status(), u.type(), u.lastLoginAt(), u.createdAt(), u.phone(), u.position(),
+                u.sipExtension());
     }
 }

@@ -58,6 +58,7 @@ Retell uslubidagi kontakt maydonlari: `string → string` xaritasi, JSON obyekt 
 | ko'pi bilan 50 ta kalit | `400 CONTACT_CUSTOM_FIELDS_TOO_MANY` |
 | kalit `^[A-Za-z_][A-Za-z0-9_]{0,63}$` (harf/raqam/`_`, raqam bilan boshlanmaydi, ≤ 64 belgi) | `400 CONTACT_CUSTOM_FIELD_INVALID` (argument — kalit) |
 | qiymat `null` emas va ≤ 1000 belgi | `400 CONTACT_CUSTOM_FIELD_INVALID` |
+| kalit uchun [kontakt maydoni](#contact-fields) ta'riflangan bo'lsa — qiymat uning turiga mos | `400 CONTACT_FIELD_VALUE_INVALID` |
 
 Qiymatlarni AI agent ham avtomatik yozadi: agentning post-call extraction maydonida
 `contactField` berilgan bo'lsa, qo'ng'iroqdan keyin ajratilgan qiymat shu kalit bilan
@@ -73,14 +74,141 @@ CSV import/eksport custom field'larni o'qimaydi va yozmaydi.
 Body — `ContactFilter`:
 
 ```json
-{ "page": 0, "size": 20, "orders": { "NAME": "ASC" }, "search": "Aziz" }
+{
+  "page": 0, "size": 20, "orders": { "NAME": "ASC" }, "search": "Aziz",
+  "tags": ["vip"], "customFields": { "lead_status": "hot" },
+  "lastCallFrom": "2026-11-01T00:00:00Z", "lastCallTo": "2026-11-06T23:59:59Z"
+}
 ```
 
-`search` — ism yoki telefon bo'yicha erkin qidiruv, bo'sh/`null` — filtr yo'q.
-Saralanadigan ustunlar: `ID`, `NAME`, `PHONE`, `CREATED_AT`. Standart:
-`NAME ASC`.
+Filtrlarning hammasi ixtiyoriy; bo'sh/`null` — toraytirmaydi, berilganlari AND bilan birlashadi.
 
-Javob — `PageableData<Contact>` (`Contact` shakli yuqorida).
+| Maydon | Ma'nosi |
+|---|---|
+| `search` | ism, telefon yoki istalgan custom field qiymati ichida qidiruv (katta-kichik harf farqsiz) |
+| `tags` | shu teglardan **kamida bittasi** bor kontaktlar |
+| `customFields` | `{ kalit: qiymat }` — har bir kalit qiymati aynan teng (katta-kichik harf farqsiz); `null` qiymatli kalit e'tiborsiz |
+| `lastCallFrom` / `lastCallTo` | oxirgi qo'ng'irog'i shu oraliqda boshlangan kontaktlar (ISO instant); berilsa, hech qo'ng'iroq qilinmagan kontakt chiqmaydi |
+
+Saralanadigan ustunlar: `ID`, `NAME`, `PHONE`, `CREATED_AT`. Standart: `NAME ASC`.
+
+Javob — `PageableData<ContactRow>`: `Contact` maydonlari + ikkita hosila maydon:
+
+```json
+{
+  "id": 12, "name": "Aziz Karimov", "phone": "+998901234567", "address": "Toshkent",
+  "tags": "vip,doimiy", "notes": "Doimiy mijoz", "customFields": { "lead_status": "hot" },
+  "createdAt": "2026-07-20T09:00:00Z",
+  "callCount": 3,
+  "lastCallAt": "2026-11-05T10:12:00Z",
+  "crmProvider": "BITRIX24",
+  "externalId": "4821"
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `callCount` | shu raqamga barcha qo'ng'iroqlar soni (ulanmaganlari ham), hech bo'lmasa — `0` |
+| `lastCallAt` | eng yangi qo'ng'iroq boshlangan vaqt, hech bo'lmasa — `null` |
+| `crmProvider` / `externalId` | kontakt qaysi CRM yozuvidan import qilingan ([crm.md#contact-sync](crm.md#contact-sync)); import qilinmagan bo'lsa — `null` |
+
+---
+
+## Kontakt maydonlari (contact fields) {#contact-fields}
+
+Kompaniya darajasidagi **turlangan** maydon ta'riflari — kontakt `customFields` kalitlarining
+tavsifi (Retell'dagi "Manage contact fields"). Ta'rif bo'lgan kalitning qiymati kontakt
+yaratish/yangilashda turiga qarab tekshiriladi; ta'rifsiz kalitlar avvalgidek erkin matn.
+Huquq: o'qish — **CONTACT_READ**, o'zgartirish — **CONTACT_EDIT**.
+
+`ContactField` shakli:
+
+```json
+{
+  "id": 3,
+  "key": "lead_status",
+  "label": "Lid holati",
+  "type": "ENUM",
+  "options": ["hot", "warm", "cold"],
+  "description": "Mijozning qiziqish darajasi",
+  "extractionKey": "lead_status",
+  "updateMode": "OVERWRITE",
+  "createdAt": "2026-11-06T09:00:00Z"
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `key` | `customFields` kaliti va qo'ng'iroq o'zgaruvchisi nomi. Harf bilan boshlanadi, harf/raqam/`_`, ≤ 64. `name`, `phone`, `address`, `tags`, `notes`, `id` va `contact…`/`external…` bilan boshlanadigan nomlar band. Kompaniyada katta-kichik harf farqsiz takrorlanmaydi. **Yaratilgandan keyin o'zgarmaydi.** |
+| `label` | jadval ustuni sarlavhasi, ≤ 128 |
+| `type` | `TEXT` · `NUMBER` · `BOOLEAN` (`true`/`false`) · `ENUM` · `DATE` (`2026-11-06`) · `DATETIME` (`2026-11-06T09:00:00Z` yoki offset bilan). **Yaratilgandan keyin o'zgarmaydi.** |
+| `options` | faqat `ENUM` uchun: 1–100 ta takrorlanmaydigan, bo'sh bo'lmagan qiymat; boshqa turlarda bo'sh bo'lishi shart |
+| `description` | maydon nimani saqlaydi; `ACCUMULATE` rejimida LLM uchun birlashtirish ko'rsatmasi ham shu |
+| `extractionKey` | qo'ng'iroqdan keyin qaysi post-call extraction maydoni (agent `dataNeeded[].id`) bu maydonni to'ldiradi; `null` — hech qaysi. Harf/raqam/`_`, ≤ 64 |
+| `updateMode` | `OVERWRITE` (standart) — doim ustidan yozadi · `FILL_IF_EMPTY` — faqat bo'sh bo'lsa · `ACCUMULATE` — eski va yangi qiymat LLM bilan birlashtiriladi (faqat `TEXT`) |
+
+### Qo'ng'iroqdan keyin to'ldirish {#contact-fields-post-call}
+
+Har bir yakunlangan qo'ng'iroqdan keyin post-call extraction natijasi (`outcome`) telefon
+raqami bo'yicha kontaktga yoziladi (kontakt yo'q bo'lsa — raqam ism sifatida yangisi yaratiladi):
+
+1. `extractionKey` berilgan har bir kompaniya maydoni `outcome[extractionKey]` qiymatini oladi
+   (agent `dataNeeded` maydoni yoki ssenariy `outcomeSchema` kaliti) — barcha agentlarga amal qiladi.
+2. Agentning `dataNeeded[].contactField` i ham ishlaydi (avvalgidek). Bir xil kalitga ikkalasi
+   ham qiymat bersa — **kompaniya maydoni ustun**. Kompaniyada ta'rifi yo'q kalit — doim `OVERWRITE`.
+3. Qiymat `updateMode` bo'yicha yoziladi:
+
+| `updateMode` | Saqlangan qiymat bo'sh | Saqlangan qiymat bor |
+|---|---|---|
+| `OVERWRITE` | yoziladi | yangisi bilan almashtiriladi |
+| `FILL_IF_EMPTY` | yoziladi | o'zgarmaydi |
+| `ACCUMULATE` | yoziladi | agentning `fastLlmModel` i (yo'q bo'lsa — platformaning summary modeli; kompaniyaning o'z LLM'i bo'lsa — o'sha) `description` ko'rsatmasi bo'yicha eski va yangisini bitta matnga birlashtiradi; model javob bermasa — ikkalasi bo'sh qator bilan ketma-ket saqlanadi. Natija ≤ 1000 belgi (oshsa — eng eski qismi qisqaradi). Saqlangan matn yangi qiymatni aynan o'z ichiga olsa — qayta birlashtirilmaydi |
+
+Bo'sh qiymat, noto'g'ri kalit, maydon turiga mos kelmagan qiymat va 50 tadan ortiq kalit —
+jimgina tashlanadi (xato qaytmaydi). `ACCUMULATE` birlashtirishining tokenlari balansdan yechiladi
+(ledger `contact-field-merge:<callId>:<key>`, `llm_usage.purpose = CONTACT_FIELD_MERGE`);
+kompaniyaning o'z LLM'ida — yechilmaydi.
+
+CRM'dan import qilingan kontaktda shu yozuv ham CRM'ga qaytarib yuboriladi ([crm.md#contact-push](crm.md#contact-push)).
+
+Eski qo'ng'iroqlardan to'ldirish (Backfill) — `POST /api/call-reanalyses` `mode: CONTACTS_STORED | CONTACTS_REEXTRACT` bilan
+([call-reanalyses.md#contact-backfill](call-reanalyses.md#contact-backfill)).
+
+Kompaniyada ko'pi bilan 50 ta maydon.
+
+### `GET /api/contacts/fields` — ro'yxat
+
+Javob — `ContactField[]`, yaratilish tartibida.
+
+### `POST /api/contacts/fields` — yangi maydon
+
+Body (`CreateContactFieldRequest`): `key`, `label`, `type` — majburiy; `options`, `description`,
+`extractionKey`, `updateMode` (`null` → `OVERWRITE`) — ixtiyoriy. Javob — yaratilgan `ContactField`.
+
+### `PUT /api/contacts/fields/{id}` — tahrirlash
+
+Body (`UpdateContactFieldRequest`): `label` (majburiy), `options`, `description`, `extractionKey`,
+`updateMode` — hammasi **almashtiriladi** (`null` — tozalanadi, `updateMode: null` → `OVERWRITE`).
+`key` va `type` o'zgarmaydi. Javob — yangilangan `ContactField`.
+
+### `DELETE /api/contacts/fields/{id}` — o'chirish
+
+Ta'rif o'chadi **va shu kalit kompaniyaning barcha kontaktlari `customFields` idan olib tashlanadi**.
+Javob — `data: null`.
+
+### Xatolar
+
+| Holat | Kod |
+|---|---|
+| kalit formati noto'g'ri yoki band | `400 CONTACT_FIELD_KEY_INVALID` |
+| `type` yo'q | `400 VALIDATION_FAILED` |
+| `options` noto'g'ri | `400 CONTACT_FIELD_OPTIONS_INVALID` |
+| `ACCUMULATE` `TEXT` bo'lmagan maydonda | `400 CONTACT_FIELD_ACCUMULATE_TEXT_ONLY` |
+| `extractionKey` formati noto'g'ri | `400 CONTACT_FIELD_EXTRACTION_KEY_INVALID` |
+| 50 tadan ko'p | `400 CONTACT_FIELDS_TOO_MANY` |
+| kalit allaqachon bor | `409 CONTACT_FIELD_KEY_EXISTS` |
+| maydon topilmadi | `404 CONTACT_FIELD_NOT_FOUND` |
+| kontakt yaratish/yangilashda qiymat maydon turiga mos emas | `400 CONTACT_FIELD_VALUE_INVALID` (argumentlar — kalit, tur) |
 
 ---
 
@@ -116,6 +244,9 @@ kiradi; ulanmaganida `durationSec` — `null`.
 `customFields`: `null` yoki yo'q — saqlangan to'plam o'zgarmaydi; xarita berilsa — **butun
 to'plam almashtiriladi** (berilmagan kalitlar o'chadi, `{}` hammasini tozalaydi).
 Cheklovlar — [yuqorida](#custom-fields).
+
+Kontakt CRM'dan import qilingan bo'lsa va `customFields` o'zgargan bo'lsa — `pushMappings` dagi qiymatlar
+CRM yozuviga fon rejimida qaytarib yoziladi ([crm.md#contact-push](crm.md#contact-push)).
 
 Javob — yangilangan `Contact`.
 

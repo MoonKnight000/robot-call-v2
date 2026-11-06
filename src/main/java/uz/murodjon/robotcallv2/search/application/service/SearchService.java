@@ -42,7 +42,7 @@ public class SearchService implements SearchUseCase {
                 : campaignUseCase.findCampaignsByName(companyId, q, GROUP_LIMIT).stream()
                 .map(c -> new SearchItem(c.id(), c.name(), c.status().name()))
                 .toList();
-        CallFilter callFilter = new CallFilter(0, GROUP_LIMIT, null, q, null, null, null, null, null, null, null, null, null, null, null);
+        CallFilter callFilter = new CallFilter(0, GROUP_LIMIT, null, q, null, null, null, null, null, null, null, null, null, null, null, null);
         List<SearchItem> callResults = !currentUser.hasPermission(Permission.CALL_READ) ? List.of()
                 : reportUseCase.findRecentCalls(companyId, callFilter).stream()
                 .map(SearchService::toCallItem)

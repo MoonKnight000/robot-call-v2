@@ -8,6 +8,7 @@ import uz.murodjon.robotcallv2.shared.dialog.Disposition;
 
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Deterministic Fast-Path Router for ultra-low latency (<20ms) dialog turns.
@@ -35,7 +36,8 @@ public class FastPathRouter {
 
     private static final Set<String> DO_NOT_CALL_UZ = Set.of(
             "boshqa telefon qilmang", "telefon qilmang", "qaytib qilmang", "raqamimni o'chiring",
-            "bezovta qilmang", "spam", "bloklayman", "o'chirib tashlang", "telefon qilmanglar"
+            "bezovta qilmang", "spam", "bloklayman", "o'chirib tashlang", "telefon qilmanglar",
+            "qo'ng'iroq qilmang", "qo'ng'iroq qilmanglar"
     );
 
     private static final Set<String> DO_NOT_CALL_RU = Set.of(
@@ -44,13 +46,27 @@ public class FastPathRouter {
 
     private static final Set<String> TRANSFER_UZ = Set.of(
             "operatorga ula", "operatorga ulang", "operator bilan gaplashmoqchiman",
-            "operator chaqir", "odam bilan gaplashay", "tirik odam bormi", "mutaxassisga ulang", "operator"
+            "operator chaqir", "odam bilan gaplashay", "tirik odam bormi", "mutaxassisga ulang"
     );
 
     private static final Set<String> TRANSFER_RU = Set.of(
             "соедините с оператором", "переведите на оператора", "хочу поговорить с человеком",
             "дайте оператора", "живой человек есть", "свяжите с оператором"
     );
+
+    /**
+     * A request to be put through, however it is inflected: "operatoringizga ulang", "operatorni ulab bering",
+     * "tirik operator bilan ulang". A simulated caller asked that way three times and the model, with the
+     * transfer tool on offer, filed the call as COMPLETED. Only the asking forms of the verb, so "operator bilan
+     * gaplashgandim" — telling, not asking — does not match.
+     */
+    private static final Pattern TRANSFER_REQUEST_UZ = Pattern.compile(
+            "\\b(operator|mutaxassis|tirik odam|odam)\\S*\\s+(bilan\\s+)?"
+                    + "(ulang|ulab|ulasangiz|ulay olasizmi|ulashing|ulanglar|gaplashmoqchiman|gaplashtiring|gaplashay)");
+
+    private static final Pattern TRANSFER_REQUEST_RU = Pattern.compile(
+            "(соедин|переве|переключ|свяжите|позовите|дайте)\\S*(\\s+(меня|пожалуйста|срочно))*\\s+(с\\s+|на\\s+)?"
+                    + "(жив\\S*\\s+)?(оператор|человек|специалист)");
 
     private static final Set<String> CLOSING_GRATITUDE_UZ = Set.of(
             "rahmat xayr", "katta rahmat xayr", "rahmat salomat boling", "rahmat salomat bo'ling",
@@ -131,17 +147,6 @@ public class FastPathRouter {
 
     private static final Set<String> ROBOT_CHECK_RU = Set.of("вы робот", "вы человек", "это бот", "вы бот");
 
-    private static final Set<String> PURPOSE_UZ = Set.of(
-            "nima maqsadda telefon qilyapsiz", "nima maqsadda qo'ng'iroq qilyapsiz", "nima maqsadda",
-            "nega telefon qildingiz", "nega telefon qilyapsiz", "nega qildingiz", "nima uchun telefon qilyapsiz",
-            "nima masala", "tinchlikmi", "qanday masala", "nima gap"
-    );
-
-    private static final Set<String> PURPOSE_RU = Set.of(
-            "с какой целью звоните", "с какой целью", "зачем звоните", "по какому поводу",
-            "по какому вопросу", "в чем дело", "что случилось"
-    );
-
     public FastPathResult evaluate(DialogSession s, String clientText) {
         if (clientText == null || clientText.isBlank() || s.isEnded()) {
             return FastPathResult.NOT_HANDLED;
@@ -168,7 +173,12 @@ public class FastPathRouter {
         }
 
         // 3. Human Transfer Request
-        if (matchesAny(normalized, isRu ? TRANSFER_RU : TRANSFER_UZ)) {
+        // Only where a transfer can happen: with no operator to hand over to, "ulayapman" and a hung-up
+        // line is a lie — the model then answers it (@no-transfer rule). A bare "operator" no longer
+        // matches: "summa noto'g'ri, operator aytgandi…" is not a request to be transferred.
+        if (TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())
+                && (matchesAny(normalized, isRu ? TRANSFER_RU : TRANSFER_UZ)
+                || (isRu ? TRANSFER_REQUEST_RU : TRANSFER_REQUEST_UZ).matcher(normalized).find())) {
             String reply = DialogLines.transferring(s);
             log.info("[{}] Fast-path matched: TRANSFER", s.channelId());
             return FastPathResult.endWithDisposition(reply, Disposition.TRANSFERRED);
@@ -230,22 +240,9 @@ public class FastPathRouter {
             return FastPathResult.replyOnly(reply);
         }
 
-        // 7. Call Purpose Inquiry
-        if (words.length <= 6 && matchesAny(normalized, isRu ? PURPOSE_RU : PURPOSE_UZ)) {
-            String purpose = s.scenario() != null ? s.scenario().callPurpose() : null;
-            if (purpose != null && !purpose.isBlank()) {
-                java.util.Map<String, Object> facts = s.context() != null ? s.context().facts() : java.util.Map.of();
-                String rendered = PromptTemplateEngine.render(purpose.trim(), facts);
-                String purposeReply = isRu
-                        ? "Я звоню вам по поводу: " + rendered + "."
-                        : "Sizga " + rendered + " masalasida bog'lanyapman.";
-                String lastQ = DialogLines.lastQuestion(s.lastAgentText());
-                String reply = lastQ != null ? purposeReply + " " + lastQ : purposeReply;
-                log.info("[{}] Fast-path matched: PURPOSE", s.channelId());
-                return FastPathResult.replyOnly(reply);
-            }
-        }
-
+        // No fast path for "nima masalada? / tinchlikmi?": answering it IS the next stage's job, and the
+        // canned reply read the scenario's callPurpose — an instruction to the model — to the caller verbatim
+        // ("Sizga Mijoz Uysot'dan uy olgan… Maqsad — … masalasida bog'lanyapman"), without moving the stage.
         return FastPathResult.NOT_HANDLED;
     }
 
@@ -313,6 +310,10 @@ public class FastPathRouter {
                 .replace('`', '\'')
                 .replace('‘', '\'')
                 .replace('’', '\'')
+                // The recognizer writes Uzbek o'/g' with the modifier letter turned comma (U+02BB):
+                // "oʻchirib tashlang" never matched the phrase lists below.
+                .replace('ʻ', '\'')
+                .replace('ʼ', '\'')
                 .replaceAll("[.,!?\\-–—\"«»]", " ")
                 .replaceAll("\\s+", " ")
                 .trim();

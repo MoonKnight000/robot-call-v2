@@ -26,4 +26,7 @@ public interface KnowledgeSourceRepository {
      * all companies — what the feed refresh job looks through.
      */
     List<KnowledgeSource> findRefreshable(KnowledgeSourceType sourceType, KnowledgeSourceStatus status);
+
+    /** Every company's sources in {@code status}; the auto-retry sweep reads the failed ones. */
+    List<KnowledgeSource> findByStatus(KnowledgeSourceStatus status);
 }

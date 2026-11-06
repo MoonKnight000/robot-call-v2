@@ -10,6 +10,8 @@ import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity.Call
 import uz.murodjon.robotcallv2.campaign.infrastructure.persistence.entity.CampaignTargetEntity;
 import uz.murodjon.robotcallv2.company.infrastructure.persistence.entity.CompanyEntity;
 
+import java.util.List;
+
 /** The table is flat; the domain keeps usage and cost as their own records. */
 @Component
 public class CallBillingEntityMapper {
@@ -35,12 +37,16 @@ public class CallBillingEntityMapper {
                         entity.getRealtimeSeconds() != null ? entity.getRealtimeSeconds() : 0),
                 new CallCostBreakdown(
                         entity.getLlmCostUzs(),
+                        zeroIfNull(entity.getLlmPromptCostUzs()),
+                        zeroIfNull(entity.getLlmCompletionCostUzs()),
+                        zeroIfNull(entity.getLlmCachedCostUzs()),
                         entity.getSttCostUzs(),
                         entity.getTtsCostUzs(),
                         entity.getRealtimeCostUzs() != null ? entity.getRealtimeCostUzs() : 0L,
                         entity.getTelephonyCostUzs(),
                         entity.getPlatformFeeUzs(),
-                        entity.getTotalUzs()),
+                        entity.getTotalUzs(),
+                        List.of()),
                 entity.getCreatedAt(),
                 entity.getSettledAt());
     }
@@ -66,6 +72,9 @@ public class CallBillingEntityMapper {
         entity.setRealtimeSeconds(billing.usage().realtimeSeconds());
         entity.setRealtimeCostUzs(billing.cost().realtimeUzs());
         entity.setLlmCostUzs(billing.cost().llmUzs());
+        entity.setLlmPromptCostUzs(billing.cost().llmPromptUzs());
+        entity.setLlmCompletionCostUzs(billing.cost().llmCompletionUzs());
+        entity.setLlmCachedCostUzs(billing.cost().llmCachedUzs());
         entity.setSttCostUzs(billing.cost().sttUzs());
         entity.setTtsCostUzs(billing.cost().ttsUzs());
         entity.setTelephonyCostUzs(billing.cost().telephonyUzs());
@@ -74,5 +83,9 @@ public class CallBillingEntityMapper {
         entity.setCreatedAt(billing.createdAt());
         entity.setSettledAt(billing.settledAt());
         return entity;
+    }
+
+    private static long zeroIfNull(Long value) {
+        return value != null ? value : 0L;
     }
 }

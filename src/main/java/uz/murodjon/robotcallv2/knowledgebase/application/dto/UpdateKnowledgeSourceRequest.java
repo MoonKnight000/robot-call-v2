@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Size;
  * {@code refreshMinutes} changes how often a URL catalog feed is fetched again.
  * {@code agentId} null keeps the current agent; {@code global = true} instead makes the
  * source company-wide again; {@code collectionId} moves it into that collection (and out of any agent).
+ * {@code enabled} switches the source off (kept, never searched) or back on; null keeps it.
  */
 public record UpdateKnowledgeSourceRequest(
         @Size(max = 200) String name,
@@ -16,6 +17,7 @@ public record UpdateKnowledgeSourceRequest(
         Long collectionId,
         Boolean global,
         @Size(max = 2048) String url,
-        @Min(15) Integer refreshMinutes
+        @Min(15) Integer refreshMinutes,
+        Boolean enabled
 ) {
 }

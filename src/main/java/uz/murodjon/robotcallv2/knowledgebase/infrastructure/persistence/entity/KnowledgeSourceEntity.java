@@ -81,6 +81,39 @@ public class KnowledgeSourceEntity {
     @Column(name = "refresh_minutes")
     private Integer refreshMinutes;
 
+    @Column(name = "failed_attempts", nullable = false)
+    private int failedAttempts;
+
+    @Column(name = "failed_at")
+    private Instant failedAt;
+
+    @Column(nullable = false)
+    private boolean enabled = true;
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public void setEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
+
+    public int getFailedAttempts() {
+        return failedAttempts;
+    }
+
+    public void setFailedAttempts(int failedAttempts) {
+        this.failedAttempts = failedAttempts;
+    }
+
+    public Instant getFailedAt() {
+        return failedAt;
+    }
+
+    public void setFailedAt(Instant failedAt) {
+        this.failedAt = failedAt;
+    }
+
     public Long getId() {
         return id;
     }

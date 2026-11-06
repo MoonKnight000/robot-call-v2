@@ -150,6 +150,10 @@ yuborish rad etiladi.
 
 ## `GET /api/profile/sessions` — faol sessiyalar
 
+> **Deprecated** — [`GET /api/auth/sessions`](auth.md#get-apiauthsessions--faol-sessiyalar-joriysi-belgilangan)
+> ishlatilsin. `refresh_token` cookie'si bu yo'lga kelmaydi, shuning uchun bu yerda `current`
+> har doim `false`.
+
 **Javob** (`List<UserSessionRow>`):
 
 ```json
@@ -160,7 +164,8 @@ yuborish rad etiladi.
       "device": "Mozilla/5.0 (Windows NT 10.0...)",
       "ipAddress": "10.0.0.4",
       "createdAt": "2026-08-01T09:00:00Z",
-      "lastActivityAt": "2026-08-02T07:40:00Z"
+      "lastActivityAt": "2026-08-02T07:40:00Z",
+      "current": false
     }
   ],
   "message": null,

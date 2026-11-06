@@ -1,5 +1,7 @@
 package uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -17,11 +19,15 @@ import uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.repository.
 import uz.murodjon.robotcallv2.report.application.port.output.CallReportRepository;
 import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.dialog.Sentiment;
 import uz.murodjon.robotcallv2.shared.util.LikePatterns;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static uz.murodjon.robotcallv2.report.infrastructure.persistence.adapter.ReportSql.*;
 //todo clean code
@@ -52,12 +58,25 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
                    r.crm_note_id   AS crm_note_id,
                    t.context_data ->> 'clientName' AS client_name,
                    c.name          AS campaign_name,
-                   u.name          AS operator_name
+                   u.name          AS operator_name,
+                   a.ai_agent_id   AS ai_agent_id,
+                   ag.name         AS agent_name,
+                   (a.inbound_route_id IS NOT NULL) AS inbound,
+                   r.sentiment     AS sentiment,
+                   q.score         AS quality_score,
+                   -- A reserved hold is not what the call cost; only a settled bill is.
+                   CASE WHEN b.status = 'SETTLED' THEN b.total_uzs END AS cost_uzs,
+                   tc.avg_turn_latency_ms AS avg_turn_latency_ms,
+                   a.agent_version AS agent_version
             FROM call_attempt a
             LEFT JOIN campaign_target t ON t.id = a.target_id
             LEFT JOIN campaign c ON c.id = t.campaign_id
             LEFT JOIN call_result r ON r.call_id = a.id
             LEFT JOIN app_user u ON u.id = a.operator_user_id
+            LEFT JOIN ai_agent ag ON ag.id = a.ai_agent_id
+            LEFT JOIN call_quality q ON q.call_attempt_id = a.id
+            LEFT JOIN call_billing b ON b.call_attempt_id = a.id
+            LEFT JOIN call_technical tc ON tc.call_id = a.id
             """;
 
     /** What the list's total is counted over: the only join its filter reaches. */
@@ -73,8 +92,10 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
     private final CallTranscriptJpaRepository callTranscriptJpaRepository;
     private final CallTechnicalJpaRepository callTechnicalJpaRepository;
     private final CallTalkMetricsJpaRepository callTalkMetricsJpaRepository;
+    private final ObjectMapper objectMapper;
+    private static final TypeReference<Map<String, Object>> OUTCOME_TYPE = new TypeReference<>() {};
 
-    public CallReportRepositoryAdapter(JdbcTemplate jdbcTemplate,
+    public CallReportRepositoryAdapter(ObjectMapper objectMapper, JdbcTemplate jdbcTemplate,
                                        CallAttemptJpaRepository callAttemptJpaRepository,
                                        CallResultJpaRepository callResultJpaRepository,
                                        CallTranscriptJpaRepository callTranscriptJpaRepository,
@@ -86,6 +107,7 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
         this.callTranscriptJpaRepository = callTranscriptJpaRepository;
         this.callTechnicalJpaRepository = callTechnicalJpaRepository;
         this.callTalkMetricsJpaRepository = callTalkMetricsJpaRepository;
+        this.objectMapper = objectMapper;
     }
 
 
@@ -151,7 +173,8 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
         }
         String phonePattern = LikePatterns.buildContainsPattern(filter.q());
         if (phonePattern != null) {
-            statement.where("COALESCE(a.phone, t.phone) LIKE :q ESCAPE '!'", "q", phonePattern);
+            statement.where("(COALESCE(a.phone, t.phone) LIKE :q ESCAPE '!'"
+                    + " OR (t.context_data ->> 'clientName') ILIKE :q ESCAPE '!')", "q", phonePattern);
         }
         if (filter.campaignId() != null) {
             statement.where("t.campaign_id = :campaignId", "campaignId", filter.campaignId());
@@ -177,6 +200,9 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
         if (filter.sentiment() != null) {
             statement.where("EXISTS (SELECT 1 FROM call_result sr WHERE sr.call_id = a.id AND sr.sentiment = :sentiment)",
                     "sentiment", filter.sentiment().name());
+        }
+        if (filter.inbound() != null) {
+            statement.where(filter.inbound() ? "a.inbound_route_id IS NOT NULL" : "a.inbound_route_id IS NULL");
         }
         return statement;
     }
@@ -217,7 +243,20 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
                 result != null && result.isEscalated(),
                 errorMessage,
                 callTechnicalJpaRepository.findById(callId).map(CallReportRepositoryAdapter::toTechnicalMetrics).orElse(null),
-                callTalkMetricsJpaRepository.findById(callId).map(CallReportRepositoryAdapter::toTalkMetrics).orElse(null));
+                callTalkMetricsJpaRepository.findById(callId).map(CallReportRepositoryAdapter::toTalkMetrics).orElse(null),
+                result != null ? readOutcome(result.getOutcome()) : Map.of());
+    }
+
+    /** The stored outcome JSON as a map; a row that does not parse shows as empty rather than failing the page. */
+    private Map<String, Object> readOutcome(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, OUTCOME_TYPE);
+        } catch (Exception e) {
+            return Map.of();
+        }
     }
 
     private static CallTechnicalMetrics toTechnicalMetrics(CallTechnicalEntity entity) {
@@ -260,6 +299,23 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
                 .list();
     }
 
+    @Override
+    public Map<String, PhoneCallStats> findCallStatsByPhones(long companyId, Collection<String> phones) {
+        Map<String, PhoneCallStats> stats = new HashMap<>();
+        jdbc.sql("SELECT COALESCE(a.phone, t.phone) AS phone, count(*) AS call_count, max(a.started_at) AS last_call_at "
+                        + "FROM call_attempt a "
+                        + "LEFT JOIN campaign_target t ON t.id = a.target_id "
+                        + "WHERE a.company_id = :companyId AND COALESCE(a.phone, t.phone) IN (:phones) "
+                        + "GROUP BY COALESCE(a.phone, t.phone)")
+                .param("companyId", companyId)
+                .param("phones", phones)
+                .query(rs -> {
+                    stats.put(rs.getString("phone"),
+                            new PhoneCallStats(rs.getLong("call_count"), instantOrNull(rs, "last_call_at")));
+                });
+        return stats;
+    }
+
     private static ReportedCall toReportedCall(ResultSet rs, int rowNum) throws SQLException {
         return new ReportedCall(
                 rs.getLong("call_id"),
@@ -278,6 +334,14 @@ public class CallReportRepositoryAdapter implements CallReportRepository {
                 rs.getString("crm_note_id"),
                 rs.getString("client_name"),
                 rs.getString("campaign_name"),
-                rs.getString("operator_name"));
+                rs.getString("operator_name"),
+                rs.getObject("ai_agent_id", Long.class),
+                rs.getString("agent_name"),
+                rs.getBoolean("inbound"),
+                enumOrNull(Sentiment.class, rs.getString("sentiment")),
+                intOrNull(rs, "quality_score"),
+                rs.getObject("cost_uzs", Long.class),
+                intOrNull(rs, "avg_turn_latency_ms"),
+                intOrNull(rs, "agent_version"));
     }
 }

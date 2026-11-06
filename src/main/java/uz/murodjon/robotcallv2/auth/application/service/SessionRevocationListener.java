@@ -9,6 +9,7 @@ import uz.murodjon.robotcallv2.company.domain.event.CompanySuspendedEvent;
 import uz.murodjon.robotcallv2.role.domain.event.RoleChangedEvent;
 import uz.murodjon.robotcallv2.user.application.port.input.UserUseCase;
 import uz.murodjon.robotcallv2.user.domain.event.UserBlockedEvent;
+import uz.murodjon.robotcallv2.user.domain.event.UserPasswordResetByAdminEvent;
 import uz.murodjon.robotcallv2.user.domain.event.UserRoleChangedEvent;
 
 /**
@@ -47,6 +48,11 @@ public class SessionRevocationListener {
 
     @EventListener
     public void revokeOnUserRoleChanged(UserRoleChangedEvent event) {
+        sessionUseCase.revokeAllForUser(event.userId());
+    }
+
+    @EventListener
+    public void revokeOnPasswordResetByAdmin(UserPasswordResetByAdminEvent event) {
         sessionUseCase.revokeAllForUser(event.userId());
     }
 

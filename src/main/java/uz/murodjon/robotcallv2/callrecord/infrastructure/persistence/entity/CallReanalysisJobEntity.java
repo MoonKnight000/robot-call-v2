@@ -1,6 +1,7 @@
 package uz.murodjon.robotcallv2.callrecord.infrastructure.persistence.entity;
 
 import jakarta.persistence.*;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallReanalysisMode;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.CallReanalysisStatus;
 
 import java.time.Instant;
@@ -18,6 +19,10 @@ public class CallReanalysisJobEntity {
 
     @Column(name = "ai_agent_id", nullable = false, updatable = false)
     private Long aiAgentId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "mode", nullable = false, length = 32, updatable = false)
+    private CallReanalysisMode mode;
 
     @Column(name = "range_from", nullable = false, updatable = false)
     private Instant rangeFrom;
@@ -81,6 +86,8 @@ public class CallReanalysisJobEntity {
     public void setRangeFrom(Instant rangeFrom) { this.rangeFrom = rangeFrom; }
     public Instant getRangeTo() { return rangeTo; }
     public void setRangeTo(Instant rangeTo) { this.rangeTo = rangeTo; }
+    public CallReanalysisMode getMode() { return mode; }
+    public void setMode(CallReanalysisMode mode) { this.mode = mode; }
     public CallReanalysisStatus getStatus() { return status; }
     public void setStatus(CallReanalysisStatus status) { this.status = status; }
     public int getTotalCalls() { return totalCalls; }

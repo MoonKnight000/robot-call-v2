@@ -27,7 +27,10 @@ public class KnowledgeSourceEntityMapper {
                 entity.getFeedItemsPath(),
                 entity.getFeedKeyField(),
                 entity.getRefreshMinutes(),
-                entity.getCollectionId()
+                entity.getCollectionId(),
+                entity.getFailedAttempts(),
+                entity.getFailedAt(),
+                entity.isEnabled()
         );
     }
 
@@ -46,5 +49,8 @@ public class KnowledgeSourceEntityMapper {
         entity.setFeedKeyField(source.feedKeyField());
         entity.setRefreshMinutes(source.refreshMinutes());
         entity.setCollectionId(source.collectionId());
+        entity.setFailedAttempts(source.failedAttempts());
+        entity.setFailedAt(source.failedAt());
+        entity.setEnabled(source.enabled());
     }
 }

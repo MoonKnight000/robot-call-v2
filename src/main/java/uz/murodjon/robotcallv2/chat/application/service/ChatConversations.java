@@ -22,6 +22,7 @@ import uz.murodjon.robotcallv2.chat.domain.entity.ChatSession;
 import uz.murodjon.robotcallv2.chat.domain.entity.ChatTurn;
 import uz.murodjon.robotcallv2.chat.domain.entity.StartedChat;
 import uz.murodjon.robotcallv2.chat.domain.enums.ChatRole;
+import uz.murodjon.robotcallv2.chat.domain.service.ChatParticipant;
 import uz.murodjon.robotcallv2.chat.infrastructure.config.ChatProperties;
 import uz.murodjon.robotcallv2.company.application.port.input.CompanyUseCase;
 import uz.murodjon.robotcallv2.company.domain.entity.Company;
@@ -29,6 +30,7 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AgentWebhookUseCas
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentWebhookEvent;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelTokens;
 import uz.murodjon.robotcallv2.crm.application.port.input.CrmUseCase;
 import uz.murodjon.robotcallv2.crm.domain.entity.CrmClientSnapshot;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
@@ -39,6 +41,7 @@ import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.dialog.CallLanguage;
 import uz.murodjon.robotcallv2.shared.dialog.Disposition;
+import uz.murodjon.robotcallv2.shared.exception.AppException;
 import uz.murodjon.robotcallv2.shared.exception.ConflictException;
 import uz.murodjon.robotcallv2.shared.exception.ErrorCode;
 import uz.murodjon.robotcallv2.shared.exception.ExternalServiceException;
@@ -194,10 +197,7 @@ class ChatConversations {
         AiAgent agent = requireAgent(session);
         DialogSession dialog = rebuild(session, agent);
         traceFromHere(dialog);
-        TextTurn turn = textTurnEngine.reply(dialog, text);
-        if (turn.isEmpty()) {
-            throw new ExternalServiceException(ErrorCode.CHAT_NO_REPLY, "llm");
-        }
+        TextTurn turn = replyOrFail(dialog, text);
         if (!turn.violations().isEmpty()) {
             // Nothing to withhold — the person is reading it as it arrives. Logged where the
             // quality alerts already look, because a figure the facts do not support is the
@@ -356,11 +356,27 @@ class ChatConversations {
             dialog.setLastAgentText(rendered);
             return rendered;
         }
-        TextTurn turn = textTurnEngine.reply(dialog, GREETING_BOOTSTRAP);
+        return replyOrFail(dialog, GREETING_BOOTSTRAP).line();
+    }
+
+    /**
+     * One turn of the model, or {@code CHAT_NO_REPLY} when it gave no line — including when the
+     * provider failed outright (quota, spend cap, network): that is the vendor's failure, not a bug
+     * here, so the visitor gets a 502 rather than a 500. Our own errors (a tool's) pass through as they are.
+     */
+    private TextTurn replyOrFail(DialogSession dialog, String text) {
+        TextTurn turn;
+        try {
+            turn = textTurnEngine.reply(dialog, text);
+        } catch (AppException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new ExternalServiceException(ErrorCode.CHAT_NO_REPLY, "llm", e);
+        }
         if (turn.isEmpty()) {
             throw new ExternalServiceException(ErrorCode.CHAT_NO_REPLY, "llm");
         }
-        return turn.line();
+        return turn;
     }
 
     /** The conversation as the agent left it: its stage, what its tools recorded, and everything said. */
@@ -393,7 +409,8 @@ class ChatConversations {
         // The chat widget stays on the platform's model even for a company on its own LLM (3.14 covers calls).
         EffectiveAiModelConfig aiModel = aiModelConfigUseCase.findEffectiveByCompanyId(session.companyId())
                 .withoutOwnLlm()
-                .withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens());
+                .withOverrides(agent.llmModel(), agent.temperature(), agent.maxOutputTokens())
+                .withReasoningEffort(agent.reasoningEffort());
         Company company = companyUseCase.findById(session.companyId());
         List<Tool> tools = toolUseCase.findAgentToolDefinitions(session.companyId(), agent.id());
         Map<String, Object> facts = new LinkedHashMap<>(session.outcome());
@@ -431,19 +448,7 @@ class ChatConversations {
     }
 
     private String extractPhone(Map<String, Object> outcome) {
-        if (outcome == null || outcome.isEmpty()) {
-            return null;
-        }
-        for (String key : List.of(PHONE_KEY, "clientPhone", "client_phone", "phoneNumber", "phone_number", "callerNumber", "contactPhone")) {
-            Object val = outcome.get(key);
-            if (val != null && !val.toString().isBlank()) {
-                String normalized = PhoneNumbers.normalize(val.toString());
-                if (normalized != null) {
-                    return normalized;
-                }
-            }
-        }
-        return null;
+        return ChatParticipant.findPhone(outcome);
     }
 
     private void rememberIfEnded(ChatSession session, DialogSession dialog, AiAgent agent, Disposition disposition) {
@@ -457,7 +462,8 @@ class ChatConversations {
         try {
             Scenario scenario = aiAgentUseCase.resolveScenario(session.companyId(), agent);
             String summary = resolveChatSummary(session, dialog, disposition);
-            RememberedCall rememberedCall = new RememberedCall(
+            RememberedCall rememberedCall = RememberedCall.ofChat(
+                    session.id(),
                     clock.instant(),
                     scenario != null ? scenario.scenarioKey() : null,
                     disposition,
@@ -517,7 +523,11 @@ class ChatConversations {
     private void chargeTurn(ChatSession session, DialogSession dialog) {
         long chatSessionId = session.id() != null ? session.id() : 0;
         callBillingUseCase.chargeChatTurn(session.companyId(), chatSessionId, String.valueOf(session.messageCount()),
-                new CallUsage(0, dialog.promptTokens(), dialog.completionTokens(), dialog.cachedTokens(), 0, 0));
+                new CallUsage(0, dialog.promptTokens(), dialog.completionTokens(), dialog.cachedTokens(), 0, 0, 0,
+                        dialog.llmUsageByModel().stream()
+                                .map(m -> new ModelTokens(m.model(), m.promptTokens(), m.completionTokens(),
+                                        m.cachedTokens()))
+                                .toList()));
     }
 
     private AiAgent requireAgent(ChatSession session) {

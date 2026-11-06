@@ -244,6 +244,20 @@ public class UserRepositoryAdapter implements UserRepository {
     }
 
     @Override
+    public void updateAccount(long companyId, long id, String name, String username, String email, String phone,
+                              String position, String sipExtension) {
+        userJpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
+            entity.setName(name);
+            entity.setUsername(username);
+            entity.setEmail(email);
+            entity.setPhone(phone);
+            entity.setPosition(position);
+            entity.setSipExtension(sipExtension);
+            userJpaRepository.save(entity);
+        });
+    }
+
+    @Override
     public void updateAvatarFileId(long companyId, long id, Long avatarFileId) {
         userJpaRepository.findByIdAndCompanyId(id, companyId).ifPresent(entity -> {
             entity.setAvatarFile(storedFileReference(avatarFileId));

@@ -10,14 +10,18 @@ import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentFunctionType;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.AgentVariableType;
 import uz.murodjon.robotcallv2.memory.application.port.input.ClientMemoryUseCase;
+import uz.murodjon.robotcallv2.memory.domain.enums.MemorySourceKind;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -64,7 +68,8 @@ class AgentFunctionToolsTest {
 
         assertThat(session.outcome()).containsEntry("interestedFlat", "Yunusobod A blok №45")
                 .containsEntry("visitDay", "shanba");
-        verify(memory).rememberFacts(COMPANY, "+998901234567", Map.of("interestedFlat", "Yunusobod A blok №45"));
+        verify(memory).rememberFacts(eq(COMPANY), eq("+998901234567"), eq(Map.of("interestedFlat", "Yunusobod A blok №45")),
+                argThat(source -> source.kind() == MemorySourceKind.TOOL && source.tool() != null));
     }
 
     @Test
@@ -74,7 +79,7 @@ class AgentFunctionToolsTest {
 
         tool.call("{\"visitDay\": \"shanba\"}");
 
-        verify(memory, never()).rememberFacts(anyLong(), anyString(), anyMap());
+        verify(memory, never()).rememberFacts(anyLong(), anyString(), anyMap(), any());
     }
 
     @Test
@@ -85,7 +90,7 @@ class AgentFunctionToolsTest {
 
         tool.call("{\"visitDay\": \"shanba\"}");
 
-        verify(memory, never()).rememberFacts(anyLong(), anyString(), anyMap());
+        verify(memory, never()).rememberFacts(anyLong(), anyString(), anyMap(), any());
     }
 
     @Test
@@ -93,7 +98,7 @@ class AgentFunctionToolsTest {
         ToolCallback tool = toolOf(agentWith(
                 new AgentFunctionVariable("interestedFlat", AgentVariableType.STRING, "the flat", List.of(), true)));
         org.mockito.Mockito.doThrow(new RuntimeException("db down")).when(memory)
-                .rememberFacts(anyLong(), anyString(), anyMap());
+                .rememberFacts(anyLong(), anyString(), anyMap(), any());
 
         assertThat(tool.call("{\"interestedFlat\": \"A-45\"}")).contains("Yozib olindi");
         assertThat(session.outcome()).containsEntry("interestedFlat", "A-45");

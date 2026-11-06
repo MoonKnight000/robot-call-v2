@@ -39,6 +39,9 @@ import java.util.List;
  *                          provider for — its tokens are recorded but not billed
  * @param turnTimings       each answered turn's stage timings, oldest first, for the call's
  *                          timeline (Audio Inspector); empty on a realtime call, never null
+ * @param llmUsageByModel   the same tokens split by the model that spent them (agent model, fast
+ *                          model, fallback), so each is billed at its own price; empty when not
+ *                          known (a realtime call), never null
  */
 public record DialogTechnicalSnapshot(
         int turnCount,
@@ -50,13 +53,26 @@ public record DialogTechnicalSnapshot(
         String engine, String llmModel,
         int bargeInCount, int noInputPromptCount, int lowConfidenceCount,
         boolean ownLlm,
-        List<TurnTiming> turnTimings) {
+        List<TurnTiming> turnTimings,
+        List<LlmModelUsage> llmUsageByModel) {
 
     public static final DialogTechnicalSnapshot NONE =
             new DialogTechnicalSnapshot(0, 0, 0, 0, 0, null, null, null, null, null, null, null, null, 0, 0, 0);
 
     public DialogTechnicalSnapshot {
         turnTimings = turnTimings == null ? List.of() : List.copyOf(turnTimings);
+        llmUsageByModel = llmUsageByModel == null ? List.of() : List.copyOf(llmUsageByModel);
+    }
+
+    /** Without a per-model split — the tokens are then billed at the common rate. */
+    public DialogTechnicalSnapshot(int turnCount, long promptTokens, long completionTokens, long cachedTokens,
+                                   long ttsChars, Integer avgTurnLatencyMs, Integer maxTurnLatencyMs,
+                                   Integer avgLlmLatencyMs, Integer maxLlmLatencyMs, String ttsVoice, String language,
+                                   String engine, String llmModel, int bargeInCount, int noInputPromptCount,
+                                   int lowConfidenceCount, boolean ownLlm, List<TurnTiming> turnTimings) {
+        this(turnCount, promptTokens, completionTokens, cachedTokens, ttsChars, avgTurnLatencyMs, maxTurnLatencyMs,
+                avgLlmLatencyMs, maxLlmLatencyMs, ttsVoice, language, engine, llmModel, bargeInCount,
+                noInputPromptCount, lowConfidenceCount, ownLlm, turnTimings, List.of());
     }
 
     /** On the platform's model — always so for a realtime call. */

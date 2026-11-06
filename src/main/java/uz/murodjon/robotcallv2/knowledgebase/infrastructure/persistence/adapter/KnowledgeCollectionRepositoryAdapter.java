@@ -15,7 +15,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 /**
  * Collections in {@code knowledge_collection} and their agents in {@code ai_agent_knowledge_collection}
@@ -129,15 +128,6 @@ public class KnowledgeCollectionRepositoryAdapter implements KnowledgeCollection
                     .param("collectionId", collectionId)
                     .update();
         }
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public Set<Long> findCollectionIdsByAgentId(long agentId) {
-        return new HashSet<>(jdbcClient.sql("SELECT collection_id FROM ai_agent_knowledge_collection WHERE agent_id = :agentId")
-                .param("agentId", agentId)
-                .query(Long.class)
-                .list());
     }
 
     private static KnowledgeCollection toCollection(java.sql.ResultSet rs) throws java.sql.SQLException {

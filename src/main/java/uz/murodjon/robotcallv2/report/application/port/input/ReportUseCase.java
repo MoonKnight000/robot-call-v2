@@ -11,7 +11,9 @@ import uz.murodjon.robotcallv2.report.domain.entity.*;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.storage.application.dto.DownloadableFile;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 /** The call list, one call, a campaign's and a route's figures, and the audit log. */
 public interface ReportUseCase {
@@ -44,6 +46,9 @@ public interface ReportUseCase {
     List<ReportedCall> findRecentCalls(long companyId, CallFilter filter);
 
     List<PhoneCallHistoryEntry> findCallsForPhone(long companyId, String phone, int limit);
+
+    /** Call count and newest call per number; a number with no calls is absent from the map. */
+    Map<String, PhoneCallStats> findCallStatsByPhones(long companyId, Collection<String> phones);
 
     InboundRouteStats findInboundRouteStats(long companyId, long inboundRouteId);
 }

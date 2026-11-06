@@ -290,6 +290,39 @@ Javob `200`, `data: null`; `refresh_token` cookie'si o'chiriladi
 
 ---
 
+## `GET /api/auth/sessions` — faol sessiyalar (joriysi belgilangan)
+
+Rol: istalgan (kirgan bo'lsa yetarli). Brauzer so'rovni `credentials: "include"` bilan yuborishi kerak.
+
+**Javob** (`List<UserSessionRow>`):
+
+```json
+{
+  "data": [
+    {
+      "id": 9,
+      "device": "Mozilla/5.0 (Windows NT 10.0...)",
+      "ipAddress": "10.0.0.4",
+      "createdAt": "2026-11-06T03:27:47Z",
+      "lastActivityAt": "2026-11-06T03:27:47Z",
+      "current": true
+    }
+  ],
+  "message": null,
+  "messageCode": null,
+  "accept": true,
+  "errors": null
+}
+```
+
+Qatorlar [`GET /api/profile/sessions`](profile.md#get-apiprofilesessions--faol-sessiyalar) bilan bir xil,
+farqi — `current`. `refresh_token` cookie'si faqat `Path=/api/auth` ga yuboriladi, shuning uchun
+qaysi qator shu brauzerniki ekanini faqat shu yo'l biladi: cookie'dagi tokenga mos sessiya
+`current: true`. Cookie bo'lmasa (eski klient body'da token saqlasa) hamma qator `current: false`.
+Sessiyani tugatish — [`DELETE /api/profile/sessions/{id}`](profile.md#delete-apiprofilesessionsid--sessiyani-tugatish).
+
+---
+
 ## `GET /api/auth/me` — joriy foydalanuvchi
 
 Rol: istalgan (kirgan bo'lsa yetarli).

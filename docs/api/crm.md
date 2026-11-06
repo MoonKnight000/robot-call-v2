@@ -222,3 +222,144 @@ gaplashganimiz, bu — **CRM** u haqida nima biladi.
   }
 }
 ```
+
+---
+
+## Kontakt sinxronizatsiyasi (CRM → kontaktlar) {#contact-sync}
+
+Retell'dagi "Set up contact sync → Import contacts". Kompaniyaning ulangan CRM'idagi kontaktlar
+har **5 daqiqada** platforma kontaktlariga (`contacts.md`) import qilinadi: faqat oxirgi
+importdan keyin o'zgarganlari; birinchi marta yoki "full" so'ralganda — hammasi. Huquq:
+o'qish — **INTEGRATION_READ**, o'zgartirish — **INTEGRATION_EDIT**.
+
+Qo'llab-quvvatlanadi:
+- **Bitrix24** — `crm.contact.list`, `DATE_MODIFY` bo'yicha, sahifada 50 ta.
+- **amoCRM / Kommo** — `/api/v4/contacts`, `updated_at` bo'yicha, sahifada 250 ta.
+- **Uysot** — Open API: `POST /v1/open-api/lead/filter` (`updatedTimestampFrom`, `UPDATED_TIMESTAMP ASC`), sahifada 20 ta,
+  so'ng har bir lid uchun `GET /v1/open-api/lead/{id}` (ro'yxat qatorida telefon yo'q). **Bitta lid = bitta kontakt**:
+  ism — lidning birinchi kontaktining ismi (bo'lmasa lid nomi), telefonlar — barcha kontaktlarniki, maydonlar —
+  lid va kontakt custom field'lari (`crmField` = Uysot maydon id'si, `GET /v1/open-api/crm-field`). Open API
+  cheklovi 60 so'rov/daqiqa va token qo'ng'iroqlar bilan umumiy, shuning uchun so'rovlar orasida 2 soniya kutiladi
+  (≈ 28 lid/daqiqa) — katta bazaning birinchi to'liq importi soatlab davom etishi mumkin.
+
+Qoidalar:
+- Moslashtirish: avval shu CRM yozuvidan import qilingan kontakt (`contact_crm_link`), bo'lmasa —
+  shu telefon raqamli kontakt, bo'lmasa — yangi kontakt.
+- Telefon — yozuvning normallashtirib bo'ladigan birinchi raqami; yaroqli raqam bo'lmasa yozuv o'tkazib
+  yuboriladi (`lastSkipped`). Mavjud kontaktning telefoni o'zgartirilmaydi.
+- Ism — doim CRM'dan (Bitrix24: `NAME LAST_NAME`; amoCRM: `name`); bo'sh bo'lsa eskisi qoladi.
+- `fieldMappings` — CRM maydoni → kompaniya kontakt maydoni (`contacts.md#contact-fields`). CRM'dagi bo'sh
+  qiymat saqlangan qiymatni **o'chirmaydi**; kontakt maydoni turiga mos kelmagan qiymat tashlanadi.
+  Ko'p qiymatli maydon (EMAIL, ro'yxat) vergul bilan birlashtiriladi.
+- Import **hech qachon o'chirmaydi**. CRM'ni boshqasiga almashtirsangiz — keyingi run to'liq o'qiydi.
+- Bitta run ko'pi bilan 3 daqiqa (va 100 000 yozuv) ishlaydi; tugamagan o'qish (`state.resume`) keyingi run'da
+  (≤ 1 daqiqa) aynan to'xtagan sahifadan davom etadi. CRM xatosida ham sahifa saqlanadi va 5 daqiqadan keyin qayta o'qiladi.
+- O'qish davomida CRM'da o'zgargan yozuv sahifalarni siljitishi mumkin (offset paginatsiya); juda kam hollarda
+  bitta yozuv o'tkazib yuborilsa — keyingi o'zgarishida yoki "full" run'da import bo'ladi.
+
+### `GET /api/settings/crm/contact-sync`
+
+```json
+{
+  "enabled": true,
+  "provider": "BITRIX24",
+  "supported": true,
+  "fieldMappings": [ { "crmField": "UF_CRM_1700000000", "contactField": "lead_status" },
+                     { "crmField": "EMAIL", "contactField": "email" } ],
+  "pushMappings": [ { "crmField": "UF_CRM_1700000001", "contactField": "last_call_summary" } ],
+  "state": {
+    "provider": "BITRIX24",
+    "cursor": "2026-11-06T08:41:00Z",
+    "resume": null,
+    "nextRunAt": "2026-11-06T08:50:00Z",
+    "lastRunAt": "2026-11-06T08:45:00Z",
+    "lastStatus": "SUCCESS",
+    "lastError": null,
+    "lastCounts": { "created": 12, "updated": 40, "skipped": 3 }
+  }
+}
+```
+
+| Maydon | Izoh |
+|---|---|
+| `provider` | ulangan CRM (`BITRIX24` · `AMOCRM` · `KOMMO` · `UYSOT`), ulanmagan bo'lsa `null` |
+| `supported` | shu CRM'dan kontakt import qilib bo'ladimi |
+| `state.cursor` | importlangan eng yangi o'zgarish vaqti; `null` — keyingi run to'liq |
+| `state.nextRunAt` | keyingi run vaqti; `null` — rejalashtirilmagan |
+| `state.lastStatus` | `SUCCESS` · `FAILED` (`lastError` — sabab) · `NOT_CONNECTED` · `UNSUPPORTED`; `null` — hali ishlamagan |
+| `state.resume` | tugamagan o'qish: `{ "since": ..., "pageToken": "3" }` — keyingi run shu sahifadan davom etadi; `null` — ochiq o'qish yo'q |
+| `state.lastCounts` | oxirgi runda `created` / `updated` / `skipped` (yaratilgan / o'zgargan / o'tkazib yuborilgan) |
+| `pushMappings` | kontakt maydoni → CRM maydoni, CRM'ga qaytarib yoziladi ([pastda](#contact-push)); bo'sh — hech narsa yozilmaydi |
+
+Sozlama hech saqlanmagan bo'lsa: `enabled: false`, `fieldMappings: []`, `pushMappings: []`, `state` maydonlari `null`, `lastCounts` — nollar.
+
+### `PUT /api/settings/crm/contact-sync`
+
+Body: `{ "enabled": true, "fieldMappings": [ { "crmField": "...", "contactField": "..." } ], "pushMappings": [ ... ] }`
+— hammasi almashtiriladi (`fieldMappings` / `pushMappings` `null` — bo'sh). O'chiq holatdan yoqilsa — run darhol rejalashtiriladi.
+Javob — `GET` bilan bir xil.
+
+| Holat | Kod |
+|---|---|
+| `enabled` yo'q | `400 VALIDATION_FAILED` |
+| 50 tadan ko'p mapping | `400 CRM_CONTACT_SYNC_TOO_MANY_MAPPINGS` |
+| `crmField` bo'sh yoki > 128 | `400 CRM_CONTACT_SYNC_CRM_FIELD_INVALID` |
+| `contactField` kompaniya kontakt maydonlarida yo'q | `400 CRM_CONTACT_SYNC_CONTACT_FIELD_UNKNOWN` |
+| bitta kontakt maydoni ikki marta | `400 CRM_CONTACT_SYNC_CONTACT_FIELD_TWICE` |
+| `pushMappings` da bitta CRM maydoni ikki marta | `400 CRM_CONTACT_SYNC_CRM_FIELD_TWICE` |
+| `pushMappings` da `crmField` = `PHONE` | `400 CRM_CONTACT_SYNC_PHONE_NOT_WRITABLE` |
+
+### `GET /api/settings/crm/contact-sync/crm-fields`
+
+Ulangan CRM'ning kontakt maydonlari (jonli o'qiladi), mapping ekrani uchun:
+
+```json
+[ { "id": "UF_CRM_1700000000", "label": "Lid holati", "type": "enumeration" },
+  { "id": "EMAIL", "label": "E-mail", "type": "crm_multifield" } ]
+```
+
+`id` — `crmField` ga yoziladigan qiymat. Bitrix24: `crm.contact.fields` ning hammasi (standart va `UF_CRM_*`).
+amoCRM/Kommo: custom field'lar, `id` — raqamli id (`fieldMappings` da maydon kodi, masalan `EMAIL`, ham ishlaydi).
+Uysot: `GET /v1/open-api/crm-field` — lid va kontakt maydonlari (kontaktnikiga `label` oxirida "(kontakt)").
+
+| Holat | Kod |
+|---|---|
+| CRM ulanmagan | `409 CRM_CONTACT_SYNC_NOT_CONNECTED` |
+| CRM kontakt importini qo'llamaydi | `409 CRM_CONTACT_SYNC_UNSUPPORTED` |
+| CRM rad etdi / javob bermadi | `502 CRM_CONTACT_SYNC_FAILED` |
+
+### `POST /api/settings/crm/contact-sync/run?full=false`
+
+Run'ni darhol (≤ 1 daqiqa ichida) rejalashtiradi; `full=true` — cursor tozalanadi, CRM'dagi barcha
+kontaktlar qayta o'qiladi (Retell'dagi "Run full sync"). Run fon rejimida ishlaydi — natija keyin
+`GET` ning `state` ida ko'rinadi. Javob — `GET` bilan bir xil.
+
+| Holat | Kod |
+|---|---|
+| sinxronizatsiya o'chiq | `409 CRM_CONTACT_SYNC_DISABLED` |
+| CRM ulanmagan | `409 CRM_CONTACT_SYNC_NOT_CONNECTED` |
+| CRM qo'llamaydi | `409 CRM_CONTACT_SYNC_UNSUPPORTED` |
+
+### CRM'ga qaytarib yozish (kontaktlar → CRM) {#contact-push}
+
+Retell'dagi "Sync to CRM". CRM'dan import qilingan kontaktning maydonlari **qo'lda** (`PUT /api/contacts/{id}`)
+yoki **qo'ng'iroqdan keyin** (extraction → kontakt maydonlari) o'zgarsa, `pushMappings` dagi qiymatlar o'sha CRM
+yozuviga yoziladi (≈ 30 soniya ichida, fon rejimida). Importning o'zi o'zgartirgan qiymat qaytarib yozilmaydi.
+
+- `enabled` (import) ga bog'liq emas: import o'chiq bo'lsa ham, avval import qilingan kontaktlar yoziladi.
+- Faqat CRM'dan kelgan kontakt (`contact_crm_link`) yoziladi; CSV/qo'lda qo'shilgani — yo'q.
+- Bo'sh kontakt qiymati CRM'dagi qiymatni **o'chirmaydi** (yuborilmaydi). Telefon hech qachon yozilmaydi.
+- Kompaniya boshqa CRM'ga o'tgan bo'lsa, eski CRM yozuviga yozish bekor qilinadi.
+- CRM xatosida qayta urinish: 1, 2, 4 … daqiqadan keyin (ko'pi 6 soat), 8 urinishdan keyin to'xtatiladi.
+  Yozish davomida yana o'zgarish bo'lsa — keyin yana yoziladi.
+
+Provayder bo'yicha:
+- **Bitrix24** — `crm.contact.update`. `EMAIL` / `WEB` / `IM` (ko'p qiymatli) maydonga qiymat **yangi yozuv
+  sifatida qo'shiladi**, faqat u yerda hali bo'lmasa (`crm.contact.get` bilan tekshiriladi).
+- **amoCRM / Kommo** — `PATCH /api/v4/contacts/{id}`, `custom_fields_values`: raqamli `crmField` — `field_id`,
+  boshqasi — `field_code`. Qiymat almashtiriladi.
+- **Uysot** — `POST /v1/open-api/lead/{id}/field/list` (`[{ "id": <maydon id>, "value": "..." }]`), asinxron.
+  Faqat **lid** maydonlari yoziladi; kontakt maydoni ("(kontakt)") Uysot tomonidan rad etiladi va xato sifatida qayta uriniladi.
+  So'rovlar import bilan bir xil 2 soniyalik oraliqda.
+
+Holat hozircha API'da ko'rsatilmaydi (xato serverda loglanadi).

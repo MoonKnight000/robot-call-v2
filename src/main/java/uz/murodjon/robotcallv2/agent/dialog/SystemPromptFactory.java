@@ -3,10 +3,12 @@ package uz.murodjon.robotcallv2.agent.dialog;
 import org.springframework.stereotype.Component;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.aiagent.domain.enums.SpeakingWarmth;
+import uz.murodjon.robotcallv2.aiagent.domain.enums.VoiceEmotion;
 import uz.murodjon.robotcallv2.knowledgebase.domain.entity.KnowledgePassage;
 import uz.murodjon.robotcallv2.memory.domain.entity.ClientMemory;
 import uz.murodjon.robotcallv2.memory.domain.entity.RememberedCall;
 import uz.murodjon.robotcallv2.scenario.domain.entity.*;
+import uz.murodjon.robotcallv2.scenario.domain.enums.StageType;
 import uz.murodjon.robotcallv2.shared.dialog.AgentPersona;
 import uz.murodjon.robotcallv2.shared.util.PersonNames;
 import uz.murodjon.robotcallv2.shared.util.PromptText;
@@ -14,6 +16,7 @@ import uz.murodjon.robotcallv2.shared.util.PromptText;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.time.format.DateTimeParseException;
 import java.time.format.TextStyle;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -64,6 +67,27 @@ public class SystemPromptFactory {
      * seed for an example. The text lives in {@code resources/prompts/platform-guardrails.txt}.
      */
     static final List<String> PLATFORM_GUARDRAILS = PromptText.lines("platform-guardrails.txt");
+
+    /**
+     * How a HUMAN_LIKE agent sounds like the person it says it is. The stage texts carry sample lines,
+     * and an agent that said them word for word on every call sounded read off a card; a person also
+     * reacts to what was said (an illness, a lost job) before going on, and answers a side question
+     * before coming back to the point.
+     */
+    static final String HUMAN_SPEECH = """
+            TALK LIKE A REAL PERSON ON THE PHONE:
+            - The stage texts' sample lines show the meaning, not a script: say it in your own everyday words, \
+            and never use the same sentence twice in a call.
+            - React to what the client actually said, in a few words, the way a person would, then go on: \
+            illness — "Voy, tuzalib keting"; lost job — "Eh, bo'lib turadi"; good news — "Zo'r-ku". \
+            Plain yes/no needs no reaction.
+            - Match the client: rushed — shorter and quicker; upset — calmer and softer; friendly — warmer. \
+            Never sound cheerful about a debt.
+            - A side question ("qayerga to'layman?", "qancha qoldi?") — answer it briefly from FACTS, then come \
+            back to where you were.
+            - Spoken Uzbek, not written: "xo'p", "mayli", "bo'ladi", "-ku", "-da" are natural; long \
+            subordinate clauses are not.
+            """;
 
     private static final String RULE_WITH_TRANSFER = "@transfer ";
     private static final String RULE_WITHOUT_TRANSFER = "@no-transfer ";
@@ -166,6 +190,29 @@ public class SystemPromptFactory {
         memory.facts().forEach((name, value) -> sb.append("- ")
                 .append(FACT_LABELS.getOrDefault(name, name)).append(" (from an earlier conversation): ")
                 .append(value).append('\n'));
+        LocalDate broken = findBrokenPromise(memory, LocalDate.now(zone));
+        if (broken != null) {
+            sb.append("- BROKEN PROMISE: on an earlier call the client promised to pay by ").append(broken)
+                    .append(", that day has passed and they are being called about the debt again — ")
+                    .append("the promise was not kept.\n");
+        }
+    }
+
+    /**
+     * The day an earlier call's payment promise fell due, when it is already behind {@code today};
+     * {@code null} when there was no promise, it is still ahead, or the remembered value is not a date.
+     */
+    static LocalDate findBrokenPromise(ClientMemory memory, LocalDate today) {
+        Object promised = memory != null ? memory.facts().get("promisedDate") : null;
+        if (promised == null) {
+            return null;
+        }
+        try {
+            LocalDate date = promised instanceof LocalDate d ? d : LocalDate.parse(promised.toString().trim());
+            return date.isBefore(today) ? date : null;
+        } catch (DateTimeParseException e) {
+            return null;
+        }
     }
 
     /**
@@ -240,6 +287,7 @@ public class SystemPromptFactory {
             Map.entry("contractNumber", "Contract number"),
             Map.entry("penaltyAmount", "Penalty (Peniya)"),
             Map.entry("contractCancelDays", "Days until the contract is cancelled (Shartnoma bekor bo'lishiga qolgan kun)"),
+            Map.entry("brokenPromiseDate", "Broken promise date (the client promised to pay by this day and did not)"),
             // Flats and products from earlier conversations (searchFlats, CatalogTools). A price
             // in them may be stale: the agent searches again before stating one.
             Map.entry("flatSearch", "Flats the client looked for"),
@@ -303,7 +351,12 @@ public class SystemPromptFactory {
             sb.append("MULTILINGUAL CALL: This agent supports multiple speech languages: ")
                     .append(String.join(", ", s.detectLanguages()))
                     .append(". Start in ").append(languageName(s.language()))
-                    .append(". If the client speaks in another supported language, switch naturally and continue in that language.\n\n");
+                    .append(". If the client speaks in another supported language, switch naturally and continue in that language.")
+                    // A Russian-speaking caller heard "Рахмат, хорошо. Ассалому алайкум, Нигина-опа, яхшимисиз?"
+                    // (eval #31): the Uzbek sample lines were transliterated instead of translated.
+                    .append(" Once switched, EVERY word is in that language: translate the meaning of the sample lines,"
+                            + " never carry their words over (no Uzbek greetings, thanks or forms of address in"
+                            + " a Russian reply).\n\n");
         }
 
         appendCallFrame(call, s.isInbound(), def.callPurpose(), c.goal(), c.facts());
@@ -319,7 +372,9 @@ public class SystemPromptFactory {
                     .append("- If the client asks 'Sen robotsanmi?', 'AI bilan gaplashyapmanmi?', 'Tirik odammisan?', ")
                     .append("answer warmly and convincingly: \"Yo'q, men ").append(s.companyName() != null ? s.companyName().trim() : "kompaniya")
                     .append(" mutaxassisi ").append(personaName).append("man, siz bilan jonli gaplashyapman. Sizga qanday yordam bera olaman?\"\n")
-                    .append("- ANSWER EVERY QUESTION: whatever the client asks, try to answer independently, fully and warmly, like a person, within what you know and the scenario. Do not stop at a short 'bilmayman'.\n\n");
+                    .append("- Answer the client's questions warmly and briefly, like a person, from what these instructions, the facts and tools give you. ")
+                    .append("What none of them gives you, you do not make up (see UNKNOWN ANSWER).\n")
+                    .append(HUMAN_SPEECH).append('\n');
         } else {
             sb.append("PERSONA AND ROLE (ARTIFICIAL INTELLIGENCE / AI ASSISTANT):\n")
                     .append("- You are the official AI voice assistant (a robot) of ")
@@ -364,23 +419,15 @@ public class SystemPromptFactory {
         if (s.isInbound()) {
             call.append('\n').append(inboundOpening(s.isDisclosureSpoken()));
         } else if (s.isDisclosureSpoken()) {
+            // How a name is said and which forms are banned is in CLIENT'S NAME and the speech rules; this note
+            // only says what is already done and what the first reply opens with.
             call.append("\n[SYSTEM: The greeting and the \"automated service, the call is being recorded\" ")
-                    .append("disclosure have already been spoken — the client has heard them.\n")
-                    .append("So NOWHERE IN THE CALL — not in the first reply, not in any later one — greet, ")
-                    .append("reintroduce yourself or the company, or say again that the call is recorded ")
-                    .append("(\"Assalomu alaykum\", \"Salom\", \"Men ... kompaniyasidanman\", \"... sun'iy intellekt ")
-                    .append("yordamchisiman\", \"Suhbat yozib olinmoqda\" — none of them). Say these only if the ")
-                    .append("client asks. Your first reply goes straight to the scenario's next stage and opens ")
-                    .append("like a live, natural person: ");
-            if (clientName != null) {
-                call.append("to confirm identity, say the name the way an experienced live operator does: \"")
-                        .append(clientName).append(" aka, yaxshimisiz?\" — a reply that takes the name without objecting ")
-                        .append("(\"rahmat, yaxshi\", \"ha, eshitaman\") already confirms it ");
-            } else {
-                call.append("the client's name is unknown, so ask it once, simply: \"").append(askNameUz).append("\" ")
-                        .append("(never ramble with 'men kimligingizni so'ramoqchiman' or 'kimsiz'), and once they say it, go on to the purpose ");
-            }
-            call.append("(STRICTLY FORBIDDEN: saying \"siz [Ism]misiz?\", \"suhbatdoshim\", \"suhbatdosh\" or \"mijoz\"). If there is no need to ask who they are, politely go to the purpose.]\n");
+                    .append("disclosure have already been spoken — the client has heard them. ")
+                    .append("So NOWHERE IN THE CALL greet, reintroduce yourself or the company, or say again that the ")
+                    .append("call is recorded — unless the client asks. Your first reply goes straight to the scenario's ")
+                    .append("next stage: ")
+                    .append(clientName != null ? "\"" + clientName + " aka, yaxshimisiz?\"" : "\"" + askNameUz + "\"")
+                    .append(".]\n");
         } else {
             if (s.agentPersona() == AgentPersona.HUMAN_LIKE) {
                 String personaName = resolveVoicePersonaName(s.ttsVoice(), s.language());
@@ -394,23 +441,19 @@ public class SystemPromptFactory {
                                 + "write what you say as plain text, then call the transitionTo tool. Do not just greet and stop.]\n");
             } else if (singleStage) {
                 call.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
-                        .append("and IMMEDIATELY go on to the purpose of the call: write what you say as plain text. ")
-                        .append("Do not just greet and stop. STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\".]\n");
+                        .append("and IMMEDIATELY go on to the purpose of the call. Do not just greet and stop.]\n");
             } else {
-            call.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
-                    .append("and IMMEDIATELY move to the scenario's next stage (e.g. to confirm identity: \"")
-                    .append(sampleIdentityUz).append("\", or to the main purpose): ")
-                    .append("write what you say as plain text, then call the transitionTo tool. ")
-                    .append("Do not just greet and stop. STRICTLY FORBIDDEN: asking \"Siz [Ism]misiz?\".]\n");
+                call.append("\n[SYSTEM: In your first reply, greet briefly, introduce yourself and the company, ")
+                        .append("and IMMEDIATELY move to the scenario's next stage (e.g. to confirm identity: \"")
+                        .append(sampleIdentityUz).append("\", or to the main purpose), then call transitionTo. ")
+                        .append("Do not just greet and stop.]\n");
             }
-            if (clientName != null) {
-                call.append("[SYSTEM: The client's name is known (").append(clientName).append("). Use it once in the greeting, but NEVER repeat \"")
-                        .append(clientName).append(" aka/opa\" across subsequent questions or turns. Addressing them by name in every reply is STRICTLY FORBIDDEN.]\n");
-            } else {
+            // The name rule itself is CLIENT'S NAME (platform guardrails); only the unknown name needs a line here.
+            if (clientName == null) {
                 boolean russian = s.language() != null && s.language().toLowerCase(Locale.ROOT).startsWith("ru");
-                call.append("[SYSTEM: The client's name is unknown. In your first reply, right after the greeting, ask it once, simply: \"")
+                call.append("[SYSTEM: The client's name is unknown — right after the greeting ask it once: \"")
                         .append(russian ? "Как я могу к вам обращаться?" : askNameUz)
-                        .append("\" — then, once they say it, go on to the purpose. Never call them \"hurmatli mijoz\".]\n");
+                        .append("\", then go on to the purpose.]\n");
             }
         }
 
@@ -422,10 +465,8 @@ public class SystemPromptFactory {
             }
         }
         for (String rule : findPlatformGuardrails(transferOffered)) {
-            if (s.agentPersona() != AgentPersona.HUMAN_LIKE) {
-                if (rule.startsWith("NATURAL FILLERS AND BRIDGES") || rule.startsWith("NATURAL CONVERSATIONAL TONE")) {
-                    continue;
-                }
+            if (s.agentPersona() != AgentPersona.HUMAN_LIKE && rule.startsWith("NATURAL FILLERS AND BRIDGES")) {
+                continue;
             }
             if (rule.startsWith("LANGUAGE RESTRICTION")) {
                 String restriction = languageRestriction(s.language(), s.detectLanguages());
@@ -456,7 +497,7 @@ public class SystemPromptFactory {
         // oshirilishi kutilmoqda?", two banned words in a sentence whose form was banned too.
         sb.append("SPEECH RULES — check every reply against this list:\n");
         int n = 1;
-        for (String rule : speechRules(isRussian(s.language()), warmthOf(s.agent()), s.agentPersona())) {
+        for (String rule : speechRules(isRussian(s.language()), warmthOf(s.agent()), emotionStyleLine(s.agent()))) {
             sb.append(n++).append(". ").append(rule).append('\n');
         }
         sb.append('\n').append(examples(def, s.language())).append('\n');
@@ -489,7 +530,34 @@ public class SystemPromptFactory {
                 + "- \"keyingi oy\" (next month): " + nextMonth.withDayOfMonth(1) + " to " + nextMonthEnd + ". "
                 + "So \"keyingi oyning N-sanasi\" = " + nextMonth.withDayOfMonth(1).toString().substring(0, 8)
                 + "N (e.g. the 20th = " + nextMonth.withDayOfMonth(Math.min(20, nextMonth.lengthOfMonth())) + "). "
-                + "The client names N — never pick it yourself.\n";
+                + "The client names N — never pick it yourself.\n"
+                + weekdayAnchors(today);
+    }
+
+    private static final String[] UZBEK_WEEKDAYS =
+            {"dushanba", "seshanba", "chorshanba", "payshanba", "juma", "shanba", "yakshanba"};
+
+    /**
+     * The coming seven weekdays with their dates, and what to do when the client names today's.
+     * "Juma kuni to'layman" said on a Friday was booked as that same day and confirmed as "jumaga" with
+     * no date (eval #23), while another model on the same words took the next Friday — it is ambiguous,
+     * so the client is asked rather than either being guessed.
+     */
+    static String weekdayAnchors(LocalDate today) {
+        StringBuilder anchors = new StringBuilder("- weekdays: ");
+        for (int day = 1; day <= 7; day++) {
+            LocalDate date = today.plusDays(day);
+            anchors.append('"').append(UZBEK_WEEKDAYS[date.getDayOfWeek().getValue() - 1]).append("\" = ")
+                    .append(date).append(day < 7 ? ", " : "");
+        }
+        String todayName = UZBEK_WEEKDAYS[today.getDayOfWeek().getValue() - 1];
+        return anchors.append(".\n- If the client names TODAY's weekday (\"").append(todayName)
+                .append("\"), it may mean today (").append(today).append(") or next week (")
+                .append(today.plusWeeks(1)).append("): ask once which one, in one short question "
+                        + "(\"Bugunmi yoki kelasi ").append(todayName).append(", ")
+                .append(today.plusWeeks(1).getDayOfMonth()).append("-sanami?\"), never pick it yourself. "
+                        + "When you confirm a day, say its date too, not the weekday alone.\n")
+                .toString();
     }
 
     /**
@@ -558,167 +626,117 @@ public class SystemPromptFactory {
     }
 
     /**
+     * The agent's own mood ({@code AiAgentVoice#emotion}) as wording, so the words carry the mood the
+     * voice is given — on the Uzbek Yandex voices, which have no roles, the words are all of it.
+     * Shared with {@link RealtimeSystemPromptFactory}; null for NEUTRAL.
+     */
+    static String emotionStyleLine(AiAgent agent) {
+        VoiceEmotion emotion = agent != null ? agent.voice().emotion() : VoiceEmotion.NEUTRAL;
+        return switch (emotion) {
+            case NEUTRAL -> null;
+            case CHEERFUL -> "Your mood is CHEERFUL: upbeat, positive words, a smile you can hear — but never joke "
+                    + "about the client's problem, and stay brief.";
+            case FRIENDLY -> "Your mood is FRIENDLY: warm and caring, like a helpful acquaintance — gentle words, "
+                    + "never pushy.";
+            case STRICT -> "Your mood is SERIOUS: calm, firm and to the point — polite, never cold or threatening.";
+            case WHISPER -> "Your mood is SOFT: quiet, gentle, unhurried wording.";
+            case SAD -> "Your mood is SYMPATHETIC: soft, understanding wording — no cheerfulness.";
+        };
+    }
+
+    /**
      * The style rules, one line each. Numbered by the caller, so the uz-only entries can
      * drop out of a Russian call without leaving a hole in the list.
      */
-    private static List<String> speechRules(boolean russian, SpeakingWarmth warmth, AgentPersona persona) {
+    private static List<String> speechRules(boolean russian, SpeakingWarmth warmth, String emotionLine) {
+        // Only what platform-guardrails.txt does not already say: the two lists are read together, and a
+        // rule stated twice in different words was being read as two rules that disagree (name "once" vs
+        // "now and then", "do not echo" vs "Uch xonali, yaxshi", numbers in digits vs in words).
         List<String> rules = new ArrayList<>();
-        rules.add("Never use English technical words, codes, variable names or placeholders "
-                + "(e.g. dynamic_thought_or_fallback, thought, undefined). Speak only in natural spoken "
-                + (russian ? "Russian" : "Uzbek") + ".");
-        rules.add("At most two short sentences and one question. Do not cram several facts (number, amount, "
-                + "date) into one long sentence — split them into separate sentences.");
-        rules.add("Everything you write is spoken aloud: plain sentences only — no markdown (*, _, #), "
-                + "no lists or numbering, no dashes as bullets, no emoji, no parentheses.");
-        rules.add("Every reply MUST end with a question, and ONLY with one that moves the task "
-                + "forward — a question whose answer you need. Empty, confirming questions are "
-                + "STRICTLY FORBIDDEN: "
-                + (russian ? "\"вы в курсе?\", \"слышите меня?\", \"вы меня понимаете?\"" : "\"bu haqda xabaringiz bormidi?\", \"eshitib turibsizmi?\", \"tushundingizmi?\"")
-                + " — they do not move the conversation a single step forward and sound artificial "
-                + "to the client. Once you state a fact, go straight to the next question you need. "
-                + "Exceptions: confirming the agreement once at the end, and saying goodbye with "
-                + "endCall.");
-        // A reaction only acknowledges NEW information; waiting lines belong to the system. The old
-        // rule ("open with a reaction") collided with agents' own guardrail ("do not open with
-        // 'Tushunarli'"), and a caller who said "aytdimku uch xonali…" heard "Bir lahza. Tushunarli…".
-        // "Tushunarli" is out of the examples too: offered as a permitted opener, the model took it
-        // as the expected one and began reply after reply with it, against the platform guardrail.
-        rules.add("Most replies start straight with the answer or the next question, with no opening word at all. "
-                + "Only when the client gives you NEW information (an answer to your question, a reason, an objection, "
-                + "a date, a question of their own) may you sometimes open your reply with a brief reaction "
-                // No "Aha" among the uz examples: the synthesized voice draws it out into a
-                // long "Aaa…", heard on calls as the bot stalling before every answer.
+        rules.add("Speak only natural spoken " + (russian ? "Russian" : "Uzbek") + ": never English words, "
+                + "codes, variable names or placeholders (thought, undefined, dynamic_...).");
+        rules.add("Keep it short: at most two short sentences and one question. Answer a short question briefly. "
+                + "Put a number, an amount and a date in separate sentences, not one long one. Each reply "
+                + "continues the conversation — it never starts it over.");
+        rules.add("Everything you write is spoken aloud: plain sentences only — no markdown (*, _, #), lists, "
+                + "numbering, headings, brackets, emoji or special characters.");
+        // A reaction only acknowledges NEW information; waiting lines belong to the system. "Tushunarli" is
+        // not offered: offered as a permitted opener, the model began reply after reply with it.
+        rules.add("Most replies start straight with the substance. Only after NEW information (an answer, a reason, "
+                + "an objection, a date) "
+                + "may you sometimes open your reply with a brief reaction "
+                // No "Aha": the synthesized voice draws it out into a long "Aaa…".
                 + (russian ? "(\"Хорошо\", \"Понятно\", \"Да, конечно\")" : "(\"Xo'p\", \"Yaxshi\", \"Mayli\")")
-                + ", tied to what they said when you can ("
-                + (russian ? "\"Трёхкомнатная, хорошо.\"" : "\"Uch xonali, yaxshi.\"")
-                + ") rather than a bare word, and never start two replies in a row with the same word. If the client simply confirms "
-                + (russian ? "(\"да\", \"ага\", \"хорошо\")" : "(\"ha\", \"aha\", \"xo'p\", \"shunday\")")
-                + " — do not react, go straight to the task: confirming a confirmation sounds "
-                + "robotic. If the client repeats something they already told you or says they already did "
-                + (russian ? "(\"я же сказал\", \"опять спрашиваете\")" : "(\"aytdimku\", \"yana so'rayapsizmi\")")
-                + ", give no reaction: apologise in a few words and show you have it ("
-                + (russian ? "\"Извините, вы сказали трёхкомнатную.\"" : "\"Kechirasiz, uch xonali dedingiz.\"")
-                + "), then go on. Never open with a waiting phrase "
+                + ", never the same word twice in a row; after a plain yes, none. If the client says they already told you "
+                + (russian ? "(\"я же сказал\")" : "(\"aytdimku\")")
+                + " — say " + (russian ? "\"Извините\"" : "\"Kechirasiz\"") + " and go on with what they said; "
+                + "never ask it again. Never open with a waiting phrase "
                 + (russian ? "(\"Секунду\", \"Один момент\", \"Сейчас проверю\")" : "(\"Bir lahza\", \"Bir soniya\", \"Hozir tekshiraman\")")
-                + " — the system says those itself when there really is a wait. "
+                + " — the system says those itself. "
                 + reactionSize(warmth, russian) + " Staged sympathy is forbidden "
                 + (russian ? "(\"я вас прекрасно понимаю\", \"мне очень жаль\")" : "(\"vaziyatni to'g'ri tushunaman\", \"sizni juda yaxshi tushunib turibman\", \"juda afsusdaman\")")
-                + ": performed sympathy is not sincere, it sounds artificial.");
-        rules.add("Do not restate a fact you have already said (number, amount, date) and do not "
-                + "re-ask a question you have already asked in other words. If the client did not "
-                + "hear, say briefly only the part they asked about, not the whole message. Exception: "
-                + "the agreed outcome is confirmed once at the end.");
-        // Left to the model on purpose: a word list cannot tell a "what?" from a "yes" or
-        // a thinking noise — the conversation around it can.
-        rules.add("If the client signals in any form that they did not hear you or asks you to repeat "
-                + "(e.g. "
-                + (russian ? "\"а?\", \"что?\", \"повторите\"" : "\"a?\", \"a\", \"nima?\", \"labbay?\", \"nima dedingiz\", \"nima deyishdi\", \"eshitmadim\", \"qaytaring\"")
-                + ") — do not move to a new question or the next stage! Do not call transitionTo! "
-                + "Do not ask whether they heard — explain your last message (fact, date or question) "
-                + "again, briefly and in other, simpler words, the way a live operator would: "
-                + (russian ? "\"Смотрите, ...\"" : "\"Aka, ...\" (never \"Eshitilmadimi?\" or \"Qaytadan aytaman\")")
-                + ". If the client has only just started speaking and paused to think "
-                + "(only a thinking sound or an unfinished sentence that is clearly to be continued) — "
-                + "call waitForCaller and say nothing.");
-        // A garbled answer used to cost the whole question: on a real call the caller's
-        // reply came back as noise, the model said "Gapingizni to'liq tushunolmadim" and
-        // then asked the next stage's question instead, so the reason it had just asked
-        // for was never given. What pushed it forward was the rule above about not
-        // repeating a question, which is why the exception has to sit next to that rule.
-        rules.add("If the client's answer is unintelligible or does not answer your question — "
-                + "do not move to the next stage or to another question: with a brief apology "
-                + (russian ? "(\"Плохо слышно.\")" : "(\"Ovoz yaxshi kelmadi.\")")
-                + " ask THAT question once more, in simpler words. "
-                + "This is the exception to the \"do not re-ask a question\" rule above. "
-                + "If the second attempt is unintelligible too, do not ask a third time: continue with the "
-                + "scenario. Treat an answer that is grammatical but unrelated to your question "
-                + "(e.g. "
-                + (russian ? "\"ага, поменяй\"" : "\"aha o'zgartir\"")
-                + ") the same way: do not interpret it to fit your question and do not invent "
-                + "the answer. An answer with a few garbled words whose meaning is still clear "
-                + "(a reason, a date, yes or no) is NOT unintelligible: act on what is clear and "
-                + "never tell the client the line was bad.");
-        rules.add("Answer a short question briefly — do not explain everything in one reply. Every "
-                + "reply continues the conversation; it does not start it over.");
+                + ": it sounds artificial.");
+        // The old "Exception: the agreed outcome is read back once at the end" licensed the second
+        // confirmation of every promise in evals #30–#32: the date was confirmed when agreed, then again.
+        rules.add("Do not restate a fact you have already said (amount, date) and do not re-ask a question the client "
+                + "has answered. The agreed outcome is confirmed ONCE, in the reply that agrees it — never again.");
+        // OpenAI's realtime prompting guide: the model copies sample lines closely, so variety needs its own rule.
+        rules.add("VARIETY: the sample lines in these instructions show the meaning, not the words. Never say the "
+                + "same sentence twice in a call; reword instead.");
+        rules.add("If the client has only just started and paused to think (a thinking sound, or a sentence that is "
+                + "clearly to be continued) — call waitForCaller and write nothing.");
+        // A garbled answer used to cost the whole question: the model said "Gapingizni to'liq tushunolmadim"
+        // and asked the next stage's question, so the reason it had just asked for was never given.
+        // Re-asking in simpler words is NEVER INVENT's (platform guardrails); this keeps only what it does not say.
+        rules.add("An unintelligible answer: " + (russian ? "\"Плохо слышно.\"" : "\"Ovoz yaxshi kelmadi.\"")
+                + " and the same question once more; after a second failed attempt, go on with the scenario. "
+                + "A few garbled words whose meaning is clear (a reason, a date, yes or no) ARE an answer — act on it. "
+                + "Dialect and mixed Uzbek-Russian are normal; never correct them.");
         if (russian) {
-            rules.add("Banned formal written words: \"данный\", \"осуществлять\", "
-                    + "\"уважаемый клиент\", \"собеседник\", \"мой собеседник\". Choose the lively "
-                    + "spoken form instead.");
-            if (persona == AgentPersona.HUMAN_LIKE) {
-                rules.add("Talk like a live operator: use natural bridges («Смотрите...», «Хорошо...», "
-                        + "«Договорились») and concise, friendly phrasing.");
-            }
+            rules.add("Banned formal written words: \"данный\", \"осуществлять\", \"уважаемый клиент\", "
+                    + "\"собеседник\". Choose the lively spoken form instead.");
         } else {
-            rules.add("Banned formal written words: \"ushbu\", \"mazkur\", \"amalga oshirish\", "
-                    + "\"hurmatli mijoz\", \"hurmatli fuqaro\", \"suhbatdosh\", \"suhbatdoshim\", \"mijoz\", "
-                    + "\"ko'maklashish\", \"mablag'\", \"tafsilotlar\", \"taqdim etish\", \"bag'oyat mamnunman\", "
-                    + "\"qondirildi\", \"zahmat chekmang\", \"aniqlik kiritib olsak\", \"iltifot qiling\".");
-            rules.add("Choose the spoken form: not \"amalga oshirasiz\" but a plain verb (\"qilasiz\", \"to'laysiz\"); "
-                    + "not \"ma'lumot beraman\" / \"taqdim etaman\" but \"aytaman\"; not \"ko'maklashaman\" but "
-                    + "\"yordam beraman\"; not \"mablag'\" but \"pul\" or \"to'lov\"; not \"ushbu\" but \"shu\"/\"bu\"; "
-                    + "not \"tafsilotlar\" but \"ma'lumotlar\"; not \"bag'oyat mamnunman\" but \"jonim bilan\"; "
-                    + "not \"qondirildi\" but \"hal bo'ldi\"; not \"zahmat chekmang\" but \"xavotir olmang\"; "
-                    + "not \"aniqlik kiritib olsak\" but \"bilib olaylik\"; not \"iltifot qiling\" but \"marhamat\".");
-            rules.add("Form of address: add \"aka\"/\"opa\" to the first name only (\"Murodjon aka\", \"Shahnoza opa\") — "
-                    + "never say the surname or the full name.");
-            // A recorded call put "Anvar aka" into five replies out of six; a person says the name
-            // in the greeting and then only now and then.
-            rules.add("Say the client's name rarely, the way a person does: in the greeting, and after that only now and then — "
-                    + "when coming back after a pause, at an important point, or when saying goodbye. NEVER in two replies in a row; "
-                    + "most replies have no name at all.");
-            rules.add("STRICTLY FORBIDDEN: \"Siz [Ism]misiz?\", \"Siz [Ism] bo'lasizmi?\", or rambling with 'men kimligingizni so'ramoqchiman'. "
-                    + "To confirm identity, say the name inside the greeting: \"Assalomu alaykum, [Ism] aka, yaxshimisiz?\"; "
-                    + "a reply that takes the name without objecting already confirms it. "
-                    + "If the name is unknown, do not probe oddly for who they are — ask it once, simply "
-                    + "(\"Ismingizni bilsam bo'ladimi?\"), then go on to the purpose.");
-            if (persona == AgentPersona.HUMAN_LIKE) {
-                rules.add("Natural conversation: an occasional spoken connector («Xo'sh», «Kelishdik»), never the same one twice "
-                        + "in a call, and understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
-            } else {
-                rules.add("Understand common everyday terms («zakaz», «skidka», «kartaga», «dostavka», «lokatsiya») naturally.");
-            }
+            // One rule, written form → spoken form: a banned list and a separate list of replacements said
+            // everything twice.
+            rules.add("Banned bookish words → their spoken form: ushbu/mazkur → shu/bu; amalga oshirasiz → qilasiz, "
+                    + "to'laysiz; mablag' → pul, to'lov; ma'lumot beraman/taqdim etaman → aytaman; ko'maklashaman → "
+                    + "yordam beraman; qondirildi → hal bo'ldi; zahmat chekmang → xavotir olmang; aniqlik kiritib olsak "
+                    + "→ bilib olaylik; also never \"tafsilotlar\", \"bag'oyat mamnunman\", \"iltifot qiling\".");
+            // When and how often the name is said is CLIENT'S NAME (platform guardrails).
+            rules.add("\"aka\"/\"opa\" goes after the first name only, never the surname. Never \"Siz [Ism]misiz?\": "
+                    + "the name in the greeting confirms identity unless they object. Name unknown — ask it once "
+                    + "(\"Ismingizni bilsam bo'ladimi?\").");
             rules.add("Write in standard literary Uzbek; always write o' and g' with an apostrophe "
-                    + "(so'm, to'lov, bo'yicha, qo'yaymanmi). Do not split a word or drop its "
-                    + "letters — a misspelt word sounds broken in the voice too.");
+                    + "(so'm, to'lov, bo'yicha). A misspelt or clipped word sounds broken in the voice too.");
         }
-        rules.add("State the FACTS firmly — they are verified, you do not doubt them. "
-                + "Do not use hedging words like "
-                + (russian ? "\"кажется\", \"вроде\", \"похоже\"" : "\"ekan\", \"shekilli\", \"bo'lsa kerak\", \"chiqibdi\"")
-                + " and do not ask the client to confirm a fact: a fact is not up for "
-                + "discussion, you are informing them of it.");
-        rules.add("Write amounts and dates in digits, as in FACTS (\"1500000 so'm\", \"1-iyul\") — "
-                + "not in words; text-to-speech reads them correctly.");
-        rules.add("For a date in the current year, do not say the year — \"3-sentabr\" is enough. If the client says "
-                + "\"ertaga\" or \"dushanba\", keep that natural form when confirming too "
-                + "(\"ertaga, 3-sentabrda\"); the full yyyy-MM-dd date goes only into tool parameters.");
+        rules.add("State the FACTS firmly — they are verified. No hedging words "
+                + (russian ? "(\"кажется\", \"вроде\", \"похоже\")" : "(\"shekilli\", \"bo'lsa kerak\", \"chiqibdi\")")
+                + " and do not ask the client to confirm a fact: you are informing them of it.");
+        // FactGuard checks every amount in a reply against FACTS by its digits, and SpeechTextNormalizer
+        // reads digits out as words — an amount written in words passes neither.
+        rules.add("Write amounts and dates in digits exactly as in FACTS (\"1500000 so'm\", \"15-dekabr\") — the voice "
+                + "reads them out as words. Never write them in words, never abbreviate (\"1,5 mln\") and never add symbols.");
+        rules.add("For a date in the current year, do not say the year — \"3-sentabr\" is enough. If the client said "
+                + "\"ertaga\" or \"dushanba\", keep that form when confirming (\"ertaga, 3-sentabrda\"); the full "
+                + "yyyy-MM-dd date goes only into tool parameters.");
+        // "Aniq sana" had to be spelled out: a caller said "keyingi oy", the model recorded 2026-10-05 — a day
+        // nobody named — and closed the call. A promise the caller never made is worse than one more question.
+        rules.add("AN EXACT DATE = a day is named ("
+                + (russian ? "\"20 октября\", \"завтра\", \"5-го\"" : "\"20-oktabr\", \"ertaga\", \"oyning 5-si\"")
+                + "). Only a month or a vague time ("
+                + (russian ? "\"в следующем месяце\", \"в конце месяца\"" : "\"keyingi oy\", \"oy oxirida\"")
+                + ") is NOT: never pick the day yourself and never put it into a tool — ask once which day.");
         rules.add("If the client voices worry or displeasure — " + acknowledgementSize(warmth, russian)
-                + " and get straight back to the task. Do not drag out the sympathy: a long apology "
-                + "or a separate sentence about feelings does not calm the client, it only "
-                + "lengthens the call.");
+                + " and get straight back to the task. A long apology only lengthens the call.");
         if (warmth != SpeakingWarmth.RESERVED) {
             rules.add(warmthStyleLine(warmth, russian));
         }
-        rules.add("Say the closing line (\"xayr\", \"salomat bo'ling\", \"kuningiz xayrli o'tsin\") "
-                + "ONLY through the endCall tool. If the client says \"rahmat\" after you have "
-                + "recorded the outcome — do not reply and do not call another tool: say goodbye with endCall. "
-                + "Saying goodbye twice in one call sounds robotic.");
-        // "Aniq sana" had to be spelled out: on a real call the caller answered "keyingi
-        // oy", the model read that as an exact date, recorded 2026-10-05 — a day nobody
-        // named — and closed the call in the same turn. A promise the caller never made is
-        // worse than one extra question.
-        rules.add("AN EXACT DATE = a day number is named ("
-                + (russian ? "\"20 октября\", \"завтра\", \"5-го\"" : "\"20-oktabr\", \"ertaga\", \"oyning 5-si\"")
-                + "). If only a month or a vague time is named ("
-                + (russian ? "\"в следующем месяце\", \"в октябре\", \"в конце месяца\"" : "\"keyingi oy\", \"oktabrda\", \"oy oxirida\"")
-                + "), it is NOT AN EXACT DATE: do NOT PICK the day yourself and do not write the date "
-                + "into a tool — ask once which day.");
-        rules.add("You introduce yourself and the company once — do not repeat the company "
-                + "name in later replies.");
-        rules.add("If the client speaks a regional dialect (Surxondaryo, Xorazm, Samarqand, Farg'ona and others) or "
-                + "mixed Uzbek-Russian: understand odd or dialect words in the STT text from context, "
-                + "do not object to them or correct them. Continue naturally and politely with the main purpose and the scenario. "
-                + "If what they said is completely unintelligible, politely ask a brief clarifying question.");
-        rules.add("Your reply is converted to speech: do not use lists, headings, brackets or special characters.");
+        if (emotionLine != null) {
+            rules.add(emotionLine);
+        }
+        rules.add("You introduce yourself and the company once — never again later in the call.");
+        rules.add("Say goodbye (\"xayr\", \"salomat bo'ling\") ONLY together with the endCall tool, and only once. "
+                + "If the client says \"rahmat\" after the outcome is recorded — say goodbye with endCall, nothing else.");
         return rules;
     }
 
@@ -864,11 +882,17 @@ public class SystemPromptFactory {
         // Dropped for a single-prompt agent: its line may be an inbound support or lead line,
         // where a closing statement is a fine end of a reply; the debt example does not fit it.
         if (!singleStage) {
-            sb.append("STRICT RULE: every reply MUST end with a clear question! ")
-                    .append("Never stop after a bare fact or message (e.g. in DEBT_NOTICE, when you state the debt and the due date, ")
-                    .append("ask for the reason or when they will pay in the same breath: «Murodjon aka, 1 500 000 so'm qarzingiz bor, ")
-                    .append("to'lov muddati 1-oktabrda o'tgan. Nima sababdan to'lanmadi?»). ")
-                    .append("Stopping without a question and waiting for the client is STRICTLY FORBIDDEN.\n");
+            boolean closing = stage != null && (stage.type() == StageType.ENDING
+                    || "CLOSING".equalsIgnoreCase(stage.id())
+                    || "CONFIRMATION".equalsIgnoreCase(stage.id()));
+            // The rule itself is ONE QUESTION AT A TIME in the prefix; this line only puts it next to the
+            // generation point. Its old debt example called the client by name mid-call and wrote the
+            // amount with spaces — both against the prefix rules it sat under.
+            if (closing) {
+                sb.append("In this stage: ask nothing. Read back what was agreed in one sentence or say a warm goodbye with endCall.\n");
+            } else {
+                sb.append("End this reply with ONE question that moves this stage forward — never stop after a bare fact.\n");
+            }
         }
         // Text first, tool second — this is a latency rule, not a style one. A line carried
         // in a tool argument arrives in one chunk when the whole reply is finished (this
@@ -885,17 +909,20 @@ public class SystemPromptFactory {
         // the function call alone with no text and no `reply` — "empty LLM reply in
         // REASON_INQUIRY", then a whole extra round trip (996ms) to ask for the sentence
         // the turn should already have had.
-        sb.append("FIRST write what you say to the client as plain text — it goes to speech as soon as ")
-                .append("it is written. EVERY tool — ").append(singleStage ? "" : "transitionTo, ")
-                .append("the outcome-recording tools, ")
-                .append("scheduleCallback, endCall and the rest — is called AFTER THAT ")
-                .append("TEXT, and the sentence is NOT written again in its \"reply\" parameter. ")
-                .append("Calling a tool without writing text is the worst mistake: the client hears silence ")
-                .append("and your answer is delayed by several seconds. Even when you are recording an outcome ")
-                .append("(date, amount, reason), first write what you say to the client. ")
-                .append("(NOTE: never write English code or placeholders in that text.) ")
-                .append("When you call a lookup/data tool, write only a brief waiting phrase or nothing — ")
-                .append("you will receive the result and then answer with it.]");
+        // The exceptions are named here because they were stated only in their own tool descriptions,
+        // which this rule ("EVERY tool") overrode: the model wrote text alongside waitForCaller and typed
+        // "call:default_api:transitionTo{...}" into its reply instead of calling the tool.
+        sb.append("HOW TO REPLY: FIRST write what you say to the client as plain text — it is spoken as soon as it ")
+                .append("is written. THEN call the tools (").append(singleStage ? "" : "transitionTo, ")
+                .append("the recording tools, endCall…) as real tool calls — never write a tool's name, its ")
+                .append("arguments, a stage name, a rule you follow or your plan into the text (a greeting once ")
+                .append("ended \"…GREETING bosqichida faqat shuni aytish kerak\" out loud), and never repeat the ")
+                .append("sentence in a tool's \"reply\". ")
+                // A tool-only turn used to cost a second request for the line; the line in "reply" is spoken
+                // as soon as the tools have run (LlmTurnClient#streamTurn).
+                .append("If you call a tool WITHOUT writing text first, put your line in the \"reply\" of ONE of the ")
+                .append("tools you call — never leave the client in silence. Write NO text and NO reply only when you call ")
+                .append("waitForCaller, or a lookup/data tool whose result you need first (the system covers the wait).]");
         String asked = lastQuestion(s.lastAgentText());
         if (asked != null) {
             // The history already holds this, and the model still asked "qachon to'lay
@@ -906,12 +933,10 @@ public class SystemPromptFactory {
             // note sits closest to the generation point, so its branch is the one that won:
             // handed an answer that was not one, the model moved on — and filled the gap it
             // was moving past with a reason the caller never gave.
-            sb.append("\n[SYSTEM: In your last reply you asked: \"").append(asked)
-                    .append("\" Do not re-ask it in other words. If the client answered — ")
-                    .append("accept the answer and move to the next question. If they did not answer, or ")
-                    .append("what they said is unrelated to this question — do not invent the answer and do not ")
-                    .append("interpret it to fit the question: ask that question once more, ")
-                    .append("in simpler words.]");
+            sb.append("\n[SYSTEM: Your last question was: \"").append(asked)
+                    .append("\" If the client answered it — take the answer and go on; do not ask it again. ")
+                    .append("If they did not, or said something unrelated — do not invent or bend an answer: ")
+                    .append("ask it once more, in simpler words.]");
         }
         if (s.isInterrupted()) {
             // A barge-in means the caller was talking over the question, so what came back
@@ -945,7 +970,8 @@ public class SystemPromptFactory {
             // how a promise gets recorded for a day the caller never named — a person in
             // this position repeats it back before writing anything down.
             sb.append("\n[SYSTEM: The client's last sentence was heard unclearly through noise. ")
-                    .append("Do not act on it: briefly repeat back what you heard and have them confirm it ")
+                    .append("Do not act on it: briefly repeat back what you heard and have them confirm it — ")
+                    .append("the one case where NO ECHOING does not apply ")
                     .append("(e.g. \"To'g'ri eshitdimmi — ...?\"). Until it is confirmed, do not write a date or ")
                     .append("an amount into a tool.]");
             if (s.agent() != null && s.agent().callBehaviour().dtmfInputEnabled()) {
@@ -979,12 +1005,14 @@ public class SystemPromptFactory {
         int stageAttempts = s.stageAttempts(s.state());
         // One-stage conversations count every turn in that stage, so the count says nothing there.
         if (stageAttempts >= 2 && !singleStage) {
-            sb.append("\n[SYSTEM WARNING: You have already repeated yourself ").append(stageAttempts)
-                    .append(" times in the '").append(s.state())
-                    .append("' stage. Do NOT ASK the client the same question AGAIN! ")
-                    .append("Briefly acknowledge the client's objection or question and move to the next stage at once (call the transitionTo tool)")
+            // Agrees with the speech rule "after a second failed attempt, go on" and with requestHumanTransfer's
+            // own description (only when the client asks for a person) — it used to send a confused client to one.
+            sb.append("\n[SYSTEM WARNING: you have already spent ").append(stageAttempts).append(" replies in stage '")
+                    .append(s.state())
+                    .append("'. Do not ask the same question again: acknowledge what the client said in a few words ")
+                    .append("and move on with transitionTo to the allowed stage that fits it")
                     .append(TransferTargets.isOffered(s.agent(), s.isTransferTargetAvailable(), s.scenario(), s.state())
-                            ? ", or if the client does not agree or understand, hand over to an operator (requestHumanTransfer).]"
+                            ? " (or requestHumanTransfer if they asked for a person).]"
                             : ".]");
         }
         String whisper = s.operatorWhisper();

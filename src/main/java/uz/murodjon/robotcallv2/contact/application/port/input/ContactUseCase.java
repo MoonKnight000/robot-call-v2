@@ -17,7 +17,7 @@ public interface ContactUseCase {
 
     void delete(long companyId, long id);
 
-    PageableData<Contact> list(long companyId, ContactFilter filter);
+    PageableData<ContactRow> list(long companyId, ContactFilter filter);
 
     /** The contact with its call-history timeline — 404 when the company has no such contact. */
     ContactDetail requireContactDetail(long companyId, long id);
@@ -38,11 +38,4 @@ public interface ContactUseCase {
 
     /** Pre-call carrier, format, and Do-Not-Call scrubbing for a batch of telephone numbers. */
     ContactScrubResponse scrubPhones(long companyId, ContactScrubRequest request);
-
-    /**
-     * Merges {@code values} into the custom fields of the contact with {@code phone}, creating the
-     * contact when the company has none for that phone. Blank values are ignored. Used by the
-     * post-call extraction ("save to contact field").
-     */
-    void saveCustomFieldsByPhone(long companyId, String phone, Map<String, String> values);
 }

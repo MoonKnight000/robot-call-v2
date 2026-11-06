@@ -12,6 +12,8 @@ import uz.murodjon.robotcallv2.security.CurrentCompanyId;
 import uz.murodjon.robotcallv2.shared.api.PageableData;
 import uz.murodjon.robotcallv2.shared.api.ResponseData;
 
+import java.util.List;
+
 /**
  * Knowledge Base (RAG) REST API (docs/api/knowledge-base.md).
  */
@@ -48,4 +50,9 @@ public interface KnowledgeBaseController {
     ResponseEntity<ResponseData<PageableData<KnowledgeItemResponse>>> list(
             @CurrentCompanyId long companyId,
             @Valid @RequestBody KnowledgeItemFilter filter);
+
+    /** The topics the company's items use, alphabetically — for the topic picker. */
+    @PreAuthorize("hasAuthority('KNOWLEDGE_BASE_READ')")
+    @GetMapping("/topics")
+    ResponseEntity<ResponseData<List<String>>> topics(@CurrentCompanyId long companyId);
 }

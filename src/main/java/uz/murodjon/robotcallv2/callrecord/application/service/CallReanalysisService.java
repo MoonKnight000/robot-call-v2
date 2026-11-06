@@ -60,6 +60,10 @@ public class CallReanalysisService implements CallReanalysisUseCase {
     @Override
     public CallReanalysisPreviewResponse previewReanalysis(long companyId, CreateCallReanalysisRequest request) {
         CallReanalysisScope scope = findScope(companyId, request);
+        if (!request.mode().isReextracting()) {
+            // No model request per call; only an ACCUMULATE field's merge is charged, as after a call.
+            return new CallReanalysisPreviewResponse(scope.callCount(), CallReanalysisValidator.MAX_CALLS, 0, 0, 0);
+        }
         long promptTokens = scope.transcriptChars() / CHARS_PER_TOKEN + scope.callCount() * PROMPT_OVERHEAD_TOKENS;
         long completionTokens = scope.callCount() * ANSWER_TOKENS;
         long costUzs = callBillingUseCase.findUsageCostUzs(new CallUsage(0, promptTokens, completionTokens, 0, 0));
@@ -71,16 +75,17 @@ public class CallReanalysisService implements CallReanalysisUseCase {
     public CallReanalysisJob createReanalysis(long companyId, CreateCallReanalysisRequest request) {
         CallReanalysisScope scope = findScope(companyId, request);
         CallReanalysisValidator.validateCallCount(scope.callCount());
-        if (!summaryService.isAvailable()) {
+        boolean paid = request.mode().isReextracting();
+        if (paid && !summaryService.isAvailable()) {
             throw new ConflictException(ErrorCode.CALL_REANALYSIS_UNAVAILABLE);
         }
         if (repository.existsActiveByCompanyId(companyId)) {
             throw new ConflictException(ErrorCode.CALL_REANALYSIS_ALREADY_ACTIVE);
         }
-        if (!callBillingUseCase.hasBalanceForCall(companyId)) {
+        if (paid && !callBillingUseCase.hasBalanceForCall(companyId)) {
             throw new ConflictException(ErrorCode.CALL_REANALYSIS_NO_BALANCE);
         }
-        return repository.create(CallReanalysisJob.queued(companyId, request.aiAgentId(), request.from(),
+        return repository.create(CallReanalysisJob.queued(companyId, request.aiAgentId(), request.mode(), request.from(),
                 request.to(), (int) scope.callCount()));
     }
 
@@ -111,7 +116,13 @@ public class CallReanalysisService implements CallReanalysisUseCase {
     private CallReanalysisScope findScope(long companyId, CreateCallReanalysisRequest request) {
         CallReanalysisValidator.validateRange(request.from(), request.to());
         AiAgent agent = aiAgentUseCase.requireAgent(companyId, request.aiAgentId());
-        if (agent.dataNeeded().isEmpty() && agent.dataEvaluation().isEmpty()) {
+        boolean nothingToAnalyse = switch (request.mode()) {
+            case ANALYSIS -> agent.dataNeeded().isEmpty() && agent.dataEvaluation().isEmpty();
+            // Only dataNeeded reaches a contact field.
+            case CONTACTS_REEXTRACT -> agent.dataNeeded().isEmpty();
+            case CONTACTS_STORED -> false;
+        };
+        if (nothingToAnalyse) {
             throw new ValidationException(ErrorCode.CALL_REANALYSIS_NOTHING_TO_ANALYSE, request.aiAgentId());
         }
         return callResultRepository.findReanalysisScope(companyId, request.aiAgentId(), request.from(), request.to());

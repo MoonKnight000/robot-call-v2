@@ -781,8 +781,16 @@ class LlmTurnClient {
                 return answered;
             }
         }
+        if (SpeechSanitizer.isOtherScript(reply.text(), s.findLastCallerText())) {
+            // Mostly in the wrong language: refused, perhaps all but a greeting in the right one.
+            return answerInClientsLanguage(s, system, messages, toolNote, reply.spoken() ? reply.spokenText() : null);
+        }
         if (!reply.text().isEmpty() && !SpeechSanitizer.isUnspeakable(reply.text())) {
-            return new TurnResult(reply.text(), reply.spoken(), reply.blocked(), toolNote);
+            // What the caller heard, not what the model wrote: a simulated Russian caller heard only
+            // "Ва алайкум ассалом!", the refused Uzbek rest went into the history, and the next turns
+            // carried on in Uzbek from it.
+            return new TurnResult(reply.spoken() ? reply.spokenText() : reply.text(), reply.spoken(),
+                    reply.blocked(), toolNote);
         }
         if (reply.spoken()) {
             // Part of the reply is already on the line; only a chunk with a tool call the model
@@ -801,6 +809,10 @@ class LlmTurnClient {
         // own, which is how this provider answers a tool-calling turn. The line it wrote
         // into the tool's `reply` argument is the answer — speak that (DialogTools).
         String carried = s.toolReplies();
+        if (carried != null && SpeechSanitizer.isOtherScript(carried, s.findLastCallerText())) {
+            // A Russian caller's transitionTo carried an Uzbek line: refused, yet kept as the reply.
+            return answerInClientsLanguage(s, system, messages, toolNote, null);
+        }
         if (carried != null && !SpeechSanitizer.isUnspeakable(carried)) {
             SpeechOutcome outcome = speech.speak(s, carried);
             return new TurnResult(carried, outcome == SpeechOutcome.SPOKEN,
@@ -828,6 +840,39 @@ class LlmTurnClient {
         publishUsage(s, retryUsage);
         // toolNote dropped: the retry has already shown it to the model.
         return new TurnResult(retry.text(), retry.spoken(), retry.blocked(), null);
+    }
+
+    /**
+     * The reply was refused whole for being in the other alphabet from the caller's (SpeechOutput):
+     * asked again of the agent's own model, not raced — the fast backup is the one that answered a
+     * Russian-speaking simulated caller in Uzbek. A whole extra round trip, paid only on this failure.
+     */
+    private TurnResult answerInClientsLanguage(DialogSession s, String system, List<Message> messages, String toolNote,
+                                               String alreadySaid) {
+        boolean heardSome = alreadySaid != null && !alreadySaid.isBlank();
+        if (s.isCancelled() || s.isLineGone() || s.isEnded()) {
+            // The caller is talking or gone: a second line now would talk over them.
+            return new TurnResult(heardSome ? alreadySaid : "", heardSome, false, toolNote);
+        }
+        log.warn("[{}] reply was in another language than the caller's in {} — asking the main model again",
+                s.channelId(), s.state());
+        List<Message> retryMessages = new ArrayList<>(spokenLineRetry(messages, toolNote));
+        retryMessages.add(new UserMessage("[SYSTEM: Your reply was written in a different language from the "
+                + "client's and was NOT spoken. Write it again in the language and alphabet the client just used."
+                + (!heardSome ? ""
+                : " The client already heard only: «" + alreadySaid + "» — go on from there, do not repeat it.")
+                + "]"));
+        TokenUsage retryUsage = new TokenUsage();
+        StreamedReply retry = consume(s, clientFor(s).prompt()
+                .system(system)
+                .messages(retryMessages)
+                .options(turnTools.buildOptions(s, List.of(), null).mutate())
+                .stream()
+                .chatResponse(), retryUsage, new ArrayList<>());
+        publishUsage(s, retryUsage);
+        String retried = retry.spoken() ? retry.spokenText() : retry.text();
+        return new TurnResult(heardSome ? joinText(alreadySaid, retried) : retried, heardSome || retry.spoken(),
+                retry.blocked(), null);
     }
 
     /**
@@ -1022,6 +1067,12 @@ class LlmTurnClient {
         private boolean opening = true;
         /** The sentence added just before, as written — what a synthesizer may continue from. */
         private String previousSentence;
+        /**
+         * Set once the reply turned into a typed-out tool call or a note to the model: everything after it is the
+         * tool's arguments or the model's notes. Only the opening chunk was refused on a recorded call, and the
+         * caller then heard "Вайсалинчи? (qayta so'rash/sababni so'rash) … }".
+         */
+        private boolean derailed;
 
         private SentenceQueue(DialogSession s) {
             this.s = s;
@@ -1032,6 +1083,13 @@ class LlmTurnClient {
         }
 
         void add(String sentence) {
+            if (derailed) {
+                log.warn("[{}] dropped the rest of a derailed reply in {}: {}", s.channelId(), s.state(), sentence);
+                return;
+            }
+            if (SystemPromptFactory.isSystemNote(sentence) || SpeechSanitizer.isUnspeakable(sentence)) {
+                derailed = true;
+            }
             String previous = previousSentence;
             previousSentence = sentence;
             if (opening) {
@@ -1295,7 +1353,28 @@ class LlmTurnClient {
      */
     static boolean isCallersTurnToAnswer(DialogSession s, boolean stageActionTurn) {
         String last = s.lastAgentText();
-        return stageActionTurn && !s.isEnded() && last != null && last.strip().endsWith("?");
+        return stageActionTurn && !s.isEnded() && last != null
+                && (last.strip().endsWith("?") || s.stageActionStep() > 1 && hasSpokenSinceClient(s));
+    }
+
+    /**
+     * Whether the agent has said a line since the caller last spoke. A job's "move on" step that then
+     * writes nothing chose not to repeat it (StageEntry#describeTask): asked again for a line, a simulated
+     * call confirmed the date twice — "Хорошо, записала на понедельник… Спасибо!" and, after the CRM job,
+     * "Хорошо, в понедельник, 9-го ноября, ждём ваш платёж…".
+     */
+    private static boolean hasSpokenSinceClient(DialogSession s) {
+        List<Message> history = s.history();
+        for (int i = history.size() - 1; i >= 0; i--) {
+            Message message = history.get(i);
+            if (message instanceof AssistantMessage said && said.getText() != null && !said.getText().isBlank()) {
+                return true;
+            }
+            if (message instanceof UserMessage heard && !SystemPromptFactory.isSystemNote(heard.getText())) {
+                return false;
+            }
+        }
+        return false;
     }
 
     /**
@@ -1455,13 +1534,16 @@ class LlmTurnClient {
      * @param toolNote what the tools returned, so the model can react to a guardrail
      *                 that refused it (a promise dated in the past) — or null
      */
-    private static List<Message> spokenLineRetry(List<Message> messages, String toolNote) {
+    static List<Message> spokenLineRetry(List<Message> messages, String toolNote) {
         List<Message> retryMessages = new ArrayList<>(messages);
         if (toolNote != null) {
             retryMessages.add(new UserMessage("[SYSTEM: Tool result: " + toolNote + "]"));
         }
+        // The language clause: this retry runs on the fast model, which answered a Russian caller's
+        // goodbye with "Хайр, саломат бўлинг!" (eval #20).
         retryMessages.add(new UserMessage("[SYSTEM: Now return only the text to be spoken to the "
-                + "client. Do not call tools, do not write comments.]"));
+                + "client, in the language and alphabet the client just used. Do not call tools, "
+                + "do not write comments.]"));
         return retryMessages;
     }
 

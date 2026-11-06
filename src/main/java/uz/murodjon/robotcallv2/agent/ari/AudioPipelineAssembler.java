@@ -458,7 +458,9 @@ class AudioPipelineAssembler {
         if (fastModel == null || fastModel.isBlank() || AiModel.isRealtimeModel(fastModel)) {
             fastModel = dialogProperties.fastModel();
         }
-        gate.setLlmTurnDetector(detector.openCall(channelId, fastModel, gate::setLlmTurnCue),
+        gate.setLlmTurnDetector(detector.openCall(channelId, fastModel, gate::setLlmTurnCue,
+                        (model, prompt, completion, cached) ->
+                                dialogEngine.recordSideLlmUsage(channelId, model, prompt, completion, cached)),
                 llmTurnProperties.unfinishedWaitMs(), llmTurnProperties.waitHoldMs());
     }
 

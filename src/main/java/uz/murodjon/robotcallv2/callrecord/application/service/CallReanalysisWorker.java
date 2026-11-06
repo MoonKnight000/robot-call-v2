@@ -10,11 +10,13 @@ import uz.murodjon.robotcallv2.aiagent.application.port.input.AiAgentUseCase;
 import uz.murodjon.robotcallv2.aiagent.domain.entity.AiAgent;
 import uz.murodjon.robotcallv2.billing.application.port.input.CallBillingUseCase;
 import uz.murodjon.robotcallv2.billing.domain.entity.CallUsage;
+import uz.murodjon.robotcallv2.billing.domain.entity.ModelTokens;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallReanalysisJobRepository;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallResultRepository;
 import uz.murodjon.robotcallv2.callrecord.application.port.output.CallTranscriptRepository;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallReanalysisJob;
 import uz.murodjon.robotcallv2.callrecord.domain.entity.CallReanalysisTarget;
+import uz.murodjon.robotcallv2.callrecord.domain.enums.CallReanalysisMode;
 import uz.murodjon.robotcallv2.callrecord.domain.enums.CallReanalysisStatus;
 import uz.murodjon.robotcallv2.callrecord.domain.service.OutcomeAnalysisMerger;
 import uz.murodjon.robotcallv2.shared.lock.ClusterJobLock;
@@ -30,7 +32,9 @@ import java.util.Map;
  * Goes through the oldest active {@link CallReanalysisJob} a batch per tick, on one instance
  * at a time. For each call: the transcript is analysed again with the agent's current
  * settings, the analysis keys of the stored outcome are replaced, and the tokens are charged.
- * Progress is written after every call, so a restart or a cancel loses at most the call in
+ * A contact backfill ({@link CallReanalysisMode#isWritingContacts()}) then hands the outcome —
+ * the new one, or for {@code CONTACTS_STORED} the stored one without any model request — to
+ * the caller's contact, oldest call first, as if the call had just ended. Progress is written after every call, so a restart or a cancel loses at most the call in
  * hand, and a cancel is noticed before the next one.
  */
 @Service
@@ -47,19 +51,21 @@ public class CallReanalysisWorker {
     private final AiAgentUseCase aiAgentUseCase;
     private final CallBillingUseCase callBillingUseCase;
     private final SummaryService summaryService;
+    private final CallMemoryWriter callMemoryWriter;
     private final ClusterJobLock clusterJobLock;
     private final Clock clock;
 
     public CallReanalysisWorker(CallReanalysisJobRepository jobRepository, CallResultRepository callResultRepository,
                                 CallTranscriptRepository callTranscriptRepository, AiAgentUseCase aiAgentUseCase,
                                 CallBillingUseCase callBillingUseCase, SummaryService summaryService,
-                                ClusterJobLock clusterJobLock, Clock clock) {
+                                CallMemoryWriter callMemoryWriter, ClusterJobLock clusterJobLock, Clock clock) {
         this.jobRepository = jobRepository;
         this.callResultRepository = callResultRepository;
         this.callTranscriptRepository = callTranscriptRepository;
         this.aiAgentUseCase = aiAgentUseCase;
         this.callBillingUseCase = callBillingUseCase;
         this.summaryService = summaryService;
+        this.callMemoryWriter = callMemoryWriter;
         this.clusterJobLock = clusterJobLock;
         this.clock = clock;
     }
@@ -85,7 +91,7 @@ public class CallReanalysisWorker {
         List<CallReanalysisTarget> targets = callResultRepository.findReanalysisTargets(job.companyId(),
                 job.aiAgentId(), job.from(), job.to(), job.lastCallId(), BATCH);
         for (CallReanalysisTarget target : targets) {
-            if (!callBillingUseCase.hasBalanceForCall(job.companyId())) {
+            if (job.mode().isReextracting() && !callBillingUseCase.hasBalanceForCall(job.companyId())) {
                 progress.finish(CallReanalysisStatus.FAILED, clock.instant(), "the balance ran out");
                 jobRepository.updateProgress(progress.toJob());
                 log.info("Reanalysis {} stopped at call {}: company {} is out of balance",
@@ -106,7 +112,11 @@ public class CallReanalysisWorker {
         }
     }
 
-    /** One call; a failure of any kind leaves its outcome as it was and counts it as failed. */
+    /**
+     * One call; a failure of any kind leaves its outcome as it was and counts it as failed. A
+     * {@code CONTACTS_STORED} call counts as updated only when its outcome had a value for the
+     * contact; one without is neither updated nor failed.
+     */
     private void reanalyse(CallReanalysisJob job, AiAgent agent, List<String> analysisKeys,
                            CallReanalysisTarget target, Progress progress) {
         long callId = target.callId();
@@ -118,6 +128,12 @@ public class CallReanalysisWorker {
                 progress.failed++;
                 return;
             }
+            if (!job.mode().isReextracting()) {
+                if (callMemoryWriter.saveStoredContactFields(callId, job.companyId(), agent, stored)) {
+                    progress.updated++;
+                }
+                return;
+            }
             String transcript = String.join("\n", callTranscriptRepository.findTranscriptLines(callId));
             SummarizedCall summarized = summaryService.summarize(job.companyId(), transcript, null, agent,
                     LocalDateTime.ofInstant(target.startedAt(), ZoneId.systemDefault()));
@@ -127,12 +143,16 @@ public class CallReanalysisWorker {
             }
             progress.promptTokens += summarized.promptTokens();
             progress.completionTokens += summarized.completionTokens();
-            CallUsage usage = new CallUsage(0, summarized.promptTokens(), summarized.completionTokens(),
-                    summarized.cachedTokens(), 0);
+            CallUsage usage = CallUsage.ofModel(new ModelTokens(summarized.model(), summarized.promptTokens(),
+                    summarized.completionTokens(), summarized.cachedTokens()));
             progress.chargedUzs += callBillingUseCase.chargeReanalysis(job.companyId(), callId, job.id(),
                     summarized.ownLlm() ? usage.withoutLlm() : usage);
-            callResultRepository.updateOutcome(callId,
-                    OutcomeAnalysisMerger.mergeAnalysis(stored, summarized.summary().outcome(), analysisKeys));
+            Map<String, Object> outcome = OutcomeAnalysisMerger.mergeAnalysis(stored, summarized.summary().outcome(),
+                    analysisKeys);
+            callResultRepository.updateOutcome(callId, outcome);
+            if (job.mode().isWritingContacts()) {
+                callMemoryWriter.saveStoredContactFields(callId, job.companyId(), agent, outcome);
+            }
             progress.updated++;
         } catch (RuntimeException e) {
             progress.failed++;
@@ -175,7 +195,7 @@ public class CallReanalysisWorker {
         }
 
         private CallReanalysisJob toJob() {
-            return new CallReanalysisJob(job.id(), job.companyId(), job.aiAgentId(), job.from(), job.to(), status,
+            return new CallReanalysisJob(job.id(), job.companyId(), job.aiAgentId(), job.mode(), job.from(), job.to(), status,
                     job.totalCalls(), processed, updated, failed, promptTokens, completionTokens, chargedUzs,
                     lastCallId, lastError, job.createdAt(), startedAt, finishedAt);
         }

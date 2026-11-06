@@ -76,7 +76,7 @@ xabarlar chegarasi tugadi.
 | `409` | `CHAT_DAILY_LIMIT_REACHED` | Agent bugungi chat kvotasini tugatdi |
 | `409` | `CHAT_NO_BALANCE` | Kompaniya balansi yetarli emas — suhbat ochilmaydi (Telegram'da ham)|
 | `409` | `CHAT_MODEL_NOT_CONFIGURED` | Serverda chat model sozlanmagan |
-| `502` | `CHAT_NO_REPLY` | Model javob bermadi |
+| `502` | `CHAT_NO_REPLY` | Model javob bermadi — bo'sh javob yoki provayder xatosi (kvota, xarajat chegarasi, tarmoq) |
 
 ---
 
@@ -195,11 +195,13 @@ Hamma filtr ixtiyoriy. `orders` berilmasa — `LAST_MESSAGE_AT DESC`.
 | Maydon | Qiymatlar | Ma'nosi |
 |---|---|---|
 | `aiAgentId` | son | Faqat shu agent suhbatlari |
-| `channel` | `WIDGET` · `TELEGRAM` | Faqat shu kanal |
+| `channel` | `WIDGET` · `TELEGRAM` · `API` | Faqat shu kanal |
 | `ended` | `true` · `false` | `true` — yakunlanganlar; `false` — yakunlanmagan deb belgilanganlar (jim qolib muddati o'tganlar ham shu yerga tushadi) |
 | `from` / `to` | ISO vaqt | Suhbat ochilgan vaqt bo'yicha: `from` kiradi, `to` kirmaydi |
 | `sentiment` | `POSITIVE` · `NEUTRAL` · `NEGATIVE` · `HOSTILE` | Faqat tahlil qilingan, shu kayfiyatdagi suhbatlar (`analysis.sentiment`) |
 | `needsFollowUp` | `true` · `false` | Faqat tahlil qilingan: mijoz kompaniyadan javob kutyaptimi (`analysis.needsFollowUp`) |
+| `q` | matn, ≤ 100 belgi | Transkriptdagi so'z (katta-kichik harf farqsiz), mijoz ismi (`outcome.clientName` va h.k.), telefonning bir qismi (`outcome.phone` va h.k.; faqat raqamlari solishtiriladi) yoki — faqat raqam bo'lsa — suhbat `id` si |
+| `takenOver` | `true` · `false` | `true` — hozir operator javob berayotganlar (`operatorUserId` bor); `false` — agent javob berayotganlar |
 | `orders` kalitlari | `ID` · `CREATED_AT` · `LAST_MESSAGE_AT` · `MESSAGE_COUNT` | Saralash |
 
 ```json
@@ -221,7 +223,14 @@ Hamma filtr ixtiyoriy. `orders` berilmasa — `LAST_MESSAGE_AT DESC`.
         "ended": true,
         "messageCount": 9,
         "createdAt": "2026-09-16T09:12:04Z",
-        "lastMessageAt": "2026-09-16T09:15:40Z"
+        "lastMessageAt": "2026-09-16T09:15:40Z",
+        "operatorUserId": null,
+        "clientName": "Aziz Karimov",
+        "clientPhone": "+998901234567",
+        "lastMessageText": "Rahmat, kutaman",
+        "lastMessageRole": "CLIENT",
+        "sentiment": "POSITIVE",
+        "needsFollowUp": false
       }
     ]
   },
@@ -233,6 +242,13 @@ Hamma filtr ixtiyoriy. `orders` berilmasa — `LAST_MESSAGE_AT DESC`.
 - `channel` — `telegramBotId` bor bo'lsa `TELEGRAM`, aks holda `WIDGET`. Vidjet o'chirilgan bo'lsa
   `widgetId` `null` bo'lib qoladi, kanal esa baribir `WIDGET`.
 - `disposition` — suhbat yakunlanmaguncha `null`.
+- `clientName` / `clientPhone` — suhbat yozgan qiymatlardan (`outcome`): Telegram'da "raqamni ulashish" tugmasi,
+  API faktlari yoki CRM qidiruvi. Chatda caller ID yo'q, shuning uchun mijoz o'zini tanitmaguncha ikkalasi `null`.
+  Telefon E.164 ko'rinishida.
+- `lastMessageText` — oxirgi xabar, bo'shliqlari bitta qilingan va 140 belgigacha qisqartirilgan (`…`); xabar
+  bo'lmasa `null`. `lastMessageRole` — `CLIENT` · `AGENT` · `OPERATOR`: `CLIENT` bo'lsa mijoz javob kutyapti.
+- `sentiment` / `needsFollowUp` — `analysis` dagi qiymatlar; tahlil bo'lmaguncha `null`.
+- `GET /api/chats/{id}` dagi `chat` ham shu maydonlarga ega.
 
 ## Bitta suhbat
 

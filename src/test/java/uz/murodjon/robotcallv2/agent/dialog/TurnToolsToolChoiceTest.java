@@ -1,7 +1,6 @@
 package uz.murodjon.robotcallv2.agent.dialog;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import uz.murodjon.robotcallv2.scenario.domain.entity.ScenarioDefinition;
@@ -60,28 +59,27 @@ class TurnToolsToolChoiceTest {
 
     @Test
     void aStageThatDoesNotOfferTheJobKeepsItOutOfReach() {
-        GoogleGenAiChatOptions.ToolChoice choice = turnTools(true)
-                .findToolChoice(sessionIn("DEBT_NOTICE"), declared, "gemini-3.5-flash-lite");
+        List<String> allowed = turnTools(true)
+                .findAllowedToolNames(sessionIn("DEBT_NOTICE"), declared, "gemini-3.5-flash-lite");
 
-        assertThat(choice.mode()).isEqualTo(GoogleGenAiChatOptions.ToolChoice.Mode.VALIDATED);
-        assertThat(choice.allowedFunctionNames()).contains("transitionTo", "endCall")
+        assertThat(allowed).contains("transitionTo", "endCall")
                 .doesNotContain("recordPaymentPromise", "createFollowUpTask");
     }
 
     @Test
     void theStageBeforeTheJobMayCallItInline() {
-        GoogleGenAiChatOptions.ToolChoice choice = turnTools(true)
-                .findToolChoice(sessionIn("PAYMENT_DATE"), declared, "gemini-3.5-flash-lite");
+        List<String> allowed = turnTools(true)
+                .findAllowedToolNames(sessionIn("PAYMENT_DATE"), declared, "gemini-3.5-flash-lite");
 
-        assertThat(choice.allowedFunctionNames()).contains("recordPaymentPromise").doesNotContain("createFollowUpTask");
+        assertThat(allowed).contains("recordPaymentPromise").doesNotContain("createFollowUpTask");
     }
 
     @Test
     void nothingIsRestrictedOffGeminiOrWhenSwitchedOffOrForASingleJob() {
-        assertThat(turnTools(true).findToolChoice(sessionIn("DEBT_NOTICE"), declared, "gpt-5-mini")).isNull();
-        assertThat(turnTools(false).findToolChoice(sessionIn("DEBT_NOTICE"), declared, "gemini-3.5-flash-lite")).isNull();
-        assertThat(turnTools(true).findToolChoice(sessionIn("DEBT_NOTICE"),
+        assertThat(turnTools(true).findAllowedToolNames(sessionIn("DEBT_NOTICE"), declared, "gpt-5-mini")).isNull();
+        assertThat(turnTools(false).findAllowedToolNames(sessionIn("DEBT_NOTICE"), declared, "gemini-3.5-flash-lite")).isNull();
+        assertThat(turnTools(true).findAllowedToolNames(sessionIn("DEBT_NOTICE"),
                 List.of(tool("createFollowUpTask")), "gemini-3.5-flash-lite")).isNull();
-        assertThat(turnTools(true).findToolChoice(sessionIn("DEBT_NOTICE"), List.of(), "gemini-3.5-flash-lite")).isNull();
+        assertThat(turnTools(true).findAllowedToolNames(sessionIn("DEBT_NOTICE"), List.of(), "gemini-3.5-flash-lite")).isNull();
     }
 }

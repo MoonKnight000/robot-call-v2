@@ -20,7 +20,11 @@ final class TranscriptText {
         return normalize(interim).equals(normalize(finalText));
     }
 
-    /** Letters and digits only, lowercased, single-spaced — so punctuation cannot hide a match. */
+    /**
+     * Letters and digits only, lowercased, single-spaced — so punctuation cannot hide a match.
+     * Uzbek's o‘/g‘ marks are dropped, not spaced: U+02BB counts as a letter to Java, and Yandex
+     * writes the same word "koʻramiz" in an interim and "ko ramiz" in the final.
+     */
     static String normalize(String text) {
         if (text == null) {
             return "";
@@ -28,6 +32,9 @@ final class TranscriptText {
         StringBuilder normalized = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             char c = Character.toLowerCase(text.charAt(i));
+            if (isApostrophe(c)) {
+                continue;
+            }
             if (Character.isLetterOrDigit(c)) {
                 normalized.append(c);
             } else if (!normalized.isEmpty() && normalized.charAt(normalized.length() - 1) != ' ') {
@@ -35,5 +42,9 @@ final class TranscriptText {
             }
         }
         return normalized.toString().trim();
+    }
+
+    private static boolean isApostrophe(char c) {
+        return c == '\'' || c == 'ʻ' || c == 'ʼ' || c == '‘' || c == '’' || c == '`';
     }
 }

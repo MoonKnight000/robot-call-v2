@@ -5,9 +5,10 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * The roles every company is seeded with. Their permissions are computed here rather than
- * stored as rows, so a permission added in a later release reaches them without a data
- * migration — and so nobody can quietly widen ADMIN by editing a table.
+ * The original default roles. Since roles became editable they are only a seed: the first run turns
+ * them into platform role templates and writes down the permissions of companies' existing copies.
+ * After that templates and company roles are stored rows; a permission added in a later release
+ * reaches them only when the platform admin or the company adds it.
  *
  * <p>DEVELOPER is deliberately not assignable by a tenant's own admin:
  * it is our engineer sitting inside a customer's company with every company right.
